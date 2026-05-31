@@ -119,10 +119,21 @@ def _sandbox_ready(name: str) -> bool:
     return "Ready" in _strip(out.stdout) and "relay open timed out" not in _strip(out.stderr)
 
 
+def _safe_model(model: str) -> str:
+    """Allowlist the model name (CWE-88: a value starting with '-' could be parsed
+    as a CLI flag). Only the known LiteLLM model aliases are permitted; anything
+    else falls back to the default."""
+    return model if model in LITELLM_MODELS else DEFAULT_MODEL
+
+
 # --- Backend adapters: each returns assistant text or raises RuntimeError -----
 def run_hermes(profile: str, prompt: str, model: str) -> str:
     if not _sandbox_ready(HERMES_SANDBOX):
         raise RuntimeError("hermes-fleet-v1 not reachable (OpenShell relay down? `brew services restart openshell`)")
+    model = _safe_model(model)
+    # prompt is the VALUE of -z (hermes' arg parser consumes the next token as the
+    # prompt; a leading-'-' prompt errors rather than injecting). model is
+    # allowlisted above. No '--' here — that only applies to positional args.
     cmd = [_openshell(), "sandbox", "exec", "-n", HERMES_SANDBOX, "--no-tty",
            "--timeout", str(HERMES_TIMEOUT), "--",
            "hermes", "--profile", profile, "--yolo", "-m", model, "-z", prompt]
@@ -139,16 +150,17 @@ def run_pi(prompt: str, model: str) -> str:
     if not _sandbox_ready(PI_SANDBOX):
         raise RuntimeError("pi-v1 not reachable (OpenShell relay down? `brew services restart openshell`)")
     pi_key = _get_env("PI_LITELLM_KEY")
-    # SECURITY (CWE-78): the prompt is untrusted (a chat message). Pass it — and
-    # model/key — as SEPARATE argv elements via `env`, with NO `/bin/sh -c`, so
-    # shell metacharacters in the prompt ($(...), backticks, ; etc.) can't inject.
-    # openshell exec runs the argv directly (not through a shell).
+    model = _safe_model(model)
+    # SECURITY: (CWE-78) pass prompt/model/key as SEPARATE argv via `env` — NO
+    # `/bin/sh -c`, so shell metacharacters can't inject. (CWE-88) the trailing
+    # `--` ends pi's options so a prompt starting with `-` is taken as the
+    # positional prompt, not parsed as a flag. model is allowlisted above.
     cmd = [_openshell(), "sandbox", "exec", "-n", PI_SANDBOX, "--no-tty",
            "--timeout", str(PI_TIMEOUT), "--",
            "env", f"PI_LITELLM_KEY={pi_key}", "HOME=/sandbox",
            "/sandbox/node_modules/.bin/pi", "-p",
            "--extension", "/sandbox/.pi/extensions/inference-local.ts",
-           "--provider", "openai", "--model", model, "--no-tools", prompt]
+           "--provider", "openai", "--model", model, "--no-tools", "--", prompt]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
     if "relay open timed out" in (out.stderr or "") or "DeadlineExceeded" in (out.stderr or ""):
         raise RuntimeError("OpenShell relay timed out — sandbox unavailable (restart openshell)")
