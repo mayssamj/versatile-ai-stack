@@ -326,7 +326,17 @@ else
   warn "policy set returned non-zero — sandbox may be using default policy"
 fi
 
+# --- Auto-healing watchdog (guards the expired-token CPU storm; see §2.x) -----
+# A sandbox's gateway token expires after ~8h; the in-sandbox agent then retries
+# log-push with no backoff (hundreds/sec) → ~36% CPU per sandbox. Install a
+# launchd timer that detects that exact signature + delete/recreates the dead
+# sandbox. Idempotent; safe to re-run. Detection-only via AI_STACK_WATCHDOG_RECREATE=0.
+if [[ -x "$AI_STACK/bin/openshell-watchdog.sh" ]]; then
+  bash "$AI_STACK/bin/openshell-watchdog.sh" install 2>&1 | tail -1 || warn "watchdog install returned non-zero (non-fatal)"
+fi
+
 stamp_mark "$PHASE"
-record "phase 04 complete: openshell v${OS_VER}, gateway local-mac up, sandbox $SANDBOX created, policy applied"
+record "phase 04 complete: openshell v${OS_VER}, gateway local-mac up, sandbox $SANDBOX created, policy applied, storm-watchdog installed"
 ok "Phase 04 — OpenShell — complete"
 note "Connect to the sandbox:  openshell sandbox connect $SANDBOX"
+note "CPU-storm guard:          openshell-watchdog.sh status | uninstall   (auto-heals expired-token storms)"
