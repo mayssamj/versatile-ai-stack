@@ -116,6 +116,9 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 - **[COMPONENTS.md](doc/COMPONENTS.md)** — brief catalog of everything in the stack:
   all 34 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
   tools, platform), one line + access point each. The "what's in the box" index.
+- **[ATTRIBUTION.md](doc/ATTRIBUTION.md)** — source link + license + ToS for every
+  third-party tech piece (software *and* model weights), leading with the
+  non-permissive ones to watch (OrbStack, Phoenix, FalkorDB, LFM2, …).
 - **[PORTS.md](doc/PORTS.md)** — authoritative port + service map. Every port
   cross-referenced against `services.yml`, the start scripts, and live
   `docker inspect`. Conflict notes, reserved ports, and a single bash
@@ -132,7 +135,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 32
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 33
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
   for less common issues.
 

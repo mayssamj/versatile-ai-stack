@@ -4,6 +4,30 @@ Auto-appended by `install.sh`. Newest entries at the top.
 
 ---
 
+## 2026-05-31 — docs: NEW doc/ATTRIBUTION.md (source links + licenses + ToS) + candidate eval
+
+Two doc deliverables from a parallel research sweep (17 agents):
+
+- **NEW `doc/ATTRIBUTION.md`** — upstream source link + license + ToS/usage note for
+  **every** third-party tech piece in the stack, software *and* model weights. Leads
+  with a "licenses that need attention" table flagging the non-permissive ones:
+  **OrbStack** (proprietary — business use needs a paid license), **LiquidAI LFM2**
+  (`local-lfm2`; commercial use free only under $10M org revenue), **Phoenix**
+  (Elastic-2.0), **FalkorDB** (SSPL-1.0), **byterover** (Elastic-2.0), **Honcho** +
+  **Unsloth Studio** (AGPL-3.0), **Open WebUI** (custom branding clause), **autoreason**
+  (no license = all-rights-reserved), **LiteLLM** (`enterprise/` is commercial),
+  **Gemma 1–3** (Gemma Terms; Gemma 4+ = Apache-2.0), **Telegram Bot** (Developer Terms).
+  Linked from COMPONENTS.md. ⚠️ marked "not legal advice; verify before compliance use".
+- **Attribution fix:** COMPONENTS.md called **Hermes Workspace** a "Nous Research"
+  product — it's actually the community `outsourc-e/hermes-workspace` (MIT), *built on*
+  `NousResearch/hermes-agent`. Corrected.
+- **`doc/ALTERNATIVES.md` → "Evaluated candidates (2026-05-31)"** — assessed 8 tools for
+  the experimental layer with macOS/license/fit verdicts: **try-now** cmux / Zellij /
+  tmux; **experiment** portless / CC Switch / NVIDIA SkillSpector; **maybe-later**
+  OpenAgents Launcher; **skip** wterm. (cmux is GPL-3.0; rest MIT/Apache-2.0.)
+
+---
+
 ## 2026-05-31 — fix(phase20): apply Telegram allowlist changes on re-run (config drift)
 
 Found while unlocking the bot: editing `HERMES_TELEGRAM_ALLOWED_USERS` in `.env` and

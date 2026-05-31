@@ -461,3 +461,25 @@ When evaluating any swap, ask the same four questions:
    `bash install.sh` away from working. A tool that needs a Kubernetes
    cluster or its own DBA is not a peer alternative for a personal
    laptop stack.
+
+---
+
+## Evaluated candidates (2026-05-31)
+
+Tools considered for the "versatile experimental" layer (terminal multiplexing,
+many parallel agent sessions, provider/config management, port management, skill
+safety). Verdicts are for *this* stack — macOS/Apple-Silicon, terminal-first, many
+concurrent Claude Code/agent sessions, local-first LiteLLM→Ollama. Researched live.
+
+| Candidate | Category | macOS/ARM | License | Verdict | Why (for this stack) |
+|---|---|---|---|---|---|
+| **[cmux](https://github.com/manaflow-ai/cmux)** | Native-macOS terminal for parallel **agent** sessions (per-tab git/PR/port sidebar + `cmux notify` hooks; Ghostty-based) | ✓ | GPL-3.0 (+commercial) | **try-now** | Purpose-built for the core daily pain — many Claude Code sessions, which one needs attention. Sits *above* OpenShell/LiteLLM, duplicates neither. `brew install --cask cmux`. Young/fast-moving. |
+| **[Zellij](https://github.com/zellij-org/zellij)** | Rust terminal multiplexer; KDL layouts; web client | ✓ | MIT | **try-now** | Layouts can pin one agent/worktree per pane + auto-launch; CLI automation drives panes. `brew install zellij`. |
+| **[tmux](https://github.com/tmux/tmux)** | Classic multiplexer; detach/reattach | ✓ | ISC | **try-now** | Ubiquitous; keeps long-running agents alive across disconnects. Pick **tmux *or* zellij** as the daily driver (cmux largely subsumes both for agents). `brew install tmux`. |
+| **[portless](https://github.com/vercel-labs/portless)** | Agent-aware local proxy — named `name.localhost` HTTPS URLs; ships a Claude Code skill | ✓ | Apache-2.0 | **experiment** | Fixes "agents test the wrong port" across many worktrees; bundled CC skill (`portless get`). Pre-1.0 (Vercel Labs). `npm i -g portless` (Node 24+). |
+| **[CC Switch](https://github.com/farion1231/cc-switch)** | GUI to switch Claude Code/Codex provider configs + MCP + Skills | ✓ | MIT | **experiment** | One-click point Claude Code at LiteLLM; manage MCP (Lumen)/skills. GUI (terminal-first users: CLI fork `SaladDay/cc-switch-cli`). `brew install --cask cc-switch`. Beware imposter sites. |
+| **[NVIDIA SkillSpector](https://github.com/NVIDIA/skillspector)** | Security scanner for agent skills/MCP (prompt-injection, tool-poisoning) before install | unknown | Apache-2.0 | **experiment** | We install many 3rd-party skills; static mode is offline, optional LLM stage points at LiteLLM. Very new (~5 commits). Complements (not duplicates) the Semgrep plugin. |
+| **[OpenAgents Launcher](https://openagents.org/launcher)** | "Ollama for AI agents" — install/manage CC/Codex/Aider/etc. | unknown | Apache-2.0 | **maybe-later** | Heavily duplicates our installer + Hermes fleet + LiteLLM routing; imposes its own config layer. Throwaway-worktree try only. |
+| **[wterm](https://github.com/vercel-labs/wterm)** | Web terminal-emulator **library** (embed in a web app) | ✓ | Apache-2.0 | **skip** | A frontend component, not a tool you run. Meets no stated need; only use would be a custom terminal pane inside claw3d/Open WebUI. |
+
+**Bottom line:** for "many concurrent agent sessions," **cmux** is the standout (agent-aware); **portless** is the low-effort high-payoff add for worktree/port chaos. tmux/zellij are an either/or classic-multiplexer choice. See [ATTRIBUTION.md](ATTRIBUTION.md) for license/ToS detail (note cmux is GPL-3.0; the rest tried are MIT/Apache-2.0).
