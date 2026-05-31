@@ -139,12 +139,16 @@ def run_pi(prompt: str, model: str) -> str:
     if not _sandbox_ready(PI_SANDBOX):
         raise RuntimeError("pi-v1 not reachable (OpenShell relay down? `brew services restart openshell`)")
     pi_key = _get_env("PI_LITELLM_KEY")
-    inner = (f'PI_LITELLM_KEY={pi_key} HOME=/sandbox '
-             f'/sandbox/node_modules/.bin/pi -p '
-             f'--extension /sandbox/.pi/extensions/inference-local.ts '
-             f'--provider openai --model {model} --no-tools {json.dumps(prompt)}')
+    # SECURITY (CWE-78): the prompt is untrusted (a chat message). Pass it — and
+    # model/key — as SEPARATE argv elements via `env`, with NO `/bin/sh -c`, so
+    # shell metacharacters in the prompt ($(...), backticks, ; etc.) can't inject.
+    # openshell exec runs the argv directly (not through a shell).
     cmd = [_openshell(), "sandbox", "exec", "-n", PI_SANDBOX, "--no-tty",
-           "--timeout", str(PI_TIMEOUT), "--", "/bin/sh", "-c", inner]
+           "--timeout", str(PI_TIMEOUT), "--",
+           "env", f"PI_LITELLM_KEY={pi_key}", "HOME=/sandbox",
+           "/sandbox/node_modules/.bin/pi", "-p",
+           "--extension", "/sandbox/.pi/extensions/inference-local.ts",
+           "--provider", "openai", "--model", model, "--no-tools", prompt]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
     if "relay open timed out" in (out.stderr or "") or "DeadlineExceeded" in (out.stderr or ""):
         raise RuntimeError("OpenShell relay timed out — sandbox unavailable (restart openshell)")
