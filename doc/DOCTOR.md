@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash install.sh doctor` runs all 33 checks and offers a per-check auto-fix
+`bash install.sh doctor` runs all 37 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -475,6 +475,19 @@ Skips cleanly (passes) when claw3d was never installed (`claw3d/node_modules` ab
 | Auto-fix | restarts the gateway: `bash bin/start-hermes-telegram.sh` (or re-run `install.sh install 20`). |
 
 Skips cleanly (passes) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set — the gateway is an optional add-on. Makes **no external Telegram API call** and never prints the token. Two benign patterns are deliberately NOT treated as failures: the transient `409 conflict` after `run --replace` (Telegram holds the prior long-poll ~50s; self-heals) and the allowlist warning "*All unauthorized users will be denied*" (the secure-by-default lock, not an auth error). A passing check may still note "**running but LOCKED**" — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the allowlist.
+
+---
+
+## 34–37 · Opt-in experimental extras (Phases 21–24)
+
+These four checks pass-as-skip when the tool isn't installed (the tools are opt-in, not in `install all`), so the doctor stays green whether or not you've added them. When installed, each verifies the tool is present + runnable.
+
+| # | Check | Asserts (when installed) | Skip-pass when |
+|---|---|---|---|
+| 34 | `portless` | `portless --version` runs (Node 24+ is an advisory note, not a failure — runs under Node 22) | `portless` not on PATH |
+| 35 | `cmux` | `brew list --cask cmux` or `/Applications/cmux.app` present | cask/app absent (or non-macOS) |
+| 36 | `skillspector` | venv CLI + `bin/skillspector` exist and `--help` runs | `skillspector/.venv` absent |
+| 37 | `openagents` | `agn` resolves on PATH or under `~/.openagents` | `agn` absent |
 
 ---
 

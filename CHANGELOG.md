@@ -4,6 +4,37 @@ Auto-appended by `install.sh`. Newest entries at the top.
 
 ---
 
+## 2026-05-31 — Named phase IDs + 4 opt-in tool phases (portless/cmux/skillspector/openagents)
+
+**Named phase selectors.** `install.sh install <phase>` and `test <phase>` now accept a
+meaningful NAME as well as a number — phase files are `<id>_<name>.sh`, so the name is
+the filename suffix (`install phoenix` == `install 01h`, `install hermes_telegram`, …),
+plus friendly aliases (`litellm`→inference, `telegram`→hermes_telegram, `hermes`→hermes_fleet,
+`sandbox`→openshell, `unsloth`→unsloth_studio, `halo`→halo_autoreason, `ui`→uis, `docs`→documents,
+`memory`→alt_memory). New `resolve_phase_script()` tries id-prefix → exact-name → alias →
+unique-fuzzy; new `install.sh phases` (also `steps`/`list`) prints the `id → name` table.
+Auto-discovers any phase from the filename — no registry to maintain.
+
+**4 NEW opt-in extra phases** (developed + adversarially reviewed by a multi-agent workflow,
+then fixed + installed + verified on the M4 host). NOT in `install all` — install by name:
+- **21 `portless`** (Apache-2.0) — agent-aware local dev proxy (`name.localhost` URLs + a
+  Claude Code skill). Node 24+ is RECOMMENDED, not required (npm `engines` is advisory;
+  portless 0.13 runs on Node 22), so the phase installs + converges under Node 22 with an
+  advisory. Verified: installs, idempotent, doctor ✓.
+- **22 `cmux`** (GPL-3.0) — native macOS terminal for parallel agent sessions. `brew tap
+  manaflow-ai/cmux && brew install --cask cmux`. Verified: cask 0.64.10 installed, doctor ✓.
+- **23 `skillspector`** (Apache-2.0) — NVIDIA agent-skill/MCP security scanner. Vendored
+  clone (gitignored) + uv venv + `bin/skillspector` wrapper (OFFLINE-first: auto-injects
+  `--no-llm` after `scan` only). Verified: real offline scan ran (v2.0.0), doctor ✓.
+- **24 `openagents`** (Apache-2.0) — OpenAgents Launcher (`agn`); OVERLAPS the stack, NOT
+  wired into LiteLLM/sandboxes. Installer materialized to a temp file (not blind curl|bash),
+  preserved on bail for inspection; gated to macOS arm64. Opt-in run (edits shell rc).
+- New doctor checks **34–37** (all pass-as-skip when the tool isn't installed, so doctor
+  stays green); `services.yml` entries (`cli-only`); `.gitignore` `/skillspector/`.
+- **Counts: 27 core phases (+4 opt-in extras) · 38 services · 37 doctor checks.**
+
+---
+
 ## 2026-05-31 — docs: NEW doc/ATTRIBUTION.md (source links + licenses + ToS) + candidate eval
 
 Two doc deliverables from a parallel research sweep (17 agents):

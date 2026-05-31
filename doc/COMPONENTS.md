@@ -6,7 +6,8 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **27 install phases**, **34 services** (`services.yml`), **33 doctor checks**.
+- **27 core install phases** (+4 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`), **38 services** (`services.yml`), **37 doctor checks**.
+- Phases accept a **name or number**: `install.sh install phoenix` == `install 01h`. Run `install.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
 
@@ -73,6 +74,15 @@ FalkorDB, LFM2, etc.).
 | **byterover CLI** | Alternative memory CLI | `brv` |
 | **autoreason** | NousResearch research clone (reference only) | `halo/autoreason/` |
 | **paperclip↔honcho plugin** | Wires Paperclip into Honcho memory | — |
+
+## Opt-in experimental extras (Phases 21–24 — NOT in `install all`)
+Install individually by name: `install.sh install <name>`. Doctor checks 34–37 pass-as-skip when not installed.
+| Component | What it is | Install |
+|---|---|---|
+| **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `install.sh install portless` |
+| **cmux** | Native macOS terminal for many parallel agent sessions (per-tab git/PR/port + `cmux notify` hooks) | `install.sh install cmux` |
+| **SkillSpector** | NVIDIA scanner that vets agent skills/MCP for prompt-injection/tool-poisoning *before* install (offline by default) | `install.sh install skillspector` → `bin/skillspector scan <path>` |
+| **OpenAgents Launcher** | "Ollama for AI agents" (`agn`); ⚠️ overlaps the stack — NOT wired into LiteLLM/sandboxes; installs to `~/.openagents` | `install.sh install openagents` |
 
 ## Platform
 | Component | What it is |

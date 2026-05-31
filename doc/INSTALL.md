@@ -365,7 +365,7 @@ Then run the full doctor:
 bash install.sh doctor
 ```
 
-Expected: 33/33 checks pass after the post-install steps above and a
+Expected: 37/37 checks pass after the post-install steps above and a
 successful `sudo bash install.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. The

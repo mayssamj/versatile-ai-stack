@@ -394,6 +394,35 @@ services:
     # Reads from Ollama for embeddings; index lives in ~/.local/share/lumen/.
     consumes_env:
       - LUMEN_EMBED_MODEL
+  # --- Opt-in experimental extras (NOT in `install all`; install by name/number) ---
+  portless:
+    enabled: true # Phase 21 — agent-aware local dev proxy (named name.localhost URLs)
+    type: cli-only
+    phase: "21"
+    network: none
+    # Global npm CLI on the host; ships a Claude Code skill (portless get/list).
+    # Node 24+ recommended (runs under 22). `install.sh install portless`.
+  cmux:
+    enabled: true # Phase 22 — native macOS terminal for parallel agent sessions
+    type: cli-only
+    phase: "22"
+    network: none
+    # GUI app via `brew install --cask cmux` (tap manaflow-ai/cmux). No daemon;
+    # launched by the user. `install.sh install cmux`.
+  skillspector:
+    enabled: true # Phase 23 — NVIDIA agent-skill / MCP security scanner (offline-first)
+    type: cli-only
+    phase: "23"
+    network: none
+    # Vendored clone (gitignored) + uv venv + bin/skillspector wrapper (--no-llm
+    # default). Optional LLM stage can point at LiteLLM. `install.sh install skillspector`.
+  openagents:
+    enabled: true # Phase 24 — OpenAgents Launcher (`agn`); opt-in, OVERLAPS the stack
+    type: cli-only
+    phase: "24"
+    network: none
+    # Installs to ~/.openagents (its own portable Node); NOT wired into LiteLLM/
+    # sandboxes/UIs. `install.sh install openagents`.
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:

@@ -156,8 +156,12 @@ ai-stack-installer — usage:
   All subcommands:
     install.sh                          interactive top-to-bottom install
     install.sh prepare-sudo             write /etc/hosts + flush DNS (REQUIRES sudo)
-    install.sh install <phase>          install one phase, e.g.  install.sh install 01h
-    install.sh test <phase>             run smoke tests for one phase
+    install.sh install <phase>          install one phase BY ID or NAME, e.g.
+                                          install.sh install 01h
+                                          install.sh install phoenix
+                                          install.sh install hermes_telegram  (alias: telegram)
+    install.sh phases                   list every phase as `id  name` (also: steps, list)
+    install.sh test <phase>             run smoke tests for one phase (id or name)
     install.sh status                   tabular service status
     install.sh doctor [<service>]       diagnose & offer fixes
     install.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
@@ -176,8 +180,9 @@ ai-stack-installer — usage:
     install.sh <service> stop           shortcut for: install.sh stop <service>
                                         (enable/disable are accepted as aliases for start/stop)
 
-Phases (in install order):
+Phases (in install order) — pass the id OR the name (run `install.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents
 
 EOF
 }
@@ -353,19 +358,80 @@ cmd_install() {
   fi
 }
 
+# Resolve a phase selector to its script path. A selector may be a NUMERIC id
+# (00, 01h, 04f, 21 …) OR a meaningful NAME — phase files are named
+# `<id>_<name>.sh`, so the human-friendly name is just the filename suffix
+# (`hermes_fleet`, `claw3d`, `portless`, …), plus a few friendly aliases. New
+# phases are auto-discovered (no registry to maintain). Echoes the script path on
+# success; on no/ambiguous match writes detail to stderr and returns 1.
+resolve_phase_script() {
+  local sel="$1" dir="$AI_STACK/installer/phases" script
+  local -a matches
+
+  # Friendly aliases -> canonical name suffix.
+  case "$sel" in
+    litellm)               sel=inference ;;
+    tracing)               sel=phoenix ;;
+    db)                    sel=storage ;;
+    sandbox)               sel=openshell ;;
+    hermes|fleet)          sel=hermes_fleet ;;
+    telegram)              sel=hermes_telegram ;;
+    guardrails)            sel=security ;;
+    ui|openwebui)          sel=uis ;;
+    docs|rag)              sel=documents ;;
+    memory)                sel=alt_memory ;;
+    unsloth)               sel=unsloth_studio ;;
+    halo|autoreason)       sel=halo_autoreason ;;
+    net|dns)               sel=networking ;;
+  esac
+
+  # 1. id-prefix: <sel>_*.sh   (00, 04f, 21 …)
+  script="$(find "$dir" -maxdepth 1 -name "${sel}_*.sh" -print -quit 2>/dev/null)"
+  [[ -n "$script" ]] && { printf '%s' "$script"; return 0; }
+
+  # 2. exact name-suffix: *_<sel>.sh   (host, hermes_fleet, claw3d, portless …)
+  mapfile -t matches < <(find "$dir" -maxdepth 1 -name "*_${sel}.sh" 2>/dev/null | sort)
+  [[ ${#matches[@]} -eq 1 ]] && { printf '%s' "${matches[0]}"; return 0; }
+  if (( ${#matches[@]} > 1 )); then
+    err "Phase '$sel' is ambiguous — matches: ${matches[*]##*/}"; return 1
+  fi
+
+  # 3. fuzzy contains: *<sel>*.sh   (last resort; must be unique)
+  mapfile -t matches < <(find "$dir" -maxdepth 1 -name "*${sel}*.sh" 2>/dev/null | sort)
+  [[ ${#matches[@]} -eq 1 ]] && { printf '%s' "${matches[0]}"; return 0; }
+  if (( ${#matches[@]} > 1 )); then
+    err "Phase '$sel' is ambiguous — matches: ${matches[*]##*/}"; return 1
+  fi
+  return 1
+}
+
 run_phase() {
-  local p="$1"
-  local script
-  script="$(find "$AI_STACK/installer/phases" -maxdepth 1 -name "${p}_*.sh" -print -quit)"
-  if [[ -z "$script" ]]; then
-    err "No phase script matches '${p}_*.sh' in installer/phases/"
+  local p="$1" script
+  if ! script="$(resolve_phase_script "$p")"; then
+    err "Could not resolve phase '$p' to a single script. Run 'install.sh phases' to list ids + names."
     return 1
   fi
   log "==> phase $p — $(basename "$script")"
   bash "$script"
 }
 
-cmd_test()    { local p="$1"; bash "$AI_STACK/installer/smoke/${p}.sh"; }
+# List every phase as `id  name` (what you can pass to `install`/`test`).
+cmd_phases() {
+  local f base id name
+  printf '%-7s  %s\n' "ID" "NAME"
+  printf '%-7s  %s\n' "-------" "----"
+  while IFS= read -r f; do
+    base="$(basename "$f" .sh)"   # e.g. 04f_hermes_fleet
+    id="${base%%_*}"              # 04f
+    name="${base#*_}"             # hermes_fleet
+    printf '%-7s  %s\n' "$id" "$name"
+  done < <(find "$AI_STACK/installer/phases" -maxdepth 1 -name '*.sh' | sort)
+  echo
+  echo "Use either form:  install.sh install <id>   |   install.sh install <name>"
+  echo "Aliases: litellm=inference, telegram=hermes_telegram, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
+}
+
+cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; bash "$AI_STACK/installer/smoke/${id}.sh"; }
 cmd_status()  { bash "$AI_STACK/installer/lib/status.sh"; }
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
@@ -521,6 +587,7 @@ main() {
     install|"")        cmd_install "${1:-all}" ;;
     prepare-sudo)      cmd_prepare_sudo ;;
     test)              cmd_test "$1" ;;
+    phases|steps|list) cmd_phases ;;
     status)            cmd_status ;;
     doctor)            cmd_doctor "${1:-}" ;;
     verify)            cmd_verify ;;
