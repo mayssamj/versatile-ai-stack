@@ -1,7 +1,7 @@
 # ai-stack
 
-A personal, self-hosted, multi-agent AI stack for one operator (Mayssam) on a
-MacBook Pro M4 24 GB. One command brings it up, validates it, and heals itself.
+A personal, self-hosted, comprehensive and versatile multi-agent AI stack.
+One command brings it up, validates it, and heals itself.
 
 ```bash
 bash ~/ai-stack/install.sh
