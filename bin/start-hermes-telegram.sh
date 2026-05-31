@@ -31,7 +31,7 @@ resolve_openshell() {
 }
 OSH="$(resolve_openshell)"; [[ -n "$OSH" ]] || { err "openshell not on PATH — run phase 04"; exit 1; }
 
-_strip() { sed $'s/\x1b\\[[0-9;]*m//g'; }
+_strip() { tr -d '\000' | sed $'s/\x1b\\[[0-9;]*m//g'; }   # drop NULs (hermes' box-draw banner) + ANSI
 
 # Sandbox must be Ready (relay up) to issue the start exec.
 state="$("$OSH" sandbox get "$SANDBOX" 2>/dev/null | _strip | awk '/^[[:space:]]*Phase:/ {print $2; exit}')"

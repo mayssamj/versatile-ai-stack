@@ -4,6 +4,32 @@ Auto-appended by `install.sh`. Newest entries at the top.
 
 ---
 
+## 2026-05-31 — fix(phase20): apply Telegram allowlist changes on re-run (config drift)
+
+Found while unlocking the bot: editing `HERMES_TELEGRAM_ALLOWED_USERS` in `.env` and
+re-running `install 20` did **nothing** — the documented unlock path was broken.
+
+- **Root cause:** Phase 20's precheck passed on "token present + gateway running" and
+  short-circuited, so a changed allowlist never reached the sandbox. An idempotency
+  check that ignores declared-vs-actual config silently swallows changes.
+- **Fix:** precheck now also calls `_allowlist_in_sync` — it converges on declared
+  state, skipping only when the sandbox's allowlist actually matches `.env`. The two
+  gateway keys live in `~/.hermes/config.yaml` (YAML `KEY: value`), NOT `~/.hermes/.env`
+  (only secrets go there) — and there's no `hermes config get` and `config show` hides
+  the value, so the check reads `config.yaml` via awk (host-side quote-strip for
+  robustness; IDs compared, never echoed).
+- Step 4 gained a LOCKED-convergence branch: when neither allowlist key is set it now
+  clears any stale allowlist/open-access so the locked state actually applies and the
+  precheck converges (no perpetual re-apply).
+- `bin/start-hermes-telegram.sh`: `_strip` now drops NUL bytes from hermes' box-draw
+  banner (kills a benign "command substitution: ignored null byte" warning).
+- **VERIFIED:** with the user's id in `.env`, `install 20` detected drift → applied
+  allowlist → restarted → bot UNLOCKED (only that id may drive the fleet); the "No user
+  allowlists configured" warning is gone. Re-run now SKIPS (in sync, PID unchanged).
+  `.env.example` already carried both keys (empty) from the entry below — unchanged.
+
+---
+
 ## 2026-05-31 — Phase 20 NEW: Hermes Telegram gateway (@vz_hermes_controller_bot)
 
 User wanted hermes-agent's native messaging gateway wired to Telegram as part of

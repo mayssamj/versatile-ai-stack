@@ -50,10 +50,47 @@ _gateway_running() {
     | sed $'s/\x1b\\[[0-9;]*m//g' | grep -qi 'running'
 }
 
+# Does the running gateway's allowlist match what's declared in .env? Without this,
+# the precheck would pass on "token present + running" and SKIP — so editing
+# HERMES_TELEGRAM_ALLOWED_USERS / _ALLOW_ALL in .env and re-running 'install 20'
+# would silently NOT apply the change. We converge on declared state instead.
+#
+# These two keys live in ~/.hermes/config.yaml (YAML `KEY: value`), NOT in
+# ~/.hermes/.env — only secrets like the bot token go in .env. There is no
+# `hermes config get`, and `config show` summarizes ("Telegram: configured")
+# without the value, so we read config.yaml directly with awk (FS `: *`). IDs
+# aren't secrets but are compared, never echoed. Returns 0 = in sync.
+_allowlist_in_sync() {
+  local osh="$1"
+  local want_users want_all
+  want_users="$(get_env HERMES_TELEGRAM_ALLOWED_USERS '')"
+  want_all="$(get_env HERMES_TELEGRAM_ALLOW_ALL '')"
+  local got got_users got_all
+  got="$("$osh" sandbox exec -n "$SANDBOX" --no-tty --timeout 20 -- bash -c \
+    'awk -F": *" "/^TELEGRAM_ALLOWED_USERS:/{u=\$2} /^GATEWAY_ALLOW_ALL_USERS:/{a=\$2} END{printf \"%s\\037%s\", u, a}" "$HOME/.hermes/config.yaml" 2>/dev/null' \
+    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '\r\n')"
+  got_users="${got%%$'\037'*}"
+  got_all="${got##*$'\037'}"
+  # Strip one surrounding quote pair in case hermes ever YAML-quotes a value
+  # (e.g. empty -> ''): keeps the comparisons below format-agnostic.
+  got_users="${got_users#[\"\']}"; got_users="${got_users%[\"\']}"
+  got_all="${got_all#[\"\']}";     got_all="${got_all%[\"\']}"
+  if [[ -n "$want_users" ]]; then
+    [[ "$got_users" == "$want_users" && "$got_all" != "true" ]] || return 1
+  elif [[ "$want_all" == "true" ]]; then
+    [[ "$got_all" == "true" ]] || return 1
+  else
+    # desired = locked: sandbox should carry no allowlist and not be open
+    [[ -z "$got_users" && "$got_all" != "true" ]] || return 1
+  fi
+  return 0
+}
+
 precheck() {
   local osh; osh="$(resolve_openshell)"; [[ -n "$osh" ]] || return 1
   [[ "$(_token_in_sandbox "$osh")" == "YES" ]] || return 1
   _gateway_running "$osh" || return 1
+  _allowlist_in_sync "$osh" || return 1
   return 0
 }
 
@@ -122,6 +159,13 @@ elif [[ "$ALLOW_ALL" == "true" ]]; then
   warn "OPEN ACCESS enabled (HERMES_TELEGRAM_ALLOW_ALL=true) — ANYONE who finds"
   warn "@vz_hermes_controller_bot can drive your fleet. Prefer HERMES_TELEGRAM_ALLOWED_USERS."
   LOCKED=0
+else
+  # Desired = LOCKED (neither key set). Clear any stale allowlist/open-access so the
+  # gateway actually denies all AND the precheck converges (no perpetual re-apply).
+  "$OSH" sandbox exec -n "$SANDBOX" --no-tty --timeout 20 -- \
+    hermes config set TELEGRAM_ALLOWED_USERS "" >/dev/null 2>&1 || true
+  "$OSH" sandbox exec -n "$SANDBOX" --no-tty --timeout 20 -- \
+    hermes config set GATEWAY_ALLOW_ALL_USERS false >/dev/null 2>&1 || true
 fi
 
 # --- 5. Verify the token landed (grep, never cat) -------------------------
