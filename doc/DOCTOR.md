@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash install.sh doctor` runs all 32 checks and offers a per-check auto-fix
+`bash install.sh doctor` runs all 33 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -451,6 +451,30 @@ hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `
 | Auto-fix | Surfaces `bash install.sh install 18` (idempotent: reinstalls `rlms`, re-mints the key, regenerates `rlm/.env` + `bin/rlm`). |
 
 Skips cleanly (passes) when RLM was never installed (`rlm/.venv` absent) — it's optional experimental tooling. RLM's REPL runs model-generated code in a **Docker sandbox** by default (`bin/rlm`); `--env local` would run it on the host.
+
+---
+
+## 32 · claw3d office + stack-agents bridge healthy (Phase 19)
+
+| | |
+|---|---|
+| Asserts | the bridge (`claw3d-bridge/bridge.py`, `:7780`) serves `/health` + `/state` with ≥1 agent, and the claw3d UI (`:4310`) responds. |
+| Fails when | the bridge or UI isn't serving, or `/state` lists no agents. |
+| Auto-fix | restarts both: `bash bin/start-claw3d-bridge.sh && bash bin/start-claw3d.sh` (or re-run `install.sh install 19`). |
+
+Skips cleanly (passes) when claw3d was never installed (`claw3d/node_modules` absent). Does NOT exercise the agents (that needs the OpenShell relay) — only the bridge contract + UI liveness.
+
+---
+
+## 33 · Hermes Telegram gateway running (Phase 20, @vz_hermes_controller_bot)
+
+| | |
+|---|---|
+| Asserts | the native hermes gateway is running INSIDE `hermes-fleet-v1` (via `hermes gateway status`) and `TELEGRAM_BOT_TOKEN` is present in the sandbox's `~/.hermes/.env`. |
+| Fails when | the gateway isn't running, the token isn't configured in the sandbox, or the gateway log shows a genuine auth error (`unauthorized`/`invalid token`/`401`). |
+| Auto-fix | restarts the gateway: `bash bin/start-hermes-telegram.sh` (or re-run `install.sh install 20`). |
+
+Skips cleanly (passes) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set — the gateway is an optional add-on. Makes **no external Telegram API call** and never prints the token. Two benign patterns are deliberately NOT treated as failures: the transient `409 conflict` after `run --replace` (Telegram holds the prior long-poll ~50s; self-heals) and the allowlist warning "*All unauthorized users will be denied*" (the secure-by-default lock, not an auth error). A passing check may still note "**running but LOCKED**" — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the allowlist.
 
 ---
 

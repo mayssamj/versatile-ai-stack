@@ -365,14 +365,16 @@ Then run the full doctor:
 bash install.sh doctor
 ```
 
-Expected: 31/31 checks pass after the post-install steps above and a
+Expected: 33/33 checks pass after the post-install steps above and a
 successful `sudo bash install.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. The
-last eight (24 `pi-v1` Ready, 25 pi-v1 network policy, 26 `PI_LITELLM_KEY`
+last ten (24 `pi-v1` Ready, 25 pi-v1 network policy, 26 `PI_LITELLM_KEY`
 allowlist, 27 Lumen MCP binary + embed model, 28 DeerFlow config.yaml
 model entries + compose passthrough, 29 ACE + LiteLLM virtual key, 30 Hermes
-routing, 31 RLM install) require Phases 14, 15, 16, 10, 17, 04f, 18.
+routing, 31 RLM install, 32 claw3d office + bridge, 33 Hermes Telegram gateway)
+require Phases 14, 15, 16, 10, 17, 04f, 18, 19, 20. Check 33 skips cleanly
+(counts as a pass) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set.
 
 ---
 

@@ -423,6 +423,48 @@ flag is only needed for live-but-hung PIDs.
 
 ---
 
+## "The Telegram bot (@vz_hermes_controller_bot) doesn't reply" (Phase 20)
+
+By far the most common cause: **the bot is LOCKED.** The gateway is secure-by-default
+— with no allowlist it connects to Telegram but **denies every user**, so your DMs
+get no response. `doctor` shows the check passing with a "**running but LOCKED**" note,
+and Phase 20 prints a loud "BOT IS LOCKED" banner. Fix:
+
+```bash
+# 1. Get your numeric Telegram user id — DM @userinfobot on Telegram.
+# 2. Add it to .env (mode 0600):
+echo 'HERMES_TELEGRAM_ALLOWED_USERS=123456789' >> ~/ai-stack/.env   # your id
+# 3. Re-apply (restarts the gateway with the new allowlist):
+bash ~/ai-stack/install.sh install 20
+```
+
+Open access (anyone who finds the bot) is `HERMES_TELEGRAM_ALLOW_ALL=true` in `.env`
+— **not advised**, since the bot can drive all 7 agent profiles.
+
+Other causes:
+
+```bash
+OSH=/opt/homebrew/bin/openshell
+# Is the gateway actually running inside the sandbox?
+$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status      # expect "running (PID …)"
+# Read the gateway log (auth errors, conflicts):
+$OSH sandbox exec -n hermes-fleet-v1 -- tail -30 /sandbox/.hermes-gateway.log
+# Restart it:
+bash ~/ai-stack/bin/start-hermes-telegram.sh
+```
+
+- **`unauthorized` / `invalid token` / `401`** in the log → the bot token in `.env`
+  (`HERMES_TELEGRAM_BOT_TOKEN`) is wrong or revoked. Get a fresh one from @BotFather,
+  update `.env`, re-run `install 20`.
+- **`409 conflict`** right after a restart is **benign and self-heals** — Telegram
+  holds the previous instance's long-poll for ~50s. It is NOT flagged as an error.
+- **Gateway not running after a relay outage** → the gateway long-polls Telegram
+  *directly* (not through the relay), so it survives relay idle-timeouts; but if the
+  sandbox itself was recreated (`reset … hard` + `install`), Phase 20 re-runs and
+  restarts it. If the sandbox is down, fix that first (`install.sh install 04`).
+
+---
+
 ## Diagnosing from scratch when nothing's obvious
 
 ```bash

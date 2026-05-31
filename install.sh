@@ -177,7 +177,7 @@ ai-stack-installer — usage:
                                         (enable/disable are accepted as aliases for start/stop)
 
 Phases (in install order):
-  00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19
+  00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
 
 EOF
 }
@@ -335,7 +335,7 @@ cmd_install() {
     # - 00v (verify) runs AFTER 00n (network) so the network is up to probe.
     # - 04f (Hermes fleet) AFTER 04 (OpenShell + hermes-fleet-v1 sandbox).
     # - 04g (security layer) AFTER 04f.
-    local phases=(00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19)
+    local phases=(00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20)
     for p in "${phases[@]}"; do
       run_phase "$p" || {
         err "Phase $p failed. After fixing, resume with:  bash $0 install $p"

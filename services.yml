@@ -143,6 +143,22 @@ services:
     profiles: [hermes_cos, hermes_software_engineer, hermes_researcher, hermes_creator, hermes_reviewer, hermes_data_analyst, hermes_ops]
     phase: "04f"
     network: openshell
+  hermes_telegram:
+    enabled: true # Phase 20 — native hermes gateway → Telegram (@vz_hermes_controller_bot)
+    type: sandbox-daemon
+    phase: "20"
+    sandbox: hermes-fleet-v1
+    network: openshell
+    # The gateway runs INSIDE hermes-fleet-v1 (`hermes gateway run`), self-persists
+    # after the launching exec closes, and long-polls api.telegram.org DIRECTLY
+    # (Phase 04 `telegram` egress policy) — no host daemon. Lifecycle = hermes'
+    # own `gateway status/stop/restart`; liveness is doctor check 33. Started by
+    # bin/start-hermes-telegram.sh. Secure-by-default: with no allowlist it DENIES
+    # all users until HERMES_TELEGRAM_ALLOWED_USERS is set.
+    consumes_env:
+      - HERMES_TELEGRAM_BOT_TOKEN
+      - HERMES_TELEGRAM_ALLOWED_USERS
+      - HERMES_TELEGRAM_ALLOW_ALL
   # --- Security (Phase 04·G) --------------------------------------------
   litellm_guardrails_builtin:
     enabled: true # in-process regex/keyword; near-zero cost

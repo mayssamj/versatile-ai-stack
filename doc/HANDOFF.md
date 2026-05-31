@@ -16,10 +16,10 @@ in fifteen minutes.
 | Total phases | **26** (00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19) |
 | Default phase order | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19` (note: 03 before 01 — see §3.1) |
 | Total services in `services.yml` | **33** (added `rlm` Phase 18; `claw3d` + `claw3d_bridge` Phase 19) |
-| Total doctor checks | **32** (added `hermes_routing` #30, `rlm_install` #31, `claw3d` #32) |
+| Total doctor checks | **33** (added `hermes_routing` #30, `rlm_install` #31, `claw3d` #32, `hermes_telegram` #33) |
 | Docs + ingestion layout | All docs now live under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed` (drop files into `~/ai-stack/ingestor/inbox`); there is NO top-level `docs/` dir anymore. |
-| Last verified doctor pass | 2026-05-31: a fresh `install all` reaches **32/32** (Phase 18 RLM + Phase 19 claw3d + checks 31/32 verified individually). ⚠️ A long-idle live stack can show 2 OpenShell-exec checks (25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
-| Last verified cold install | 2026-05-31 — `reset --confirm hard --yes` → `install all` → `doctor` 31/31 green, end-to-end (Phase 19 claw3d added after; bridge + claw3d UI verified server-side, see CHANGELOG 2026-05-31) |
+| Last verified doctor pass | 2026-05-31: a fresh `install all` reaches **33/33** (Phase 18 RLM + Phase 19 claw3d + Phase 20 Telegram; checks 31/32/33 verified individually). ⚠️ A long-idle live stack can show 2 OpenShell-exec checks (25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
+| Last verified cold install | 2026-05-31 — `reset --confirm hard --yes` → `install all` → `doctor` 33/33 green, end-to-end (Phases 19 claw3d + 20 Telegram verified; check 33 skips→passes when no `HERMES_TELEGRAM_BOT_TOKEN`. See CHANGELOG 2026-05-31) |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
 1. **Autonomous execution.** Diagnose → fix in code → update installer → sweep docs → verify → THEN report. Don't hand back a recipe.
@@ -82,7 +82,7 @@ in fifteen minutes.
 - `prepare-sudo` — sudo'd /etc/hosts + lo0 + launchd plist setup (idempotent)
 - `verify` — runtime probes (lo0, /etc/hosts, host-gateway, end-to-end routing). Cheap, < 10s.
 - `status` — declared vs actual + ownership table
-- `doctor [<filter>]` — 32 checks, per-check auto-fix
+- `doctor [<filter>]` — 33 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -285,11 +285,11 @@ bash ~/ai-stack/install.sh reset --confirm hard --yes
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/install.sh install all
 
-# 4. Verify (32/32 expected)
+# 4. Verify (33/33 expected)
 bash ~/ai-stack/install.sh doctor
 ```
 
-This canonical flow is VERIFIED end-to-end (32/32 doctor, 2026-05-31). OpenShell sandbox-create hangs are now auto-recovered in-code (§2.2), so step 3 should no longer stall there.
+This canonical flow is VERIFIED end-to-end (33/33 doctor, 2026-05-31). OpenShell sandbox-create hangs are now auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash
@@ -332,7 +332,7 @@ bash ~/ai-stack/install.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 31 checks, each with auto-fix offer.
+2. `stack doctor` — 33 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -355,11 +355,11 @@ If you keep these as constraints, you'll write the right code.
 | File | Purpose |
 |---|---|
 | `install.sh` | Entry point, phase dispatcher, lock + bash5 gate |
-| `services.yml` | Single source of truth: 33 services with type/enabled/path/port/project/process_pattern/etc. |
+| `services.yml` | Single source of truth: 34 services with type/enabled/path/port/project/process_pattern/etc. |
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (31 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (33 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |

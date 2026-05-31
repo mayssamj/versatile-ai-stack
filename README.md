@@ -40,6 +40,7 @@ running container without explicit confirmation.
 | Code semantic search (MCP) | Lumen (Ory) | `bin/lumen` (stdio, no port) | 16 |
 | Recursive Language Models | RLM (`rlms`) | `bin/rlm` (Docker REPL sandbox) | 18 |
 | 3D agent office | claw3d + stack-agents bridge | `localhost:4310` | 19 |
+| Fleet chat from your phone | Hermes Telegram gateway | `@vz_hermes_controller_bot` | 20 |
 
 ### Networking
 
@@ -113,7 +114,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 ### Reference
 
 - **[COMPONENTS.md](doc/COMPONENTS.md)** — brief catalog of everything in the stack:
-  all 33 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
+  all 34 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
   tools, platform), one line + access point each. The "what's in the box" index.
 - **[PORTS.md](doc/PORTS.md)** — authoritative port + service map. Every port
   cross-referenced against `services.yml`, the start scripts, and live
@@ -175,7 +176,7 @@ the guard rails.
 ```
 ~/ai-stack/
 ├── install.sh              # entry point — bash-5+ gate + subcommand dispatcher
-├── services.yml            # single source of truth (33 services, 4 profiles)
+├── services.yml            # single source of truth (34 services, 4 profiles)
 ├── .env                    # secrets + config (0600)
 ├── README.md ← you are here
 ├── CHANGELOG.md            # what was decided + done
@@ -184,8 +185,8 @@ the guard rails.
 ├── bin/                    # daily-driver: stack, start-<svc>.sh, audit.sh
 ├── installer/
 │   ├── lib/                # common, env, docker, validate, prompt, litellm, status, adopt, gc, history, reset, openshell
-│   ├── phases/             # one file per phase (00 .. 18)
-│   ├── doctor/checks/      # one file per failure mode (31 checks)
+│   ├── phases/             # one file per phase (00 .. 20)
+│   ├── doctor/checks/      # one file per failure mode (33 checks)
 │   ├── smoke/              # per-phase end-to-end smoke tests
 │   └── state/              # stamp files, restart queue, lock dir
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -205,8 +206,8 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash install.sh doctor` for live state. Top-line:
 
-- **26 install phases · 33 services · 32 doctor checks.**
-- A clean `reset --confirm hard --yes` → `install all` reaches **31/31 doctor green**
-  (verified end-to-end 2026-05-31, incl. Phase 18 RLM).
+- **27 install phases · 34 services · 33 doctor checks.**
+- A clean `reset --confirm hard --yes` → `install all` reaches **33/33 doctor green**
+  (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram).
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.

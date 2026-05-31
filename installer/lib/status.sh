@@ -117,7 +117,10 @@ while IFS= read -r name; do
         actual=running
       fi
       ;;
-    cli-only|clone-only|pip-package|npm-global|litellm-feature|agent-pattern|paperclip-plugin|openshell|hermes-profiles)
+    cli-only|clone-only|pip-package|npm-global|litellm-feature|agent-pattern|paperclip-plugin|openshell|hermes-profiles|sandbox-daemon)
+      # sandbox-daemon (hermes_telegram): the gateway runs INSIDE the sandbox and
+      # is invisible to host pgrep; doctor check 33 does the real liveness probe
+      # via `hermes gateway status`. Mark n/a here like the other sandbox services.
       actual="n/a"
       ;;
     *) actual="?" ;;

@@ -117,6 +117,15 @@ network_policies:
     binaries:
       - { path: "/**" }
 
+  # Telegram — hermes-agent's native Telegram gateway long-polls api.telegram.org
+  # (getUpdates). Required for Phase 20 (vz_hermes_controller_bot). Egress only.
+  telegram:
+    name: telegram
+    endpoints:
+      - { host: api.telegram.org, port: 443 }
+    binaries:
+      - { path: "/**" }
+
   # Honcho memory API — reached over Docker bridge via host.docker.internal.
   # Requires Honcho to bind 0.0.0.0:8000 (see Phase 03 compose override).
   honcho_memory:

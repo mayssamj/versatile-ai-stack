@@ -4,6 +4,47 @@ Auto-appended by `install.sh`. Newest entries at the top.
 
 ---
 
+## 2026-05-31 — Phase 20 NEW: Hermes Telegram gateway (@vz_hermes_controller_bot)
+
+User wanted hermes-agent's native messaging gateway wired to Telegram as part of
+install, so the whole fleet is reachable from a phone by DMing the bot. Token lives
+in `.env` as `HERMES_TELEGRAM_BOT_TOKEN`.
+
+- **NEW Phase 20 `20_hermes_telegram.sh`** — writes `TELEGRAM_BOT_TOKEN` into the
+  sandbox's `~/.hermes/.env` (piped via STDIN, never in argv or logs), configures
+  the allowlist (below), then starts the gateway via `bin/start-hermes-telegram.sh`.
+  Idempotent: precheck via `hermes gateway status` + token-in-sandbox, so re-runs
+  don't restart a healthy gateway.
+- **Architecture — in-sandbox self-persisting daemon, NOT a host daemon.** The
+  gateway runs INSIDE `hermes-fleet-v1` (`hermes gateway run`). A process started
+  in the sandbox is reparented to the container init and survives the launching
+  `exec` stream closing (verified). Its Telegram long-poll goes
+  container → api.telegram.org DIRECTLY (Phase 04 `telegram` egress policy, added
+  this session), NOT through the OpenShell relay — so it also survives the relay's
+  idle-timeout (§2.1). Lifecycle = hermes' own `gateway status/stop/restart`. The
+  launcher uses `run --replace` (ends with exactly one gateway on the latest config).
+- **SECURITY — secure-by-default allowlist.** With neither `HERMES_TELEGRAM_ALLOWED_USERS`
+  (comma-list of numeric Telegram ids) nor `HERMES_TELEGRAM_ALLOW_ALL=true` set, the
+  gateway connects but DENIES every user (the bot can drive 7 profiles, so it is not
+  open by accident). Phase 20 + doctor surface a loud "BOT IS LOCKED" notice telling
+  the user to DM `@userinfobot`, add their id to `.env`, and re-run `install 20`.
+- **NEW doctor check 33** (`33_hermes_telegram.sh`) — skips cleanly when no token;
+  else verifies the in-sandbox gateway is running + token present, via
+  `hermes gateway status`. Makes NO external Telegram API call (never sends the
+  token over the wire) and never prints it. Two benign patterns are filtered to
+  avoid false failures: the transient `409 conflict` from `--replace` (Telegram
+  holds the prior long-poll ~50s; self-heals) and the allowlist warning line ("All
+  *unauthorized* users will be denied") which contains the word but is not an auth error.
+- **`services.yml`** `hermes_telegram` (`type: sandbox-daemon` → `status` shows `n/a`
+  like the other sandbox services; real liveness is check 33). `status.sh` learns
+  the `sandbox-daemon` type. install.sh phase array → `…19 20`.
+- **VERIFIED:** Phase 20 from clean → gateway PID stable across restarts (one poller,
+  no flapping); 409 self-heals; idempotent re-run skips; `doctor hermes_telegram` ✓;
+  `status` row clean. Bot is LOCKED pending the user's Telegram id (by design).
+- **Phases 26 → 27, checks 32 → 33.**
+
+---
+
 ## 2026-05-31 — Phase 19 NEW: claw3d 3D agent office + generic stack-agents bridge
 
 User wanted `github.com/iamlukethedev/claw3d` (a 3D "virtual office" that visualizes

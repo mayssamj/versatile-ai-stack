@@ -4,7 +4,7 @@ A brief catalog of everything in `~/ai-stack`. One line each. For the *why* and
 deep tour see [STACK-GUIDE.md](STACK-GUIDE.md); for ports see [PORTS.md](PORTS.md);
 for commands see [OPERATIONS.md](OPERATIONS.md).
 
-- **26 install phases**, **33 services** (`services.yml`), **32 doctor checks**.
+- **27 install phases**, **34 services** (`services.yml`), **33 doctor checks**.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
 
@@ -49,6 +49,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md).
 | **Hermes Workspace** | Nous Research chat workspace | `http://workspace:3000` |
 | **claw3d** | 3D agent "office" — visualizes + chats with your sandboxed agents (Hermes ×7, Pi, DeerFlow) via the stack-agents bridge | `http://localhost:4310` |
 | **claw3d bridge** | Host daemon implementing claw3d's custom runtime; routes chat authentically to each agent (`claw3d-bridge/bridge.py`) | `http://127.0.0.1:7780` (internal) |
+| **Hermes Telegram gateway** | Native hermes gateway (runs inside `hermes-fleet-v1`); DM the bot to reach the fleet from your phone. Secure-by-default (allowlist required) | `@vz_hermes_controller_bot` on Telegram |
 
 ## Documents & RAG
 | Component | What it is | Reach it |

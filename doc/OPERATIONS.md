@@ -201,6 +201,42 @@ when did I change that?"
 
 ---
 
+## Hermes Telegram gateway (Phase 20)
+
+The native hermes gateway runs **inside** the `hermes-fleet-v1` sandbox (it is not
+a host daemon — a process started in the sandbox self-persists, and it long-polls
+`api.telegram.org` directly via Phase 04's `telegram` egress policy). Lifecycle is
+hermes' own commands; the stack just (re)starts it idempotently.
+
+```bash
+OSH=/opt/homebrew/bin/openshell
+
+# Start / restart (idempotent — ends with exactly one gateway on the latest config):
+bash ~/ai-stack/bin/start-hermes-telegram.sh
+# or, to also (re)apply token + allowlist from .env:
+bash ~/ai-stack/install.sh install 20
+
+# Status / logs / stop:
+$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status
+$OSH sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-gateway.log
+$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
+```
+
+**Access control (read this before expecting replies).** The gateway is
+secure-by-default: with no allowlist it DENIES every user. Set ONE in `.env`, then
+re-run `install 20`:
+
+- `HERMES_TELEGRAM_ALLOWED_USERS=<id>[,<id>…]` — numeric Telegram user ids (find
+  yours by DMing `@userinfobot`). **Recommended.**
+- `HERMES_TELEGRAM_ALLOW_ALL=true` — open access. Not advised (the bot drives 7
+  profiles).
+
+`stack status` shows `hermes_telegram` as `n/a` (it's a sandbox-internal daemon);
+the real liveness probe is `doctor` check 33. See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) if the bot doesn't reply.
+
+---
+
 ## Restart vs recreate
 
 Important distinction:
