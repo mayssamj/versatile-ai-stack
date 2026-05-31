@@ -1,0 +1,13 @@
+{
+  "name": "transformersjs-poc",
+  "private": true,
+  "type": "module",
+  "description": "transformers.js PoC for ai-stack — local on-device embeddings + semantic search (browser WebGPU + Node), zero Ollama/host load.",
+  "scripts": {
+    "node-demo": "node node-embed.mjs",
+    "serve": "python3 -m http.server 8099"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  }
+}

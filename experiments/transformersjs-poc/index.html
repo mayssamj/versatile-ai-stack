@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>transformers.js PoC — local embeddings on YOUR GPU</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 780px; margin: 2rem auto;
+         padding: 0 1.2rem; background:#0d1117; color:#e6edf3; line-height:1.5; }
+  h1 { font-size:1.4rem; } code { background:#161b22; padding:.1rem .35rem; border-radius:4px; }
+  #status { padding:.6rem .8rem; border-radius:8px; background:#161b22; border:1px solid #30363d; margin:1rem 0; }
+  .ok { color:#3fb950; } .warn { color:#d29922; }
+  input { width:60%; padding:.5rem .7rem; border-radius:8px; border:1px solid #30363d; background:#0d1117; color:#e6edf3; font-size:1rem; }
+  button { padding:.5rem 1rem; border-radius:8px; border:0; background:#238636; color:#fff; font-size:1rem; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  ul { list-style:none; padding:0; } li { padding:.5rem .7rem; border-radius:8px; margin:.35rem 0; background:#161b22; border:1px solid #21262d; }
+  li.top { border-color:#238636; } .score { color:#58a6ff; font-variant-numeric:tabular-nums; }
+  .muted { color:#8b949e; font-size:.85rem; }
+</style>
+</head>
+<body>
+  <h1>transformers.js — semantic search running locally on your GPU</h1>
+  <p class="muted">All inference is on-device (WebGPU, falling back to WASM/CPU). The model (~23&nbsp;MB) downloads once
+  from Hugging Face, then runs fully local — <b>zero load on Ollama or the host</b>. This is the capability you'd drop into claw3d.</p>
+
+  <div id="status">Loading model…</div>
+
+  <input id="q" placeholder="Ask: which agent does research? / where do traces go? …" value="which agent does research?">
+  <button id="go" disabled>Search</button>
+
+  <ul id="results"></ul>
+
+  <script type="module">
+    import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4';
+
+    const MODEL = 'Xenova/all-MiniLM-L6-v2';
+    const corpus = [
+      'Hermes is the chief-of-staff agent that decomposes goals and routes to specialists.',
+      'Pi is the sandboxed terminal coding agent running inside the pi-v1 sandbox.',
+      'DeerFlow is a multi-step research agent built on LangGraph.',
+      'Qdrant stores vector embeddings for retrieval-augmented generation.',
+      'Phoenix is the OpenTelemetry tracing UI for every LLM call in the stack.',
+      'LiteLLM is the OpenAI-compatible gateway that routes to local Ollama models.',
+    ];
+
+    const $ = id => document.getElementById(id);
+    const cosine = (a, b) => {
+      let dot = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) { dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+      return dot / (Math.sqrt(na) * Math.sqrt(nb));
+    };
+
+    let extract, corpusVecs, device = 'wasm (CPU)';
+
+    const embed = async texts =>
+      (await extract(texts, { pooling: 'mean', normalize: true })).tolist();
+
+    async function init() {
+      try {
+        extract = await pipeline('feature-extraction', MODEL, { device: 'webgpu' });
+        device = 'webgpu (GPU) ⚡';
+      } catch (e) {
+        extract = await pipeline('feature-extraction', MODEL);   // WASM/CPU fallback
+        device = 'wasm (CPU — WebGPU unavailable in this browser)';
+      }
+      corpusVecs = await embed(corpus);
+      $('status').innerHTML = `<span class="ok">Ready</span> — running on <b>${device}</b>. ${corpus.length} docs embedded locally.`;
+      $('go').disabled = false;
+    }
+
+    async function search() {
+      $('go').disabled = true;
+      const q = $('q').value.trim() || 'which agent does research?';
+      const t = performance.now();
+      const [qv] = await embed([q]);
+      const ranked = corpus
+        .map((text, i) => ({ text, score: cosine(qv, corpusVecs[i]) }))
+        .sort((a, b) => b.score - a.score);
+      const ms = (performance.now() - t).toFixed(0);
+      $('results').innerHTML = ranked
+        .map((r, i) => `<li class="${i===0?'top':''}">${i===0?'→ ':''}<span class="score">${r.score.toFixed(3)}</span>&nbsp; ${r.text}</li>`)
+        .join('');
+      $('status').innerHTML = `Searched in <b>${ms}ms</b> on <b>${device}</b> — no Ollama, no cloud.`;
+      $('go').disabled = false;
+    }
+
+    $('go').onclick = search;
+    $('q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+    init();
+  </script>
+</body>
+</html>
