@@ -25,7 +25,7 @@ Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/install.s
 stack                                   # interactive install/resume
 stack verify                            # Phase 00·V — 6 runtime probes; no install
 stack status                            # declared vs actual table
-stack doctor                            # 31 health checks + auto-fix offers
+stack doctor                            # 32 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase
 stack adopt <svc>                       # take ownership of a foreign container

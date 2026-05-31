@@ -39,6 +39,7 @@ running container without explicit confirmation.
 | Sandboxed coding agent | Pi (Earendil) | `pi-v1` (OpenShell sandbox) | 15 |
 | Code semantic search (MCP) | Lumen (Ory) | `bin/lumen` (stdio, no port) | 16 |
 | Recursive Language Models | RLM (`rlms`) | `bin/rlm` (Docker REPL sandbox) | 18 |
+| 3D agent office | claw3d + stack-agents bridge | `localhost:4310` | 19 |
 
 ### Networking
 
@@ -66,7 +67,7 @@ bash ~/ai-stack/install.sh
 # See declared vs actual state
 bash ~/ai-stack/install.sh status
 
-# 31 health checks + auto-fixes
+# 32 health checks + auto-fixes
 bash ~/ai-stack/install.sh doctor
 
 # Take ownership of a container started outside the installer
@@ -112,7 +113,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 ### Reference
 
 - **[COMPONENTS.md](doc/COMPONENTS.md)** — brief catalog of everything in the stack:
-  all 31 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
+  all 33 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
   tools, platform), one line + access point each. The "what's in the box" index.
 - **[PORTS.md](doc/PORTS.md)** — authoritative port + service map. Every port
   cross-referenced against `services.yml`, the start scripts, and live
@@ -130,7 +131,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 31
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 32
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
   for less common issues.
 
@@ -174,7 +175,7 @@ the guard rails.
 ```
 ~/ai-stack/
 ├── install.sh              # entry point — bash-5+ gate + subcommand dispatcher
-├── services.yml            # single source of truth (31 services, 4 profiles)
+├── services.yml            # single source of truth (33 services, 4 profiles)
 ├── .env                    # secrets + config (0600)
 ├── README.md ← you are here
 ├── CHANGELOG.md            # what was decided + done
@@ -204,7 +205,7 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash install.sh doctor` for live state. Top-line:
 
-- **25 install phases · 31 services · 31 doctor checks.**
+- **26 install phases · 33 services · 32 doctor checks.**
 - A clean `reset --confirm hard --yes` → `install all` reaches **31/31 doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM).
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2

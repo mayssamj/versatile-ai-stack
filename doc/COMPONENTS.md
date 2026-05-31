@@ -4,7 +4,7 @@ A brief catalog of everything in `~/ai-stack`. One line each. For the *why* and
 deep tour see [STACK-GUIDE.md](STACK-GUIDE.md); for ports see [PORTS.md](PORTS.md);
 for commands see [OPERATIONS.md](OPERATIONS.md).
 
-- **25 install phases**, **31 services** (`services.yml`), **31 doctor checks**.
+- **26 install phases**, **33 services** (`services.yml`), **32 doctor checks**.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
 
@@ -47,6 +47,8 @@ for commands see [OPERATIONS.md](OPERATIONS.md).
 |---|---|---|
 | **Open WebUI** | Chat UI in front of LiteLLM | `http://openwebui:8080` |
 | **Hermes Workspace** | Nous Research chat workspace | `http://workspace:3000` |
+| **claw3d** | 3D agent "office" — visualizes + chats with your sandboxed agents (Hermes ×7, Pi, DeerFlow) via the stack-agents bridge | `http://localhost:4310` |
+| **claw3d bridge** | Host daemon implementing claw3d's custom runtime; routes chat authentically to each agent (`claw3d-bridge/bridge.py`) | `http://127.0.0.1:7780` (internal) |
 
 ## Documents & RAG
 | Component | What it is | Reach it |

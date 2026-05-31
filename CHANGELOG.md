@@ -4,6 +4,45 @@ Auto-appended by `install.sh`. Newest entries at the top.
 
 ---
 
+## 2026-05-31 — Phase 19 NEW: claw3d 3D agent office + generic stack-agents bridge
+
+User wanted `github.com/iamlukethedev/claw3d` (a 3D "virtual office" that visualizes
+AI agents) wired to the Hermes fleet — and, by design, to ALL isolated/independent
+agents, not just Hermes.
+
+- **Investigation (parallel agents)** mapped claw3d's contract: its `hermes-adapter`
+  needs an OpenAI-compatible Hermes *HTTP server* (we don't run one), but its
+  **custom HTTP runtime** path (`/health`,`/state`,`/registry`,`/v1/chat/completions`)
+  is generic, and **many agents can live behind one runtime** (claw3d derives one
+  office agent per key in `/state.active`). So the right design is ONE bridge that
+  enumerates every agent — not the Hermes-only adapter.
+- **NEW `claw3d-bridge/bridge.py`** (stdlib, host daemon :7780) — implements the
+  custom-runtime contract and routes chat AUTHENTICALLY (user's choice) per agent
+  via an extensible registry with a `kind` field:
+    - `kind=chat`: Hermes ×7 → `openshell exec → hermes --profile X -z`; Pi →
+      `openshell exec → pi -p` in pi-v1; DeerFlow → LangGraph `/runs/wait` (:2026).
+    - `kind=task-launcher`: reserved for **AutoFyn** (a future non-chat "launch run"
+      tile — excluded from v1 because it's cloud-Claude + repo-scoped + hours-long,
+      not a chat agent; investigation overturned including it).
+  Fast OpenShell-relay precheck → graceful "agent unavailable" instead of hangs;
+  never logs prompts/keys.
+- **NEW Phase 19 `19_claw3d.sh`** — clones claw3d (vendored, gitignored), `npm install`,
+  writes `claw3d/.env` + `~/.openclaw/claw3d/settings.json` pointing at the bridge
+  (`adapterType=custom`, voice/Spotify OFF, allowlist locked to localhost), and
+  starts both via `bin/start-claw3d-bridge.sh` + `bin/start-claw3d.sh` (host daemons,
+  PID files). claw3d UI at `http://localhost:4310`.
+- **VERIFIED end-to-end (server-side):** bridge serves all 9 agents; claw3d's own
+  `/api/runtime/custom` proxy reaches the bridge (9 agents); an authentic Hermes chat
+  routed through the running bridge returned a real profile reply. (3D browser render +
+  one-click "Connect" need a human.)
+- **NEW doctor check 32** (`32_claw3d.sh`); `services.yml` entries (`claw3d`,
+  `claw3d_bridge`); install.sh phase array → `…18 19`. **Phases 25 → 26, checks 31 → 32.**
+- **Known follow-ups:** Pi adapter runs but `pi -p --model local` hits a model-resolution
+  issue (graceful "unavailable" until the flags/extension are tuned, or switch to
+  `--mode json` parsing); DeerFlow needs its `DEER_FLOW_INTERNAL_AUTH_TOKEN` wired for
+  authenticated `/runs`. Hermes ×7 work today. The Hermes/Pi paths need a live OpenShell
+  relay (HANDOFF §2.1).
+
 ## 2026-05-31 — Phase 18 NEW: RLM (Recursive Language Models), Docker-sandboxed, LiteLLM-routed
 
 User asked to incorporate `github.com/alexzhang13/rlm` (PyPI `rlms`, MIT OASYS lab)

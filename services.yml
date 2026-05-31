@@ -307,6 +307,22 @@ services:
     # Routes via LiteLLM virtual key RLM_LITELLM_KEY (minted by Phase 18).
     # REPL (model-generated code) runs in a Docker sandbox (python:3.11-slim),
     # NOT on the host. Substrate that HALO (Phase 11) is built on.
+  claw3d_bridge:
+    enabled: true # Phase 19 — stack-agents bridge (host python daemon, :7780)
+    type: python-bg
+    phase: "19"
+    process_pattern: claw3d-bridge/bridge.py
+    network: host
+    # claw3d's custom HTTP runtime: /health,/state,/registry,/v1/chat/completions.
+    # Routes chat authentically to Hermes profiles + Pi (sandbox exec) + DeerFlow.
+  claw3d:
+    enabled: true # Phase 19 — 3D agent office UI (host node daemon)
+    type: node-bg
+    phase: "19"
+    process_pattern: claw3d/server/index.js
+    network: host
+    # Next.js UI at http://localhost:4310; points at claw3d_bridge (adapterType=custom).
+    # Vendored clone (gitignored); the bridge in claw3d-bridge/ is stack source.
   # --- Blaxel (cloud-only; keys only) ----------------------------------
   blaxel_cli:
     enabled: true # CLI installed; deploys are on-demand

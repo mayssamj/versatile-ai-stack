@@ -22,6 +22,8 @@ id_ed25519*
 /hermes-workspace/
 /halo/
 /alt-memory/
+/claw3d/
+# NOTE: claw3d-bridge/ is OUR code (the stack-agents bridge) — committed, NOT ignored.
 
 # ── Runtime tool trees (generated/installed by phases) ───────────────────
 /rlm/

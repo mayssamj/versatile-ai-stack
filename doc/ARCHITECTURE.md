@@ -162,7 +162,7 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-25 phase scripts (`installer/phases/00_host.sh` through `18_rlm.sh`),
+26 phase scripts (`installer/phases/00_host.sh` through `19_claw3d.sh`),
 each:
 
 - Self-contained — can run standalone via `bash install.sh install <phase>`.
