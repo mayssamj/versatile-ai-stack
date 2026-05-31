@@ -1,0 +1,379 @@
+# Declared state for the AI stack. Single source of truth.
+# Edit, then run: bash install.sh status   (or `stack status` once `bin/` is on PATH)
+#
+# After Phase 04·G's audit, the daily-driver commands are:
+#   stack apply                       reconcile actual → declared
+#   stack enable <svc>                set enabled: true and apply
+#   stack disable <svc>               set enabled: false and apply
+#   stack restart <svc>               recreate one service (backs up state)
+#
+# Conservative-recreate policy (chosen 2026-05-27): the doctor reports drift
+# on running containers but never auto-recreates them. Use `install.sh adopt
+# <svc>` to take ownership of a container started outside the installer.
+#
+# Schema v2 (networking refactor):
+#   - alias            user-facing /etc/hosts name (e.g. `litellm`)
+#   - host_ip          127.0.10.x loopback for host-side reachability
+#   - host_port        port the host alias listens on (80 for HTTP; native otherwise)
+#   - container_port   the container's internal port
+#   - network          ai-stack | host | openshell | none — used by doctor
+#   - add_host         extra --add-host entries (typically ollama:host-gateway)
+#   - extra_aliases    list of additional alias rows for multi-endpoint services
+# Legacy v1 fields (bind, port, ports, health) are preserved for one cycle;
+# doctor warns when both v1 and v2 fields are present.
+
+version: 2 # schema version; bumping triggers an installer/migrations step
+services:
+  # --- Inference plane (Phase 01) ---------------------------------------
+  ollama:
+    enabled: true
+    type: brew-service
+    port: 11434
+    bind: 127.0.0.1
+    health: http://127.0.0.1:11434/api/tags
+    phase: "01"
+    network: host
+  litellm:
+    enabled: true
+    type: docker
+    image: ghcr.io/berriai/litellm:main-stable
+    port: 4000
+    bind: 127.0.0.1
+    health: http://127.0.0.1:4000/health
+    depends_on: [ollama]
+    phase: "01"
+    alias: litellm
+    host_ip: 127.0.10.1
+    host_port: 4000
+    container_port: 4000
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+    consumes_env:
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - GOOGLE_API_KEY
+      - LITELLM_MASTER_KEY
+      - PHOENIX_COLLECTOR_HTTP_ENDPOINT
+      - PHOENIX_PROJECT_NAME
+  # --- Observability (Phase 01·H) ---------------------------------------
+  phoenix:
+    enabled: true
+    type: docker
+    image: arizephoenix/phoenix:latest
+    ports: [6006, 4317]
+    bind: 127.0.0.1
+    health: http://127.0.0.1:6006/healthz
+    phase: "01h"
+    alias: phoenix
+    host_ip: 127.0.10.2
+    host_port: 6006
+    container_port: 6006
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+    extra_aliases:
+      - alias: phoenix-otlp
+        host_ip: 127.0.10.3
+        host_port: 4317
+        container_port: 4317
+        protocol: grpc
+    consumes_env:
+      - PHOENIX_SECRET
+  # --- Storage (Phase 02) -----------------------------------------------
+  falkordb:
+    enabled: true
+    type: docker
+    image: falkordb/falkordb:latest
+    ports: [6379, 3010] # 3010 on host → 3000 in container (DEPRECATED: see alias falkordb-ui)
+    bind: 127.0.0.1
+    phase: "02"
+    alias: falkordb
+    host_ip: 127.0.10.7
+    host_port: 6379
+    container_port: 6379
+    protocol: redis
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+    extra_aliases:
+      - alias: falkordb-ui
+        host_ip: 127.0.10.8
+        host_port: 3000
+        container_port: 3000
+        protocol: http
+  qdrant:
+    enabled: true
+    type: docker
+    image: qdrant/qdrant
+    port: 6333
+    bind: 127.0.0.1
+    health: http://127.0.0.1:6333/collections
+    phase: "02"
+    alias: qdrant
+    host_ip: 127.0.10.5
+    host_port: 6333
+    container_port: 6333
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+  # --- Memory (Phase 03) ------------------------------------------------
+  honcho:
+    enabled: true
+    type: compose
+    path: ~/ai-stack/honcho
+    port: 8000
+    bind: 127.0.0.1
+    health: http://127.0.0.1:8000/health
+    depends_on: [litellm]
+    phase: "03"
+    alias: honcho
+    host_ip: 127.0.10.6
+    host_port: 8000
+    container_port: 8000
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+  # --- Agent sandbox + fleet (Phase 04 / 04·F) --------------------------
+  openshell:
+    enabled: true
+    type: openshell
+    sandbox: hermes-fleet-v1
+    phase: "04"
+    network: openshell
+  hermes_fleet:
+    enabled: true
+    type: hermes-profiles
+    profiles: [hermes_cos, hermes_software_engineer, hermes_researcher, hermes_creator, hermes_reviewer, hermes_data_analyst, hermes_ops]
+    phase: "04f"
+    network: openshell
+  # --- Security (Phase 04·G) --------------------------------------------
+  litellm_guardrails_builtin:
+    enabled: true # in-process regex/keyword; near-zero cost
+    type: litellm-feature
+    phase: "04g"
+    network: none
+  litellm_guardrails_secrets:
+    enabled: true # secret-leak blocker; do not disable lightly
+    type: litellm-feature
+    phase: "04g"
+    network: none
+  llm_guard:
+    enabled: true # second-layer scanner sidecar (user chose ON)
+    type: docker
+    image: laiyer/llm-guard-api:latest
+    port: 8001
+    bind: 127.0.0.1
+    phase: "04g"
+    alias: llm-guard
+    host_ip: 127.0.10.12
+    host_port: 8000
+    container_port: 8000
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+  dual_llm_researcher:
+    enabled: true # researcher reads via summarizer first
+    type: agent-pattern
+    phase: "04g"
+    network: none
+  # --- UIs (Phase 05) ---------------------------------------------------
+  hermes_workspace:
+    enabled: true
+    type: compose
+    path: ~/ai-stack/hermes-workspace
+    # Compose normalizes the project name to dashes — actual containers are
+    # named `hermes-workspace-…`, not `hermes_workspace-…`. Without this
+    # override, status.sh reports stopped+absent (both agents 2026-05-29).
+    project: hermes-workspace
+    port: 3000
+    bind: 127.0.0.1
+    phase: "05"
+    alias: workspace
+    host_ip: 127.0.10.10
+    host_port: 3000
+    container_port: 3000
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+  openwebui:
+    enabled: true
+    type: docker
+    image: ghcr.io/open-webui/open-webui:main
+    port: 3001
+    bind: 127.0.0.1
+    health: http://127.0.0.1:3001/health
+    phase: "05"
+    alias: openwebui
+    host_ip: 127.0.10.9
+    host_port: 8080
+    container_port: 8080
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+  # --- Documents (Phase 06) ---------------------------------------------
+  docs_ingestor:
+    enabled: true # user chose ON
+    # Mis-classified as python-bg historically — it's a ONE-SHOT CLI
+    # (`python ingest.py`), not a daemon. status.sh now reports n/a instead
+    # of false-flagging "should be running". 2-agent root cause 2026-05-29.
+    type: cli-only
+    path: ~/ai-stack/ingestor
+    phase: "06"
+    network: host
+  docs_mcp:
+    enabled: true # user chose ON
+    type: python-bg
+    path: ~/ai-stack/ingestor
+    # The actual process cmdline is `python ingestor/mcp_server.py` —
+    # the string "docs_mcp" never appears. Override pgrep pattern so
+    # status.sh can detect it. Pid file at installer/state/docs_mcp.pid
+    # is preferred but pattern is the fallback. 2-agent root cause 2026-05-29.
+    process_pattern: mcp_server.py
+    port: 8765
+    bind: 127.0.0.1
+    phase: "06"
+    alias: docs-mcp
+    host_ip: 127.0.10.4
+    host_port: 8765
+    container_port: 8765
+    network: host # currently host-side; alias reserved for future containerization
+  # --- Optional agents and tools (user opted-in to all) ----------------
+  autofyn:
+    enabled: true # user chose ON
+    type: docker-compose
+    path: ~/ai-stack/autofyn
+    port: 3400
+    bind: 127.0.0.1
+    phase: "07"
+    alias: autofyn
+    host_ip: 127.0.10.13
+    host_port: 3400
+    container_port: 3400
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+  paperclip:
+    enabled: true # user chose ON
+    type: node-bg
+    port: 3100
+    bind: 127.0.0.1
+    phase: "08"
+    alias: paperclip
+    host_ip: 127.0.10.14
+    host_port: 3100
+    container_port: 3100
+    network: host # node bg process on the Mac; alias reserved
+  paperclip_honcho_plugin:
+    enabled: true # activated inside Paperclip UI after install
+    type: paperclip-plugin
+    phase: "08"
+    network: none
+  remnic_hermes:
+    enabled: true # Phase 09 — alternative memory (installed-disabled)
+    type: pip-package
+    phase: "09"
+    network: none
+  byterover_cli:
+    enabled: true # Phase 09 — host-side memory CLI (installed-disabled)
+    type: npm-global
+    phase: "09"
+    network: host
+  deerflow:
+    enabled: true # user chose ON
+    type: docker-compose
+    path: ~/ai-stack/deer-flow
+    # Compose project name pinned to `deer-flow` (with dash) by upstream's
+    # deploy.sh: `docker compose -p deer-flow …`. Containers are named
+    # `deer-flow-gateway`, etc. — never `deerflow-…`. Override so status.sh
+    # can find them. 2-agent root cause 2026-05-29.
+    project: deer-flow
+    phase: "10"
+    network: ai-stack
+  halo:
+    enabled: true # Phase 11 — CLI, run on demand
+    type: cli-only
+    phase: "11"
+    network: none
+  autoreason:
+    enabled: true # Phase 11 — research artifact (clone-only)
+    type: clone-only
+    phase: "11"
+    network: none
+  ace:
+    enabled: true # Phase 17 — Agentic Context Engineering (batch CLI; no daemon)
+    type: cli-only
+    phase: "17"
+    network: none
+    # Routes via LiteLLM virtual key ACE_LITELLM_KEY (minted by Phase 17).
+    # Every LLM call appears in Phoenix project ai-stack for free.
+  rlm:
+    enabled: true # Phase 18 — Recursive Language Models (rlms; library + bin/rlm)
+    type: cli-only
+    phase: "18"
+    network: none
+    # Routes via LiteLLM virtual key RLM_LITELLM_KEY (minted by Phase 18).
+    # REPL (model-generated code) runs in a Docker sandbox (python:3.11-slim),
+    # NOT on the host. Substrate that HALO (Phase 11) is built on.
+  # --- Blaxel (cloud-only; keys only) ----------------------------------
+  blaxel_cli:
+    enabled: true # CLI installed; deploys are on-demand
+    type: cli-only
+    phase: "12"
+    network: none
+    # ---------------------------------------------------------------------
+    # Helicone — DEPRECATED. Mayssam migrated to Phoenix (Phase 01·H).
+    # Kept commented-out per user pref so re-enable is one edit away.
+    # Doctor will offer to clean up ~/ai-stack/helicone/ if present.
+    # ---------------------------------------------------------------------
+    # helicone_platform:
+    #   enabled: false
+    #   type: helicone-compose
+    #   path: ~/ai-stack/helicone/docker
+    #   ports: [3000, 8585, 8989]
+    #   bind: 127.0.0.1
+    # helicone_gateway:
+    #   enabled: false
+    #   type: docker
+    #   image: helicone/ai-gateway:main
+    #   port: 8080
+    #   bind: 127.0.0.1
+  unsloth:
+    enabled: true # local fine-tuning + training UI; macOS M-series uses MLX
+    type: python-bg
+    port: 8898
+    bind: 0.0.0.0
+    phase: "14"
+    alias: unsloth
+  pi:
+    enabled: true # Phase 15 — Pi coding agent in pi-v1 OpenShell sandbox
+    type: openshell
+    sandbox: pi-v1
+    phase: "15"
+    network: openshell
+    # No host alias; TUI is launched via `bin/pi` (openshell sandbox exec).
+    # Pi calls http://host.docker.internal:4000 (LiteLLM) with PI_LITELLM_KEY.
+    consumes_env:
+      - PI_LITELLM_KEY
+  pi_gateway_litellm:
+    enabled: true # Phase 15 — LiteLLM virtual key minted for Pi
+    type: litellm-virtual-key
+    phase: "15"
+    network: none
+  lumen_mcp:
+    enabled: true # Phase 16 — Ory's local code semantic search MCP server.
+    # stdio-only — no daemon, no port. Each MCP client spawns its own
+    # `lumen stdio` subprocess via the bin/lumen wrapper.
+    type: cli-only
+    phase: "16"
+    network: none
+    # Reads from Ollama for embeddings; index lives in ~/.local/share/lumen/.
+    consumes_env:
+      - LUMEN_EMBED_MODEL
+# Memory-mode profiles. `stack profile coding` enables coding-mode set
+# and disables everything else. Saves remembering 12 container names.
+profiles:
+  fleet:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets, falkordb, qdrant, honcho, openshell, hermes_fleet, hermes_workspace, openwebui, dual_llm_researcher, phoenix]
+    disable: [autofyn, deerflow, llm_guard]
+  coding:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets, openshell, autofyn, phoenix]
+    disable: [openwebui, deerflow, paperclip, docs_ingestor, docs_mcp]
+  research:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets, qdrant, openshell, docs_ingestor, docs_mcp, deerflow, dual_llm_researcher, phoenix]
+    disable: [autofyn, paperclip, openwebui]
+  paranoid:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets, llm_guard, openshell, dual_llm_researcher]
+    disable: [openwebui, autofyn, deerflow, paperclip, phoenix, docs_mcp]

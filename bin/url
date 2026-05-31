@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# bin/url — print the canonical URL for any ai-stack service alias.
+#
+# Why this exists: the stack uses `http://litellm:4000` style URLs (Mac and
+# container URL forms are identical post-2026-05-28). Typing `:4000` every
+# time gets old. This script makes the port lookup trivial.
+#
+# Usage:
+#   url                       list all aliases + canonical URL
+#   url <alias>               print the URL for one alias
+#   url <alias> --open        open the URL in your default browser
+#   url <alias> --curl        wrap the URL in a curl command (uses .env for auth if known)
+#   url <alias> --copy        copy the URL to the macOS clipboard
+#   url <alias> /<path>       append a path (e.g., `url litellm /v1/models`)
+#
+# Examples:
+#   url litellm                       → http://litellm:4000
+#   url litellm /v1/models            → http://litellm:4000/v1/models
+#   url phoenix --open                → opens http://phoenix:6006 in browser
+#   url honcho --curl /health         → curl -s http://honcho:8000/health | jq
+#   url litellm --curl /v1/models     → curl with the LITELLM_MASTER_KEY bearer auto-injected
+#
+# Aliases come from installer/lib/aliases.tsv (single source of truth).
+set -Eeuo pipefail
+
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ALIASES="$AI_STACK/installer/lib/aliases.tsv"
+[[ -r "$ALIASES" ]] || { echo "url: $ALIASES not readable" >&2; exit 1; }
+
+# Schemes we know how to build URLs for. Anything else, just print the
+# alias:port without a scheme prefix.
+url_for() {
+  local alias="$1"
+  # aliases.tsv uses inconsistent tab counts for visual alignment; treat
+  # one-or-more tabs as a single field separator.
+  awk -v a="$alias" 'BEGIN{FS="[\t]+"}
+    /^#/ || NF<5 {next}
+    $1==a {
+      proto=$3; port=$4
+      if (proto=="http")       url = "http://"  a ":" port
+      else if (proto=="grpc")  url = a ":" port " (grpc)"
+      else if (proto=="redis") url = "redis://" a ":" port
+      else                     url = proto "://" a ":" port
+      print url
+      exit
+    }
+  ' "$ALIASES"
+}
+
+list_all() {
+  printf '%-16s %s\n' "ALIAS" "URL"
+  printf '%-16s %s\n' "─────" "───"
+  awk 'BEGIN{FS="[\t]+"}
+    /^#/ || NF<5 {next}
+    {
+      proto=$3; port=$4
+      if (proto=="http")       url = "http://"  $1 ":" port
+      else if (proto=="grpc")  url = $1 ":" port " (grpc)"
+      else if (proto=="redis") url = "redis://" $1 ":" port
+      else                     url = proto "://" $1 ":" port
+      printf "%-16s %s\n", $1, url
+    }
+  ' "$ALIASES"
+  echo
+  echo "Sandboxed (no alias / no port):"
+  echo "  pi              bash bin/pi              (OpenShell sandbox)"
+  echo "  lumen           bash bin/lumen stdio     (Phase 16; stdio MCP)"
+}
+
+# --- arg parsing ---
+if (( $# == 0 )); then
+  list_all
+  exit 0
+fi
+
+ALIAS="$1"
+shift
+PATH_SUFFIX=""
+ACTION="print"
+while (( $# > 0 )); do
+  case "$1" in
+    --open)  ACTION="open"; shift ;;
+    --curl)  ACTION="curl"; shift ;;
+    --copy)  ACTION="copy"; shift ;;
+    /*)      PATH_SUFFIX="$1"; shift ;;
+    -h|--help)
+      sed -n '/^# Usage:/,/^# Aliases come from/p' "$0" | sed 's/^# //; s/^#//'
+      exit 0 ;;
+    *)
+      echo "url: unknown arg '$1' (try --open, --curl, --copy, or a /path)" >&2
+      exit 2 ;;
+  esac
+done
+
+URL="$(url_for "$ALIAS")"
+if [[ -z "$URL" ]]; then
+  echo "url: alias '$ALIAS' not found in $ALIASES" >&2
+  echo "Hint: run \`url\` with no args to list known aliases." >&2
+  exit 1
+fi
+
+# Append path suffix (only for URL schemes, not the bare grpc form).
+if [[ -n "$PATH_SUFFIX" ]]; then
+  case "$URL" in
+    http://*|https://*) URL="${URL}${PATH_SUFFIX}" ;;
+    *) ;;
+  esac
+fi
+
+case "$ACTION" in
+  print)
+    echo "$URL"
+    ;;
+  open)
+    open "$URL"
+    ;;
+  copy)
+    printf '%s' "$URL" | pbcopy
+    echo "Copied: $URL"
+    ;;
+  curl)
+    # Best-effort auth injection: known aliases that take a Bearer token.
+    AUTH_HDR=""
+    case "$ALIAS" in
+      litellm)
+        # Source .env without echoing the key.
+        if [[ -r "$AI_STACK/.env" ]]; then
+          set +u; source "$AI_STACK/.env"; set -u
+          if [[ -n "${LITELLM_MASTER_KEY:-}" ]]; then
+            AUTH_HDR="-H \"Authorization: Bearer \$LITELLM_MASTER_KEY\""
+          fi
+        fi
+        ;;
+      phoenix)
+        if [[ -r "$AI_STACK/.env" ]]; then
+          set +u; source "$AI_STACK/.env"; set -u
+          if [[ -n "${PHOENIX_API_KEY:-}" ]]; then
+            AUTH_HDR="-H \"Authorization: Bearer \$PHOENIX_API_KEY\""
+          fi
+        fi
+        ;;
+    esac
+    if [[ -n "$AUTH_HDR" ]]; then
+      echo "source ~/ai-stack/.env && curl -s $AUTH_HDR \"$URL\" | jq"
+    else
+      echo "curl -s \"$URL\" | jq"
+    fi
+    ;;
+esac

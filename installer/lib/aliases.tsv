@@ -1,0 +1,30 @@
+# alias		ip		protocol	host_port	container_port	phase		service_key
+#
+# 2026-05-28 — host_port now equals container_port for HTTP services.
+# Earlier scheme used host_port=80 to give Mac dialing port-free URLs (e.g.,
+# `http://litellm:4000`), but OrbStack collapses all port-80 bindings into one
+# `*:80` wildcard listener (verified via lsof) so multiple services on
+# port 80 of different 127.0.10.x IPs all routed to whichever container
+# was registered first. OrbStack does honor specific-IP binds for non-80
+# ports, so using each service's native port works.
+#
+# Mac and container side now use the SAME URL form:
+#   http://litellm:4000  (both sides)
+#   http://phoenix:6006  (both sides)
+#   redis://falkordb:6379  (both sides)
+litellm		127.0.10.1	http		4000		4000		01		litellm
+phoenix		127.0.10.2	http		6006		6006		01h		phoenix
+phoenix-otlp	127.0.10.3	grpc		4317		4317		01h		phoenix
+docs-mcp	127.0.10.4	http		8765		8765		06		docs_mcp
+qdrant		127.0.10.5	http		6333		6333		02		qdrant
+honcho		127.0.10.6	http		8000		8000		03		honcho
+falkordb	127.0.10.7	redis		6379		6379		02		falkordb
+falkordb-ui	127.0.10.8	http		3000		3000		02		falkordb
+openwebui	127.0.10.9	http		8080		8080		05		openwebui
+workspace	127.0.10.10	http		3000		3000		05		hermes_workspace
+hermes-gw	127.0.10.11	http		8642		8642		04		hermes_fleet
+llm-guard	127.0.10.12	http		8000		8000		04g		llm_guard
+autofyn		127.0.10.13	http		3400		3400		07		autofyn
+paperclip	127.0.10.14	http		3100		3100		08		paperclip
+# phoenix-otlp-http	127.0.10.15	http		4318		4318		01h		phoenix
+unsloth		127.0.10.16	http		8898		8898		14		unsloth

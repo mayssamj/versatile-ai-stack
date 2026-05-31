@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# bin/lumen — thin wrapper around the vendored Lumen binary.
+#
+# Subcommands:
+#   lumen index <path>      index a project for semantic search
+#   lumen search <query>    one-shot CLI search (use --path <dir> for a non-cwd index)
+#   lumen stdio             run as an MCP stdio server (what MCP clients should call)
+#   lumen purge [<path>]    delete indexes (no path = wipe ALL)
+#   lumen version
+#
+# Registering Lumen as an MCP server (per-client):
+#   AutoFyn:  Settings → Tools → Add MCP server →
+#               command: /Users/mayssam.sayyadian/ai-stack/bin/lumen
+#               args:    [stdio]
+#   Open WebUI: Tools → Add → MCP stdio → same command + args
+#   Claude Code: in your settings.json's mcpServers:
+#               "lumen": { "command": "/Users/mayssam.sayyadian/ai-stack/bin/lumen", "args": ["stdio"] }
+#
+# Env knobs (set in your shell before invoking):
+#   LUMEN_EMBED_MODEL   override the embedding model (default ordis/jina-embeddings-v2-base-code)
+export LUMEN_EMBED_MODEL="${LUMEN_EMBED_MODEL:-ordis/jina-embeddings-v2-base-code}"
+exec "/Users/mayssam.sayyadian/ai-stack/vendor/lumen/lumen-0.0.41-darwin-arm64" "$@"

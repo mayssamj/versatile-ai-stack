@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# stack — daily-driver wrapper around install.sh subcommands.
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bash "$AI_STACK/install.sh" "$@"

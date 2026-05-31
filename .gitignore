@@ -1,0 +1,64 @@
+# ── Secrets — NEVER commit ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
+*.pem
+*.key
+*.secret
+*secret*
+*credential*
+id_rsa*
+id_ed25519*
+
+# ── Vendored upstream clones (installer re-clones; carry their own .git) ──
+/ace/
+/autofyn/
+/deer-flow/
+/honcho/
+/hermes-workspace/
+/halo/
+/alt-memory/
+
+# ── Runtime tool trees (generated/installed by phases) ───────────────────
+/rlm/
+/tools/
+/vendor/
+/ingestor/.venv/
+/ingestor/inbox/
+/ingestor/processed/
+/pi/.venv/
+/pi/node_modules/
+/pi/package-lock.json
+/pi/pi-bootstrap.tar.gz
+
+# ── Python / Node envs + caches ──────────────────────────────────────────
+**/.venv/
+**/venv/
+**/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Runtime state / data / logs (regenerated) ────────────────────────────
+/data/
+/data.[0-9]*/
+/data.bak-*/
+/traces/
+/installer/state/
+/CHANGELOG.d/
+/temp/
+/.remember/
+*.log
+*.pid
+
+# ── Agent / editor local config ──────────────────────────────────────────
+.claude/
+
+# ── OS / editor cruft ────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*~

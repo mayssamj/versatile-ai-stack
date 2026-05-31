@@ -1,0 +1,165 @@
+# Declared state for the AI stack. Edit, then run: stack apply
+# Defaults err on the side of off; enable per your needs.
+
+services:
+  # --- Inference plane (Phase 01) ---
+  ollama:
+    enabled: true
+    type: brew-service
+    port: 11434
+    bind: 127.0.0.1
+    health: http://127.0.0.1:11434/api/tags
+
+  litellm:
+    enabled: true
+    type: docker
+    image: ghcr.io/berriai/litellm:main-stable
+    port: 4000
+    bind: 127.0.0.1
+    health: http://127.0.0.1:4000/health
+    depends_on: [ollama]
+
+  # --- Security (Phase 01·G) ---
+  litellm_guardrails_builtin:
+    enabled: true     # in-process regex/keyword; near-zero cost
+    type: litellm-feature
+  litellm_guardrails_secrets:
+    enabled: true     # secret-leak blocker; do not disable lightly
+    type: litellm-feature
+  llm_guard:
+    enabled: false    # second-layer scanner sidecar
+    type: docker
+    image: laiyer/llm-guard-api:latest
+    port: 8001
+    bind: 127.0.0.1
+  dual_llm_researcher:
+    enabled: true     # researcher reads via summarizer first
+    type: agent-pattern
+
+  # --- Storage (Phase 02) ---
+  falkordb:
+    enabled: true
+    type: docker
+    image: falkordb/falkordb:latest
+    ports: [6379, 3000]
+    bind: 127.0.0.1
+  qdrant:
+    enabled: true
+    type: docker
+    image: qdrant/qdrant
+    port: 6333
+    bind: 127.0.0.1
+
+  # --- Memory (Phase 03) ---
+  honcho:
+    enabled: true
+    type: compose
+    path: ~/ai-stack/honcho
+    port: 8000
+    bind: 127.0.0.1
+
+  # --- Agent sandbox + fleet (Phase 04 / 04·F) ---
+  openshell:
+    enabled: true
+    type: openshell
+    sandbox: hermes-fleet-v1
+
+  # --- UIs (Phase 05) ---
+  hermes_workspace:
+    enabled: true
+    type: compose
+    path: ~/ai-stack/hermes-workspace
+    port: 3000
+    bind: 127.0.0.1
+  openwebui:
+    enabled: true
+    type: docker
+    image: ghcr.io/open-webui/open-webui:main
+    port: 3001
+    bind: 127.0.0.1
+
+  # --- Documents (Phase 06) ---
+  docs_ingestor:
+    enabled: false    # try Open WebUI's built-in RAG first
+    type: python-bg
+    path: ~/ai-stack/ingestor
+  docs_mcp:
+    enabled: false    # paired with docs_ingestor
+    type: python-bg
+    path: ~/ai-stack/ingestor
+    port: 8765
+    bind: 127.0.0.1
+
+  # --- Optional agents and tools ---
+  autofyn:
+    enabled: false    # Phase 07 — second agent type
+    type: docker-compose
+    path: ~/ai-stack/autofyn
+    port: 3400
+    bind: 127.0.0.1
+  paperclip:
+    enabled: false    # Phase 08 — company layer
+    type: node-bg
+    port: 3100
+    bind: 127.0.0.1
+  paperclip_honcho_plugin:
+    enabled: false    # activated inside Paperclip UI after install
+    type: paperclip-plugin
+  remnic_hermes:
+    enabled: false    # Phase 09 — alternative memory
+    type: pip-package
+  byterover_cli:
+    enabled: false    # Phase 09 — host-side memory CLI
+    type: npm-global
+  deerflow:
+    enabled: false    # Phase 10 — episodic research
+    type: docker-compose
+    path: ~/ai-stack/deer-flow
+  halo:
+    enabled: false    # Phase 11 — CLI, run on demand
+    type: cli-only
+  autoreason:
+    enabled: false    # Phase 11 — research artifact
+    type: clone-only
+
+  # --- Helicone (self-hosted, observability) ---
+  helicone_platform:
+    enabled: true     # full observability — stores prompts locally (Phase 01·H)
+    type: helicone-compose
+    path: ~/ai-stack/helicone/docker
+    ports: [3000, 8585, 8989]
+    bind: 127.0.0.1
+  helicone_gateway:
+    enabled: false    # Rust router; alternative to LiteLLM, off by default
+    type: docker
+    image: helicone/ai-gateway:main
+    port: 8080
+    bind: 127.0.0.1
+
+  # --- Blaxel (cloud-only; keys only) ---
+  blaxel_cli:
+    enabled: false    # CLI installed; deploys are on-demand
+    type: cli-only
+
+# Memory-mode profiles. `stack profile coding` enables coding-mode set
+# and disables everything else. Saves remembering 12 container names.
+profiles:
+  fleet:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets,
+             falkordb, qdrant, honcho, openshell, hermes_workspace, openwebui,
+             dual_llm_researcher, helicone_platform]
+    disable: [autofyn, deerflow, llm_guard, helicone_gateway]
+  coding:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets,
+             openshell, autofyn, helicone_platform]
+    disable: [openwebui, deerflow, paperclip, docs_ingestor, docs_mcp]
+  research:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets,
+             qdrant, openshell, docs_ingestor, docs_mcp, deerflow,
+             dual_llm_researcher, helicone_platform]
+    disable: [autofyn, paperclip, openwebui]
+  paranoid:
+    enable: [ollama, litellm, litellm_guardrails_builtin, litellm_guardrails_secrets,
+             llm_guard, openshell, dual_llm_researcher]
+    disable: [openwebui, autofyn, deerflow, paperclip, helicone_platform,
+              helicone_gateway, docs_mcp]

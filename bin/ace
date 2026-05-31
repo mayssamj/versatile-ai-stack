@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# bin/ace — thin wrapper around ACE inside its uv venv.
+# Routes all LLM calls through LiteLLM via OPENAI_BASE_URL (set in
+# $AI_STACK/ace/.env, loaded automatically by python-dotenv).
+#
+# Subcommands map to ACE's eval modules (see github.com/ace-agent/ace).
+# Examples:
+#   ace finance finer --mode eval_only --save_path results/smoke
+#   ace appworld --task my_task
+#   ace --help
+set -Eeuo pipefail
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ACE_DIR="$AI_STACK/ace"
+[[ -d "$ACE_DIR/.git" ]] || { echo "ACE not installed — run 'bash install.sh install 17'" >&2; exit 1; }
+
+case "${1:-}" in
+  --help|-h|"")
+    cat <<'HELP'
+ace — Agentic Context Engineering (Phase 17)
+usage:
+  ace finance <task> [args]     # FiNER, XBRL, etc.
+  ace appworld [args]           # AppWorld task (executes generated tool calls — use pi-v1 sandbox)
+  ace <module> [args]           # raw `uv run python -m <module>`
+  ace --help
+
+Output → ~/ai-stack/ace/results/
+Routes via LiteLLM → Phoenix project ai-stack.
+HELP
+    exit 0
+    ;;
+  appworld)
+    # AppWorld executes model-generated tool calls. Running on the host
+    # bypasses pi-v1's policy guardrails. Reviewer C: require explicit
+    # confirmation. Set ACE_APPWORLD_ALLOW=1 to skip the prompt.
+    if [[ "${ACE_APPWORLD_ALLOW:-0}" != "1" ]]; then
+      echo "WARNING: 'ace appworld' executes model-generated tool calls on the host." >&2
+      echo "         For real evals, run inside the pi-v1 OpenShell sandbox instead." >&2
+      echo "         Continue anyway? [y/N] " >&2
+      read -r ans
+      [[ "${ans,,}" == "y" || "${ans,,}" == "yes" ]] || { echo "aborted." >&2; exit 1; }
+    fi
+    shift
+    exec env -C "$ACE_DIR" uv run python -m "eval.appworld.run" "$@"
+    ;;
+  finance)
+    task="${2:-}"
+    [[ -n "$task" ]] || { echo "usage: ace finance <finer|xbrl|...>" >&2; exit 2; }
+    shift 2
+    exec env -C "$ACE_DIR" uv run python -m "eval.finance.$task.run" "$@"
+    ;;
+  *)
+    mod="$1"; shift
+    exec env -C "$ACE_DIR" uv run python -m "$mod" "$@"
+    ;;
+esac

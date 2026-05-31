@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# bin/pi — launch Pi (Earendil coding agent) inside the pi-v1 OpenShell sandbox.
+#
+# Pi (@earendil-works/pi-coding-agent) is installed at
+# /sandbox/node_modules/.bin/pi inside the pi-v1 sandbox (see Phase 15).
+# The sandbox's network policy denies everything except:
+#   - inference.local      (LiteLLM L7-rewritten by the OpenShell gateway)
+#   - host.docker.internal:8000  (Honcho, with `pi` peer namespace)
+#   - host.docker.internal:8765  (docs-mcp, read-only)
+#   - pypi/npm/github            (extension installs, reference repo clones)
+#
+# Pi cannot see phoenix, qdrant, falkordb, openwebui, workspace, unsloth,
+# paperclip, autofyn, or any other ai-stack service.
+#
+# Auth: Pi calls `inference.local` without credentials — the OpenShell
+# gateway injects the LiteLLM master key server-side. Pi never holds it.
+#
+# Emergency stop: bin/pi-kill
+set -Eeuo pipefail
+
+if (( BASH_VERSINFO[0] < 5 )); then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x "$b" ]] && exec "$b" "$0" "$@"
+  done
+  echo "bin/pi: needs bash 5+" >&2; exit 2
+fi
+
+resolve_openshell() {
+  if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
+  elif command -v openshell >/dev/null; then command -v openshell
+  else echo ""
+  fi
+}
+
+OSH="$(resolve_openshell)"
+[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash install.sh install 04' first." >&2; exit 1; }
+
+# pi-v1 sandbox must be Ready.
+if ! "$OSH" sandbox list 2>/dev/null | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}' | grep -q Ready; then
+  echo "pi-v1 sandbox not Ready — run 'bash install.sh install 15' first." >&2
+  exit 1
+fi
+
+# Load PI_LITELLM_KEY from .env so we can inject it into the sandbox
+# process env. Pi's extension reads $PI_LITELLM_KEY for the Authorization
+# header. The host .env is mode 0600; we never echo the value.
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$AI_STACK/.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$AI_STACK/installer/lib/common.sh" 2>/dev/null
+  # shellcheck disable=SC1091
+  source "$AI_STACK/installer/lib/env.sh" 2>/dev/null
+  PI_LITELLM_KEY="$(get_env PI_LITELLM_KEY '')"
+fi
+if [[ -z "${PI_LITELLM_KEY:-}" ]]; then
+  echo "PI_LITELLM_KEY missing from .env — re-run 'bash install.sh install 15' to mint it." >&2
+  exit 1
+fi
+
+# Exec Pi inside the sandbox with PI_LITELLM_KEY injected at the start of
+# the command line. --tty for the TUI; --workdir /sandbox so Pi's $HOME
+# and config dir resolve under the persistent bind mount. The sandbox
+# already has HOME=/sandbox set in its default profile.
+exec "$OSH" sandbox exec -n pi-v1 --workdir /sandbox --tty -- \
+  /bin/sh -c "PI_LITELLM_KEY='$PI_LITELLM_KEY' HOME=/sandbox exec /sandbox/node_modules/.bin/pi \"\$@\"" -- "$@"

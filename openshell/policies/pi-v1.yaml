@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: ai-stack installer Phase 15 (Pi coding agent)
+#
+# OpenShell sandbox policy for pi-v1 — the Pi coding agent's quarantine.
+# Mirrors hermes-fleet-v1's shape but with a tighter, opinionated allowlist:
+#
+#   - LiteLLM   : ALLOWED on host.docker.internal:4000. Pi authenticates
+#                 with PI_LITELLM_KEY (LiteLLM virtual key scoped to
+#                 local/local-heavy/local-lfm2 — minted Phase 15, in .env).
+#                 NOTE: OpenShell's `inference.local` L7 rewrite was
+#                 considered as the auth-hiding endpoint, but the shipped
+#                 `openai` provider type silently ignores --config endpoint
+#                 overrides and forwards to api.openai.com. Direct dial via
+#                 PI_LITELLM_KEY is the current working pattern; migrate to
+#                 inference.local when OpenShell fixes the provider. See
+#                 CHANGELOG 2026-05-29.
+#   - Honcho    : ALLOWED. Pi writes to its own `pi` peer namespace
+#                 (helper: installer/lib/honcho.sh::honcho_peer_ensure).
+#                 Honcho v3 has NO API-key-scoped peer enforcement; cross-
+#                 peer read isolation depends on Pi not querying foreign
+#                 peer IDs. Doctor check 25 reflects this honestly.
+#   - docs-mcp  : ALLOWED. The MCP server's tool surface is itself read-
+#                 only (Docling+LlamaIndex+Qdrant search/list/get); there
+#                 are no state-changing endpoints to gate at the TCP level.
+#   - Registries: pypi/npm/github for any runtime fetches Pi needs.
+#                 Pi itself is installed from a pre-built node_modules tar
+#                 (pi/pi-bootstrap.tar.gz on the host), so pi.dev does NOT
+#                 need to be on this allowlist — runtime fetches Pi
+#                 normally makes (extension installs, plugin downloads)
+#                 hit npmjs.org / github.com.
+#
+# Everything else is implicitly denied (deny-by-default network policy).
+# Pi cannot see phoenix UI, qdrant, falkordb, openwebui, hermes workspace,
+# unsloth, paperclip, or any other ai-stack service.
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    # /proc (not /proc/self): must be a SUPERSET of the base image's live
+    # read_only mounts or a later `openshell policy set` on the live sandbox is
+    # rejected with "path '/proc' cannot be removed on a live sandbox".
+    # CHANGELOG 2026-05-30.
+    - /usr
+    - /lib
+    - /etc
+    - /app
+    - /var/log
+    - /proc
+    - /dev/urandom
+  read_write:
+    - /sandbox
+    - /tmp
+    - /dev/null
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  # LiteLLM proxy — Pi calls /v1/chat/completions with PI_LITELLM_KEY
+  # (LiteLLM virtual key, server-side model allowlist).
+  litellm_proxy:
+    name: litellm-proxy
+    endpoints:
+      - host: host.docker.internal
+        port: 4000
+    binaries:
+      - { path: "/**" }
+
+  # Honcho memory API — Pi writes to its own `pi` peer namespace
+  # (see HONCHO_PEER_NAMESPACE env in 15_pi.sh). Hermes peers and Pi
+  # peer share the same Honcho instance but cannot read each other's
+  # state.
+  honcho_memory:
+    name: honcho-memory
+    endpoints:
+      - host: host.docker.internal
+        port: 8000
+    binaries:
+      - { path: "/**" }
+
+  # docs MCP server — host-bound on 0.0.0.0:8765 (Phase 06).
+  # The MCP tool surface is read-only (Docling+LlamaIndex+Qdrant search).
+  docs_mcp:
+    name: docs-mcp
+    endpoints:
+      - host: host.docker.internal
+        port: 8765
+    binaries:
+      - { path: "/**" }
+
+  # Egress for Pi extension install (npm) + reference repo clones (git).
+  # Same shape as hermes-fleet-v1.yaml.
+  package_registries:
+    name: package-registries
+    endpoints:
+      - { host: pypi.org, port: 443 }
+      - { host: files.pythonhosted.org, port: 443 }
+      - { host: registry.npmjs.org, port: 443 }
+      - { host: api.github.com, port: 443 }
+      - { host: github.com, port: 443 }
+      - { host: raw.githubusercontent.com, port: 443 }
+      - { host: codeload.github.com, port: 443 }
+    binaries:
+      - { path: "/**" }

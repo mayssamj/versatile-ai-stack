@@ -1,0 +1,224 @@
+model_list:
+  # ============================================================
+  # LOCAL — via Ollama. Two tiers:
+  #   local       (default) → Gemma 4 E4B, 9.6GB. Fast, fits comfortably.
+  #   local-heavy           → Qwen 3.6 27B, 17GB. Frontier-class but RAM-tight.
+  # Fleet profiles point at `local` by default — swap individual
+  # profiles to `local-heavy` only when you actually need 27B's reasoning.
+  # ============================================================
+  - model_name: local
+    litellm_params:
+      model: ollama_chat/gemma4:e4b
+      api_base: http://host.docker.internal:11434
+  - model_name: local-heavy
+    litellm_params:
+      model: ollama_chat/qwen3.6:27b-q4_K_M
+      api_base: http://host.docker.internal:11434
+
+  # ============================================================
+  # CLOUD CHAT — Anthropic (direct API)
+  # Sonnet 4.7 does not exist — latest Sonnet is 4.6. Next is 4.8 (May 2026).
+  # ============================================================
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-opus
+    litellm_params:
+      model: anthropic/claude-opus-4-7
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ============================================================
+  # CLOUD CHAT — OpenAI (direct API)
+  # ============================================================
+  - model_name: openai-gpt-5.5
+    litellm_params:
+      model: openai/gpt-5.5
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: openai-gpt-5.5-pro
+    litellm_params:
+      model: openai/gpt-5.5-pro
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: openai-gpt-5.4
+    litellm_params:
+      model: openai/gpt-5.4
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: openai-gpt-5.4-mini
+    litellm_params:
+      model: openai/gpt-5.4-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: openai-gpt-5.3-codex
+    litellm_params:
+      model: openai/gpt-5.3-codex
+      api_key: os.environ/OPENAI_API_KEY
+
+  # ============================================================
+  # CLOUD CHAT — OpenRouter (Anthropic models routed via OR)
+  # Note: OpenRouter slugs use DOTS not hyphens.
+  # `-fast` variants verified: 2.5x faster output, same quality.
+  # ============================================================
+  - model_name: openrouter-claude-opus-4.7
+    litellm_params:
+      model: openrouter/anthropic/claude-opus-4.7
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-claude-opus-4.7-fast
+    litellm_params:
+      model: openrouter/anthropic/claude-opus-4.7-fast
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-claude-opus-4.6-fast
+    litellm_params:
+      model: openrouter/anthropic/claude-opus-4.6-fast
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-claude-sonnet-4.6
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4.6
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ============================================================
+  # CLOUD CHAT — OpenRouter (OpenAI models routed via OR)
+  # ============================================================
+  - model_name: openrouter-gpt-5.5
+    litellm_params:
+      model: openrouter/openai/gpt-5.5
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-gpt-5.5-pro
+    litellm_params:
+      model: openrouter/openai/gpt-5.5-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-gpt-5.4
+    litellm_params:
+      model: openrouter/openai/gpt-5.4
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-gpt-5.3-codex
+    litellm_params:
+      model: openrouter/openai/gpt-5.3-codex
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ============================================================
+  # CLOUD CHAT — OpenRouter (other providers)
+  # DeepSeek V4 and Kimi K2.6 confirmed real (April 2026 releases).
+  # ============================================================
+  - model_name: openrouter-deepseek-v4-pro
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-kimi-2.6
+    litellm_params:
+      model: openrouter/moonshotai/kimi-k2.6
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ============================================================
+  # CLOUD CHAT — Google (direct Gemini API)
+  # Gemini 3.1 Pro is the verified flagship (Dec 2025).
+  # ============================================================
+  - model_name: google-gemini-3.1-pro
+    litellm_params:
+      model: gemini/gemini-3.1-pro
+      api_key: os.environ/GOOGLE_API_KEY
+
+  # ============================================================
+  # EMBEDDINGS — explicitly tagged with model_info.mode so LiteLLM
+  # routes them to /v1/embeddings, not /v1/chat/completions.
+  # Honcho, Qdrant ingestion, docs MCP server use these.
+  # ============================================================
+  - model_name: embed-openai-small
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: embedding
+  - model_name: embed-openai-large
+    litellm_params:
+      model: openai/text-embedding-3-large
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: embedding
+  - model_name: embed-local
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://host.docker.internal:11434
+    model_info:
+      mode: embedding
+
+  # ============================================================
+  # ╔══════════════════════════════════════════════════════════╗
+  # ║  ⚠  UNVERIFIED — DO NOT BULK-UNCOMMENT                  ║
+  # ║                                                          ║
+  # ║  Each entry below was in the original list but couldn't  ║
+  # ║  be confirmed against live provider docs. Verify ONE AT  ║
+  # ║  A TIME against openrouter.ai/models or the provider's   ║
+  # ║  model docs, then uncomment that single entry.           ║
+  # ╚══════════════════════════════════════════════════════════╝
+  # - model_name: openrouter-gpt-5.4-pro
+  #   litellm_params:
+  #     model: openrouter/openai/gpt-5.4-pro
+  #     api_key: os.environ/OPENROUTER_API_KEY
+  #
+  # - model_name: openrouter-deepseek-v4-flash
+  #   litellm_params:
+  #     model: openrouter/deepseek/deepseek-v4-flash
+  #     api_key: os.environ/OPENROUTER_API_KEY
+  #
+  # - model_name: openrouter-qwen-3.7-max
+  #   litellm_params:
+  #     model: openrouter/qwen/qwen3.7-max
+  #     api_key: os.environ/OPENROUTER_API_KEY
+  #
+  # - model_name: openrouter-tencent-hy3
+  #   litellm_params:
+  #     model: openrouter/tencent/hy3-preview
+  #     api_key: os.environ/OPENROUTER_API_KEY
+  #
+  # - model_name: openrouter-gemma-4-31b-it
+  #   litellm_params:
+  #     model: openrouter/google/gemma-4-31b-it:free
+  #     api_key: os.environ/OPENROUTER_API_KEY
+  #
+  # - model_name: google-gemini-3.5-flash
+  #   litellm_params:
+  #     model: gemini/gemini-3.5-flash
+  #     api_key: os.environ/GOOGLE_API_KEY
+  #
+  # SPECIAL endpoints (image/realtime/computer-use) — LiteLLM
+  # may not support all of these via /chat/completions surface.
+  # Test against the LiteLLM docs for each before enabling.
+  # - model_name: openai-computer-use
+  #   litellm_params:
+  #     model: openai/computer-use-preview-2025-03-11
+  #     api_key: os.environ/OPENAI_API_KEY
+  # - model_name: openai-gpt-image-2
+  #   litellm_params:
+  #     model: openai/gpt-image-2
+  #     api_key: os.environ/OPENAI_API_KEY
+  # - model_name: openai-gpt-realtime
+  #   litellm_params:
+  #     model: openai/gpt-realtime
+  #     api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  # Custom callback writes each call to /traces/litellm.jsonl
+  # (mounted to ~/ai-stack/traces on host).
+#  callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
+  callbacks: ["trace_to_file.handler", "arize_phoenix"]
+  drop_params: true
+  set_verbose: false
+  json_logs: true
+  # Fallback chains — SAME MODEL via DIFFERENT PROVIDER first,
+  # cross-model as last resort. This way prompts tuned for Opus
+  # keep getting Opus (just via OpenRouter) when Anthropic's API
+  # is down, instead of silently swapping to GPT.
+  fallbacks:
+    - claude-opus: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
+    - claude-sonnet: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
+    - openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus"]
+    - openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet"]
+    # No local fallback — if the local model is down, surface the failure
+    # so the user sees that the local stack is unhealthy.
+  # Phase 01·H adds the arize_phoenix callback to the list above:
+  # callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
+
+# Guardrails — populated by Phase 01·G. Leave empty here.
+guardrails: []
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# bin/halo — HALO trace-analysis engine (halo-engine), routed through LiteLLM.
+# Reads a JSONL trace (e.g. ~/ai-stack/traces/litellm.jsonl) and reasons over it.
+#   bin/halo ~/ai-stack/traces/litellm.jsonl -p "Find the most common failure"
+#   bin/halo <trace> -p "..." -m local-heavy      # override the model
+set -Eeuo pipefail
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AI_STACK/installer/lib/env.sh" 2>/dev/null || true
+# Resolve the REAL halo-engine executable by absolute path. We must NOT use
+# 'command -v halo' here: this wrapper is ALSO named 'halo' and $AI_STACK/bin is
+# on PATH, so command -v would find THIS wrapper → infinite self-exec.
+HALO_BIN=""
+for cand in "$HOME/.local/bin/halo" "${XDG_BIN_HOME:-$HOME/.local/bin}/halo"; do
+  [[ -x "$cand" ]] && { HALO_BIN="$cand"; break; }
+done
+[[ -n "$HALO_BIN" ]] || { echo "halo-engine not installed — run 'bash install.sh install 11'" >&2; exit 1; }
+export OPENAI_BASE_URL="http://litellm:4000/v1"
+export OPENAI_API_KEY="$(get_env HALO_LITELLM_KEY '' 2>/dev/null)"
+# HALO is built on the openai-agents SDK, which by default exports run traces to
+# OpenAI's hosted trace ingester (keyless calls → noise, and a no-cloud
+# violation). Disable it; HALO's own analysis output is unaffected.
+export OPENAI_AGENTS_DISABLE_TRACING=1
+# Inject a local default model unless the user passed -m/--model or just wants help.
+inject_model=1
+for a in "$@"; do
+  case "$a" in -m|--model|-h|--help) inject_model=0 ;; esac
+done
+if (( inject_model )); then
+  exec "$HALO_BIN" --model "${HALO_MODEL:-local}" "$@"
+else
+  exec "$HALO_BIN" "$@"
+fi

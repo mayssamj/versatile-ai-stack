@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# bin/pi-kill — emergency stop for Pi (kills the sandbox's pi process; sandbox stays).
+#
+# This is the panic-button if Pi starts looping, burning local model tokens,
+# or behaving strangely. It does NOT delete the sandbox or any session
+# state — re-running bin/pi resumes a fresh Pi process.
+#
+# To fully tear down the sandbox itself:
+#   openshell sandbox delete pi-v1
+set -Eeuo pipefail
+
+if (( BASH_VERSINFO[0] < 5 )); then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x "$b" ]] && exec "$b" "$0" "$@"
+  done
+  echo "bin/pi-kill: needs bash 5+" >&2; exit 2
+fi
+
+resolve_openshell() {
+  if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
+  elif command -v openshell >/dev/null; then command -v openshell
+  else echo ""
+  fi
+}
+
+OSH="$(resolve_openshell)"
+[[ -n "$OSH" ]] || { echo "openshell CLI not found." >&2; exit 1; }
+
+# pkill targets any process named 'pi' or 'node' running the Pi CLI.
+# We can't pidstore inside the sandbox; rely on process name match.
+echo "Killing pi process inside pi-v1 sandbox..."
+"$OSH" sandbox exec -n pi-v1 --no-tty -- /bin/sh -c 'pkill -f node_modules/.bin/pi 2>/dev/null; pkill -f "@earendil-works/pi-coding-agent" 2>/dev/null; true' 2>&1 | tail -3 || true
+echo "Done. Sandbox pi-v1 itself is still alive; re-run bin/pi to relaunch."

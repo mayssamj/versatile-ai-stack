@@ -1,0 +1,1278 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ai-stack — Interactive User Guide</title>
+<style>
+  :root {
+    --bg: #0c1117; --bg-elev: #161b22; --bg-soft: #21262d; --bg-code: #0d1117;
+    --fg: #e6edf3; --fg-soft: #8b949e; --fg-dim: #6e7681;
+    --accent: #58a6ff; --accent-soft: rgba(88,166,255,.12);
+    --good: #3fb950; --warn: #d29922; --bad: #f85149; --info: #58a6ff;
+    --border: #30363d; --border-soft: #21262d;
+    --radius: 8px; --radius-sm: 4px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --bg-elev: #f6f8fa; --bg-soft: #eaeef2; --bg-code: #f6f8fa;
+    --fg: #1f2328; --fg-soft: #59636e; --fg-dim: #818b97;
+    --accent: #0969da; --accent-soft: rgba(9,105,218,.10);
+    --good: #1a7f37; --warn: #9a6700; --bad: #cf222e; --info: #0969da;
+    --border: #d0d7de; --border-soft: #eaeef2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg); color: var(--fg);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: var(--mono); font-size: 13.5px; }
+  pre { background: var(--bg-code); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; margin: 8px 0; position: relative; }
+  code:not(pre code) { background: var(--bg-soft); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.92em; color: var(--accent); }
+  pre code { background: transparent; padding: 0; color: var(--fg); font-size: inherit; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg-soft); color: var(--fg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 4px 8px; font-size: 11px; cursor: pointer;
+    font-family: var(--sans); transition: all 0.15s;
+  }
+  .copy-btn:hover { color: var(--fg); background: var(--accent-soft); border-color: var(--accent); }
+  .copy-btn.copied { color: var(--good); border-color: var(--good); }
+
+  /* Layout */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(12, 17, 23, 0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  [data-theme="light"] header { background: rgba(255,255,255,0.92); }
+  header .logo {
+    font-family: var(--mono); font-weight: 700; font-size: 16px;
+    color: var(--fg); text-decoration: none;
+  }
+  header .logo .accent { color: var(--accent); }
+  header nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+  header nav a {
+    padding: 6px 12px; border-radius: var(--radius-sm);
+    color: var(--fg-soft); font-size: 14px; font-weight: 500;
+    transition: all 0.15s;
+  }
+  header nav a:hover { background: var(--bg-elev); color: var(--fg); text-decoration: none; }
+  header nav a.active { background: var(--accent-soft); color: var(--accent); }
+  header .controls { display: flex; gap: 8px; align-items: center; }
+  .icon-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--fg-soft);
+    border-radius: var(--radius-sm); padding: 6px 10px; cursor: pointer; font-size: 13px;
+    transition: all 0.15s;
+  }
+  .icon-btn:hover { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 80px; }
+  section { margin-bottom: 64px; scroll-margin-top: 70px; }
+  section > h2 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  section > h2 .small { color: var(--fg-dim); font-weight: 400; font-size: 14px; margin-left: 12px; }
+  section > .lede { color: var(--fg-soft); margin: 0 0 24px; font-size: 16px; }
+
+  /* Hero */
+  .hero { text-align: center; padding: 48px 0 32px; }
+  .hero h1 {
+    font-size: 48px; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 12px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--good) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero p { color: var(--fg-soft); font-size: 18px; max-width: 600px; margin: 0 auto 24px; }
+  .hero .stat-row { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; margin-top: 32px; }
+  .stat { background: var(--bg-elev); border: 1px solid var(--border); padding: 12px 20px; border-radius: var(--radius); }
+  .stat .n { font-size: 24px; font-weight: 700; color: var(--accent); display: block; }
+  .stat .l { font-size: 12px; color: var(--fg-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Onboarding steps */
+  .onboard-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 24px 0; }
+  .step {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; position: relative;
+  }
+  .step .n { color: var(--accent); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .step h3 { font-size: 16px; margin: 4px 0 6px; }
+  .step p { color: var(--fg-soft); font-size: 14px; margin: 0; }
+  .step .link { display: inline-block; margin-top: 8px; font-size: 13px; }
+
+  /* Service catalog */
+  .filter-row {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .filter-row input {
+    background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    font-family: var(--sans); font-size: 14px; flex: 1; min-width: 200px;
+  }
+  .filter-row input:focus { outline: none; border-color: var(--accent); }
+  .chip {
+    padding: 4px 12px; border-radius: 999px;
+    background: var(--bg-elev); color: var(--fg-soft); border: 1px solid var(--border);
+    font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .chip:hover { color: var(--fg); }
+
+  .service-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .service-card {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; cursor: pointer; transition: all 0.15s; position: relative;
+  }
+  .service-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .service-card .badge {
+    position: absolute; top: 12px; right: 12px; font-size: 11px;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--bg-soft); color: var(--fg-soft);
+  }
+  .service-card .badge.phase { background: var(--accent-soft); color: var(--accent); }
+  .service-card h4 { margin: 0 0 4px; font-size: 17px; font-family: var(--mono); }
+  .service-card .layer { color: var(--fg-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .service-card .desc { color: var(--fg-soft); font-size: 14px; margin-top: 8px; }
+  .service-card .port { color: var(--good); font-family: var(--mono); font-size: 13px; margin-top: 6px; }
+
+  /* Modal */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    z-index: 100; display: none; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    max-width: 900px; width: 100%; max-height: 85vh; overflow-y: auto;
+    padding: 28px; position: relative;
+  }
+  .modal .close {
+    position: absolute; top: 12px; right: 12px;
+    background: transparent; border: none; color: var(--fg-soft); cursor: pointer; font-size: 22px;
+  }
+  .modal h3 { margin: 0 0 4px; font-family: var(--mono); font-size: 22px; }
+  .modal .meta { color: var(--fg-soft); font-size: 13px; margin-bottom: 16px; }
+  .modal h4 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-soft); margin: 20px 0 8px; }
+  .modal p { color: var(--fg); }
+  .modal .urls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .modal .urls a {
+    background: var(--bg-soft); padding: 4px 10px; border-radius: var(--radius-sm);
+    font-family: var(--mono); font-size: 13px;
+  }
+
+  /* Recipes */
+  details.recipe {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0; margin: 0 0 12px;
+  }
+  details.recipe[open] { border-color: var(--accent); }
+  details.recipe summary {
+    cursor: pointer; padding: 16px 20px; list-style: none; display: flex;
+    align-items: center; gap: 12px; user-select: none;
+  }
+  details.recipe summary::-webkit-details-marker { display: none; }
+  details.recipe summary:hover { background: var(--bg-soft); }
+  details.recipe summary::before {
+    content: "▸"; color: var(--accent); font-family: var(--mono); transition: transform 0.15s;
+  }
+  details.recipe[open] summary::before { transform: rotate(90deg); }
+  details.recipe summary .num { color: var(--accent); font-weight: 700; font-family: var(--mono); }
+  details.recipe summary .title { font-weight: 600; }
+  details.recipe summary .tag {
+    margin-left: auto; padding: 2px 10px; border-radius: 999px; font-size: 11px;
+    background: var(--bg-soft); color: var(--fg-soft);
+  }
+  details.recipe summary .tag.stretch { background: rgba(210,153,34,0.15); color: var(--warn); }
+  details.recipe summary .tag.core { background: rgba(63,185,80,0.15); color: var(--good); }
+  details.recipe .body { padding: 4px 20px 20px; }
+  details.recipe .body p { color: var(--fg-soft); }
+  details.recipe .body p strong { color: var(--fg); }
+
+  /* Live demo */
+  .demo-panel {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px;
+  }
+  .demo-panel .form-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .demo-panel label { font-size: 13px; color: var(--fg-soft); min-width: 110px; }
+  .demo-panel input, .demo-panel select, .demo-panel textarea {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    padding: 8px 12px; border-radius: var(--radius-sm); font-family: var(--mono);
+    font-size: 13px; flex: 1;
+  }
+  .demo-panel input:focus, .demo-panel select:focus, .demo-panel textarea:focus { outline: none; border-color: var(--accent); }
+  .demo-panel textarea { width: 100%; min-height: 80px; resize: vertical; font-family: var(--mono); }
+  .demo-panel button {
+    background: var(--accent); color: var(--bg); border: none; padding: 10px 20px;
+    border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; font-family: var(--sans);
+  }
+  .demo-panel button:hover { opacity: 0.9; }
+  .demo-panel button.secondary { background: var(--bg-soft); color: var(--fg); border: 1px solid var(--border); }
+  .demo-panel .out {
+    margin-top: 16px; padding: 14px; background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: var(--radius); white-space: pre-wrap; font-family: var(--mono);
+    font-size: 13px; color: var(--fg-soft); min-height: 60px;
+  }
+  .demo-panel .out.success { border-color: var(--good); color: var(--fg); }
+  .demo-panel .out.error { border-color: var(--bad); color: var(--bad); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 14px; }
+  th { color: var(--fg-soft); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: none; }
+
+  /* Misc */
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0; margin: 12px 0;
+  }
+  .callout.warn { border-color: var(--warn); background: rgba(210,153,34,0.08); }
+  .callout.bad { border-color: var(--bad); background: rgba(248,81,73,0.08); }
+  .callout strong { color: var(--fg); }
+
+  .pillrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+  .pill { padding: 2px 10px; background: var(--bg-soft); color: var(--fg-soft); border-radius: 999px; font-size: 12px; font-family: var(--mono); }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 24px;
+    text-align: center; color: var(--fg-dim); font-size: 13px;
+    margin-top: 64px;
+  }
+
+  /* Responsive */
+  @media (max-width: 720px) {
+    header { padding: 10px 16px; flex-wrap: wrap; }
+    header nav { order: 3; width: 100%; overflow-x: auto; padding-bottom: 4px; }
+    main { padding: 24px 16px 80px; }
+    .hero h1 { font-size: 36px; }
+  }
+
+  /* Print */
+  @media print {
+    header, footer, .controls, .copy-btn, .demo-panel { display: none; }
+    main { max-width: none; padding: 0; }
+    .modal-bg { display: none !important; }
+    details.recipe[open] .body, details.recipe .body { display: block; }
+    details.recipe summary::before { display: none; }
+    pre { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="#top" class="logo">ai<span class="accent">-stack</span></a>
+  <nav>
+    <a href="#overview">Overview</a>
+    <a href="#onboard">Onboard</a>
+    <a href="#catalog">Services</a>
+    <a href="#recipes">Recipes</a>
+    <a href="#demo">Live demo</a>
+    <a href="#cheatsheet">Cheatsheet</a>
+    <a href="#triage">Triage</a>
+  </nav>
+  <div class="controls">
+    <button class="icon-btn" id="themeToggle" title="Toggle theme">◐</button>
+    <button class="icon-btn" id="printBtn" title="Print">⎙</button>
+  </div>
+</header>
+
+<main id="top">
+
+<section id="overview" class="hero">
+  <h1>Your AI stack, made operational.</h1>
+  <p>31 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>install.sh</code> done to a working multi-service workflow.</p>
+  <div class="stat-row">
+    <div class="stat"><span class="n">31</span><span class="l">Services</span></div>
+    <div class="stat"><span class="n">31</span><span class="l">Doctor checks</span></div>
+    <div class="stat"><span class="n">12</span><span class="l">Recipes</span></div>
+    <div class="stat"><span class="n">4</span><span class="l">Profiles</span></div>
+    <div class="stat"><span class="n">~25</span><span class="l">Model routes</span></div>
+  </div>
+</section>
+
+<section id="onboard">
+  <h2>5 steps to fluency <span class="small">do these in order on your first day</span></h2>
+  <p class="lede">If you've cloned this repo and run <code>install.sh</code>, you're ready. Each step is 2-5 minutes.</p>
+  <div class="onboard-steps">
+    <div class="step">
+      <span class="n">Step 1</span>
+      <h3>Confirm health</h3>
+      <p>Run doctor. Target: 31/31 ✓.</p>
+      <a class="link" href="#cheatsheet">Cheatsheet →</a>
+    </div>
+    <div class="step">
+      <span class="n">Step 2</span>
+      <h3>The 5-minute wow</h3>
+      <p>Open Open WebUI, chat once, find the trace in Phoenix. Proves four pillars work.</p>
+      <a class="link" href="#recipe1">Recipe 1 →</a>
+    </div>
+    <div class="step">
+      <span class="n">Step 3</span>
+      <h3>Drop a PDF</h3>
+      <p>Copy a file into <code>ingestor/inbox/</code>, run the ingestor, query via Open WebUI.</p>
+      <a class="link" href="#recipe1">Recipe 1 →</a>
+    </div>
+    <div class="step">
+      <span class="n">Step 4</span>
+      <h3>Memory-aware coding</h3>
+      <p>Open AutoFyn, configure once, run a task. Tomorrow it'll remember.</p>
+      <a class="link" href="#recipe2">Recipe 2 →</a>
+    </div>
+    <div class="step">
+      <span class="n">Step 5</span>
+      <h3>Pi in a sandbox</h3>
+      <p><code>bin/pi</code> drops you in. Local-only models. Can't see your secrets.</p>
+      <a class="link" href="#recipe3">Recipe 3 →</a>
+    </div>
+  </div>
+</section>
+
+<section id="catalog">
+  <h2>Service catalog <span class="small">every component, what it does, when to use it</span></h2>
+  <p class="lede">Filter by layer or search. Click any card for the example command.</p>
+  <div class="filter-row">
+    <input id="searchInput" type="text" placeholder="Search services… (e.g., 'memory', 'gpu', '4000')">
+    <span class="chip active" data-layer="all">All</span>
+    <span class="chip" data-layer="inference">Inference</span>
+    <span class="chip" data-layer="observability">Observability</span>
+    <span class="chip" data-layer="storage">Storage</span>
+    <span class="chip" data-layer="memory">Memory</span>
+    <span class="chip" data-layer="agent">Agent runtime</span>
+    <span class="chip" data-layer="security">Security</span>
+    <span class="chip" data-layer="ui">UIs</span>
+    <span class="chip" data-layer="docs">Documents</span>
+    <span class="chip" data-layer="coding">Coding agents</span>
+    <span class="chip" data-layer="research">Research</span>
+    <span class="chip" data-layer="alt-memory">Alt-memory</span>
+    <span class="chip" data-layer="cloud">Cloud</span>
+    <span class="chip" data-layer="fine-tune">Fine-tune</span>
+    <span class="chip" data-layer="code-search">Code search</span>
+  </div>
+  <div class="service-grid" id="serviceGrid"></div>
+</section>
+
+<section id="recipes">
+  <h2>Multi-service recipes <span class="small">canonical workflows</span></h2>
+  <p class="lede">Click to expand. Every command works — copy with the button on each block.</p>
+  <div id="recipesList"></div>
+</section>
+
+<section id="demo">
+  <h2>Live demo <span class="small">talk to your local stack from this page</span></h2>
+  <p class="lede">If your stack is running locally, paste your <code>LITELLM_MASTER_KEY</code> (or a virtual key) and run a real chat. The key stays in your browser; it never leaves this page.</p>
+
+  <div class="demo-panel">
+    <div class="form-row">
+      <label for="demoKey">Bearer key</label>
+      <input id="demoKey" type="password" placeholder="sk-local-... (paste your LITELLM_MASTER_KEY)">
+      <button class="secondary" id="demoSave" type="button">Save in browser</button>
+      <button class="secondary" id="demoForget" type="button">Forget</button>
+    </div>
+    <div class="form-row">
+      <label for="demoBase">LiteLLM URL</label>
+      <input id="demoBase" type="text" value="http://litellm:4000/v1">
+    </div>
+    <div class="form-row">
+      <label for="demoModel">Model</label>
+      <select id="demoModel"></select>
+      <button class="secondary" id="demoListModels" type="button">List models</button>
+    </div>
+    <div class="form-row">
+      <label for="demoPrompt">Prompt</label>
+    </div>
+    <textarea id="demoPrompt" placeholder="In one sentence: what is a Merkle tree?"></textarea>
+    <div class="form-row" style="margin-top: 12px;">
+      <button id="demoSend" type="button">▸ Send chat</button>
+      <button class="secondary" id="demoStatus" type="button">Check stack health</button>
+    </div>
+    <div class="out" id="demoOut">Output will appear here.</div>
+  </div>
+
+  <div class="callout warn" style="margin-top: 16px;">
+    <strong>About this demo.</strong> Calls go directly from your browser to <code>http://litellm:4000</code>. If the page doesn't have permission (CORS), you'll see an error — that's expected and good (it means LiteLLM isn't accepting cross-origin calls by default). To use the live demo, either (a) open this HTML from a same-origin webserver (e.g., a local <code>python -m http.server</code> on the same host as LiteLLM), or (b) accept that the demo panel is illustrative and the same commands work from the terminal cheatsheet.
+  </div>
+</section>
+
+<section id="cheatsheet">
+  <h2>Daily cheatsheet</h2>
+  <p class="lede">Verified against <code>install.sh</code> and <code>bin/</code> on 2026-05-29. Commands flagged <span class="pill">⚠ N/A</span> don't actually exist; use the alternative shown.</p>
+  <div id="cheatsheetList"></div>
+</section>
+
+<section id="triage">
+  <h2>Triage <span class="small">when something breaks</span></h2>
+  <p class="lede">Always start with <code>doctor</code>. The check number maps 1:1 to a section in DOCTOR.md.</p>
+
+  <h4>Standard triage order</h4>
+  <ol>
+    <li><strong>Run doctor.</strong> <code>bash ~/ai-stack/install.sh doctor</code></li>
+    <li><strong>Read the matching DOCTOR.md section</strong> for whichever check failed.</li>
+    <li><strong>Tail the relevant logs.</strong> <code>install.sh logs &lt;svc&gt; -f</code></li>
+    <li><strong>Grep CHANGELOG.md</strong> for the service or symptom — known gotchas are documented.</li>
+    <li><strong>Look at TROUBLESHOOTING.md</strong> for less-common issues.</li>
+  </ol>
+
+  <h4>Common symptoms</h4>
+  <table>
+    <thead><tr><th>Symptom</th><th>First check</th><th>Then</th></tr></thead>
+    <tbody>
+      <tr><td><code>curl http://litellm:4000</code> → connection refused</td><td>11, 14</td><td><code>docker ps | grep litellm</code>; <code>bin/start-litellm.sh</code></td></tr>
+      <tr><td><code>curl http://litellm:4000</code> → 401</td><td>26</td><td><code>source .env</code>; verify <code>LITELLM_MASTER_KEY</code></td></tr>
+      <tr><td>Phoenix has no traces</td><td>6, 9, 13</td><td>LiteLLM env: <code>PHOENIX_API_KEY</code>, <code>PHOENIX_COLLECTOR_HTTP_ENDPOINT</code></td></tr>
+      <tr><td>Ollama 403 from inside container</td><td>Phase 00 plist</td><td><code>OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=*</code>, then <code>brew services restart ollama</code></td></tr>
+      <tr><td><code>bin/pi</code>: "PI_LITELLM_KEY missing"</td><td>26</td><td><code>bash install.sh install 15</code> (re-mints)</td></tr>
+      <tr><td>Pi can reach forbidden destination</td><td>25</td><td><code>openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait</code></td></tr>
+      <tr><td><code>openshell sandbox list</code> → empty</td><td>24</td><td><code>install 04</code> then <code>install 15</code></td></tr>
+      <tr><td><code>docs-mcp</code> returns nothing</td><td>Phase 06</td><td><code>bin/start-docs_mcp.sh</code>; verify <code>curl docs-mcp:8765/health</code></td></tr>
+      <tr><td>Fan is on, idle CPU high</td><td>DeerFlow config crash-loop most likely</td><td><code>bash install.sh doctor</code> check 28; re-run <code>bash install.sh install 10</code> to re-patch <code>config.yaml</code>. After fix, idle is ~1% CPU / ~520 MB.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+
+<!-- Modal for service details -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modal"></div>
+</div>
+
+<footer>
+  Generated 2026-05-29 from <a href="USER-GUIDE.md">USER-GUIDE.md</a>. Source of truth: <a href="services.yml">services.yml</a> + <a href="PORTS.md">PORTS.md</a>.<br>
+  Companion docs: <a href="STACK-GUIDE.md">STACK-GUIDE.md</a> · <a href="DIAGRAMS.md">DIAGRAMS.md</a> · <a href="PORTS.md">PORTS.md</a> · <a href="DEPENDENCIES.md">DEPENDENCIES.md</a> · <a href="DOCTOR.md">DOCTOR.md</a> · <a href="CHANGELOG.md">CHANGELOG.md</a>
+</footer>
+
+<script>
+// ============ Data: services ============
+const services = [
+  // Inference
+  {id:'ollama', layer:'inference', layerLabel:'Inference', name:'ollama', port:'11434', phase:'01', tagline:'Local model server (host brew)',
+   what:'Downloads open-weight models (Gemma, Qwen, LFM2.5, embeddings) and serves them over a REST API. Runs as a brew service — full Metal acceleration, not in a container.',
+   when:'Almost never directly. Everything goes through LiteLLM. You touch Ollama to manage models (pull, list, remove).',
+   tryThis:[
+     {desc:'List installed models.', cmd:'ollama list'},
+     {desc:'Pull a new model.', cmd:'ollama pull mistral:7b-instruct-v0.3-q4_K_M'},
+     {desc:'See what\'s currently loaded in VRAM.', cmd:'curl -s http://ollama:11434/api/ps | jq'},
+     {desc:'Direct inference (bypasses tracing).', cmd:'curl -s http://ollama:11434/api/generate \\\n  -d \'{"model":"gemma4:e4b","prompt":"hi","stream":false}\' | jq -r .response'}
+   ],
+   combine:['litellm']},
+
+  {id:'litellm', layer:'inference', layerLabel:'Inference', name:'litellm', port:'4000', phase:'01', tagline:'OpenAI-compatible proxy for ~25 models',
+   what:'Single HTTP endpoint that fronts every model — local (Ollama) and cloud (Anthropic, OpenAI, OpenRouter, Google).',
+   when:'Always. Every agent, UI, and script dials http://litellm:4000/v1.',
+   tryThis:[
+     {desc:'Enumerate models.', cmd:'source ~/ai-stack/.env\ncurl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  http://litellm:4000/v1/models | jq \'.data[].id\''},
+     {desc:'Send a chat.', cmd:'curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -H \'Content-Type: application/json\' http://litellm:4000/v1/chat/completions \\\n  -d \'{"model":"local","messages":[{"role":"user","content":"hi"}],"max_tokens":20}\''},
+     {desc:'Mint a budget-capped virtual key for a teammate.', cmd:'curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -X POST http://litellm:4000/key/generate \\\n  -d \'{"models":["local","local-heavy"],"max_budget":2.0,"key_alias":"teammate"}\' | jq'}
+   ],
+   combine:['ollama','phoenix','honcho','openwebui']},
+
+  // Observability
+  {id:'phoenix', layer:'observability', layerLabel:'Observability', name:'phoenix', port:'6006', phase:'01·H', tagline:'OTel collector + tracing + eval UI',
+   what:'Arize Phoenix — every LiteLLM call lands here as a span (model, tokens, cost, latency). Also has phoenix.evals for LLM-as-judge runs.',
+   when:'Forensics, observability, evaluations. Reach for it when you wonder "what did the model receive?", "why was this slow?", or "how much did this cost?"',
+   tryThis:[
+     {desc:'Open the UI.', cmd:'open http://phoenix:6006'},
+     {desc:'Pull last hour of spans as JSONL.', cmd:'source ~/ai-stack/.env\ncurl -s -H "Authorization: Bearer $PHOENIX_API_KEY" \\\n  "http://phoenix:6006/v1/spans?project=ai-stack&start=$(date -v-1H -u +%FT%TZ)" \\\n  | jq -c \'.[]\' > /tmp/last-hour.jsonl'}
+   ],
+   combine:['litellm','halo']},
+
+  {id:'phoenix-otlp', layer:'observability', layerLabel:'Observability', name:'phoenix-otlp', port:'4317', phase:'01·H', tagline:'OTLP-gRPC endpoint',
+   what:'Phoenix\'s OTLP-gRPC endpoint. The arize_phoenix callback in LiteLLM pushes spans here.',
+   when:'You don\'t dial it directly. Point custom OTel exporters at it.',
+   tryThis:[
+     {desc:'Confirm it\'s listening.', cmd:'nc -zv phoenix-otlp 4317'}
+   ],
+   combine:['phoenix']},
+
+  // Storage
+  {id:'falkordb', layer:'storage', layerLabel:'Storage', name:'falkordb', port:'6379', phase:'02', tagline:'Graph database (Redis protocol + Cypher)',
+   what:'Graph DB speaking Cypher over the Redis RESP protocol. Nodes + edges + properties.',
+   when:'Graph-shaped data: who-knows-who, dependency trees, code relationships. Reserved for future graph-memory work.',
+   tryThis:[
+     {desc:'Confirm reachable.', cmd:'redis-cli -h falkordb -p 6379 PING'},
+     {desc:'Create a tiny graph.', cmd:'redis-cli -h falkordb -p 6379 GRAPH.QUERY mygraph \\\n  "CREATE (a:Person {name:\'Alice\'})-[:KNOWS]->(b:Person {name:\'Bob\'})"'},
+     {desc:'Query 1-hop neighbors.', cmd:'redis-cli -h falkordb -p 6379 GRAPH.QUERY mygraph \\\n  "MATCH (a:Person {name:\'Alice\'})-[:KNOWS]->(p) RETURN p.name"'}
+   ],
+   combine:['falkordb-ui','qdrant']},
+
+  {id:'falkordb-ui', layer:'storage', layerLabel:'Storage', name:'falkordb-ui', port:'3000', phase:'02', tagline:'Web UI for FalkorDB',
+   what:'Visual graph browser for FalkorDB. Run Cypher queries from a web editor.',
+   when:'Exploration and demos — terminal output for graphs is illegible past 5 nodes.',
+   tryThis:[
+     {desc:'Open in browser.', cmd:'open http://falkordb-ui:3000'}
+   ],
+   combine:['falkordb']},
+
+  {id:'qdrant', layer:'storage', layerLabel:'Storage', name:'qdrant', port:'6333', phase:'02', tagline:'Vector database',
+   what:'High-dimensional embedding store + nearest-neighbor search. Used for RAG.',
+   when:'Anytime you need semantic search. docs_ingestor writes here; docs-mcp reads here.',
+   tryThis:[
+     {desc:'List collections.', cmd:'curl -s http://qdrant:6333/collections | jq'},
+     {desc:'Inspect docs collection.', cmd:'curl -s http://qdrant:6333/collections/ai-stack-docs | jq'},
+     {desc:'Open dashboard.', cmd:'open http://qdrant:6333/dashboard'}
+   ],
+   combine:['docs_ingestor','docs-mcp','litellm']},
+
+  // Memory
+  {id:'honcho', layer:'memory', layerLabel:'Memory', name:'honcho', port:'8000', phase:'03', tagline:'Cross-session, cross-agent memory',
+   what:'v3 has peers (per-agent namespaces) and sessions (multi-peer conversations). Postgres + Redis + a derivation worker that auto-summarizes facts.',
+   when:'Anything where an agent needs to remember across sessions. AutoFyn, Paperclip, Hermes profiles, and Pi all use Honcho.',
+   tryThis:[
+     {desc:'Health check.', cmd:'curl -s http://honcho:8000/health | jq'},
+     {desc:'Create a peer.', cmd:'curl -s -X POST http://honcho:8000/v3/workspaces/default/peers \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"id":"my-experiment"}\''},
+     {desc:'Search a peer\'s memory.', cmd:'curl -s "http://honcho:8000/v3/workspaces/default/peers/my-experiment/search?query=build" | jq'}
+   ],
+   combine:['autofyn','paperclip','pi','hermes_fleet']},
+
+  // Agent runtime
+  {id:'openshell', layer:'agent', layerLabel:'Agent runtime', name:'openshell', port:'(brew + CLI)', phase:'04', tagline:'Linux sandbox platform',
+   what:'Deny-by-default network policy + filesystem confinement + L7 inference rewrite. Sandboxes: hermes-fleet-v1, pi-v1.',
+   when:'When you need to run agent code with strong-isolation guarantees.',
+   tryThis:[
+     {desc:'List sandboxes.', cmd:'openshell sandbox list'},
+     {desc:'Inspect the hermes policy.', cmd:'openshell policy get hermes-fleet-v1'},
+     {desc:'Connect interactively.', cmd:'openshell sandbox connect hermes-fleet-v1'},
+     {desc:'One-shot exec.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- uname -srm'}
+   ],
+   combine:['hermes_fleet','pi']},
+
+  {id:'hermes_fleet', layer:'agent', layerLabel:'Agent runtime', name:'hermes-fleet', port:'(sandbox)', phase:'04·F', tagline:'7 specialist agent profiles',
+   what:'cos, software_engineer, researcher, creator, reviewer, data_analyst, ops. Each a soul (system prompt + tools + default model). Booted on demand inside hermes-fleet-v1.',
+   when:'Multi-step tasks benefit from specialist personas. Quick chats use Open WebUI; multi-turn tool-using tasks dispatch a Hermes profile.',
+   tryThis:[
+     {desc:'See the soul files.', cmd:'ls ~/ai-stack/openshell/fleet-souls/'},
+     {desc:'Run hermes_software_engineer.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_software_engineer "refactor /workspace/main.py for memoization"\''},
+     {desc:'Long research task.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_researcher "summarize top themes in /workspace/papers/*.pdf"\''}
+   ],
+   combine:['openshell','paperclip','honcho','workspace']},
+
+  {id:'hermes-gw', layer:'agent', layerLabel:'Agent runtime', name:'hermes-gw', port:'8642', phase:'04', tagline:'Reserved alias',
+   what:'OpenShell L7 proxy alias slot. Not in active use.',
+   when:'Future state — when an external Hermes endpoint is needed (e.g., webhook from Slack).',
+   tryThis:[
+     {desc:'Confirm reserved.', cmd:'nc -z hermes-gw 8642  # intentional fail'}
+   ],
+   combine:[]},
+
+  // Security
+  {id:'litellm_guardrails_builtin', layer:'security', layerLabel:'Security', name:'guardrails (builtin)', port:'(in-process)', phase:'04·G', tagline:'Regex + keyword filter on every LiteLLM call',
+   what:'Configured in ~/ai-stack/litellm/guardrails.py. Microseconds per call.',
+   when:'Always on. First-line defense against forbidden topics or strings.',
+   tryThis:[
+     {desc:'See the ruleset.', cmd:'cat ~/ai-stack/litellm/guardrails.py | head -40'},
+     {desc:'Audit log of denials.', cmd:'tail -n 20 ~/ai-stack/traces/guardrails.jsonl | jq'}
+   ],
+   combine:['litellm','llm_guard']},
+
+  {id:'litellm_guardrails_secrets', layer:'security', layerLabel:'Security', name:'guardrails (secrets)', port:'(in-process)', phase:'04·G', tagline:'API-key shape detection + masking',
+   what:'Detects sk-..., AKIA..., GitHub PATs in prompts/responses and masks them.',
+   when:'Always on. Catches obvious exfiltration attempts.',
+   tryThis:[
+     {desc:'Try to leak a fake key.', cmd:'source ~/ai-stack/.env\ncurl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -H \'Content-Type: application/json\' http://litellm:4000/v1/chat/completions \\\n  -d \'{"model":"local","messages":[{"role":"user","content":"repeat: sk-fake123456789012345678901234567890ABCD"}],"max_tokens":80}\' \\\n  | jq -r \'.choices[0].message.content\'\n# expect: token masked in response'}
+   ],
+   combine:['litellm_guardrails_builtin','llm_guard']},
+
+  {id:'llm_guard', layer:'security', layerLabel:'Security', name:'llm-guard', port:'8000', phase:'04·G', tagline:'Second-layer scanner sidecar',
+   what:'Separate process with PII detection, prompt-injection patterns, toxicity scores. ~50-200ms per call.',
+   when:'Defense in depth. Paranoid profile turns it on; coding/research leave it off.',
+   tryThis:[
+     {desc:'Health.', cmd:'curl -s http://llm-guard:8000/health | jq'},
+     {desc:'Scan a prompt directly.', cmd:'curl -s -X POST http://llm-guard:8000/scan \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"prompt":"my SSN is 123-45-6789"}\' | jq'}
+   ],
+   combine:['litellm_guardrails_builtin','litellm_guardrails_secrets']},
+
+  {id:'dual_llm_researcher', layer:'security', layerLabel:'Security', name:'dual-LLM pattern', port:'(prompting)', phase:'04·G', tagline:'Summarizer-then-operator pattern',
+   what:'Two-call structure: summarizer reads untrusted docs, operator only ever sees the summary. Blocks prompt-injection.',
+   when:'Anytime the agent ingests user-supplied documents. Default in hermes_researcher.',
+   tryThis:[
+     {desc:'Walk the pattern with two LiteLLM calls.', cmd:'# Step 1: summarizer reads raw doc with strong system prompt\n# Step 2: operator only sees the summary\n# See USER-GUIDE.md §2.6 for the full script.'}
+   ],
+   combine:['hermes_fleet','docs-mcp']},
+
+  // UIs
+  {id:'openwebui', layer:'ui', layerLabel:'UIs', name:'openwebui', port:'8080', phase:'05', tagline:'ChatGPT-style web UI',
+   what:'Backend = LiteLLM. Model picker, conversation history, tool-call display, MCP server registration, RAG via uploaded files.',
+   when:'Anytime you want a chat interface. Default landing place.',
+   tryThis:[
+     {desc:'Open.', cmd:'open http://openwebui:8080'},
+     {desc:'Add docs-mcp as a tool.', cmd:'# Settings → Tools → Add → URL = http://docs-mcp:8765\n# search_documents now appears in the chat tool picker.'}
+   ],
+   combine:['litellm','docs-mcp']},
+
+  {id:'hermes_workspace', layer:'ui', layerLabel:'UIs', name:'workspace', port:'3000', phase:'05', tagline:'Hermes fleet dashboard',
+   what:'Web UI for the 7 Hermes profiles: current load, recent tasks, memory state.',
+   when:'When you want fleet activity at a glance instead of grep.',
+   tryThis:[
+     {desc:'Open.', cmd:'open http://workspace:3000'},
+     {desc:'Confirm compose is up.', cmd:'docker ps --filter \'name=hermes-workspace\' --format \'{{.Names}}\\t{{.Status}}\''}
+   ],
+   combine:['hermes_fleet','paperclip','honcho']},
+
+  // Documents
+  {id:'docs_ingestor', layer:'docs', layerLabel:'Documents', name:'docs-ingestor', port:'(host bg)', phase:'06', tagline:'PDF → Qdrant pipeline',
+   what:'Watches ~/ai-stack/ingestor/inbox/, parses with Docling, chunks via LlamaIndex, embeds with embed-local, writes to Qdrant. One-shot sweep, not a daemon.',
+   when:'Anytime you want a doc searchable by docs-mcp or Open WebUI RAG.',
+   tryThis:[
+     {desc:'Drop a file.', cmd:'cp ~/Downloads/some-paper.pdf ~/ai-stack/ingestor/inbox/'},
+     {desc:'Run the sweep.', cmd:'cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py'},
+     {desc:'Confirm vectors landed.', cmd:'curl -s http://qdrant:6333/collections/ai-stack-docs | jq \'.result.points_count\''}
+   ],
+   combine:['qdrant','docs-mcp','openwebui']},
+
+  {id:'docs-mcp', layer:'docs', layerLabel:'Documents', name:'docs-mcp', port:'8765', phase:'06', tagline:'MCP server for document search',
+   what:'Read-only MCP tools: search_documents, get_chunk, list_collections, health.',
+   when:'Anytime an LLM or agent needs to read from your knowledge base.',
+   tryThis:[
+     {desc:'Health.', cmd:'curl -s http://docs-mcp:8765/health | jq'},
+     {desc:'Direct search.', cmd:'curl -s -X POST http://docs-mcp:8765/tools/search_documents \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"query":"vector embeddings","top_k":3}\' | jq'},
+     {desc:'Restart daemon.', cmd:'bash ~/ai-stack/bin/start-docs_mcp.sh'}
+   ],
+   combine:['docs_ingestor','qdrant','openwebui','pi']},
+
+  // Coding agents
+  {id:'autofyn', layer:'coding', layerLabel:'Coding agents', name:'autofyn', port:'3400', phase:'07', tagline:'Web-UI coding agent',
+   what:'Postgres + dashboard + agent + sandbox containers. Talks to LiteLLM; talks to Honcho (configurable peer).',
+   when:'Polished in-browser pair-programmer. Less isolated than Pi but more featured.',
+   tryThis:[
+     {desc:'Open.', cmd:'open http://autofyn:3400'},
+     {desc:'Verify Honcho from inside AutoFyn.', cmd:'docker exec autofyn-dashboard wget -qO- http://honcho:8000/health'},
+     {desc:'Pin a peer namespace.', cmd:'yq -i \'.services.autofyn.peer = "autofyn-main"\' ~/ai-stack/services.yml\ncd ~/ai-stack/autofyn && docker compose restart'}
+   ],
+   combine:['honcho','litellm','phoenix']},
+
+  {id:'paperclip', layer:'coding', layerLabel:'Coding agents', name:'paperclip', port:'3100', phase:'08', tagline:'Multi-agent orchestrator (org chart)',
+   what:'Browser UI for dispatching to Hermes profiles, AutoFyn, or any registered worker. Tracks budgets, governance, audit trails.',
+   when:'When you have multiple agents and want one place to dispatch and watch.',
+   tryThis:[
+     {desc:'Start (auto-started by Phase 08).', cmd:'bash ~/ai-stack/bin/start-paperclip.sh'},
+     {desc:'Open.', cmd:'open http://paperclip:3100'},
+     {desc:'Kill cleanly.', cmd:'kill $(cat ~/ai-stack/installer/state/paperclip.pid 2>/dev/null)'}
+   ],
+   combine:['hermes_fleet','autofyn','paperclip_honcho_plugin']},
+
+  {id:'paperclip_honcho_plugin', layer:'coding', layerLabel:'Coding agents', name:'paperclip-honcho-plugin', port:'(in-UI)', phase:'08', tagline:'Cross-dispatch memory for Paperclip',
+   what:'Wires every Paperclip dispatch to Honcho. Workers see your prior tries automatically.',
+   when:'Always-on once activated. Difference between cold-start every dispatch vs. memory.',
+   tryThis:[
+     {desc:'Enable in Paperclip UI.', cmd:'# Settings → Plugins → enable Honcho Plugin (uses HONCHO_API_KEY from .env)'},
+     {desc:'Verify writes.', cmd:'curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=task" | jq'}
+   ],
+   combine:['paperclip','honcho']},
+
+  {id:'pi', layer:'coding', layerLabel:'Coding agents', name:'pi', port:'(pi-v1 sandbox)', phase:'15', tagline:'Sandboxed coding agent with virtual key',
+   what:'Earendil\'s @earendil-works/pi-coding-agent inside OpenShell pi-v1. Tree-branching TUI. Network: LiteLLM (local-only models), Honcho (pi peer), docs-mcp. Cannot see master key.',
+   when:'Sandboxed code experimentation. New project bootstrap. Untrusted-source code.',
+   tryThis:[
+     {desc:'Launch.', cmd:'bash ~/ai-stack/bin/pi'},
+     {desc:'Panic stop.', cmd:'bash ~/ai-stack/bin/pi-kill'},
+     {desc:'Confirm a denied destination is denied (from inside Pi).', cmd:'curl -s http://host.docker.internal:6006/healthz\n# expect: 403 body {"error":"policy_denied"}'}
+   ],
+   combine:['openshell','docs-mcp','honcho']},
+
+  // Research
+  {id:'deerflow', layer:'research', layerLabel:'Research', name:'deerflow', port:'2026', phase:'10', tagline:'Multi-step research agent',
+   what:'Nginx + Next.js + FastAPI gateway (4 uvicorn workers default) + optional K8s sandbox provisioner.',
+   when:'Deep research, multi-step browsing, structured report generation.',
+   warn:'Phase 10 idempotently patches config.yaml + docker-compose.yaml + .env to wire DeerFlow to local LiteLLM via host.docker.internal:4000. Doctor check 28 catches regressions. Use stack start/stop deerflow (NOT raw deploy.sh) so LITELLM_MASTER_KEY is exported into the shell for compose substitution. Idle CPU ~1%, MEM ~520 MB.',
+   tryThis:[
+     {desc:'Start (warning-free).', cmd:'stack start deerflow    # also: stack deerflow start, or bash bin/start-deerflow.sh'},
+     {desc:'Open frontend.', cmd:'open "http://localhost:${PORT:-2026}"'},
+     {desc:'Stop when done.', cmd:'stack stop deerflow     # also: stack deerflow stop'},
+     {desc:'Verify config is patched.', cmd:'bash ~/ai-stack/install.sh doctor deerflow_config'}
+   ],
+   combine:['litellm','honcho']},
+
+  {id:'halo', layer:'research', layerLabel:'Research', name:'halo', port:'(CLI)', phase:'11', tagline:'Agent trace analysis CLI (halo-engine)',
+   what:'Installs the `halo-engine` package, exposing `bin/halo`. Routes via LiteLLM (local default) and disables the agents-SDK cloud trace export. Built on the RLM substrate (Phase 18).',
+   when:'Fast terminal answer instead of Phoenix UI. "What did I call yesterday?" "How much did claude-opus cost this week?"',
+   tryThis:[
+     {desc:'See what your version supports.', cmd:'~/ai-stack/bin/halo --help'}
+   ],
+   warn:'HALO wants OTel-format traces (NOT our custom traces/litellm.jsonl), and its openai-agents SDK uses the Responses API — so full analysis on LOCAL models is experimental.',
+   combine:['litellm','phoenix','rlm']},
+
+  {id:'rlm', layer:'research', layerLabel:'Research', name:'rlm', port:'(CLI)', phase:'18', tagline:'Recursive Language Models',
+   what:'The `rlms` library (pip) plus `bin/rlm` wrapper and rlm/run_rlm.py runner. A model recursively calls itself over long context via a REPL — the REPL runs in a DOCKER SANDBOX (python:3.11-slim), not on the host. Routes via LiteLLM + RLM_LITELLM_KEY and works on local models. It is the substrate HALO is built on.',
+   when:'Tasks that need to reason over context longer than a single model window — the model decomposes and recurses instead of truncating.',
+   tryThis:[
+     {desc:'See what your version supports.', cmd:'~/ai-stack/bin/rlm --help'}
+   ],
+   combine:['litellm','halo']},
+
+  {id:'autoreason', layer:'research', layerLabel:'Research', name:'autoreason', port:'(clone)', phase:'11', tagline:'Self-refinement research artifact',
+   what:'Nous Research codebase demonstrating iterative self-refinement + adversarial-judge voting. Reference material.',
+   when:'Designing multi-step agents that need better self-critique. Read + adapt patterns.',
+   tryThis:[
+     {desc:'Browse.', cmd:'ls ~/ai-stack/halo/autoreason/\ncat ~/ai-stack/halo/autoreason/README.md | head -100'}
+   ],
+   combine:['hermes_fleet']},
+
+  // Alt-memory
+  {id:'remnic_hermes', layer:'alt-memory', layerLabel:'Alt-memory', name:'remnic-hermes', port:'(disabled)', phase:'09', tagline:'File-based memory provider',
+   what:'Plain-markdown memory storage, LLM fact extraction. Implements Hermes MemoryProvider — drop-in Honcho replacement.',
+   when:'When you want memory as markdown files you can git-commit, grep, version-control alongside code.',
+   tryThis:[
+     {desc:'Install.', cmd:'uv tool install remnic-hermes'},
+     {desc:'Init + write + read.', cmd:'cd ~/some-project\nremnic-hermes init --dir ./memory\nremnic-hermes write --dir ./memory "user prefers tabs"\nremnic-hermes recall --dir ./memory --query "indentation"'}
+   ],
+   combine:['hermes_fleet']},
+
+  {id:'byterover_cli', layer:'alt-memory', layerLabel:'Alt-memory', name:'byterover-cli', port:'(host CLI)', phase:'09', tagline:'Personal notes CLI',
+   what:'Host-side CLI for notes + facts + semantic search. Companion to byterover.com.',
+   when:'Personal knowledge base outside the Honcho graph.',
+   tryThis:[
+     {desc:'Install.', cmd:'npm install -g @byterover/cli'},
+     {desc:'Login + write + search.', cmd:'byterover login\nbyterover note "fixed litellm restart bug"\nbyterover search "litellm"'}
+   ],
+   combine:[]},
+
+  // Cloud
+  {id:'blaxel_cli', layer:'cloud', layerLabel:'Cloud', name:'blaxel-cli', port:'(host CLI)', phase:'12', tagline:'Deploy agents to Blaxel cloud',
+   what:'CLI for Blaxel — always-on AI agents and micro-VM sandboxes that hibernate at zero cost.',
+   when:'The 5% of agents you want surviving laptop close. Long-running scrapers, scheduled jobs, GPU sandboxes.',
+   tryThis:[
+     {desc:'Login.', cmd:'bl login'},
+     {desc:'List workspaces.', cmd:'bl workspace list'},
+     {desc:'Deploy from a local dir.', cmd:'cd /tmp/my-agent && bl deploy'}
+   ],
+   combine:[]},
+
+  // Fine-tune
+  // Code search (Phase 16)
+  {id:'lumen', layer:'code-search', layerLabel:'Code search', name:'lumen', port:'(stdio MCP)', phase:'16', tagline:'Local code semantic search for AI agents',
+   what:'Ory\'s Lumen — single Go binary vendored at ~/ai-stack/vendor/lumen/. Two modes: (1) `lumen search` from your shell for one-shot queries, (2) `lumen stdio` as an MCP server that AutoFyn / Open WebUI / Claude Code / Codex / Cursor spawn as a subprocess. No HTTP — confirmed in source. Embeddings via Ollama (`ordis/jina-embeddings-v2-base-code`, 768-dim). Index lives at ~/.local/share/lumen/<hash>/ keyed by (repo, embed_model, binary_version).',
+   when:'When an agent needs to navigate a codebase by meaning, not grep. AutoFyn asking "where does this config get parsed?", Hermes_software_engineer answering "find every place X gets wired into Y." Ory\'s claim: "50% fewer tokens" for code-navigation tasks. Pair with docs-mcp (prose RAG) — Lumen is code, docs-mcp is prose.',
+   tryThis:[
+     {desc:'List built indexes (no `index list` subcommand exists).', cmd:'ls ~/.local/share/lumen/'},
+     {desc:'One-shot CLI semantic search against the default ai-stack index.', cmd:'~/ai-stack/bin/lumen search \'openshell policy applied to sandbox\' \\\n  --path ~/ai-stack --n-results 3 --summary'},
+     {desc:'Index a new repo. The path IS the identifier — no --name.', cmd:'~/ai-stack/bin/lumen index ~/work/my-repo'},
+     {desc:'Search the repo you just indexed.', cmd:'~/ai-stack/bin/lumen search \'config parsing\' \\\n  --path ~/work/my-repo --n-results 5'},
+     {desc:'Force a full re-index after big code changes.', cmd:'~/ai-stack/bin/lumen index ~/work/my-repo --force'},
+     {desc:'Purge a specific repo or everything.', cmd:'~/ai-stack/bin/lumen purge ~/work/my-repo   # one repo\n~/ai-stack/bin/lumen purge                   # ALL indexes'},
+     {desc:'Wire Lumen as an MCP server in AutoFyn.', cmd:'# AutoFyn UI:\n#   Settings → Tools → Add MCP Server\n#   Transport: stdio\n#   Command: /Users/<you>/ai-stack/bin/lumen\n#   Args:    stdio\n# Save. `semantic_search` appears in AutoFyn\'s tool picker.'},
+     {desc:'Wire into Claude Code via settings.json.', cmd:'// ~/.claude/settings.json:\n"mcpServers": {\n  "lumen": {\n    "command": "/Users/<you>/ai-stack/bin/lumen",\n    "args": ["stdio"]\n  }\n}'}
+   ],
+   warn:'Pi (the sandboxed agent) cannot use Lumen today — the pi-v1 OpenShell sandbox cannot spawn a host-side stdio subprocess. AutoFyn / Open WebUI / Claude Code / Cursor / Codex all can. Pi support is deferred (would need either an mcp-proxy stdio→HTTP bridge or the binary baked into the sandbox image).',
+   combine:['ollama','autofyn','openwebui','docs-mcp','hermes_fleet']},
+
+  {id:'unsloth', layer:'fine-tune', layerLabel:'Fine-tune', name:'unsloth', port:'8898', phase:'14', tagline:'Local fine-tuning + training UI',
+   what:'LoRA / QLoRA training, MLX-accelerated on Apple Silicon, GGUF export back to Ollama.',
+   when:'Fine-tune a base model on your own data (≥5K examples for it to outperform a prompt change).',
+   tryThis:[
+     {desc:'Open.', cmd:'open http://localhost:8898  # binds 0.0.0.0; either URL works'},
+     {desc:'Bootstrap credential (one-time).', cmd:'# Username: unsloth\n# Password: cat ~/.unsloth/studio/auth/.bootstrap_password\n# Then change in UI.'},
+     {desc:'Re-import a trained model to Ollama.', cmd:'ollama create local-tuned -f - <<EOF\nFROM ~/.unsloth/studio/runs/<id>/model.gguf\nTEMPLATE "{{ .System }}{{ .Prompt }}"\nEOF'}
+   ],
+   combine:['ollama','litellm']},
+];
+
+// ============ Data: recipes ============
+const recipes = [
+  {id:'recipe1', num:1, title:'Chat with my docs (RAG)', tag:'core', desc:'Drop a PDF, sweep into Qdrant, query from Open WebUI via docs-mcp.',
+   prereqs:'stack status shows ollama, litellm, qdrant, openwebui green. docs-mcp daemon up.',
+   steps:[
+     'cp ~/Downloads/some-paper.pdf ~/ai-stack/ingestor/inbox/',
+     'cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py',
+     'curl -s http://qdrant:6333/collections/ai-stack-docs | jq \'.result.points_count\'',
+     'bash ~/ai-stack/bin/start-docs_mcp.sh',
+     'curl -s http://docs-mcp:8765/health',
+     '# Open WebUI: Settings → Tools → Add → URL=http://docs-mcp:8765',
+     '# New chat → enable docs tool → "according to my docs, what does X say about Y?"'
+   ],
+   phoenix:'Filter by tool.name = search_documents. Chain: chat → LiteLLM → tool-call against docs-mcp → embedding call → final completion.'
+  },
+  {id:'recipe2', num:2, title:'Memory-aware coding with AutoFyn', tag:'core', desc:'AutoFyn writes to Honcho; tomorrow it remembers what you tried.',
+   prereqs:'autofyn, honcho, litellm, ollama green.',
+   steps:[
+     'open http://autofyn:3400',
+     '# Settings → OpenAI-compatible, base http://litellm:4000/v1, key $LITELLM_MASTER_KEY, model local-heavy',
+     'docker exec autofyn-dashboard wget -qO- http://honcho:8000/health',
+     'yq -i \'.services.autofyn.peer = "autofyn-main"\' ~/ai-stack/services.yml',
+     'cd ~/ai-stack/autofyn && docker compose restart',
+     '# Run a task; ask AutoFyn to "remember this decision"',
+     'curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?query=decision" | jq'
+   ],
+   phoenix:'Spans tagged model=local-heavy clustered around your task window. Qwen 27B is visibly slower than local — 8-15s typical on M4.'
+  },
+  {id:'recipe3', num:3, title:'Sandboxed coding agent in pi-v1', tag:'core', desc:'Pi inside the OpenShell sandbox. Local-only models. Cannot see master key.',
+   prereqs:'Phase 15 complete (doctor 25 green). PI_LITELLM_KEY in .env.',
+   steps:[
+     'bash ~/ai-stack/bin/pi',
+     '# Inside Pi: confirm models list shows only local*',
+     '# Default model is local-heavy; give it a task in /sandbox/',
+     '# From Pi\'s bash tool: curl -s http://host.docker.internal:8765/health  # docs-mcp OK',
+     '# curl -s http://host.docker.internal:6006/healthz  # Phoenix → 403 policy_denied',
+     'bash ~/ai-stack/bin/pi-kill'
+   ],
+   phoenix:'Pi calls land in ai-stack project. No per-key isolation today; filter by model=local-heavy + window.'
+  },
+  {id:'recipe4', num:4, title:'Phoenix evaluations from JSONL replay', tag:'core', desc:'Turn last week\'s traces into a regression baseline. Realistic at small data volumes (Recipe 7 is the fine-tune story for when you have 5K+ traces).',
+   prereqs:'≥100 lines in traces/litellm.jsonl. arize-phoenix-evals installed.',
+   steps:[
+     'cd ~/ai-stack/ingestor && source .venv/bin/activate',
+     'pip install arize-phoenix-evals',
+     '# 1. Build eval dataset (deduped, last 200, kind=success only).',
+     '# 2. Replay through local-lfm2.',
+     '# 3. Score with local-heavy as judge.',
+     '# Full Python in USER-GUIDE.md §Recipe 4.'
+   ],
+   phoenix:'Filter on model=local-lfm2 (candidate) and model=local-heavy (judge); tag with a session name for bookmarking a baseline.'
+  },
+  {id:'recipe5', num:5, title:'Research fleet', tag:'stretch', desc:'Hermes researcher + DeerFlow + docs ingestion + tracing. Heavy CPU; flip back off when done.',
+   prereqs:'See USER-GUIDE.md §Recipe 5 for the full yq script.',
+   steps:[
+     '# Flip services per the research profile.',
+     'for svc in litellm qdrant honcho docs_mcp; do bash ~/ai-stack/bin/start-$svc.sh; done',
+     'stack start deerflow',
+     'open "http://localhost:${PORT:-2026}"',
+     '# Watch Phoenix as the fleet works.',
+     '# When done: stack stop deerflow'
+   ],
+   phoenix:'hermes_researcher (local-heavy or claude-sonnet) + docs-mcp tool calls + DeerFlow gateway calls.'
+  },
+  {id:'recipe6', num:6, title:'Paranoid mode', tag:'stretch', desc:'Only inference + guardrails + LLM Guard + dual-LLM. Phoenix is OFF (trade observability for not having an OTel sink see prompts).',
+   prereqs:'See USER-GUIDE.md §Recipe 6 for the full apply script.',
+   steps:[
+     '# Apply paranoid profile services (yq flips).',
+     'for c in openwebui autofyn phoenix; do docker stop $c; done',
+     'stack stop deerflow',
+     'bash ~/ai-stack/bin/start-llm_guard.sh',
+     '# Use the stack via curl only with $LITELLM_MASTER_KEY.'
+   ],
+   phoenix:'None — Phoenix is off in paranoid mode.'
+  },
+  {id:'recipe7', num:7, title:'Fine-tune on LiteLLM traces', tag:'stretch', desc:'Unsloth Studio + Apple Metal. Wants ≥5K traces; until then run Recipe 4.',
+   prereqs:'wc -l traces/litellm.jsonl ≥ 5000. Else stop.',
+   steps:[
+     'open http://localhost:8898',
+     '# Dataset import: traces/litellm.jsonl, mapping messages → response, filter kind=success.',
+     '# Pick base: LFM2.5-8B-A1B fits 24GB M4 for fine-tuning.',
+     '# LoRA defaults: 3 epochs, rank=16. Watch GPU with powermetrics.',
+     'ollama create local-tuned -f - <<EOF\nFROM ~/.unsloth/studio/runs/<id>/model.gguf\nEOF',
+     '# Add to litellm/config.yaml; bash bin/start-litellm.sh --recreate'
+   ],
+   phoenix:'A/B against local-lfm2 with Recipe 4 to score the actual improvement numerically.'
+  },
+  {id:'recipe8', num:8, title:'Sandboxed Hermes profile (end-to-end task)', tag:'core+', desc:'Dispatch hermes_software_engineer to a code fix in hermes-fleet-v1. Pull results back.',
+   prereqs:'Phases 04 + 04F complete. Sandbox upload/download works.',
+   steps:[
+     'mkdir -p ~/ai-stack/sandbox-workspace',
+     'echo "def parse(s): return int(s.strip().lstrip(\'user_\'))" > ~/ai-stack/sandbox-workspace/buggy.py',
+     'openshell sandbox upload hermes-fleet-v1 ~/ai-stack/sandbox-workspace/buggy.py /sandbox/',
+     'openshell sandbox exec -n hermes-fleet-v1 --tty -- \\\n  /bin/sh -c \'hermes hermes_software_engineer "fix /sandbox/buggy.py to return None for invalid input. Write a pytest."\'',
+     'openshell sandbox download hermes-fleet-v1 /sandbox/buggy.py ~/ai-stack/sandbox-workspace/',
+     'cd ~/ai-stack/sandbox-workspace && python -m pytest test_buggy.py -v'
+   ],
+   phoenix:'Span cluster tagged agent=hermes_software_engineer with tool calls for shell ops + file writes.'
+  },
+  {id:'recipe9', num:9, title:'Graph-augmented retrieval (FalkorDB + docs-mcp)', tag:'core+', desc:'Vector top-k from docs-mcp + 1-hop graph neighbors from FalkorDB.',
+   prereqs:'Recipe 1 done (docs in Qdrant). FalkorDB up.',
+   steps:[
+     '# 1. Build a citation graph in FalkorDB.',
+     'redis-cli -h falkordb -p 6379 GRAPH.QUERY citations \\\n  "CREATE (a:Doc {id:\'paper1.pdf\'})-[:CITES]->(b:Doc {id:\'paper2.pdf\'})"',
+     '# 2. Query 1-hop neighbors of a top match.',
+     'redis-cli -h falkordb -p 6379 GRAPH.QUERY citations \\\n  "MATCH (a:Doc {id:\'paper1.pdf\'})-[:CITES]->(b) RETURN b.id"',
+     '# 3. Blend in Python: see USER-GUIDE.md §Recipe 9.'
+   ],
+   phoenix:'Just docs-mcp + embedding spans. FalkorDB calls don\'t go through LiteLLM.'
+  },
+  {id:'recipe10', num:10, title:'Orchestrated multi-agent with Paperclip', tag:'core+', desc:'Paperclip → Hermes researcher → Honcho writes → Paperclip dispatches AutoFyn → AutoFyn uses the research.',
+   prereqs:'Paperclip + AutoFyn + Hermes up. paperclip_honcho_plugin activated.',
+   steps:[
+     'curl -s http://paperclip:3100/api/health | jq',
+     '# In Paperclip: dispatch hermes_researcher with a research question.',
+     'curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=research" | jq \'.[0:3]\'',
+     '# In Paperclip: dispatch AutoFyn referencing the prior research.',
+     '# Phoenix: filter on dispatcher=paperclip to see the full chain.'
+   ],
+   phoenix:'dispatcher=paperclip groups the chain; you\'ll see researcher + autofyn spans together.'
+  },
+  {id:'recipe11', num:11, title:'Cloud burst (one Claude call with audit)', tag:'core+', desc:'One high-stakes call to Claude Opus via LiteLLM. Keeps audit trail; preserves Phoenix tracing.',
+   prereqs:'ANTHROPIC_API_KEY set. Optional: a tag for grep.',
+   steps:[
+     'source ~/ai-stack/.env',
+     'curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -H \'Content-Type: application/json\' \\\n  -H \'x-trace-tag: cloud-burst-2026-05-29\' \\\n  http://litellm:4000/v1/chat/completions \\\n  -d \'{"model":"claude-opus","messages":[{"role":"user","content":"<your prompt>"}],"max_tokens":600}\' \\\n  | jq -r \'.choices[0].message.content\'',
+     'grep \'cloud-burst-2026-05-29\' ~/ai-stack/traces/litellm.jsonl | jq',
+     'grep cloud-burst-2026-05-29 ~/ai-stack/traces/litellm.jsonl | jq -r \'.cost\'  # → $ total'
+   ],
+   phoenix:'Filter on the trace tag. Same project (ai-stack) as everything else, distinguishable by model.'
+  },
+  {id:'recipe12', num:12, title:'Fast code search inside AutoFyn (Lumen as MCP tool)', tag:'core+', desc:'Wire Lumen into AutoFyn so the agent uses semantic_search instead of grep. Measure the prompt-token savings on a code-nav task.',
+   prereqs:'Phase 16 complete (stack doctor 28 green). AutoFyn running.',
+   steps:[
+     '# 1. Confirm Lumen + the default ai-stack index are ready.',
+     'ls ~/.local/share/lumen/                                          # ≥1 hash-named subdir',
+     '~/ai-stack/bin/lumen search \'sandbox policy\' --path ~/ai-stack --n-results 3 --summary',
+     '# 2. Register Lumen as an MCP server inside AutoFyn (UI):',
+     '#    Settings → Tools → Add MCP Server',
+     '#    Transport: stdio',
+     '#    Command: /Users/<you>/ai-stack/bin/lumen',
+     '#    Args:    stdio',
+     '#    Save.',
+     '# 3. Baseline (no Lumen): "Where does the OpenShell policy get applied to pi-v1?"',
+     '#    Watch: ~3-6 Grep/Read tool turns; note prompt-token total in Phoenix.',
+     '# 4. Same prompt with Lumen enabled: 1 semantic_search call + maybe 1 Read.',
+     '#    Note the new prompt-token total.',
+     '# 5. Delta: (baseline − lumen) / baseline × 100 → typically 40-60% on code-nav tasks.'
+   ],
+   phoenix:'Side-by-side: baseline trace has multiple Grep/Read tool_calls + growing prompt tokens; Lumen trace has one semantic_search early + much lower total prompt tokens. The semantic_search call itself is NOT a Phoenix span (no LLM); it appears in the agent\'s LLM call as a tool_calls attribute.'
+  }
+];
+
+// ============ Data: cheatsheet ============
+const cheatsheet = [
+  {section:'Health + state', items:[
+    {cmd:'bash ~/ai-stack/install.sh doctor', desc:'31 health checks + auto-fix offers'},
+    {cmd:'bash ~/ai-stack/install.sh status', desc:'declared vs actual table'},
+    {cmd:'bash ~/ai-stack/install.sh verify', desc:'phase 00·V pre-install runtime probes'},
+    {cmd:'OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/install.sh doctor', desc:'+9 negative network probes for pi-v1'}
+  ]},
+  {section:'Install / re-run', items:[
+    {cmd:'bash ~/ai-stack/install.sh install 15', desc:'idempotent phase install'},
+    {cmd:'bash ~/ai-stack/install.sh test 01', desc:'smoke-test phase 01'}
+  ]},
+  {section:'Logs', items:[
+    {cmd:'bash ~/ai-stack/install.sh logs litellm -f', desc:'managed service log tail'},
+    {cmd:'docker logs -f phoenix', desc:'raw container'},
+    {cmd:'tail -f ~/ai-stack/installer/state/unsloth.log', desc:'host bg process'}
+  ]},
+  {section:'Service start scripts', items:[
+    {cmd:'bash ~/ai-stack/bin/start-litellm.sh', desc:'canonical restart'},
+    {cmd:'bash ~/ai-stack/bin/start-litellm.sh --recreate', desc:'backup + recreate'},
+    {cmd:'bash ~/ai-stack/bin/start-{phoenix,honcho,qdrant,falkordb,openwebui,autofyn,paperclip,docs_mcp,llm_guard,unsloth,hermes_workspace}.sh', desc:'one per service'}
+  ]},
+  {section:'Pi (sandboxed coding)', items:[
+    {cmd:'bash ~/ai-stack/bin/pi', desc:'launch in pi-v1'},
+    {cmd:'bash ~/ai-stack/bin/pi-kill', desc:'panic stop'}
+  ]},
+  {section:'Trace analysis + recursion CLIs', items:[
+    {cmd:'~/ai-stack/bin/halo --help', desc:'halo-engine trace analysis (Phase 11); routes via LiteLLM, local default'},
+    {cmd:'~/ai-stack/bin/rlm --help', desc:'Recursive Language Models (Phase 18); REPL runs in a docker sandbox, routes via LiteLLM + RLM_LITELLM_KEY'}
+  ]},
+  {section:'URL helper (typing convenience)', items:[
+    {cmd:'~/ai-stack/bin/url', desc:'list every alias + its canonical URL'},
+    {cmd:'~/ai-stack/bin/url litellm', desc:'→ http://litellm:4000'},
+    {cmd:'~/ai-stack/bin/url litellm /v1/models', desc:'append a path'},
+    {cmd:'~/ai-stack/bin/url phoenix --open', desc:'open in default browser'},
+    {cmd:'~/ai-stack/bin/url litellm --curl /v1/models', desc:'print a curl with $LITELLM_MASTER_KEY pre-wired'},
+    {cmd:'~/ai-stack/bin/url honcho --copy', desc:'copy URL to clipboard'}
+  ]},
+  {section:'Lumen (code semantic search, Phase 16)', items:[
+    {cmd:'~/ai-stack/bin/lumen index ~/path/to/repo', desc:'index a repo (path = identifier; no --name)'},
+    {cmd:'~/ai-stack/bin/lumen search \'<query>\' --path ~/path/to/repo --n-results 5', desc:'one-shot CLI search'},
+    {cmd:'~/ai-stack/bin/lumen stdio', desc:'run as MCP stdio server (what AutoFyn / Claude Code / Cursor / Codex spawn)'},
+    {cmd:'~/ai-stack/bin/lumen purge ~/path/to/repo', desc:'delete one repo\'s index (or no path = wipe ALL)'},
+    {cmd:'ls ~/.local/share/lumen/', desc:'see existing indexes (hash-named dirs)'}
+  ]},
+  {section:'Audit + ingest', items:[
+    {cmd:'bash ~/ai-stack/bin/audit.sh', desc:'4 security checks'},
+    {cmd:'cp ~/Downloads/X.pdf ~/ai-stack/ingestor/inbox/', desc:'queue for ingestion'},
+    {cmd:'cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py', desc:'sweep inbox → Qdrant'}
+  ]},
+  {section:'Ops', items:[
+    {cmd:'sudo bash ~/ai-stack/install.sh prepare-sudo', desc:'one-time host config (idempotent)'},
+    {cmd:'bash ~/ai-stack/install.sh adopt litellm', desc:'take over a foreign container'},
+    {cmd:'bash ~/ai-stack/install.sh apply-restarts', desc:'drain restart queue'},
+    {cmd:'bash ~/ai-stack/install.sh history', desc:'consolidated CHANGELOG view'},
+    {cmd:'bash ~/ai-stack/install.sh gc', desc:'clean partial container orphans'}
+  ]},
+  {section:'Resets (destructive)', items:[
+    {cmd:'bash ~/ai-stack/install.sh reset --confirm soft', desc:'state + bin/ (keeps .env)'},
+    {cmd:'bash ~/ai-stack/install.sh reset --confirm hard', desc:'+ managed containers + data + OpenShell sandboxes + all compose projects (deerflow/autofyn/hermes-workspace) and their volumes (incl honcho_redis-data). Preserves ollama+models, docker images, .env, /etc/hosts block.'},
+    {cmd:'bash ~/ai-stack/install.sh reset --confirm hard --yes', desc:'non-interactive hard reset (-y / AI_STACK_ASSUME_YES). Pair with install all to rebuild.'},
+    {cmd:'bash ~/ai-stack/install.sh reset --confirm nuke', desc:'everything (re-download all)'}
+  ]},
+  {section:'⚠ Not implemented — use the workaround', items:[
+    {cmd:'stack profile <name>', desc:'manual yq + bin/start scripts (see USER-GUIDE.md §4)'},
+    {cmd:'stack enable/disable <svc>', desc:'yq -i ".services.<svc>.enabled = true/false" services.yml'},
+    {cmd:'stack apply', desc:'re-run install.sh install <phase> for the changed phase'},
+    {cmd:'stack restart <svc>', desc:'bash bin/start-<svc>.sh --recreate'}
+  ]}
+];
+
+// ============ Renderers ============
+
+// Service catalog
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+function renderServiceCard(s) {
+  return `<div class="service-card" data-id="${s.id}" data-layer="${s.layer}" data-search="${escapeAttr((s.name+' '+s.tagline+' '+s.what+' '+s.when+' '+s.port).toLowerCase())}">
+    <span class="badge phase">phase ${escapeHtml(s.phase)}</span>
+    <div class="layer">${escapeHtml(s.layerLabel)}</div>
+    <h4>${escapeHtml(s.name)}</h4>
+    <div class="port">:${escapeHtml(s.port)}</div>
+    <p class="desc">${escapeHtml(s.tagline)}</p>
+  </div>`;
+}
+
+function renderServiceGrid() {
+  document.getElementById('serviceGrid').innerHTML = services.map(renderServiceCard).join('');
+}
+
+function renderServiceModal(s) {
+  const tryHtml = (s.tryThis||[]).map((t,i)=>`
+    <p style="margin-top:14px;"><strong>${i+1}.</strong> ${escapeHtml(t.desc)}</p>
+    <pre><button class="copy-btn" data-copy>copy</button><code>${escapeHtml(t.cmd)}</code></pre>
+  `).join('');
+  const warnHtml = s.warn ? `<div class="callout warn"><strong>⚠ Resource caveat.</strong> ${escapeHtml(s.warn)}</div>` : '';
+  const combineHtml = (s.combine||[]).length ? `<h4>Combine with</h4><div class="pillrow">${s.combine.map(c=>`<span class="pill" data-combine="${escapeAttr(c)}">${escapeHtml(c)}</span>`).join('')}</div>` : '';
+  return `
+    <button class="close" data-close>×</button>
+    <h3>${escapeHtml(s.name)} <span style="color:var(--good);font-size:18px;">:${escapeHtml(s.port)}</span></h3>
+    <div class="meta">${escapeHtml(s.layerLabel)} · Phase ${escapeHtml(s.phase)}</div>
+    ${warnHtml}
+    <h4>What</h4><p>${escapeHtml(s.what)}</p>
+    <h4>When to reach for it</h4><p>${escapeHtml(s.when)}</p>
+    <h4>Try this</h4>${tryHtml}
+    ${combineHtml}
+  `;
+}
+
+// Recipes
+function renderRecipe(r) {
+  const stepsHtml = r.steps.map(step => `<pre><button class="copy-btn" data-copy>copy</button><code>${escapeHtml(step)}</code></pre>`).join('');
+  return `<details class="recipe" id="${r.id}">
+    <summary><span class="num">#${r.num}</span> <span class="title">${escapeHtml(r.title)}</span> <span class="tag ${r.tag}">${escapeHtml(r.tag)}</span></summary>
+    <div class="body">
+      <p>${escapeHtml(r.desc)}</p>
+      <p><strong>Prereqs:</strong> ${escapeHtml(r.prereqs)}</p>
+      <p><strong>Steps:</strong></p>
+      ${stepsHtml}
+      <p style="margin-top:14px;"><strong>You'll see this in Phoenix:</strong> ${escapeHtml(r.phoenix)}</p>
+    </div>
+  </details>`;
+}
+function renderRecipes() {
+  document.getElementById('recipesList').innerHTML = recipes.map(renderRecipe).join('');
+}
+
+// Cheatsheet
+function renderCheatsheet() {
+  document.getElementById('cheatsheetList').innerHTML = cheatsheet.map(section => `
+    <h4>${escapeHtml(section.section)}</h4>
+    ${section.items.map(item => `
+      <pre><button class="copy-btn" data-copy>copy</button><code>${escapeHtml(item.cmd)}</code></pre>
+      <p style="color:var(--fg-soft);margin:4px 0 12px;font-size:14px;">${escapeHtml(item.desc)}</p>
+    `).join('')}
+  `).join('');
+}
+
+// ============ Wireups ============
+
+// Theme toggle
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('ai-stack-theme', next); } catch(e){}
+});
+try {
+  const saved = localStorage.getItem('ai-stack-theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+} catch(e){}
+
+// Print
+document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+// Service catalog filters + search
+const searchInput = document.getElementById('searchInput');
+let activeLayer = 'all';
+document.querySelectorAll('.filter-row .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-row .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeLayer = chip.dataset.layer;
+    applyFilters();
+  });
+});
+searchInput.addEventListener('input', applyFilters);
+function applyFilters() {
+  const q = searchInput.value.toLowerCase().trim();
+  document.querySelectorAll('.service-card').forEach(card => {
+    const layerOk = activeLayer === 'all' || card.dataset.layer === activeLayer;
+    const searchOk = !q || card.dataset.search.includes(q);
+    card.style.display = (layerOk && searchOk) ? '' : 'none';
+  });
+}
+
+// Service card → modal
+function openModal(id) {
+  const s = services.find(x => x.id === id);
+  if (!s) return;
+  const m = document.getElementById('modal');
+  const bg = document.getElementById('modalBg');
+  m.innerHTML = renderServiceModal(s);
+  bg.classList.add('open');
+}
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('.service-card');
+  if (card) { openModal(card.dataset.id); return; }
+  if (e.target.closest('[data-close]') || (e.target.id === 'modalBg')) {
+    document.getElementById('modalBg').classList.remove('open');
+  }
+  const combine = e.target.closest('[data-combine]');
+  if (combine) {
+    document.getElementById('modalBg').classList.remove('open');
+    setTimeout(() => openModal(combine.dataset.combine), 100);
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.getElementById('modalBg').classList.remove('open');
+});
+
+// Copy-to-clipboard
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  const code = btn.parentElement.querySelector('code');
+  if (!code) return;
+  const text = code.textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    btn.textContent = 'copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+  }
+});
+
+// Sticky nav active-section highlight
+const sections = ['overview','onboard','catalog','recipes','demo','cheatsheet','triage'];
+function updateActiveNav() {
+  let active = sections[0];
+  for (const id of sections) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top < 100) active = id;
+  }
+  document.querySelectorAll('header nav a').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + active);
+  });
+}
+window.addEventListener('scroll', updateActiveNav, {passive: true});
+
+// ============ Live demo ============
+const KEY_STORAGE = 'ai-stack-litellm-key';
+const BASE_STORAGE = 'ai-stack-litellm-base';
+
+function loadDemo() {
+  try {
+    const k = localStorage.getItem(KEY_STORAGE);
+    if (k) document.getElementById('demoKey').value = k;
+    const b = localStorage.getItem(BASE_STORAGE);
+    if (b) document.getElementById('demoBase').value = b;
+  } catch(e){}
+}
+loadDemo();
+
+document.getElementById('demoSave').addEventListener('click', () => {
+  try {
+    localStorage.setItem(KEY_STORAGE, document.getElementById('demoKey').value);
+    localStorage.setItem(BASE_STORAGE, document.getElementById('demoBase').value);
+    setOut('Saved. Will not leave this browser.', 'success');
+  } catch(e){ setOut('Could not save (private browsing?)', 'error'); }
+});
+document.getElementById('demoForget').addEventListener('click', () => {
+  try { localStorage.removeItem(KEY_STORAGE); localStorage.removeItem(BASE_STORAGE); } catch(e){}
+  document.getElementById('demoKey').value = '';
+  setOut('Forgot key.', 'success');
+});
+
+function setOut(msg, cls) {
+  const el = document.getElementById('demoOut');
+  el.textContent = msg;
+  el.className = 'out' + (cls ? ' ' + cls : '');
+}
+
+async function listModels() {
+  const key = document.getElementById('demoKey').value;
+  const base = document.getElementById('demoBase').value || 'http://litellm:4000/v1';
+  if (!key) { setOut('Paste a bearer key first.', 'error'); return; }
+  setOut('Fetching models…');
+  try {
+    const r = await fetch(base.replace(/\/$/,'') + '/models', {headers:{'Authorization': 'Bearer ' + key}});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const ids = (data.data || []).map(m => m.id).sort();
+    const sel = document.getElementById('demoModel');
+    sel.innerHTML = ids.map(id => `<option value="${escapeAttr(id)}">${escapeHtml(id)}</option>`).join('');
+    if (ids.includes('local-lfm2')) sel.value = 'local-lfm2';
+    else if (ids.includes('local')) sel.value = 'local';
+    setOut(`Found ${ids.length} model${ids.length===1?'':'s'}. Picked "${sel.value}".`, 'success');
+  } catch(e) {
+    setOut(`Failed: ${e.message}\n\nLikely CORS — the page wasn't loaded from the same origin as LiteLLM. To use the live demo, serve this HTML from \`python -m http.server\` on the same host as your stack. The cheatsheet's curl commands work fine from the terminal.`, 'error');
+  }
+}
+document.getElementById('demoListModels').addEventListener('click', listModels);
+
+async function sendChat() {
+  const key = document.getElementById('demoKey').value;
+  const base = document.getElementById('demoBase').value || 'http://litellm:4000/v1';
+  const model = document.getElementById('demoModel').value;
+  const prompt = document.getElementById('demoPrompt').value || 'In one sentence: what is a Merkle tree?';
+  if (!key) { setOut('Paste a bearer key first.', 'error'); return; }
+  if (!model) { setOut('Click "List models" first to populate the model picker.', 'error'); return; }
+  setOut('Sending…');
+  try {
+    const t0 = performance.now();
+    const r = await fetch(base.replace(/\/$/,'') + '/chat/completions', {
+      method: 'POST',
+      headers: {'Authorization':'Bearer ' + key, 'Content-Type':'application/json'},
+      body: JSON.stringify({model, messages:[{role:'user',content:prompt}], max_tokens: 200})
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(`HTTP ${r.status}: ${txt.slice(0,300)}`);
+    }
+    const data = await r.json();
+    const elapsed = ((performance.now() - t0)/1000).toFixed(2);
+    const content = data.choices?.[0]?.message?.content || '(no content)';
+    const usage = data.usage || {};
+    setOut(`▸ ${model}  (${elapsed}s, ${usage.completion_tokens||'?'} tokens)\n\n${content}`, 'success');
+  } catch(e) {
+    setOut(`Failed: ${e.message}\n\nLikely CORS. See "About this demo" note below the form.`, 'error');
+  }
+}
+document.getElementById('demoSend').addEventListener('click', sendChat);
+
+async function checkStatus() {
+  const base = document.getElementById('demoBase').value || 'http://litellm:4000/v1';
+  setOut('Checking…');
+  try {
+    const r = await fetch(base.replace(/\/v1\/?$/,'') + '/health/readiness');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    setOut(`LiteLLM: ${data.status || 'ok'}\nDB: ${data.db || 'n/a'}\nReachable from this page.`, 'success');
+  } catch(e) {
+    setOut(`Stack health check failed: ${e.message}\n\nLikely CORS (see note) or LiteLLM is down. From terminal:\ncurl -sf http://litellm:4000/health/readiness`, 'error');
+  }
+}
+document.getElementById('demoStatus').addEventListener('click', checkStatus);
+
+// ============ Boot ============
+renderServiceGrid();
+renderRecipes();
+renderCheatsheet();
+updateActiveNav();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+docling>=2.0
+llama-index>=0.10
+llama-index-vector-stores-qdrant>=0.1
+llama-index-embeddings-openai-like>=0.1
+qdrant-client>=1.10
+mcp>=1.0
+openai>=1.30

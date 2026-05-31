@@ -1,0 +1,627 @@
+# Architecture
+
+The installer is intentionally **not** a monolithic bash script. It's a small,
+disciplined system with clear responsibility boundaries. This doc explains
+where things live and why.
+
+If you're patching the installer, read this first. The choices below were
+debated through a three-way review (AI-infra, DevOps, adversarial) and the
+debate outcomes are in [CHANGELOG.md](../CHANGELOG.md).
+
+---
+
+## File-by-file responsibility
+
+```
+~/ai-stack/
+├── install.sh                       — entry point, dispatcher, NO logic
+├── services.yml                     — single source of truth (service registry)
+├── .env                             — secrets + config (mode 0600)
+│
+├── installer/
+│   ├── lib/                         — sourced helpers; no direct exec
+│   │   ├── common.sh                — log/color/lock/stamp/queue/atomic_write
+│   │   ├── env.sh                   — atomic .env read/write (awk-based)
+│   │   ├── docker.sh                — managed docker run; recreate guard; backup
+│   │   ├── validate.sh              — wait_http / port_listening / require_disk
+│   │   ├── prompt.sh                — confirm / choose / secret_input
+│   │   ├── litellm.sh               — callback chain mutation helpers
+│   │   ├── openshell.sh             — hang-resilient sandbox-create watchdog (phases 04 + 15)
+│   │   ├── network.sh               — ai-stack net + /etc/hosts block + lo0 alias binding + launchd plist
+│   │   ├── verify.sh                — runtime-probe helpers (used by Phase 00·V + install.sh verify)
+│   │   ├── prepare-sudo.sh          — sudo-only pre-flight (lo0 + /etc/hosts) with path-injection guards
+│   │   ├── aliases.tsv              — canonical alias→IP table (single source of truth)
+│   │   ├── status.sh                — `install.sh status` (run via bash)
+│   │   ├── adopt.sh                 — `install.sh adopt <svc>` (interactive)
+│   │   ├── gc.sh                    — `install.sh gc` (partial orphan cleanup)
+│   │   ├── history.sh               — `install.sh history` (assemble CHANGELOG.d)
+│   │   └── reset.sh                 — `install.sh reset --confirm soft|hard|nuke`
+│   │
+│   ├── phases/                      — one script per phase, all self-contained
+│   │   ├── 00_host.sh               — brew + dir tree + .env defaults
+│   │   ├── 00s_services.sh          — services.yml validate + stack CLI wrapper
+│   │   ├── 00n_networking.sh        — ai-stack docker net + /etc/hosts block + lo0 aliases + launchd plist
+│   │   ├── 00v_verify.sh            — runtime verification pre-flight (6 probes; side-effect-free)
+│   │   ├── 01_inference.sh          — ollama + LiteLLM
+│   │   ├── 01h_phoenix.sh           — Phoenix + arize_phoenix callback
+│   │   ├── 02_storage.sh            — FalkorDB + Qdrant
+│   │   ├── 03_honcho.sh             — clone + compose + redis port fix
+│   │   ├── 04_openshell.sh          — OpenShell binary + policy
+│   │   ├── 04f_hermes_fleet.sh      — 7 SOULs + bootstrap (sandbox-side deferred; all-local routing)
+│   │   ├── 04g_security.sh          — guardrails.handler + LLM Guard + audit.sh
+│   │   ├── 05_uis.sh                — Open WebUI + Hermes Workspace
+│   │   ├── 06_documents.sh          — Docling + LlamaIndex venv + MCP server
+│   │   ├── 07_autofyn.sh            — best-effort clone
+│   │   ├── 08_paperclip.sh          — best-effort clone + pnpm
+│   │   ├── 09_alt_memory.sh         — best-effort installed-disabled
+│   │   ├── 10_deerflow.sh           — best-effort clone
+│   │   ├── 11_halo_autoreason.sh    — best-effort halo-engine (bin/halo) + clone
+│   │   ├── 12_blaxel.sh             — npm CLI (cloud-only)
+│   │   ├── 13_ragflow_reserved.sh   — no-op placeholder
+│   │   ├── 14 … 17                  — best-effort (15 is OpenShell-isolated)
+│   │   └── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
+│   │
+│   ├── doctor/
+│   │   ├── doctor.sh                — discovers + runs all checks/*.sh
+│   │   └── checks/                  — one file per failure mode (31 today)
+│   │       ├── 01_orbstack_running.sh
+│   │       ├── 02_host_docker_internal.sh
+│   │       ├── 03_env_valid.sh
+│   │       ├── 04_phoenix_endpoint_set.sh
+│   │       ├── 05_litellm_env_loaded.sh
+│   │       ├── 06_arize_phoenix_callback.sh
+│   │       ├── 07_guardrails_file_or_remove.sh
+│   │       ├── 08_ollama_models.sh
+│   │       ├── 09_phoenix_project.sh
+│   │       ├── 10_helicone_cleanup.sh
+│   │       ├── 11_port_collisions.sh
+│   │       ├── 12_foreign_containers.sh
+│   │       ├── 13_phoenix_api_key.sh
+│   │       ├── 14_ai_stack_network.sh
+│   │       ├── 15_hosts_block.sh
+│   │       ├── 16_container_network_membership.sh
+│   │       ├── 17_alias_resolution.sh
+│   │       ├── 18_dns_collision_guard.sh
+│   │       ├── 19_lo0_aliases.sh
+│   │       ├── 20_container_alias_routable.sh
+│   │       ├── 21_container_dns_in_network.sh
+│   │       └── 22_etc_hosts_ownership.sh
+│   │
+│   ├── smoke/                       — per-phase end-to-end smoke
+│   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
+│   │   ├── 01h.sh                   — Phoenix has ai-stack project
+│   │   ├── 02.sh                    — FalkorDB + Qdrant write+read
+│   │   ├── 03.sh                    — Honcho /health
+│   │   └── 05.sh                    — Open WebUI UI 200
+│   │
+│   └── state/                       — installer's own state
+│       ├── phase_<NN>.done          — empty stamp files (mtime = completion time)
+│       ├── restarts-needed.txt      — queued service-restart list
+│       ├── .lock/                   — mkdir-as-atomic-lock; PID inside
+│       ├── model-ping-results.txt   — per-model PASS/FAIL/SKIP
+│       └── openshell-manual-steps.md — generated by phase 04 when CLI has drifted
+│
+├── bin/                             — daily-driver scripts
+│   ├── stack                        — wrapper: `exec bash install.sh "$@"`
+│   ├── ace / pi / lumen             — agent CLIs (route via LiteLLM)
+│   ├── halo                         — halo-engine entry (routes via LiteLLM)
+│   ├── rlm                          — RLM wrapper → rlm/run_rlm.py (routes via LiteLLM)
+│   ├── audit.sh                     — phase 04·G's 4/4 security smoke
+│   └── start-*.sh                   — one per managed container service
+│
+├── litellm/                         — LiteLLM config + custom callbacks
+│   ├── config.yaml                  — 23 verified model entries + fallback chains
+│   ├── trace_to_file.py             — per-call JSONL writer
+│   └── guardrails.py                — pre-call deny + post-call redaction
+│
+├── data/                            — service state (bind-mounted into containers)
+│   ├── phoenix/                     — sqlite + traces
+│   ├── falkor/                      — RDB
+│   ├── qdrant/                      — vector storage
+│   ├── honcho/                      — postgres data
+│   └── openwebui/                   — webui-state
+│
+├── traces/                          — /traces inside litellm container
+│   ├── litellm.jsonl                — every LLM call (trace_to_file callback)
+│   └── guardrails.jsonl             — every deny/redact event
+│
+├── guardrails/                      — additional rule files (RO-mounted)
+├── honcho/                          — cloned upstream + compose override
+├── hermes-workspace/                — cloned upstream (phase 05)
+├── openshell/
+│   ├── policies/                    — network allowlists per sandbox
+│   ├── fleet-souls/                 — Hermes SOUL.md templates (staged on host)
+│   └── fleet-bootstrap/             — bootstrap.sh (mounted into sandbox)
+├── ingestor/                        — phase 06: docs Python venv + ingest + MCP
+├── ingestor/{inbox,processed}/      — drop files in inbox; ingest.py sweeps to processed
+└── CHANGELOG.md + CHANGELOG.d/<run>.md   — decisions + per-run logs
+```
+
+---
+
+## Why these splits
+
+### Single-source-of-truth: `services.yml`
+
+The Old Way was a `~/.docker-compose.yml` plus a `.env` plus a shell function
+in `~/.zshrc` plus a wiki page. Drift between them was inevitable.
+
+The New Way: `services.yml` declares everything (image, ports, bind, depends,
+health, phase ownership, env-var consumption). Every other piece of the
+installer reads from it:
+
+- `status.sh` joins declared `services.yml` against actual `docker ps` /
+  `brew services list` / `pgrep`.
+- Phase scripts read `services.yml` for image names + ports.
+- Doctor uses `services.yml` for the "should be running" check.
+- The `stack` daily-driver CLI is a thin wrapper.
+
+Edit `services.yml`, run `bash install.sh status` — drift is visible
+immediately.
+
+### One file per phase
+
+The old install guide was an HTML doc with 18 sections. The new installer has
+25 phase scripts (`installer/phases/00_host.sh` through `18_rlm.sh`),
+each:
+
+- Self-contained — can run standalone via `bash install.sh install <phase>`.
+- Has a `precheck()` function that returns 0 if the phase is already done.
+- Short-circuits at the top: `if precheck && stamp_check "$PHASE"; then ok && exit 0`.
+- Stamps itself at the end via `stamp_mark "$PHASE"`.
+
+The phase order is the install order. Forward references (a phase using
+something not yet installed) are physically impossible — each phase script
+fails-loud at its own preconditions.
+
+### One file per doctor check
+
+Same logic for the doctor. Each `installer/doctor/checks/<NN>_<name>.sh`:
+
+- Appends its name to `CHECKS=()`.
+- Sets `CHECK_TITLE[<name>]="human-readable title"`.
+- Defines `<name>_diagnose()` — exits 0 = pass, non-zero = fail.
+- Optionally defines `<name>_fix()` — applies the fix (may prompt).
+
+`doctor.sh` discovers them via `checks/*.sh` glob and runs them all. Adding a
+new failure mode = adding a new file. No central registry to update.
+
+### lib/ — small, single-purpose helpers
+
+Each helper does one thing:
+
+- `common.sh`: log/color, lock, stamp, restart-queue, atomic_write, per-run id.
+- `env.sh`: get_env / set_env / require_env / env_hash / load_env_strict / fix_crlf.
+- `docker.sh`: container_exists / managed / recreate_guard / backup / ensure_image.
+- `validate.sh`: wait_http / port_listening / require_disk_free.
+- `prompt.sh`: confirm / choose / secret_input.
+- `litellm.sh`: callback list mutation + verification.
+
+Phase scripts source what they need. Daily-driver scripts under `bin/` source
+the same helpers via the same path resolution.
+
+---
+
+## Idempotency model
+
+**Stamps are an advisory cache, not the source of truth.** This was the most
+important refinement from the adversarial review.
+
+Every phase script does this:
+
+```bash
+if precheck && stamp_check "$PHASE"; then
+  ok "phase $PHASE already complete"
+  exit 0
+fi
+# ... actual work ...
+stamp_mark "$PHASE"
+```
+
+`precheck()` re-verifies actual state: containers running, files present,
+ports listening, env vars non-empty. If the stamp says "done" but reality
+disagrees, the phase re-runs.
+
+This catches the failure mode where the user manually `docker rm -f honcho`
+and then runs `install.sh install all`. Without the precheck, the stamp would
+make the installer skip phase 03 and downstream phases would fail mysteriously.
+
+---
+
+## Locking — `mkdir` is atomic, `flock` is not portable
+
+macOS doesn't have `flock(1)`. The portable atomic primitive is `mkdir`:
+
+```bash
+mkdir "$LOCKDIR" 2>/dev/null || lock_held
+echo $$ > "$LOCKDIR/pid"
+trap 'rm -rf "$LOCKDIR"' EXIT INT TERM
+```
+
+`lib/common.sh::lock_acquire` adds stale-lock recovery: on lock-held, if
+`$LOCKDIR/pid` exists and `kill -0 $pid` fails, the lock is broken and
+re-acquired. `LOCK_FORCE=1` is the manual override.
+
+Only the `install` and `doctor` commands take the lock. `status`, `logs`, and
+`history` are read-only and lock-free.
+
+---
+
+## .env writes — atomic, awk-based, never sed -i
+
+`set_env KEY VALUE`:
+
+1. Refuses if `KEY` doesn't match `^[A-Z_][A-Z0-9_]*$`.
+2. Refuses if `VALUE` contains a newline.
+3. `mktemp ${ENV_FILE}.XXXXXX` → `chmod 600 $tmp` (secrets never touch disk
+   world-readable).
+4. `awk` rewrites: passes through comments, upserts the key, appends if new.
+5. `mv -f $tmp $ENV_FILE` — atomic on same filesystem (one `rename(2)`).
+
+Readers see the old file or the new file; never a half-written one.
+
+`load_env_strict` validates every non-comment line matches `^[A-Z_][A-Z0-9_]*=`
+and has no trailing CR. Used as a pre-flight before `docker run --env-file`.
+
+---
+
+## Networking (Phase 00·N) — two-layer aliasing
+
+Every managed service in `ai-stack` is reached by **name**, not by
+`127.0.0.1:<port>`. Two layers co-operate to make the same alias resolve
+from any vantage point:
+
+| Layer | Who consumes it | How |
+|---|---|---|
+| `/etc/hosts` block | Mac shell / browser / host-side Python / `bin/audit.sh` | Phase 00·N writes a managed block of 14 `127.0.10.x  <alias>` lines (root:wheel 644) |
+| `lo0` aliases | Kernel routing layer | Phase 00·N runs `ifconfig lo0 alias 127.0.10.X up` per row; required because macOS does NOT auto-route `127.0.0.0/8`. Persistence via `/Library/LaunchDaemons/com.ai-stack.loopback.plist` |
+| `ai-stack` Docker bridge | Every joined container (via `--network ai-stack`) | Docker's embedded DNS resolves bare container names |
+| `--add-host=ollama:host-gateway` | Containers that talk to Ollama (LiteLLM) | Per-container override; only Ollama is host-gateway-routed |
+
+The single source of truth is `installer/lib/aliases.tsv`, a tab-separated
+file with one row per alias (alias, IP, protocol, host_port, container_port,
+phase, service_key). Phase 00·N, Phase 00·V, the doctor checks (14–22),
+the v1→v2 services.yml migration, and every `bin/start-*.sh` all source
+`lib/network.sh::aliases_load` and read from the resulting bash associative
+arrays. Hand-edited drift between the table and the runtime is impossible
+without changing the .tsv.
+
+> **Port form (2026-05-28).** `host_port == container_port` for HTTP
+> services. The brief originally proposed `host_port=80` so the Mac
+> could dial port-free (`http://litellm`), but OrbStack collapses every
+> `--publish *:80:Y` into a single `*:80` wildcard listener — so all
+> HTTP services routed to whichever container was registered first.
+> Mac and container URLs are now identical
+> (`http://litellm:4000`, `http://phoenix:6006`, etc.).
+
+### Why 127.0.10.x
+
+- **Still loopback.** Anything in 127.0.0.0/8 is unreachable from the LAN —
+  the security story (services not exposed to the network) is unchanged.
+- **Distinct from `127.0.0.1`.** Existing tools or pre-refactor containers
+  that bind to `127.0.0.1:<port>` don't interfere with the new bindings.
+- **Visually recognizable.** The `10.` octet flags "this is `ai-stack`."
+- **Per-alias unique IP** means multiple services can share the same host
+  port (e.g., port 80 for HTTP-on-80 service) without `EADDRINUSE`.
+
+### The `ai-stack` Docker network
+
+Created by `installer/phases/00n_networking.sh` with an explicit subnet to
+avoid VPN collisions:
+
+```bash
+docker network create \
+  --driver bridge \
+  --subnet 10.99.0.0/24 \
+  --gateway 10.99.0.1 \
+  ai-stack
+```
+
+`10.99.0.0/24` was chosen to avoid Docker's default 172.17/172.18 picks
+and the common corp-VPN ranges (10.0–10.50). If your environment uses
+10.99.0.0/24, override via `AI_STACK_SUBNET` env var.
+
+### What Phase 00·N actually does
+
+1. **Pre-flight**: refuse if `netstat -nr` shows a pre-existing
+   `127.0.10.x` route on a non-`lo0` interface (a VPN client could
+   otherwise route /etc/hosts dials off-host). Routes that already point
+   at `lo0` are expected — those are our own aliases from a previous
+   run.
+2. **Pre-flight**: refuse if `AI_STACK_SUBNET` is already used by another
+   Docker network (override via env var if needed).
+3. Create the `ai-stack` Docker bridge if missing (idempotent).
+4. Source `installer/lib/aliases.tsv` and compute the expected /etc/hosts
+   block (sha-comparable).
+5. If the on-disk block matches, skip the write (no sudo prompt). Else,
+   `mktemp` → write merged content → `sudo mv -f` → `sudo chown
+   root:wheel /etc/hosts` → `sudo chmod 644 /etc/hosts` → flush
+   dscacheutil and mDNSResponder → self-verify the lookup.
+6. **`lo0_ensure_aliases`**: for every row in `aliases.tsv` whose IP is
+   in `127.0.10.0/24`, run `sudo ifconfig lo0 alias 127.0.10.X up` if
+   not already bound. macOS does NOT auto-route `127.0.0.0/8` (only
+   `127.0.0.1` is on `lo0` by default) — without this step, /etc/hosts
+   resolves but no packets reach the listener.
+7. **`lo0_install_persistence_plist`**: write
+   `/Library/LaunchDaemons/com.ai-stack.loopback.plist` (root:wheel 0644)
+   and `launchctl load` it. The plist re-runs `ifconfig lo0 alias ...`
+   on every boot so the aliases survive reboots. Best-effort: a failure
+   here downgrades to a warning since the next manual `prepare-sudo` can
+   re-establish them.
+8. Verify every alias resolves to its expected IP via `dscacheutil` AND
+   `getent hosts` (catches the case where dscacheutil is broken or not
+   flushed).
+9. Stamp `installer/state/phase_00n.done`.
+
+The phase is idempotent and self-healing; running it twice is a no-op,
+running it after a partial install reconciles whatever's missing.
+
+### Phase 00·V — runtime verification pre-flight
+
+Phase 00·V runs between 00·N and 01. It is **side-effect-free** — it
+only probes; it never mutates. The premise: every architectural claim
+the installer makes ("X is reachable at Y") gets a corresponding runtime
+probe BEFORE Phase 01 starts a single container.
+
+This phase exists because syntactic checks (`bash -n`, `yq -e`,
+`ast.parse`, `docker network inspect`) proved every patch "clean" in the
+original Phase 01 incident while the actual TCP path was dead air.
+
+The 6 probes:
+
+1. **`/etc/hosts` ownership**: root:wheel mode 644.
+2. **`lo0` routability**: `nc -z 127.0.10.X 0` (or `ifconfig` grep) for
+   every alias.
+3. **DNS agreement**: `dscacheutil -q host -a name litellm` and
+   `getent hosts litellm` return the same IP as `aliases.tsv`.
+4. **`--add-host=ollama:host-gateway`**: spawn a transient probe
+   container, confirm `getent hosts ollama` resolves to the host gateway
+   inside.
+5. **End-to-end routing**: bind a transient `--publish 127.0.10.3:65182:80`
+   listener (phoenix-otlp IP, port 65182 to avoid collisions), `curl` it,
+   confirm 200.
+6. **ai-stack network**: a transient `docker run --rm --network ai-stack`
+   succeeds. Skips gracefully when the network doesn't yet exist
+   (legitimate pre-install state).
+
+Stamp `phase_00v.done` is honored only when fresh (< 5 min) so re-running
+the orchestrator doesn't skip stale probes. Failure prints the exact fix
+command — usually `sudo bash install.sh prepare-sudo` — and exits 1
+*before* a single Phase 01 container starts.
+
+### `install.sh verify` subcommand
+
+`bash install.sh verify` runs Phase 00·V standalone (and clears its own
+stamp first so it always actually probes). Use this after any networking
+change (VPN connect/disconnect, OrbStack restart, sudo changes) to
+confirm the alias chain is still intact before installing or starting
+anything.
+
+### `prepare-sudo` — the sudo-only pre-flight
+
+`sudo bash install.sh prepare-sudo` is the one-shot path that handles
+every operation that requires `sudo`. After it succeeds, the rest of
+`install.sh install all` runs without prompting. It:
+
+- writes the `/etc/hosts` managed block (root:wheel 0644);
+- binds every alias on `lo0`;
+- installs the launchd plist for reboot persistence;
+- nothing else — it does NOT install brew, does NOT start containers, and
+  does NOT mutate `~/ai-stack/.env`.
+
+Hardening (post-2026-05-28):
+- Refuses to run if `AI_STACK` is not under `/Users/`, is a symlink, is
+  inside `/tmp/` or `/var/`, or has a foreign-owned ancestor directory.
+- Validates `SUDO_USER` is the original invoker (`$SUDO_USER == $USER`
+  where `$USER` is the pre-sudo user).
+- Uses `chown -h` only on the specific files written; never `chown -R`
+  on `$AI_STACK` (which would follow symlinks and corrupt unrelated trees).
+- Takes `lock_acquire` before any system mutation; concurrent invocations
+  serialize cleanly.
+
+Design record: `installer/state/preparesudo-design-final.md`. Three-agent
+review: `installer/state/preparesudo-review-{A,B,C}.md`.
+
+---
+
+## Docker discipline
+
+`bin/start-<svc>.sh` is the only path that creates managed containers. Each
+follows three rules:
+
+### 1. Flag order is FIXED
+
+```
+docker run -d \
+  --name <name> \
+  --label ai-stack.managed=true \
+  --label ai-stack.phase=<NN> \
+  --label ai-stack.partial=true \
+  --network ai-stack \
+  --add-host=ollama:host-gateway \
+  --restart unless-stopped \
+  --env-file ~/ai-stack/.env \
+  -e VAR=val \
+  -p 127.0.10.X:HOST:CONTAINER \
+  -v /host/path:/container/path \
+  IMAGE \
+  CMD ARGS
+```
+
+Mixing `-e` after `-p`/`-v` leaks env flags to the entrypoint CLI as args.
+LiteLLM then errors `No such option: -e`. The order above is the only safe one.
+The `--add-host=ollama:host-gateway` line is only required for containers
+that consume Ollama (LiteLLM today); other services can drop it.
+
+### 2. Bind to 127.0.10.x (named loopback) on the service's native port
+
+The host firewall is not the security boundary; explicit bind is. Every port
+mapping is `127.0.10.x:PORT:PORT` where `x` comes from the alias→IP
+table in `installer/lib/aliases.tsv` (also listed in [PORTS.md](PORTS.md))
+and `PORT` is the service's native container port. Each alias gets a
+unique loopback address; combined with native-port publish, every service
+has a unique `IP:PORT` host-side surface.
+
+> The original design used `host_port=80` to give the Mac port-free URLs
+> (`http://litellm`), but OrbStack collapsed every `*:80` publish into a
+> single host-side wildcard listener. See
+> [CHANGELOG.md 2026-05-28 entry](../CHANGELOG.md) for the diagnosis. Native
+> ports avoid the wildcard and Mac+container URLs are now identical.
+
+Container-to-container traffic uses Docker's embedded DNS in the `ai-stack`
+bridge network: from inside any joined container, `http://litellm:4000`,
+`http://phoenix:6006`, etc. resolve to the corresponding container's
+internal IP. No `/etc/hosts` lookup is needed inside containers.
+
+The only host-from-container path that survives this refactor is Ollama
+(brew service on the Mac, not a container). Consumers get
+`--add-host=ollama:host-gateway` so `ollama:11434` resolves to the host's
+gateway IP from inside the container. Phase 00·N probes the `ai-stack`
+network exists with the bridge driver, `/etc/hosts` has every alias, lo0
+is bound for every alias IP, and `dscacheutil -q host -a name <alias>`
+agrees with the table.
+
+### What's in `/etc/hosts`
+
+Phase 00·N appends a contiguous block delimited by markers
+(`# >>> ai-stack (managed; do not edit manually) >>>` … `# <<< ai-stack
+(managed) <<<`) containing one IPv4 entry per alias (15 lines today). The
+block is computed from `installer/lib/aliases.tsv`; if the on-disk block
+matches, the write is skipped (and no sudo prompt fires). On change, the
+helper writes via `mktemp` → `sudo mv` → `sudo dscacheutil -flushcache`
+→ `sudo killall -HUP mDNSResponder`, then self-verifies with a fresh
+`dscacheutil -q host -a name`. IPv6 (::1) is intentionally not used —
+the stack listens IPv4-only.
+
+### 3. Labels for ownership + GC
+
+Every managed container gets:
+
+- `ai-stack.managed=true` — this installer owns it. (Foreign containers
+  without this label are reported as `foreign` in status; user must
+  `install.sh adopt` to take ownership.)
+- `ai-stack.phase=<NN>` — which phase installed it.
+- `ai-stack.partial=true` — set at create, removed by `mark_ready` after
+  smoke test passes. `install.sh gc` cleans `partial=true` orphans.
+
+### 4. Recreate guard
+
+`recreate_guard "$NAME" "$RECREATE_FLAG"` aborts unless `--recreate` is
+explicit or `FORCE_RECREATE=1` is set. On `--recreate`:
+
+- Backs up stateful data via `docker cp` to `data/<svc>.bak-<ts>/`.
+- `docker rm -f <name>`.
+- Caller proceeds to `docker run` the new one.
+
+No silent `docker rm -f` anywhere. Conservative-mode is the default.
+
+---
+
+## Adoption flow (foreign containers)
+
+`bash install.sh adopt <svc>` is the path for a container that was started
+outside the installer (typical situation: a previous session). It's
+intentionally hand-cranked, never auto:
+
+1. `docker inspect` — show user the current ports, mounts, labels, env count.
+2. Print what `bin/start-<svc>.sh` *would* produce.
+3. Ask `Proceed? [y/N]`. Decline = no-op.
+4. On yes: `docker cp <name>:<path>/. data/<svc>.bak-<ts>/` for stateful
+   services (Phoenix sqlite, Falkor RDB, Qdrant snapshot, litellm config tree).
+5. `docker rm -f <name>`.
+6. `bash bin/start-<svc>.sh` — new container with managed labels.
+7. Smoke test (HTTP 200 or TCP connect).
+8. On success: `mark_ready` removes the `partial=true` label.
+
+The data is in the backup dir until you delete it. If anything went wrong
+during recreate, manual recovery is `docker cp` from the backup back into the
+new container.
+
+---
+
+## LiteLLM callback chain
+
+`lib/litellm.sh` enforces the rule: **file first, list second, recreate
+third, verify fourth**.
+
+```bash
+litellm_ensure_callback "guardrails.handler" "guardrails.py"
+```
+
+does:
+
+1. Assert `litellm/guardrails.py` exists on host (else LiteLLM crashes
+   `ImportError` at startup).
+2. yq-mutate `litellm_settings.callbacks` in `config.yaml`, idempotent
+   (`unique` filter).
+3. Caller is responsible for triggering recreate via `queue_restart litellm`
+   (conservative mode) or calling `start-litellm.sh --recreate`.
+4. After recreate, `litellm_assert_callback_loaded "$mod"` greps the new logs.
+
+This is the order; reversing any pair causes a known landmine.
+
+---
+
+## Downstream-restart queue
+
+A phase that mutates `.env` in a way that requires restarting an
+already-installed upstream service writes to
+`installer/state/restarts-needed.txt`:
+
+- Phase 01·H sets `arize_phoenix` callback → needs litellm restart.
+- Phase 03 generates `HONCHO_API_KEY` → needs litellm restart (consumer).
+- Phase 04·G adds `guardrails.handler` → needs litellm restart.
+
+End of `install all` prints:
+
+```
+⚠ Queued restarts pending (run 'install.sh apply-restarts'):
+    litellm
+```
+
+User runs `bash install.sh apply-restarts`, which executes
+`bash bin/start-<svc>.sh --recreate` per queued service (interactive
+confirmation, with backup-before-recreate for stateful services).
+
+The queue is conservative by design: phases never auto-restart something the
+user is actively using.
+
+---
+
+## Multi-agent review (one-time, build-time)
+
+The architecture was approved by three independent reviewers at build time
+(transcripts and decisions in [CHANGELOG.md](../CHANGELOG.md)):
+
+- **Domain Expert A** (AI infra) — LiteLLM/Ollama/Phoenix/OTel/OrbStack runtime
+  concerns.
+- **Domain Expert B** (DevOps/bash/macOS) — bash 5+ requirement, strict-mode
+  flags, awk-based env writes, mkdir-lock, doctor namespacing.
+- **Adversarial reviewer** — found 13 failure modes including the existing-
+  foreign-container drift loop, OrbStack bind-mount data nuke, `.env` typo
+  silent-fail, progress.json staleness, Honcho chicken-and-egg.
+
+Every one of their concrete recommendations is in the code. The review is
+captured in CHANGELOG so future maintainers can see the reasoning, not just
+the outcome.
+
+---
+
+## What's intentionally **not** here
+
+- **No central state DB.** Stamps are individual files. Progress is computed
+  from filesystem + docker ps + curl. Adding more state would create more
+  drift surface.
+- **No installer-internal "framework."** Phases call lib helpers; doctor
+  discovers checks via glob. No DSL, no plugin registry, no annotations.
+- **No automatic config migration.** `services.yml` has a `version: 1` field
+  for the day a breaking schema change is needed, but there are no migration
+  scripts yet. When that day comes, write
+  `installer/migrations/v1-to-v2.sh` and detect at install.sh startup.
+- **No silent destructive ops anywhere.** Even `reset --confirm` requires
+  the tier name as a second arg; `nuke` requires typing `nuke ai-stack`
+  literally.
+
+These omissions are deliberate. If you find yourself reaching for them, that
+might be a sign the system has grown past its current operating model — read
+the principles in [README.md § Operating principles](../README.md#operating-principles-mayssams-constitution-internalized) first.
