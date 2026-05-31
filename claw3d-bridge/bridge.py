@@ -42,7 +42,7 @@ PI_SANDBOX = "pi-v1"
 DEERFLOW_URL = os.environ.get("DEERFLOW_URL", "http://localhost:2026")
 DEERFLOW_AUTH = os.environ.get("DEER_FLOW_INTERNAL_AUTH_TOKEN", "")
 HERMES_TIMEOUT = int(os.environ.get("CLAW3D_HERMES_TIMEOUT", "120"))
-PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "120"))
+PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "180"))  # pi agent turn on cold local model is slow
 DEERFLOW_TIMEOUT = int(os.environ.get("CLAW3D_DEERFLOW_TIMEOUT", "600"))
 DEFAULT_MODEL = os.environ.get("CLAW3D_DEFAULT_MODEL", "local")
 
@@ -150,52 +150,90 @@ def run_pi(prompt: str, model: str) -> str:
     if not _sandbox_ready(PI_SANDBOX):
         raise RuntimeError("pi-v1 not reachable (OpenShell relay down? `brew services restart openshell`)")
     pi_key = _get_env("PI_LITELLM_KEY")
-    model = _safe_model(model)
-    # SECURITY: (CWE-78) pass prompt/model/key as SEPARATE argv via `env` — NO
-    # `/bin/sh -c`, so shell metacharacters can't inject. (CWE-88) the trailing
-    # `--` ends pi's options so a prompt starting with `-` is taken as the
-    # positional prompt, not parsed as a flag. model is allowlisted above.
+    # Pi only completes reliably on `local` (gemma4) — local-heavy/lfm2 exceed Pi's
+    # timeout. `--thinking off` is REQUIRED: Pi's default sends reasoning_effort as a
+    # dict, which crashes LiteLLM's Ollama transform (TypeError: unhashable type).
+    # SECURITY: (CWE-78) prompt/model/key are separate argv via `env` (no shell);
+    # (CWE-88) the trailing `--` keeps a leading-'-' prompt positional.
+    # The inference-local extension auto-loads from HOME=/sandbox/.pi/extensions, so
+    # no --extension; no --no-tools (broke the run). pi has NO `--` end-of-options
+    # separator (it errors "Unknown option: --"), so to keep a flag-like prompt from
+    # being parsed as an option (CWE-88), prepend a space — pi then treats it as the
+    # positional prompt (content preserved). The "Model local not found" line is a
+    # benign warning; pi proceeds with it as a custom model id via the extension.
+    if prompt[:1] == "-":
+        prompt = " " + prompt
     cmd = [_openshell(), "sandbox", "exec", "-n", PI_SANDBOX, "--no-tty",
            "--timeout", str(PI_TIMEOUT), "--",
            "env", f"PI_LITELLM_KEY={pi_key}", "HOME=/sandbox",
-           "/sandbox/node_modules/.bin/pi", "-p",
-           "--extension", "/sandbox/.pi/extensions/inference-local.ts",
-           "--provider", "openai", "--model", model, "--no-tools", "--", prompt]
+           "/sandbox/node_modules/.bin/pi",
+           "--provider", "openai", "--model", "local", "--thinking", "off",
+           "-p", prompt]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
     if "relay open timed out" in (out.stderr or "") or "DeadlineExceeded" in (out.stderr or ""):
         raise RuntimeError("OpenShell relay timed out — sandbox unavailable (restart openshell)")
-    text = _strip(out.stdout).strip()
+    # Pi prints Node/UNDICI warnings before the answer — drop them.
+    lines = [ln for ln in _strip(out.stdout).splitlines()
+             if ln.strip() and not any(w in ln for w in ("UNDICI", "Warning:", "experimental", "trace-warnings"))]
+    text = "\n".join(lines).strip()
     if not text and out.returncode != 0:
         raise RuntimeError(_strip(out.stderr)[:300] or "pi returned no output")
     return text
 
 
+def _deerflow_token() -> str:
+    t = os.environ.get("DEER_FLOW_INTERNAL_AUTH_TOKEN", "")
+    if t:
+        return t
+    try:  # deploy.sh persists it here
+        return open(os.path.join(AI_STACK, "deer-flow", "backend", ".deer-flow", ".internal-auth-token")).read().strip()
+    except OSError:
+        return ""
+
+
+_DF_CSRF = "claw3d-bridge"  # any value; X-CSRF-Token header + csrf_token cookie must match
+
+
+def _df_request(path: str, token: str, payload) -> dict:
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(f"{DEERFLOW_URL}{path}", data=body, method="POST", headers={
+        "Content-Type": "application/json",
+        "X-DeerFlow-Internal-Token": token,   # internal-auth bypass (no login cookie)
+        "X-CSRF-Token": _DF_CSRF,
+        "Cookie": f"csrf_token={_DF_CSRF}",
+    })
+    with urllib.request.urlopen(req, timeout=DEERFLOW_TIMEOUT) as r:
+        raw = r.read().decode()
+    return json.loads(raw) if raw.strip() else {}
+
+
 def run_deerflow(prompt: str, model: str) -> str:
-    body = json.dumps({
-        "input": {"messages": [{"type": "human", "content": prompt}]},
-        "config": {"configurable": {"thread_id": "claw3d-bridge"}},
-        "context": {"model_name": model},
-    }).encode()
-    url = f"{DEERFLOW_URL}/api/langgraph/threads/claw3d-bridge/runs/wait"
-    req = urllib.request.Request(url, data=body, method="POST",
-                                 headers={"Content-Type": "application/json"})
-    if DEERFLOW_AUTH:
-        req.add_header("X-Internal-Auth", DEERFLOW_AUTH)
-        req.add_header("Authorization", f"Bearer {DEERFLOW_AUTH}")
+    token = _deerflow_token()
+    if not token:
+        raise RuntimeError("DeerFlow internal-auth token not found (set DEER_FLOW_INTERNAL_AUTH_TOKEN or run Phase 10)")
+    model = _safe_model(model)
+    tid = "claw3d-bridge"
     try:
-        with urllib.request.urlopen(req, timeout=DEERFLOW_TIMEOUT) as r:
-            data = json.loads(r.read().decode())
+        # Ensure the thread exists (idempotent), then block on a run.
+        try:
+            _df_request("/api/threads", token, {"thread_id": tid, "if_exists": "do_nothing"})
+        except urllib.error.HTTPError:
+            pass  # already exists / not required
+        data = _df_request(f"/api/threads/{tid}/runs/wait", token, {
+            "input": {"messages": [{"role": "user", "content": prompt}]},
+            "config": {"configurable": {"thread_id": tid, "model_name": model}},
+            "context": {"model_name": model},
+        })
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"deerflow HTTP {e.code}: {e.read()[:200]!r}")
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"deerflow unreachable: {e}")
-    # LangGraph /runs/wait returns the final state; pull the last AI message.
     msgs = (data or {}).get("messages") or (data.get("values", {}) or {}).get("messages", [])
     for m in reversed(msgs):
         if m.get("type") in ("ai", "assistant") or m.get("role") == "assistant":
             c = m.get("content", "")
             return c if isinstance(c, str) else json.dumps(c)
-    return json.dumps(data)[:2000]
+    return (json.dumps(data)[:1500]) if data else "[DeerFlow returned no message]"
 
 
 def dispatch(agent: dict, prompt: str, model: str) -> str:
