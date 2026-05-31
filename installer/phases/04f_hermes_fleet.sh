@@ -15,9 +15,12 @@ SANDBOX=hermes-fleet-v1
 SOULS_DIR="$AI_STACK/openshell/fleet-souls"
 # Hermes routes LLM calls through LiteLLM (OpenAI-compatible) via a virtual key,
 # reached from inside the sandbox at host.docker.internal:4000 (allowlisted in
-# hermes-fleet-v1.yaml). Default model is local-heavy (all-local, no cloud).
+# hermes-fleet-v1.yaml). Default model is `local` = gemma4:e4b — LIGHT + FAST
+# (~9.6GB), workable for interactive chat / claw3d / the Telegram gateway on a
+# 24GB box. (local-heavy = qwen3.6:27b ~22GB thrashes 24GB → slow; still available
+# as an explicit alias for heavy reasoning, just not the default.) All-local, no cloud.
 LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
-HERMES_MODEL="local-heavy"
+HERMES_MODEL="local"
 
 PROFILES=(
   "hermes_cos|chief of staff — decomposes goals, routes to specialists, does not implement|local-heavy"
