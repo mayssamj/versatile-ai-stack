@@ -79,11 +79,12 @@ svc_pidfile_alive() {
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
-print_header
-
-# Use yq to iterate services in declared order.
-while IFS= read -r name; do
-  [[ -z "$name" ]] && continue
+# Render one status row for a single service. Behavior is unchanged from the
+# original flat loop — extracted into a function so the grouped driver below can
+# call it per logical section.
+render_row() {
+  local name="$1"
+  local local_type local_enabled declared actual notes own
   local_type="$(svc_type "$name")"
   local_enabled="$(svc_enabled "$name")"
   declared=$([[ "$local_enabled" == "true" ]] && echo enabled || echo disabled)
@@ -145,4 +146,58 @@ while IFS= read -r name; do
   [[ "$own" == "foreign" ]] && notes="${notes}foreign (run 'install.sh adopt $name'); "
 
   printf "$ROW_FMT" "$name" "$declared" "$actual" "$own" "$notes"
+}
+
+# --- logical service sections for the status view -----------------------------
+# Order in which sections print. `other` is a catch-all so a newly-added service
+# never silently disappears from `status`.
+GROUP_ORDER=(inference storage-memory observability-security agent-runtime uis agents-workflows documents tooling-extras other)
+
+group_label() {
+  case "$1" in
+    inference)              echo "Inference plane" ;;
+    storage-memory)         echo "Storage & memory" ;;
+    observability-security) echo "Observability & security" ;;
+    agent-runtime)          echo "Agent runtime & sandboxes" ;;
+    uis)                    echo "User interfaces" ;;
+    agents-workflows)       echo "Agents, research & workflows" ;;
+    documents)              echo "Documents / RAG" ;;
+    tooling-extras)         echo "Tooling & extras" ;;
+    *)                      echo "Other" ;;
+  esac
+}
+
+# Map a service key to its logical section. Pure bash (no yq) so it's cheap to
+# call repeatedly. Keep in sync with services.yml when adding a service.
+svc_group() {
+  case "$1" in
+    litellm|ollama|lmstudio)                                             echo inference ;;
+    falkordb|qdrant|honcho|remnic_hermes|byterover_cli)                  echo storage-memory ;;
+    phoenix|litellm_guardrails_builtin|litellm_guardrails_secrets|llm_guard|dual_llm_researcher|skillspector) echo observability-security ;;
+    openshell|hermes_fleet|hermes_telegram|pi|pi_gateway_litellm)        echo agent-runtime ;;
+    openwebui|hermes_workspace|autofyn|paperclip|paperclip_honcho_plugin|claw3d|claw3d_bridge) echo uis ;;
+    deerflow|ace|rlm|halo|autoreason|blaxel_cli)                         echo agents-workflows ;;
+    docs_ingestor|docs_mcp)                                              echo documents ;;
+    unsloth|lumen_mcp|portless|cmux|openagents)                          echo tooling-extras ;;
+    *)                                                                   echo other ;;
+  esac
+}
+
+print_header
+
+# Collect declared service keys (in services.yml order) once.
+ALL_NAMES=()
+while IFS= read -r name; do
+  [[ -n "$name" ]] && ALL_NAMES+=("$name")
 done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+
+# Print section-by-section; within a section, preserve declared order.
+for grp in "${GROUP_ORDER[@]}"; do
+  members=()
+  for name in "${ALL_NAMES[@]}"; do
+    [[ "$(svc_group "$name")" == "$grp" ]] && members+=("$name")
+  done
+  (( ${#members[@]} == 0 )) && continue
+  printf '\n── %s\n' "$(group_label "$grp")"
+  for name in "${members[@]}"; do render_row "$name"; done
+done
