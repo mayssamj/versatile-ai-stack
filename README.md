@@ -1,14 +1,22 @@
 # ai-stack
 
-**A local-first AI platform that runs entirely on your Mac — no cloud required.**
+**Your own private AI cloud — 39 services, one Mac, zero bytes leaving the building.**
 
-ai-stack wires together a [LiteLLM](doc/STACK-GUIDE.md) model hub, [Phoenix](doc/STACK-GUIDE.md)
-observability, and a fleet of AI agents into one self-hosted stack. Everything —
-the models, the agents, the memory, the traces — stays on your machine. You point
-your apps and agents at a single local endpoint (`http://litellm:4000`) and they
-get model routing, tracing "for free," and isolation built in. One installer brings
-it all up, validates it end-to-end, and heals itself; it never destroys a running
-container without explicit confirmation.
+![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 39](https://img.shields.io/badge/services-39-blue) ![doctor: 40 checks](https://img.shields.io/badge/doctor-40%2F40-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
+
+ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: local models, a fleet of agents, memory, RAG, and full call-by-call observability — all wired behind a single local endpoint. One installer brings up all 39 services, validates them end-to-end, and heals itself. Nothing phones home; cloud is opt-in only when you add your own keys.
+
+---
+
+## Why you want this
+
+- **One local endpoint for everything** — point any app or agent at `http://litellm:4000/v1` and get model routing, scoped keys, and tracing for free.
+- **Watch every thought your agents have** — every LLM call lands in Phoenix at `http://phoenix:6006`: prompts, responses, latency, and cost, all in one UI.
+- **A whole team in a box** — the Hermes 7-profile fleet, a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
+- **Truly local-first** — models, memory, traces, and documents all stay on your machine; it works fully offline and only touches the cloud if you hand it keys.
+- **Three local models, sensible defaults** — `gemma4` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
+- **One installer, self-healing and reversible** — brings up all 39 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 40/40 doctor checks.
+- **See it before you run it** — [`doc/EXPLORE.html`](doc/EXPLORE.html) is a single self-contained page (just double-click, works offline) with a searchable card and copy-paste demo for every service.
 
 ---
 
@@ -45,13 +53,89 @@ open doc/EXPLORE.html      # macOS — opens it in your default browser
 
 ---
 
+## How it fits together
+
+You reach the stack through a UI or the terminal, and every AI request funnels through LiteLLM out to local or cloud models, with storage, document, and safety services hanging off to the side.
+
+```mermaid
+flowchart LR
+  You((You))
+
+  subgraph UIs[UIs]
+    OWU[openwebui :8080]
+    HW[workspace :3000]
+    PC[paperclip :3100]
+    CLI["Terminal / CLI"]
+  end
+
+  subgraph Agents[Agents]
+    HF["hermes-fleet-v1 (sandbox)"]
+    AF[autofyn :3400]
+    DF[DeerFlow]
+  end
+
+  subgraph Infer[Inference]
+    LL[litellm :4000]
+    OL[ollama :11434]
+    LMS["lmstudio :1234 (opt-in)"]
+    CLOUD[(Cloud APIs)]
+  end
+
+  subgraph Storage[Storage and Memory]
+    HO[honcho :8000]
+    QD[qdrant :6333]
+    FK[falkordb :6379]
+  end
+
+  subgraph Docs[Documents]
+    DC[Docling]
+    LI[LlamaIndex]
+    MCP[docs-mcp :8765]
+  end
+
+  subgraph Obs[Observability and Security]
+    PX[phoenix :6006]
+    LG[llm-guard :8000]
+    GR[Built-in guardrails]
+  end
+
+  You --> UIs
+  You --> CLI
+
+  OWU --> LL
+  HW --> HF
+  PC --> Agents
+  CLI --> Agents
+
+  HF --> LL
+  AF --> LL
+  DF --> LL
+  HF --> HO
+  HF --> MCP
+
+  LL --> OL
+  LL -.opt-in.-> LMS
+  LL --> CLOUD
+  LL --> PX
+  LL --> GR
+
+  Docs --> QD
+  MCP --> QD
+  DC --> LI
+  LI --> Docs
+
+  Agents -.optional.-> LG
+```
+
+---
+
 ## What you get
 
 A plain-language tour of the headline pieces (the full inventory is in the table below):
 
 - **LiteLLM — the model hub.** One local endpoint (`http://litellm:4000/v1`) that
   every app and agent calls. It routes to your local models (and optionally to
-  cloud providers if you add keys) and emits traces automatically.
+  cloud providers if you add keys), enforces scoped keys, and emits traces automatically.
 - **Phoenix — observability.** Every LLM call your agents make lands in the Phoenix
   UI (`http://phoenix:6006`) "for free" — see prompts, responses, latency, and cost
   in one place.
@@ -60,14 +144,15 @@ A plain-language tour of the headline pieces (the full inventory is in the table
   isolated inside an OpenShell sandbox. You can even chat with them from your phone
   via a Telegram bot.
 - **Pi — sandboxed coding agent.** A coding agent locked in its own `pi-v1` sandbox
-  with a tight egress allowlist. Launch it with `bin/pi`.
-- **DeerFlow — research workflows.** Multi-step research runs that route through the
+  with a tight egress allowlist — it can reach local models, memory, and your docs,
+  but not Phoenix, Qdrant, the master key, or the open internet. Launch it with `bin/pi`.
+- **DeerFlow — research workflows.** Multi-step agentic research runs that route through the
   same local model hub.
 - **Open WebUI — chat in your browser.** A familiar ChatGPT-style UI wired to your
   local models, at `http://openwebui:8080`.
 - **Three local models.** `local-gemma4` (Ollama `gemma4:e4b`, the lightweight
   default for any unassigned agent), `local-qwen3.6` (LM Studio MLX, heavy
-  reasoning), and `local-qwen3-coder` (LM Studio MLX, coding). See [models.md](doc/models.md).
+  reasoning, opt-in), and `local-qwen3-coder` (LM Studio MLX, coding, opt-in). See [models.md](doc/models.md).
 
 Plus storage (FalkorDB + Qdrant), cross-agent memory (Honcho), a docs RAG pipeline,
 security guardrails, fine-tuning (Unsloth), and more — all in the table below.
@@ -126,48 +211,163 @@ The full alias → port table is in [PORTS.md](doc/PORTS.md).
 
 ---
 
-## First things to try
+## Use it — first things to try
 
-> **🗺️ See the whole stack at a glance — open [`doc/EXPLORE.html`](doc/EXPLORE.html).**
-> A single self-contained page (just double-click it; works offline) with an
-> interactive, searchable card for **all 39 services**: what each one is, why it
-> exists, and a copy-paste demo. The fastest way to discover and play with the stack.
+Two flagship use-cases make the best on-ramp. Start with the 5-minute wow, then graduate to chatting with your own documents.
 
-- **Chat with a local model.** Open [http://openwebui:8080](http://openwebui:8080)
-  (Open WebUI) and send a message — it routes through LiteLLM to your local model
-  and the call shows up in Phoenix.
-- **Run the Pi coding agent.** `bin/pi` launches the sandboxed coder in its `pi-v1`
-  isolation, routing through LiteLLM with its own scoped key.
-- **Talk to Hermes.** Use the Hermes Workspace UI at [http://workspace:3000](http://workspace:3000),
-  or message the Telegram bot **@vz_hermes_controller_bot** to reach the fleet from
-  your phone.
-- **Watch the traces.** Open [http://phoenix:6006](http://phoenix:6006) and find the
-  `ai-stack` project — every LLM call from every agent lands there automatically.
+### The 5-Minute Wow: One Chat, Four Pillars Lit Up
+
+*In a single chat round-trip you prove the whole stack is wired — proxy, local model, observability, and the host/container DNS — without writing a line of code.*
+
+1. Open the chat UI at `http://openwebui:8080`.
+2. Start a new chat, pick model **`local-gemma4`** (Gemma 4 E4B via Ollama, the default), and ask: *"What's the difference between LoRA and QLoRA?"*
+3. Open the observability UI at `http://phoenix:6006` in another tab and watch the single trace appear: an Open WebUI → LiteLLM span, a LiteLLM → Ollama child span, plus token counts, latency (~3–8s on M4), and the model field `gemma4:e4b`.
+4. That one trace proves the alias chain (`openwebui` → `litellm:4000` → `ollama:11434`), LiteLLM auth, and Phoenix's OTLP exporter are all working.
+
+```bash
+open http://openwebui:8080
+open http://phoenix:6006
+```
+
+That round-trip looks like this — your message passes through LiteLLM and a quick safety check to a model, and the answer streams back while a trace is logged in the background:
+
+```mermaid
+  %%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+sequenceDiagram
+  autonumber
+  participant U as You
+  participant W as openwebui :8080
+  participant L as litellm :4000
+  participant M as Model (Ollama or Claude or ...)
+  participant P as phoenix :6006
+  participant G as Guardrails
+
+  U->>W: "summarize this article" + paste
+  W->>L: POST /v1/chat/completions (model=claude-sonnet)
+  L->>G: pre-call deny check
+  G-->>L: ok
+  L->>M: forward request
+  M-->>L: streamed tokens
+  L->>G: post-call redact check
+  G-->>L: no secrets, pass through
+  L-->>W: SSE stream
+  W-->>U: rendered response
+  L->>P: OTLP trace (async)
+  L->>L: append to traces/litellm.jsonl
+```
+
+### Chat With Your Own PDFs (RAG end-to-end)
+
+*Drop a PDF on disk and ask questions about it in plain chat — Docling parses it, it gets embedded into Qdrant, and Open WebUI answers with citations to the exact chunks.*
+
+1. Copy a PDF into the ingestor inbox folder.
+2. Run the one-shot ingest sweep — it parses, chunks, embeds with `embed-local` (768-dim), and writes vectors into the `ai-stack-docs` Qdrant collection.
+3. Confirm the vectors landed by checking the collection's `points_count`.
+4. Start (or confirm) the docs-mcp server, then in Open WebUI add it as a tool (Settings → Tools → Add → `http://docs-mcp:8765`) and ask your docs a question.
+
+```bash
+cp ~/Downloads/some-paper.pdf ~/ai-stack/ingestor/inbox/
+cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py
+curl -s http://qdrant:6333/collections/ai-stack-docs | jq '.result.points_count'
+bash ~/ai-stack/bin/start-docs_mcp.sh
+curl -s http://docs-mcp:8765/health
+```
+
+The ingest sweep runs this pipeline — inbox → Docling → LlamaIndex → embeddings → Qdrant:
+
+```mermaid
+  %%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+sequenceDiagram
+  autonumber
+  participant U as You
+  participant FS as ingestor/inbox/
+  participant ING as docs-ingestor (bg)
+  participant DC as Docling
+  participant LI as LlamaIndex
+  participant L as litellm :4000
+  participant E as embed-local
+  participant Q as qdrant :6333
+  participant DONE as ingestor/processed/
+
+  U->>FS: cp paper.pdf ingestor/inbox/
+  U->>ING: python ingest.py (manual run)
+  ING->>FS: list files
+  loop per file
+    ING->>DC: convert(paper.pdf)
+    DC-->>ING: structured doc + markdown export
+    ING->>LI: build Document, store via VectorStoreIndex
+    LI->>L: POST /v1/embeddings (per chunk)
+    L->>E: forward
+    E-->>L: 768-dim vector
+    L-->>LI: vector
+    LI->>Q: upsert points
+    Q-->>LI: ok
+    ING->>DONE: move paper.pdf
+  end
+  ING-->>U: "N docs ingested"
+```
+
+### Going deeper
+
+Once the basics click, these scale up — full step-by-steps live in **[USER-GUIDE.md](doc/USER-GUIDE.md)**:
+
+- **🔭 Watch a trace in Phoenix.** Tag any call (`-H 'x-trace-tag: my-exp'`) and find it instantly at [http://phoenix:6006](http://phoenix:6006) — prompt, latency, and cost, no guessing.
+- **🤖 Dispatch a Hermes specialist in a sandbox.** `hermes hermes_software_engineer "fix /sandbox/buggy.py …"` runs inside the deny-by-default `hermes-fleet-v1` — it can call models and write its workspace, but not touch the host or open internet.
+- **🧰 Run the Pi coding agent.** `bin/pi` drops you into a tree-branching TUI coder locked to local models + your docs; from inside, hitting Phoenix returns `403 policy_denied`. Panic-stop with `bin/pi-kill`.
+- **🔬 Kick off a DeerFlow research run.** `stack start deerflow` → open `http://localhost:2026` → ask a multi-step question; the fleet splits the work and every call is traced in Phoenix.
 
 ---
 
-## Where to go next
+## Under the hood: a research agent end-to-end
 
-- **[EXPLORE.html](doc/EXPLORE.html)** — *the interactive map of the stack.* One
-  self-contained page (open in any browser, even offline) with a searchable card for
-  every one of the 39 services: what it is, why you'd reach for it, copy-paste demos,
-  and an opt-in in-stack live-status check. **The visual front door — start here.**
-- **[ONBOARDING.md](doc/ONBOARDING.md)** — *"you've installed it, now use it."* The
-  shortest path: `stack` basics, reaching services by alias, the agents you can talk
-  to, the opt-in extras, and where logs/state live. **Read this first after install.**
-- **[USER-GUIDE.md](doc/USER-GUIDE.md)** — task-oriented walkthrough: a 5-minute wow,
-  then core recipes (RAG, memory-aware coding, sandboxed Pi, Phoenix evals).
-- **[ARCHITECTURE.md](doc/ARCHITECTURE.md)** — design decisions, file-by-file
-  responsibilities, the idempotency and lock model. Read before modifying the installer.
-- **[OPERATIONS.md](doc/OPERATIONS.md)** — day-to-day commands: enable/disable services,
-  common recipes, keeping the stack healthy.
-- **[PORTS.md](doc/PORTS.md)** — the authoritative alias → port → service map.
-- **[DOCTOR.md](doc/DOCTOR.md)** — what each of the 40 doctor checks means and how to fix it.
-- **[models.md](doc/models.md)** — the model ↔ agent binding: `models.yml` as source of
-  truth, the three local models, and `install.sh model {list,assign,sync,superset}`.
+A research agent recalls past context, searches your private docs, uses a cheap local model to summarize and a powerful cloud model to synthesize, then saves its conclusions for next time. The sandbox dispatch you ran above is one step of this flow.
 
-(More reference docs — COMPONENTS, DIAGRAMS, DEPENDENCIES, ATTRIBUTION, ALTERNATIVES,
-INSTALL, TROUBLESHOOTING, HANDOFF — are indexed in [the full doc map below](#where-to-read-next).)
+```mermaid
+  %%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+sequenceDiagram
+  autonumber
+  participant U as You
+  participant CoS as hermes_cos (sandbox)
+  participant R as hermes_researcher (sandbox)
+  participant SBX as hermes-gw :8642
+  participant L as litellm :4000
+  participant LH as local-qwen3.6 (LM Studio MLX)
+  participant CL as Claude Opus
+  participant MCP as docs-mcp :8765
+  participant Q as qdrant :6333
+  participant HO as honcho :8000
+
+  U->>CoS: "Compare graph RAG vs vector RAG for our docs"
+  CoS->>R: delegate research task
+  R->>HO: "what do I know about previous RAG decisions?"
+  HO-->>R: derived facts about the user's prior context
+  R->>MCP: search_documents("graph vs vector RAG")
+  MCP->>Q: vector similarity (top_k=5)
+  Q-->>MCP: 5 chunks
+  MCP-->>R: chunks with sources
+
+  Note over R,SBX: All outbound calls go via inference.local
+  R->>SBX: chat completion (model=local-qwen3.6)
+  SBX->>L: forward + inject HERMES_LITELLM_KEY
+  Note over L: scoped key allowlist check (superset)
+  L->>LH: forward
+  LH-->>L: summary of chunks
+  L-->>SBX: response
+  SBX-->>R: response
+
+  R->>SBX: chat completion (model=claude-opus, "synthesize")
+  SBX->>L: forward + inject HERMES_LITELLM_KEY
+  L->>CL: forward
+  CL-->>L: structured comparison
+  L-->>SBX: response
+  SBX-->>R: response
+
+  L->>L: every call traced to Phoenix (project ai-stack)
+
+  R->>HO: store conclusions for future sessions
+  R-->>CoS: final report with citations
+  CoS-->>U: report
+```
 
 ---
 
@@ -234,7 +434,7 @@ Add this to your shell rc for the short `stack` alias:
 
 ```bash
 export PATH="$HOME/ai-stack/bin:$PATH"
-# Then:  stack status, stack doctor, stack adopt litellm, etc.
+# Then:  stack status, stack doctor, stack adopt litellm, stack start/stop <svc>, etc.
 ```
 
 ---
