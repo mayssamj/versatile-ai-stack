@@ -1,18 +1,19 @@
 # Doctor — checks reference
 
-`bash install.sh doctor` runs all 37 checks and offers a per-check auto-fix
+`bash install.sh doctor` runs all 39 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 32
+stack doctor                    # all 39
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
 stack doctor pi                 # only the Pi sandbox + virtual key checks (24-26)
 stack doctor lumen              # only the Lumen MCP check (27)
+stack doctor openshell          # only the OpenShell CPU-storm check (39)
 NO_PROMPT=1 stack doctor        # report-only, skip all auto-fixes
 OPENSHELL_DOCTOR_SLOW=1 stack doctor  # also run check 25's slow negative probes
 ```
@@ -37,7 +38,7 @@ Useful in CI / `git pre-push` hooks.
 ```
 installer/doctor/checks/
 ├── 01_orbstack_running.sh
-├── 02_ai_stack_network.sh                 (replaces host_docker_internal)
+├── 02_host_docker_internal.sh
 ├── 03_env_valid.sh
 ├── 04_phoenix_endpoint_set.sh
 ├── 05_litellm_env_loaded.sh
@@ -57,7 +58,24 @@ installer/doctor/checks/
 ├── 19_lo0_aliases.sh                      (every aliases.tsv IP bound on lo0)
 ├── 20_container_alias_routable.sh         (transient probe reaches each managed alias)
 ├── 21_container_dns_in_network.sh         (ai-stack containers resolve each other by bare name)
-└── 22_etc_hosts_ownership.sh              (/etc/hosts is root:wheel mode 644)
+├── 22_etc_hosts_ownership.sh              (/etc/hosts is root:wheel mode 644)
+├── 23_unsloth_studio.sh                   (Phase 14)
+├── 24_pi_v1_sandbox.sh                    (Phase 15)
+├── 25_pi_v1_network_policy.sh             (Phase 15)
+├── 26_pi_litellm_key_allowlist.sh         (Phase 15)
+├── 27_lumen.sh                            (Phase 16)
+├── 28_deerflow_config.sh                  (Phase 10)
+├── 29_ace.sh                              (Phase 17)
+├── 30_hermes_routing.sh                   (Phase 04f)
+├── 31_rlm.sh                              (Phase 18)
+├── 32_claw3d.sh                           (Phase 19)
+├── 33_hermes_telegram.sh                  (Phase 20)
+├── 34_portless.sh                         (opt-in Phase 21; pass-as-skip)
+├── 35_cmux.sh                             (opt-in Phase 22; pass-as-skip)
+├── 36_skillspector.sh                     (opt-in Phase 23; pass-as-skip)
+├── 37_openagents.sh                       (opt-in Phase 24; pass-as-skip)
+├── 38_lmstudio.sh                         (opt-in Phase 25; pass-as-skip)
+└── 39_openshell_storm.sh                  (expired-token CPU storm + watchdog status)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -478,9 +496,9 @@ Skips cleanly (passes) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set — the gatewa
 
 ---
 
-## 34–37 · Opt-in experimental extras (Phases 21–24)
+## 34–38 · Opt-in experimental extras (Phases 21–25)
 
-These four checks pass-as-skip when the tool isn't installed (the tools are opt-in, not in `install all`), so the doctor stays green whether or not you've added them. When installed, each verifies the tool is present + runnable.
+These checks pass-as-skip when the tool isn't installed (the tools are opt-in, not in `install all`), so the doctor stays green whether or not you've added them. When installed, each verifies the tool is present + runnable.
 
 | # | Check | Asserts (when installed) | Skip-pass when |
 |---|---|---|---|
@@ -488,6 +506,24 @@ These four checks pass-as-skip when the tool isn't installed (the tools are opt-
 | 35 | `cmux` | `brew list --cask cmux` or `/Applications/cmux.app` present | cask/app absent (or non-macOS) |
 | 36 | `skillspector` | venv CLI + `bin/skillspector` exist and `--help` runs | `skillspector/.venv` absent |
 | 37 | `openagents` | `agn` resolves on PATH or under `~/.openagents` | `agn` absent |
+| 38 | `lmstudio` | `lms` CLI + the OpenAI server on `:1234` + `local-lfm2-mlx` wired into `litellm/config.yaml` | `/Applications/LM Studio.app` absent |
+
+---
+
+## 39 · OpenShell expired-token CPU storm (+ watchdog status)
+
+| | |
+|---|---|
+| Asserts | No OpenShell sandbox (`hermes-fleet-v1`, `pi-v1`) is in a live "expired-token storm" — i.e. recent container logs show no `ExpiredSignature` / reconnect-storm signature and `RestartCount` isn't climbing. Also reports whether the auto-healing watchdog (`com.ai-stack.openshell-watchdog` launchd job) is installed and loaded. |
+| Fails when | A sandbox's short-lived gateway token has expired (~8h uptime) and the in-sandbox agent is retrying its log-push gRPC with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. The signature is unambiguous: the sandbox is already dead. |
+| Auto-fix | None auto-applied here (the watchdog owns recovery). Manual: `bash bin/openshell-watchdog.sh run` (detect+recreate now), or recreate the affected phase (`install.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
+
+Skips cleanly (passes) when OpenShell / its sandboxes aren't present. The standing
+fix is the launchd watchdog installed by Phase 04 (`bin/openshell-watchdog.sh
+install`, runs every 600s) — this check is the on-demand twin that surfaces a storm
+the watchdog hasn't swept yet and confirms the watchdog is loaded. See
+[TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md) for the watchdog's
+`status` / `uninstall` subcommands and the detect-only mode.
 
 ---
 

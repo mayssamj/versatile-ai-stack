@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the 31 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
+For the 39 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---
@@ -128,6 +128,93 @@ clean recreate:
 bash install.sh reset --confirm hard --yes   # deletes OpenShell sandboxes (preserves data)
 bash install.sh install all                  # watchdog recreates them
 ```
+
+---
+
+## "A sandbox is pegging ~36% CPU with `ExpiredSignature` in its logs" (OpenShell CPU storm)
+
+A recurring, high-CPU failure that is **distinct** from the create-hang above. After
+~8 h of sandbox uptime its short-lived **gateway token expires**. The in-sandbox agent
+then retries its log-push gRPC with **no backoff** — hundreds of reconnects/second
+(`invalid token: ExpiredSignature`, "log push stream lost, reconnecting") — pegging
+**~36% CPU per sandbox** while the container restart-loops. Confirm:
+
+```bash
+docker stats --no-stream | grep -E 'hermes-fleet-v1|pi-v1'   # CPU% high
+docker logs --tail 50 hermes-fleet-v1 2>&1 | grep -i ExpiredSignature
+```
+
+**The fix is to RECREATE the sandbox — a gateway restart does NOT refresh the token;
+only recreation mints a fresh one** (empirically verified). This is now **auto-healed**
+by a launchd watchdog installed by Phase 04:
+
+```bash
+WD=~/ai-stack/bin/openshell-watchdog.sh
+
+$WD status                 # is the launchd job loaded? last run / exit?
+$WD run                    # run one detect+recreate cycle now (manual sweep)
+$WD install                # (re)install the launchd timer (every 600s)
+$WD uninstall              # remove the launchd timer
+
+# Detect-only (delete the dead sandbox to stop the burn, but don't recreate):
+AI_STACK_WATCHDOG_RECREATE=0 $WD run
+```
+
+What the watchdog does on each run (every 600 s by default): for each sandbox it
+detects the storm by its unambiguous signature (ExpiredSignature / reconnect-storm in
+recent logs, or a climbing `RestartCount` → the sandbox is already dead, so acting
+loses nothing — it won't false-fire on a busy sandbox), then deletes + recreates it via
+its install phase. It is throttled (≤ 1 recreate per thing per 30 min), logs to
+`installer/state/openshell-watchdog.log`, and posts a desktop notification. It skips
+while an `install.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
+on-demand twin: `stack doctor openshell` surfaces a live storm and reports whether the
+watchdog is loaded.
+
+---
+
+## "The whole machine feels hot/slow even when idle" (OrbStack CPU floor + the 34-container stack)
+
+On a full stack (~34 containers) OrbStack's VM helper process is effectively a **CPU
+floor** — it consumes a baseline even when every container is idle. On a 24 GB M-series
+box that baseline matters. Mitigation: **cap OrbStack's resources** so it can't claim
+the whole machine.
+
+> **OrbStack → Settings → Resources** → set a CPU/RAM cap, e.g. **6–8 cores / 12–14 GB**.
+
+This bounds the VM helper and leaves headroom for the host (and for Ollama, which runs
+on the host, not in a container). Two other CPU draws to rule out before blaming the
+stack:
+
+- **LM Studio** (if you ran Phase 25) idle-spins ~0.8–1 core even stopped — quit it when
+  not in use (see next section).
+- **Corporate EDR / MDM agents** (security/management daemons) are a separate, often
+  significant CPU draw. They're **out of scope** for this stack — identify them with
+  `top -o cpu` and take it up with IT; nothing here will quiet them.
+
+The OpenShell expired-token storm (above) is another ~36%/sandbox spike — check for it
+first if CPU is high *and* you have sandboxes up.
+
+---
+
+## "LM Studio is using CPU even though I'm not using it" (Phase 25 opt-in caveat)
+
+Expected, and exactly why Phase 25 is **opt-in**. The LM Studio **desktop app**
+idle-spins **~0.8–1 core even with no model loaded and the server stopped**. On a 24 GB
+box that's a real liability. So:
+
+- Run Phase 25 **only when you want MLX tool-calling** (e.g. LFM2.5 with working tools,
+  which the Ollama GGUF build can't do). Ollama stays the default runtime.
+- **QUIT LM Studio when done:**
+  ```bash
+  ~/.lmstudio/bin/lms server stop     # stop the OpenAI server on :1234
+  # then quit the LM Studio app itself (Cmd-Q) — stopping the server is not enough
+  ```
+- Want MLX without the app idle-cost? Use the **headless** alternative:
+  `pip install mlx-lm` then `mlx_lm.server` (then point `litellm/config.yaml` at it the
+  same way Phase 25 wires the LM Studio server).
+
+If `local-lfm2-mlx` calls fail after you quit LM Studio, that's why — restart the server
+(`lms server start`) or remove the model from `litellm/config.yaml` while it's off.
 
 ---
 

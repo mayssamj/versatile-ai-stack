@@ -273,6 +273,14 @@ the network policy + creates the sandbox via the hang-resilient watchdog in
 CLI — the sandbox CREATE hang is now auto-recovered in code). The sandbox
 EXEC relay idle-timeout remains a separate upstream issue and is still manual.
 
+Phase 04 also installs a **second, distinct** watchdog —
+`bin/openshell-watchdog.sh` (launchd, every 600 s) — that auto-heals the
+*expired-token CPU storm*: after ~8 h a sandbox's gateway token expires and the
+agent reconnect-storms at ~36% CPU; only recreating the sandbox mints a fresh
+token, which the watchdog does automatically. Check its status with
+`bash bin/openshell-watchdog.sh status`; see
+[TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md).
+
 If a gateway/sandbox step still needs hand-holding, the manual steps live in
 `~/ai-stack/installer/state/openshell-manual-steps.md`:
 
@@ -365,16 +373,23 @@ Then run the full doctor:
 bash install.sh doctor
 ```
 
-Expected: 37/37 checks pass after the post-install steps above and a
+Expected: 39/39 checks pass after the post-install steps above and a
 successful `sudo bash install.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
-aliases, 17 alias reachability) require `prepare-sudo` to have run. The
-last ten (24 `pi-v1` Ready, 25 pi-v1 network policy, 26 `PI_LITELLM_KEY`
+aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more
+(24 `pi-v1` Ready, 25 pi-v1 network policy, 26 `PI_LITELLM_KEY`
 allowlist, 27 Lumen MCP binary + embed model, 28 DeerFlow config.yaml
 model entries + compose passthrough, 29 ACE + LiteLLM virtual key, 30 Hermes
 routing, 31 RLM install, 32 claw3d office + bridge, 33 Hermes Telegram gateway)
 require Phases 14, 15, 16, 10, 17, 04f, 18, 19, 20. Check 33 skips cleanly
 (counts as a pass) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set.
+
+Checks 34–38 cover the 5 opt-in extras (Phases 21–25: portless, cmux,
+skillspector, openagents, lmstudio) and **pass-as-skip when the tool isn't
+installed**, so the doctor stays green on a default `install all`. Check 39
+(`openshell_storm`) verifies no OpenShell sandbox is in an expired-token CPU
+storm and reports that the auto-healing watchdog (installed by Phase 04) is
+loaded — it skips cleanly when OpenShell isn't present.
 
 ---
 

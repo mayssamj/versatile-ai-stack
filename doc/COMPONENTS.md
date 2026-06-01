@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **27 core install phases** (+4 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`), **38 services** (`services.yml`), **37 doctor checks**.
+- **27 core install phases** (+5 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`), **39 services** (`services.yml`), **39 doctor checks**.
 - Phases accept a **name or number**: `install.sh install phoenix` == `install 01h`. Run `install.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -19,7 +19,7 @@ FalkorDB, LFM2, etc.).
 | **Ollama** | Local model server (host brew service) | `:11434` |
 | **LiteLLM** | OpenAI-compatible gateway — virtual keys, model allowlists, guardrails, Phoenix tracing | `http://litellm:4000` |
 
-**Local models** (via LiteLLM aliases): `local` = `gemma4:e4b` (fast, ~9.6 GB) · `local-heavy` = `qwen3.6:27b` (~22 GB) · `local-lfm2` = LFM2.5-8B · embeddings: `nomic-embed-text`, `jina-embeddings-v2-base-code`.
+**Local models** (via LiteLLM aliases): `local` = `gemma4:e4b` (fast, ~9.6 GB — **the fleet default**) · `local-heavy` = `qwen3.6:27b` (~22 GB; thrashes 24 GB, explicit-only for heavy reasoning) · `local-lfm2` = LFM2.5-8B · embeddings: `nomic-embed-text`, `jina-embeddings-v2-base-code`.
 
 ## Observability & security
 | Component | What it is | Reach it |
@@ -50,8 +50,8 @@ FalkorDB, LFM2, etc.).
 |---|---|---|
 | **Open WebUI** | Chat UI in front of LiteLLM | `http://openwebui:8080` |
 | **Hermes Workspace** | Chat workspace UI — *community project (`outsourc-e`), built on Nous Research's `hermes-agent`; not a Nous product* | `http://workspace:3000` |
-| **claw3d** | 3D agent "office" — visualizes + chats with your sandboxed agents (Hermes ×7, Pi, DeerFlow) via the stack-agents bridge | `http://localhost:4310` |
-| **claw3d bridge** | Host daemon implementing claw3d's custom runtime; routes chat authentically to each agent (`claw3d-bridge/bridge.py`) | `http://127.0.0.1:7780` (internal) |
+| **claw3d** | 3D agent "office" — visualizes + chats with your sandboxed agents (Hermes ×7, Pi, DeerFlow) via the stack-agents bridge. Agents now default to the light model `local` (gemma4) — fast | `http://claw3d:4310` (alias) or `http://localhost:4310` |
+| **claw3d bridge** | Host daemon implementing claw3d's custom runtime; routes chat authentically to each agent (`claw3d-bridge/bridge.py`). Intentionally **`127.0.0.1`-only** (auth-less, drives all 9 agents → loopback by design) | `http://127.0.0.1:7780` (internal) |
 | **Hermes Telegram gateway** | Native hermes gateway (runs inside `hermes-fleet-v1`); DM the bot to reach the fleet from your phone. Secure-by-default (allowlist required) | `@vz_hermes_controller_bot` on Telegram |
 
 ## Documents & RAG
@@ -74,15 +74,17 @@ FalkorDB, LFM2, etc.).
 | **byterover CLI** | Alternative memory CLI | `brv` |
 | **autoreason** | NousResearch research clone (reference only) | `halo/autoreason/` |
 | **paperclip↔honcho plugin** | Wires Paperclip into Honcho memory | — |
+| **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
-## Opt-in experimental extras (Phases 21–24 — NOT in `install all`)
-Install individually by name: `install.sh install <name>`. Doctor checks 34–37 pass-as-skip when not installed.
+## Opt-in experimental extras (Phases 21–25 — NOT in `install all`)
+Install individually by name: `install.sh install <name>`. Doctor checks 34–38 pass-as-skip when not installed.
 | Component | What it is | Install |
 |---|---|---|
 | **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `install.sh install portless` |
 | **cmux** | Native macOS terminal for many parallel agent sessions (per-tab git/PR/port + `cmux notify` hooks) | `install.sh install cmux` |
 | **SkillSpector** | NVIDIA scanner that vets agent skills/MCP for prompt-injection/tool-poisoning *before* install (offline by default) | `install.sh install skillspector` → `bin/skillspector scan <path>` |
 | **OpenAgents Launcher** | "Ollama for AI agents" (`agn`); ⚠️ overlaps the stack — NOT wired into LiteLLM/sandboxes; installs to `~/.openagents` | `install.sh install openagents` |
+| **LM Studio (MLX)** | 2nd local runtime behind LiteLLM (`local-lfm2-mlx`) — Apple MLX engine; runs LFM2.5 with *working tool-calling* (the Ollama GGUF can't). Ollama stays default. ⚠️ The desktop app idle-spins ~0.8–1 core even stopped — run only when needed and **quit it when done** (`lms server stop` + Cmd-Q); headless alt: `mlx_lm.server` | `install.sh install lmstudio` |
 
 ## Platform
 | Component | What it is |

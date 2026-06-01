@@ -4,6 +4,95 @@ Auto-appended by `install.sh`. Newest entries at the top.
 
 ---
 
+## 2026-05-31 — OpenShell CPU-storm watchdog + light-model default + claw3d alias + LM Studio CPU reframe
+
+Four hardening/usability changes from operating the stack on the 24 GB M4 box,
+plus a new onboarding doc (`doc/ONBOARDING.md`).
+
+1. **OpenShell expired-token CPU storm → NEW auto-healing watchdog** (`bin/openshell-watchdog.sh`).
+   ROOT CAUSE (seen twice, empirically verified): an OpenShell sandbox's short-lived
+   gateway token expires (~8h uptime); the in-sandbox agent then retries its log-push
+   gRPC with **no backoff** — hundreds of reconnects/second (`invalid token:
+   ExpiredSignature`, "log push stream lost, reconnecting") — pegging ~36% CPU per
+   sandbox while the container restart-loops. A **gateway restart does NOT refresh the
+   token; only RECREATING the sandbox mints a fresh one.** (Distinct from the 2026-05-30
+   *sandbox-create-hang* watchdog in `installer/lib/openshell.sh` — different failure.)
+   FIX: a launchd timer (`com.ai-stack.openshell-watchdog`, every 600s, installed by
+   Phase 04) detects the storm by its unambiguous signature (ExpiredSignature /
+   reconnect-storm in recent logs, or climbing RestartCount → the sandbox is already
+   dead, so acting loses nothing), then `delete`+recreates the dead sandbox via its
+   install phases. Throttled (≤1/30min), logged to `installer/state/openshell-watchdog.log`,
+   desktop-notifies. Subcommands `run|install|uninstall|status`; detect-only via
+   `AI_STACK_WATCHDOG_RECREATE=0` (still deletes to stop the burn). Generic net: any
+   managed container pegged >85% over two samples is logged as a runaway. NEW **doctor
+   check 39 `openshell_storm`** detects a live storm + reports watchdog status.
+2. **Hermes fleet now defaults to `local` (gemma4:e4b), not `local-heavy` (qwen-27B).**
+   `local-heavy` (~22 GB) thrashes/sticks on the 24 GB box; `local` is fast. The new
+   default applies to direct hermes use, the Telegram gateway, and claw3d (`bridge.py`
+   `DEFAULT_MODEL=local`). `local-heavy` stays an explicit alias for heavy reasoning.
+   (`installer/phases/04f_hermes_fleet.sh` `HERMES_MODEL="local"`.)
+3. **claw3d UI is now name-aliasable** as `http://claw3d:4310` (added to
+   `installer/lib/aliases.tsv`, `127.0.10.17`; activates after `sudo install.sh
+   prepare-sudo`; `localhost:4310` still works). The **claw3d-bridge (`:7780`) stays
+   `127.0.0.1`-only by design** — it is auth-less and drives all 9 agents, so loopback
+   is the boundary, NOT an oversight (documented inline in `aliases.tsv`). `lmstudio`
+   (`:1234`) is reached from the LiteLLM container via host-gateway, so it has no lo0
+   alias either.
+4. **LM Studio reframed as opt-in + CPU-caveated.** The LM Studio *desktop app*
+   idle-spins ~0.8–1 core even with no model loaded and the server stopped — a liability
+   on this 24 GB box. Guidance: run Phase 25 only when you want MLX tool-calling, and
+   **QUIT LM Studio when done** (`~/.lmstudio/bin/lms server stop` + quit the app).
+   Lighter headless alternative: `mlx_lm.server` (pip `mlx-lm`). Caveat added to
+   COMPONENTS / ATTRIBUTION / TROUBLESHOOTING / the LM Studio entry below.
+5. **NEW `doc/ONBOARDING.md`** — task-oriented "you've installed it, now use it" guide
+   (stack basics by name or number, `phases`/`doctor`/`status`, reaching services by
+   alias, the agents you can talk to, the opt-in extras, the CPU guards + OrbStack cap,
+   the LM Studio caveat, where logs/state live). Linked from README's docs index.
+
+Also: **OrbStack CPU floor.** On a 34-container stack OrbStack's VM helper is a CPU
+floor; recommend an OrbStack CPU/RAM cap (Settings → Resources, e.g. 6–8 cores /
+12–14 GB) — added to TROUBLESHOOTING. (Corporate EDR/MDM agents are a separate CPU
+draw, out of scope.) And `experiments/transformersjs-poc/` is referenced in
+COMPONENTS as an evaluated on-device-embeddings capability for claw3d.
+
+- **Counts: 27 core phases (+5 opt-in extras 21–25) · 39 services · 39 doctor checks.**
+
+---
+
+## 2026-05-31 — Phase 25 NEW: LM Studio (MLX) as a 2nd runtime behind LiteLLM
+
+User's research suggested LM Studio + MLX over Ollama on the M4 24GB. Assessment
+(2026-05-31, doc/ALTERNATIVES.md): MLX wins for small/short-context but can LOSE to
+GGUF on long-context agent traffic, and a full switch loses Ollama's ecosystem +
+embeddings + Lumen. So the call: **add LM Studio as a SECOND runtime behind LiteLLM,
+keep Ollama the default.** The concrete payoff is running **LFM2.5 with working
+tool-calling** — the Ollama GGUF build returns "does not support tools".
+
+- **NEW Phase 25 `25_lmstudio.sh`** (opt-in): uses an existing LM Studio.app (or
+  `brew install --cask lm-studio`), bootstraps `lms`, starts the OpenAI server on
+  `:1234` (bound 0.0.0.0 so the OrbStack container reaches it via host.docker.internal),
+  pulls `LiquidAI/LFM2.5-8B-A1B-MLX-4bit` from HF into LM Studio's models dir (its
+  catalog doesn't index LFM2.5 yet), **discovers the served model id dynamically**, and
+  idempotently injects a `local-lfm2-mlx` model into `litellm/config.yaml` via yq, then
+  restarts LiteLLM and verifies a `:4000 → :1234 → MLX` chat round-trip.
+- **SECURITY:** the server binds 0.0.0.0:1234 (container reachability; host loopback
+  isn't reachable from a container) — LM Studio has no auth, so it's LAN-exposed; noted
+  in the phase header with how to restrict. LM Studio is free for commercial/work use.
+- **CPU CAVEAT (why opt-in):** the LM Studio *desktop app* idle-spins ~0.8–1 core even
+  with **no model loaded and the server stopped** — a real liability on a 24 GB box.
+  So Phase 25 is opt-in; run it only when you want MLX tool-calling, and **QUIT LM Studio
+  when done** (`~/.lmstudio/bin/lms server stop` + quit the app). Lighter headless
+  alternative if you want MLX without the app idle-cost: `mlx_lm.server` (pip `mlx-lm`).
+- Ollama is **untouched** (still the default; embeddings, Lumen, model library intact).
+  Doctor check **38** (`lmstudio`, pass-as-skip when LM Studio absent). `services.yml`
+  `lmstudio` (cli-only). 5th opt-in extra.
+- **Follow-ups:** to let SCOPED virtual keys (Pi/ACE/Hermes/RLM) use `local-lfm2-mlx`,
+  add it to their allowlists (re-mint / key update) — the master key already works. A/B
+  vs Ollama: point one Hermes profile at it + compare on Phoenix (needs the relay up).
+- **Counts: 27 core phases (+5 opt-in extras) · 39 services · 39 doctor checks.**
+
+---
+
 ## 2026-05-31 — Named phase IDs + 4 opt-in tool phases (portless/cmux/skillspector/openagents)
 
 **Named phase selectors.** `install.sh install <phase>` and `test <phase>` now accept a

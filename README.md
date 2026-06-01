@@ -39,7 +39,7 @@ running container without explicit confirmation.
 | Sandboxed coding agent | Pi (Earendil) | `pi-v1` (OpenShell sandbox) | 15 |
 | Code semantic search (MCP) | Lumen (Ory) | `bin/lumen` (stdio, no port) | 16 |
 | Recursive Language Models | RLM (`rlms`) | `bin/rlm` (Docker REPL sandbox) | 18 |
-| 3D agent office | claw3d + stack-agents bridge | `localhost:4310` | 19 |
+| 3D agent office | claw3d + stack-agents bridge | `claw3d` (`:4310`) | 19 |
 | Fleet chat from your phone | Hermes Telegram gateway | `@vz_hermes_controller_bot` | 20 |
 
 ### Networking
@@ -65,10 +65,14 @@ bash ~/ai-stack/install.sh verify
 # Full install (resumes from last incomplete phase)
 bash ~/ai-stack/install.sh
 
+# Install/re-run one phase by NAME or number (run `phases` to list id→name)
+bash ~/ai-stack/install.sh install phoenix     # == install 01h
+bash ~/ai-stack/install.sh phases
+
 # See declared vs actual state
 bash ~/ai-stack/install.sh status
 
-# 32 health checks + auto-fixes
+# 39 health checks + auto-fixes
 bash ~/ai-stack/install.sh doctor
 
 # Take ownership of a container started outside the installer
@@ -91,6 +95,11 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 
 ### Learn the stack (start here if it's all new)
 
+- **[ONBOARDING.md](doc/ONBOARDING.md)** — *"you've installed the stack, here's how
+  to actually use it."* The shortest path: `stack` basics (install by name or number,
+  `phases`/`doctor`/`status`), reaching services by alias, the agents you can talk to
+  (claw3d office, Telegram bot, Hermes/Pi/DeerFlow), the opt-in extras, the CPU guards
+  (watchdog + OrbStack cap), and where logs/state live. **Read this first after install.**
 - **[USER-GUIDE.md](doc/USER-GUIDE.md)** — task-oriented walkthrough for the
   first-time-in-this-stack reader. 5-minute wow → 4 core recipes (RAG,
   memory-aware coding, sandboxed Pi, Phoenix evals from JSONL replay) →
@@ -114,7 +123,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 ### Reference
 
 - **[COMPONENTS.md](doc/COMPONENTS.md)** — brief catalog of everything in the stack:
-  all 38 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
+  all 39 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
   tools, platform), one line + access point each. The "what's in the box" index.
 - **[ATTRIBUTION.md](doc/ATTRIBUTION.md)** — source link + license + ToS for every
   third-party tech piece (software *and* model weights), leading with the
@@ -135,9 +144,9 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 33
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 39
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
-  for less common issues.
+  for less common issues (incl. the OpenShell CPU-storm watchdog and the OrbStack CPU cap).
 
 ### Modify or extend
 
@@ -179,7 +188,7 @@ the guard rails.
 ```
 ~/ai-stack/
 ├── install.sh              # entry point — bash-5+ gate + subcommand dispatcher
-├── services.yml            # single source of truth (38 services, 4 profiles)
+├── services.yml            # single source of truth (39 services, 4 profiles)
 ├── .env                    # secrets + config (0600)
 ├── README.md ← you are here
 ├── CHANGELOG.md            # what was decided + done
@@ -188,8 +197,8 @@ the guard rails.
 ├── bin/                    # daily-driver: stack, start-<svc>.sh, audit.sh
 ├── installer/
 │   ├── lib/                # common, env, docker, validate, prompt, litellm, status, adopt, gc, history, reset, openshell
-│   ├── phases/             # one file per phase (00 .. 24)
-│   ├── doctor/checks/      # one file per failure mode (37 checks)
+│   ├── phases/             # one file per phase (00 .. 25)
+│   ├── doctor/checks/      # one file per failure mode (39 checks)
 │   ├── smoke/              # per-phase end-to-end smoke tests
 │   └── state/              # stamp files, restart queue, lock dir
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -209,8 +218,15 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash install.sh doctor` for live state. Top-line:
 
-- **27 core install phases (+4 opt-in extras: portless · cmux · skillspector · openagents) · 38 services · 37 doctor checks.**
-- A clean `reset --confirm hard --yes` → `install all` reaches **37/37 doctor green**
-  (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram).
+- **27 core install phases (+5 opt-in extras: portless · cmux · skillspector · openagents · lmstudio) · 39 services · 39 doctor checks.**
+- Phases install by **name or number** (`install phoenix` == `install 01h`); `install.sh phases` lists id→name.
+- A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
+  (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
+  the 5 opt-in extras' checks (34–38) pass-as-skip when not installed, and check 39
+  (`openshell_storm`) reports the watchdog status.
+- The Hermes fleet defaults to the **light model** `local` (gemma4:e4b) — fast on 24 GB;
+  `local-heavy` (qwen-27B) remains an explicit alias for heavy reasoning.
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.
+  A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is now
+  auto-healed by `bin/openshell-watchdog.sh` (launchd, every 600s); see TROUBLESHOOTING.

@@ -19,21 +19,46 @@ Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/install.s
 
 ---
 
-## The 11 commands you'll actually use
+## The commands you'll actually use
 
 ```bash
 stack                                   # interactive install/resume
+stack phases                            # list every phase as id → name (also: steps, list)
+stack install <phase|all>               # install one phase by NAME or number (or everything)
 stack verify                            # Phase 00·V — 6 runtime probes; no install
 stack status                            # declared vs actual table
-stack doctor                            # 32 health checks + auto-fix offers
+stack doctor                            # 39 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
-stack test <phase>                      # smoke test for one phase
+stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container
 stack apply-restarts                    # drain the queued-restart list
 stack logs <container> [-f]             # docker logs wrapper
 stack gc                                # remove partial container orphans
 stack reset --confirm soft|hard|nuke    # tiered destructive reset
 ```
+
+### Phases by name or number
+
+`install` and `test` accept a **phase name OR number**. Phase files are
+`<id>_<name>.sh`, so the name is the filename suffix — `install.sh install phoenix`
+is the same as `install 01h`. `install.sh phases` prints the full `id → name` table.
+
+```bash
+stack install phoenix          # == install 01h
+stack install telegram         # alias → hermes_telegram (Phase 20)
+stack install lmstudio         # opt-in Phase 25
+stack test inference           # alias → smoke test for phase 01 (litellm)
+```
+
+Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
+`hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
+`halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. The
+resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
+or unknown selector errors and points you at `stack phases`.
+
+The **5 opt-in extras** (Phases 21–25: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`) are NOT part of `install all` — add them individually by
+name. Their doctor checks (34–38) pass-as-skip until installed.
 
 `stack verify` is the cheapest health probe in the toolbox — it does not
 install or restart anything; it just confirms the alias chain
@@ -234,6 +259,66 @@ re-run `install 20`:
 `stack status` shows `hermes_telegram` as `n/a` (it's a sandbox-internal daemon);
 the real liveness probe is `doctor` check 33. See
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) if the bot doesn't reply.
+
+---
+
+## Which model the agents use (light by default)
+
+The Hermes fleet defaults to the **light model** `local` (gemma4:e4b, ~9.6 GB, fast) —
+this applies to direct hermes use, the Telegram gateway, and claw3d. On the 24 GB box
+`local-heavy` (qwen3.6:27b, ~22 GB) thrashes and sticks, so it is **not** the default;
+it stays available as an explicit alias for heavy reasoning. Pick it per call:
+
+```bash
+# Heavy reasoning on demand (LiteLLM master key):
+curl -s http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local-heavy","messages":[{"role":"user","content":"…"}]}'
+```
+
+If `local-heavy` sticks/thrashes: `ollama stop`, or `brew services restart ollama` to
+clear it; prefer `local` for quick smoke tests.
+
+---
+
+## OpenShell CPU-storm watchdog (auto-healing)
+
+A sandbox's gateway token expires after ~8 h, and the in-sandbox agent then retries
+log-push with no backoff → a ~36%-CPU-per-sandbox `ExpiredSignature` storm. **Only
+recreating the sandbox mints a fresh token (a gateway restart does not).** Phase 04
+installs a launchd watchdog (`com.ai-stack.openshell-watchdog`, every 600 s) that
+detects the storm and delete+recreates the dead sandbox automatically.
+
+```bash
+WD=~/ai-stack/bin/openshell-watchdog.sh
+$WD status        # is the launchd job loaded? last run / exit
+$WD run           # run one detect+recreate cycle now
+$WD uninstall     # remove the launchd timer
+$WD install       # (re)install it
+AI_STACK_WATCHDOG_RECREATE=0 $WD run   # detect-only: stop the burn, don't recreate
+```
+
+Logs: `installer/state/openshell-watchdog.log`. The on-demand twin is `stack doctor
+openshell` (check 39). Full failure write-up in
+[TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md).
+
+---
+
+## LM Studio (opt-in, quit it when done)
+
+LM Studio (Phase 25) is a *second* local runtime behind LiteLLM (`local-lfm2-mlx`,
+Apple MLX, working tool-calling) — Ollama stays the default. It is **opt-in** because
+the LM Studio desktop app idle-spins ~0.8–1 core **even with no model loaded and the
+server stopped**. Run it only when you need MLX tool-calling, and quit it afterward:
+
+```bash
+stack install lmstudio              # add it (Phase 25)
+~/.lmstudio/bin/lms server stop     # stop the :1234 server when done…
+#   …then Cmd-Q the LM Studio app (stopping the server alone is not enough)
+```
+
+Lighter headless alternative: `pip install mlx-lm` → `mlx_lm.server`. See
+[TROUBLESHOOTING.md § LM Studio CPU](TROUBLESHOOTING.md).
 
 ---
 
