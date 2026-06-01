@@ -57,9 +57,37 @@ if [[ -z "${PI_LITELLM_KEY:-}" ]]; then
   exit 1
 fi
 
+# Default-model injection: if the user did NOT pass -m/--model, prepend
+# `--model ${PI_DEFAULT_MODEL:-local}` so Pi runs on its bound model
+# (local-qwen3-coder when LM Studio is up + synced; `local` gemma4 otherwise —
+# the value in .env is already availability-gated by Phase 15 / `model sync`).
+# We scan the user's argv first so an explicit `bin/pi -m local-heavy ...`
+# always wins. PI_DEFAULT_MODEL is read from .env (get_env) above-equivalent
+# via the same source; fall back to `local` if unset.
+PI_DEFAULT_MODEL="$(get_env PI_DEFAULT_MODEL 'local' 2>/dev/null || echo local)"
+# Detect an explicit model flag in OPTION position only. A flag-like PROMPT value
+# (e.g. `bin/pi -p "-m"`) must NOT be mistaken for the model flag, or we'd wrongly
+# suppress injection and Pi would run on its own default. So skip the token that
+# follows a value-taking option like -p/--prompt (review finding).
+_pi_has_model=0
+_pi_skip_next=0
+for _a in "$@"; do
+  if (( _pi_skip_next )); then _pi_skip_next=0; continue; fi
+  case "$_a" in
+    -m|--model)   _pi_has_model=1; break ;;
+    --model=*)    _pi_has_model=1; break ;;
+    -p|--prompt)  _pi_skip_next=1 ;;   # next token is the prompt VALUE — skip it
+  esac
+done
+if (( _pi_has_model == 0 )); then
+  set -- --model "${PI_DEFAULT_MODEL:-local}" "$@"
+fi
+
 # Exec Pi inside the sandbox with PI_LITELLM_KEY injected at the start of
 # the command line. --tty for the TUI; --workdir /sandbox so Pi's $HOME
 # and config dir resolve under the persistent bind mount. The sandbox
-# already has HOME=/sandbox set in its default profile.
+# already has HOME=/sandbox set in its default profile. The trailing
+# `-- "$@"` passes our (possibly model-prepended) argv as $1.. to the inner
+# /bin/sh, which forwards them verbatim to pi via "$@".
 exec "$OSH" sandbox exec -n pi-v1 --workdir /sandbox --tty -- \
   /bin/sh -c "PI_LITELLM_KEY='$PI_LITELLM_KEY' HOME=/sandbox exec /sandbox/node_modules/.bin/pi \"\$@\"" -- "$@"

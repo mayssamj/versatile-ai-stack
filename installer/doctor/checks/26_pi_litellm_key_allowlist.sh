@@ -3,8 +3,11 @@
 #
 # Asserts:
 #   1. PI_LITELLM_KEY exists in .env (Phase 15 minted it).
-#   2. GET /v1/models with the virtual key returns exactly the 3 allowlisted
-#      model_names: local, local-heavy, local-lfm2 (sorted).
+#   2. GET /v1/models with the virtual key returns exactly the DERIVED allowlist:
+#      the legacy IDs (local, local-heavy, local-lfm2) UNION Pi's models.yml slug
+#      — i.e. the fixed SUPERSET that `model sync` widens every scoped key to.
+#      Falls back to the legacy literal 'local,local-heavy,local-lfm2' when
+#      models.yml is absent. (See _pi_expected_allowlist below.)
 #   3. POST /v1/chat/completions with model=claude-opus is rejected with
 #      a "key not allowed" 4xx error — proves the allowlist is server-side
 #      and not just client-side (Pi's extension config alone wouldn't stop
@@ -17,6 +20,24 @@ CHECK_TITLE[pi_litellm_key_allowlist]="LiteLLM virtual key PI_LITELLM_KEY enforc
 
 _pi_litellm_litellm_up() {
   curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1
+}
+
+# Expected allowlist, sorted-comma. DERIVED from models.yml when present:
+#   legacy IDs (local, local-heavy, local-lfm2) UNION Pi's assigned slug, and —
+#   because `model sync` widens every scoped key to the full fixed SUPERSET so
+#   `assign` never re-mints — we expect the full superset. Fall back to the
+#   pre-models.yml literal when models.yml is absent.
+_pi_expected_allowlist() {
+  local yml="$AI_STACK/installer/models.yml"
+  if [[ ! -f "$yml" ]] || ! command -v yq >/dev/null 2>&1; then
+    echo "local,local-heavy,local-lfm2"
+    return 0
+  fi
+  local pi_slug
+  pi_slug="$(yq -r '.assignments.pi // ""' "$yml" 2>/dev/null)"
+  # Fixed superset = legacy UNION the 3 canonical IDs (matches lib/models.sh).
+  printf '%s\n' local local-gemma4 local-heavy local-lfm2 local-qwen3-coder local-qwen3.6 "$pi_slug" \
+    | sed '/^$/d' | sort -u | paste -sd, -
 }
 
 pi_litellm_key_allowlist_diagnose() {
@@ -49,8 +70,15 @@ try:
     print(",".join(sorted(m["id"] for m in d.get("data",[]))))
 except Exception as e:
     print("ERR:"+str(e))' 2>/dev/null)"
-  if [[ "$got_models" != "local,local-heavy,local-lfm2" ]]; then
-    echo "PI_LITELLM_KEY surfaces models='$got_models' (expected 'local,local-heavy,local-lfm2')"
+  # Expected allowlist is DERIVED from models.yml when present: the legacy IDs
+  # UNION Pi's assigned slug — i.e. the fixed SUPERSET that 'model sync' widens
+  # every scoped key to. This keeps the check green AFTER sync widens the Pi key
+  # to include the canonical MLX slugs. Falls back to the pre-models.yml literal
+  # when models.yml is absent (fresh checkout / lazy install).
+  local expected
+  expected="$(_pi_expected_allowlist)"
+  if [[ "$got_models" != "$expected" ]]; then
+    echo "PI_LITELLM_KEY surfaces models='$got_models' (expected '$expected')"
     return 1
   fi
 

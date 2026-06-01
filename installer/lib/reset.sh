@@ -104,6 +104,104 @@ teardown_openshell_sandboxes() {
   done
 }
 
+# Stop every host-side daemon the stack starts via bin/start-<svc>.sh. These are
+# NOT docker containers, so teardown_compose_projects / the ai-stack.managed
+# sweep never touch them — after a hard/nuke they would keep holding their ports
+# and break the next `install all` with "Port :X bound by another process".
+#
+# Derivation: services.yml entries with type python-bg | node-bg that run on the
+# host (docs_mcp :8765, paperclip :3100 + its alias relay, unsloth :8898,
+# claw3d :4310, claw3d_bridge :7780). hermes-telegram is intentionally EXCLUDED
+# — it runs INSIDE the pi/hermes OpenShell sandbox and dies with
+# teardown_openshell_sandboxes, so it is not a host daemon. compose/docker
+# services (honcho, deerflow, autofyn, litellm, ...) are covered elsewhere.
+#
+# Each entry is "pidfile:port" where pidfile is the basename under
+# installer/state (note claw3d-bridge.pid uses a hyphen, unlike its service
+# name claw3d_bridge) and port is the TCP port to free if a stray process still
+# holds it. Use port="" when there is no fixed port to reclaim.
+HOST_DAEMONS=(
+  "docs_mcp.pid:8765"
+  "paperclip.pid:3100"
+  "paperclip-relay.pid:3100"   # paperclip's 127.0.10.14:3100→127.0.0.1 forwarder (child daemon)
+  "unsloth.pid:8898"
+  "claw3d.pid:4310"
+  "claw3d-bridge.pid:7780"
+)
+
+# kill_pid PID LABEL — SIGTERM, wait briefly, SIGKILL if still alive. Idempotent:
+# silently returns if the pid is bogus or already dead.
+kill_pid() {
+  local pid="$1" label="$2" i=0
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  kill "$pid" 2>/dev/null || true
+  while (( i < 5 )); do
+    kill -0 "$pid" 2>/dev/null || { ok "stopped $label (pid $pid)"; return 0; }
+    sleep 1; i=$((i+1))
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  sleep 1
+  kill -0 "$pid" 2>/dev/null \
+    && warn "could not kill $label (pid $pid) — stop it manually" \
+    || ok "stopped $label (pid $pid, SIGKILL)"
+}
+
+# Stop all host daemons + free their ports + clear stale pidfiles. Idempotent,
+# no-op if already stopped, loud (logs each stop). Always best-effort: a missing
+# pidfile or already-dead process is fine.
+teardown_host_daemons() {
+  local entry pidfile port pidpath pid svc stray_pids spid
+  for entry in "${HOST_DAEMONS[@]}"; do
+    pidfile="${entry%%:*}"
+    port="${entry#*:}"
+    svc="${pidfile%.pid}"
+    pidpath="$AI_STACK/installer/state/$pidfile"
+    # (1) Stop the recorded PID (the daemon and any tracked child) if present.
+    if [[ -f "$pidpath" ]]; then
+      pid="$(cat "$pidpath" 2>/dev/null || echo "")"
+      kill_pid "$pid" "$svc"
+      rm -f "$pidpath"
+    fi
+    # (2) Free the known port even if the pidfile was stale/missing — a process
+    #     whose pidfile we never recorded (or that recycled the PID) can still
+    #     be squatting the port and would block the next install. Kill every
+    #     LISTEN owner; lsof prints one PID per matching line.
+    [[ -n "$port" ]] || continue
+    # Capture LISTEN owners up-front. The `|| true` is load-bearing: lsof exits 1
+    # when nothing is listening — the COMMON case right after we just killed the
+    # daemon — and under `set -Eeuo pipefail` that 1 would abort the whole reset.
+    # Looping over the captured var (not a pipe) also keeps kill_pid in THIS shell.
+    stray_pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u || true)"
+    for spid in $stray_pids; do
+      [[ "$spid" =~ ^[0-9]+$ ]] || continue
+      warn "stray process holding :$port (pid $spid) after $svc teardown — killing"
+      kill_pid "$spid" "stray :$port owner"
+    done
+  done
+
+  # (3) paperclip spawns a multi-process TREE (pnpm -> tsx -> dev-runner -> server)
+  #     PLUS an embedded Postgres (:54329), tracked by paperclip's OWN adoptable-
+  #     service registry, NOT by installer/state/paperclip.pid. If a half-dead
+  #     watcher lingers (server stopped, process survives), the next `pnpm dev`
+  #     ADOPTS it ("already running") and never starts a real server — so the relay
+  #     forwards to a dead 127.0.0.1:3100 and `doctor` check 17 goes red. Steps
+  #     (1)+(2) can't catch that (wrong pid; port already released). Sweep the whole
+  #     tree BY PATH. Bracketed patterns ([t]ools) so this never matches the reset
+  #     process itself. Does NOT touch ~/.paperclip data (user data, like models).
+  local _pp _swept=0
+  for _pp in '[t]ools/paperclip' '[.]paperclip/instances/default/db'; do
+    if pgrep -f "$_pp" >/dev/null 2>&1; then pkill -TERM -f "$_pp" 2>/dev/null || true; _swept=1; fi
+  done
+  if (( _swept )); then
+    sleep 2
+    for _pp in '[t]ools/paperclip' '[.]paperclip/instances/default/db'; do
+      if pgrep -f "$_pp" >/dev/null 2>&1; then pkill -KILL -f "$_pp" 2>/dev/null || true; fi
+    done
+    ok "swept stray paperclip process tree (dev-runner + embedded Postgres)"
+  fi
+}
+
 # Helper: remove the ai-stack network if the helper is available, else best-effort.
 remove_ai_stack_network() {
   if declare -F network_remove_ai_stack >/dev/null 2>&1; then
@@ -122,6 +220,14 @@ case "$TIER" in
   soft)
     if ! confirm "Proceed with soft reset?" N; then exit 0; fi
     rm -f "$AI_STACK"/installer/state/phase_*.done
+    # Sweep straggler pidfiles. teardown_host_daemons already removed the
+    # HOST_DAEMONS ones; this also clears pidfiles for SANDBOX-resident daemons
+    # (e.g. hermes-telegram.pid — the gateway runs inside hermes-fleet-v1 and dies
+    # with it, leaving only a stale host pidfile). The openshell-watchdog is a
+    # launchd job (no .pid file), so this can't orphan it. All host processes are
+    # stopped by now, so any surviving .pid is stale.
+    rm -f "$AI_STACK"/installer/state/*.pid
+    rm -f "$AI_STACK"/installer/state/models-pending*.txt   # stale model-binding intents
     rm -rf "$AI_STACK"/CHANGELOG.d/*
     ok "soft reset complete."
     ;;
@@ -143,9 +249,22 @@ case "$TIER" in
     log "Stopping + removing managed ai-stack containers..."
     docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}' \
       | while IFS= read -r c; do docker rm -f "$c" >/dev/null && ok "removed $c"; done
+    # (4) Host-side daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)
+    #     — NOT containers, so nothing above stops them; they'd keep their ports
+    #     and break the next install. Free the ports + clear stale pidfiles.
+    log "Stopping host daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)..."
+    teardown_host_daemons
     log "Removing ai-stack docker network..."
     remove_ai_stack_network
     rm -f "$AI_STACK"/installer/state/phase_*.done
+    # Sweep straggler pidfiles. teardown_host_daemons already removed the
+    # HOST_DAEMONS ones; this also clears pidfiles for SANDBOX-resident daemons
+    # (e.g. hermes-telegram.pid — the gateway runs inside hermes-fleet-v1 and dies
+    # with it, leaving only a stale host pidfile). The openshell-watchdog is a
+    # launchd job (no .pid file), so this can't orphan it. All host processes are
+    # stopped by now, so any surviving .pid is stale.
+    rm -f "$AI_STACK"/installer/state/*.pid
+    rm -f "$AI_STACK"/installer/state/models-pending*.txt   # stale model-binding intents
     rm -rf "$AI_STACK"/CHANGELOG.d/*
     rm -rf "$AI_STACK"/data/{phoenix,falkor,qdrant,honcho,openwebui}/*
     ok "hard reset complete. Backups under data.bak-${ts}/"
@@ -168,9 +287,19 @@ case "$TIER" in
     log "Stopping + removing managed ai-stack containers..."
     docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}' \
       | while IFS= read -r c; do docker rm -f "$c" >/dev/null; done
+    log "Stopping host daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)..."
+    teardown_host_daemons
     log "Removing ai-stack docker network..."
     remove_ai_stack_network
     rm -f "$AI_STACK"/installer/state/phase_*.done
+    # Sweep straggler pidfiles. teardown_host_daemons already removed the
+    # HOST_DAEMONS ones; this also clears pidfiles for SANDBOX-resident daemons
+    # (e.g. hermes-telegram.pid — the gateway runs inside hermes-fleet-v1 and dies
+    # with it, leaving only a stale host pidfile). The openshell-watchdog is a
+    # launchd job (no .pid file), so this can't orphan it. All host processes are
+    # stopped by now, so any surviving .pid is stale.
+    rm -f "$AI_STACK"/installer/state/*.pid
+    rm -f "$AI_STACK"/installer/state/models-pending*.txt   # stale model-binding intents
     rm -rf "$AI_STACK"/CHANGELOG.d/*
     rm -rf "$AI_STACK"/data/{phoenix,falkor,qdrant,honcho,openwebui}/*
     rm -f "$AI_STACK"/.env

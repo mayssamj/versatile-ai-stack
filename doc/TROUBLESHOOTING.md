@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the 39 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
+For the 40 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---
@@ -202,8 +202,10 @@ Expected, and exactly why Phase 25 is **opt-in**. The LM Studio **desktop app**
 idle-spins **~0.8–1 core even with no model loaded and the server stopped**. On a 24 GB
 box that's a real liability. So:
 
-- Run Phase 25 **only when you want MLX tool-calling** (e.g. LFM2.5 with working tools,
-  which the Ollama GGUF build can't do). Ollama stays the default runtime.
+- Run LM Studio **only when you want its MLX models** — the two big agent models
+  `local-qwen3.6` + `local-qwen3-coder` (~17 GB each) and `local-lfm2-mlx` (LFM2.5 with
+  working tool-calling, which the Ollama GGUF can't do). `local-gemma4` stays on Ollama,
+  which remains the default runtime.
 - **QUIT LM Studio when done:**
   ```bash
   ~/.lmstudio/bin/lms server stop     # stop the OpenAI server on :1234
@@ -215,6 +217,10 @@ box that's a real liability. So:
 
 If `local-lfm2-mlx` calls fail after you quit LM Studio, that's why — restart the server
 (`lms server start`) or remove the model from `litellm/config.yaml` while it's off.
+Agents **assigned** an lmstudio model (e.g. `hermes_software_engineer` → `local-qwen3-coder`)
+don't 404 when LM Studio is down — `install.sh model sync` availability-gates them back to
+`local-gemma4`. Re-run `model sync` once LM Studio is up to promote them again (see
+[models.md](models.md)).
 
 ---
 
@@ -569,7 +575,7 @@ for c in litellm phoenix falkordb qdrant openwebui honcho-api-1 llm_guard; do
 done
 
 # 4. Are the host ports really listening?
-lsof -nP -iTCP -sTCP:LISTEN | grep -E ':(11434|4000|6006|6379|6333|3010|8000|3001|3000) '
+lsof -nP -iTCP -sTCP:LISTEN | grep -E ':(11434|4000|6006|6379|6333|8000|8080|3000) '
 
 # 5. Can the containers reach each other?
 docker exec litellm wget -qO- --timeout=2 http://phoenix:6006/healthz; echo

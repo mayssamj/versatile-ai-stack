@@ -31,14 +31,18 @@ port_collisions_diagnose() {
     case "$owner" in
       OrbStack|com.docker.backend|com.docke|Docker|vpnkit|ollama) continue ;;
     esac
-    # Managed host-side helpers we deliberately run as plain processes.
+    # Managed host-side helpers we deliberately run as plain processes
+    # (services.yml: network=host, type python-bg/node-bg). These legitimately
+    # listen on their 127.0.10.x alias, so they are NOT foreign collisions.
     # Identify by the command-line tag we set in their argv:
-    #   paperclip-relay  → 127.0.10.14:3100 forwarder (start-paperclip.sh)
-    #   mcp_server.py    → docs_mcp on 127.0.10.4:8765 (start-docs_mcp.sh)
+    #   paperclip-relay      → 127.0.10.14:3100 forwarder (start-paperclip.sh)
+    #   mcp_server.py        → docs_mcp on 127.0.10.4:8765 (start-docs_mcp.sh)
+    #   unsloth … studio     → unsloth on 127.0.10.16:8898 (start-unsloth.sh)
+    #   …/server/index.js    → claw3d on 127.0.10.17:4310 (start-claw3d.sh)
     owner_pid="$(lsof -nP -iTCP@"$ip":"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print $2}')"
     owner_cmd="$(ps -p "$owner_pid" -o args= 2>/dev/null)"
     case "$owner_cmd" in
-      *paperclip-relay*|*mcp_server.py*) continue ;;
+      *paperclip-relay*|*mcp_server.py*|*unsloth*studio*|*unsloth*serve*|*server/index.js*) continue ;;
     esac
     clashes+=("$ip:$port held by $owner")
   done

@@ -3,6 +3,10 @@ CHECKS+=(phoenix_project)
 CHECK_TITLE[phoenix_project]="Phoenix has 'ai-stack' project (traces flowing)"
 
 phoenix_project_diagnose() {
+  # If the 'phoenix' alias doesn't resolve (prepare-sudo not run), every curl
+  # below would return 000 and mis-report as a Phoenix-specific failure. Defer
+  # to the alias checks instead of false-failing here.
+  dscacheutil -q host -a name phoenix 2>/dev/null | grep -q ip_address || { echo "(phoenix alias unresolved — see checks 15/19) [skip]"; return 0; }
   if ! curl -sf --max-time 3 http://phoenix:6006 >/dev/null; then
     echo "Phoenix UI not responding on :6006"
     return 1
@@ -22,7 +26,40 @@ phoenix_project_diagnose() {
     return 1
   fi
   if ! echo "$body" | jq -r '.data[]?.name' 2>/dev/null | grep -qxF 'ai-stack'; then
-    echo "Phoenix has no 'ai-stack' project yet — no traces have arrived"
+    # The project only materializes after the FIRST chat-completion's OTLP
+    # batch flushes. On a clean `install all` no inference has run yet, so its
+    # absence is expected — advisory, not red (mirrors check 06). We treat
+    # "no chat traffic yet" as: litellm up < 2 min OR no chat/completions in
+    # its logs. Only stay red if Phoenix is unreachable (handled above).
+    local seen_chat=0
+    if container_running litellm; then
+      local raw_started uptime_sec
+      raw_started="$(docker inspect litellm --format '{{.State.StartedAt}}' 2>/dev/null || echo "")"
+      uptime_sec="$(
+        python3 - <<PY 2>/dev/null || echo 0
+import datetime, sys
+raw = "${raw_started}"
+if not raw:
+    print(0); sys.exit(0)
+s = raw.rstrip("Z")
+if "." in s:
+    s = s.split(".")[0]
+dt = datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S").replace(
+    tzinfo=datetime.timezone.utc)
+print(int((datetime.datetime.now(tz=datetime.timezone.utc) - dt).total_seconds()))
+PY
+      )"
+      : "${uptime_sec:=0}"
+      if (( uptime_sec > 120 )) \
+        && docker logs litellm 2>&1 | grep -qiE 'chat/completions|completion_tokens'; then
+        seen_chat=1
+      fi
+    fi
+    if (( seen_chat == 0 )); then
+      echo "  (Phoenix up; no 'ai-stack' project yet — no inference has run; will appear after first chat)"
+      return 0
+    fi
+    echo "Phoenix reachable + chat traffic has flowed, but no 'ai-stack' project — traces are NOT landing (check 06/13)"
     return 1
   fi
 }

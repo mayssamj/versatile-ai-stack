@@ -27,7 +27,8 @@ stack phases                            # list every phase as id → name (also:
 stack install <phase|all>               # install one phase by NAME or number (or everything)
 stack verify                            # Phase 00·V — 6 runtime probes; no install
 stack status                            # declared vs actual table
-stack doctor                            # 39 health checks + auto-fix offers
+stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
+stack doctor                            # 40 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container
@@ -79,7 +80,7 @@ KEY="$(grep ^LITELLM_MASTER_KEY= ~/ai-stack/.env | cut -d= -f2-)"
 curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"local","messages":[{"role":"user","content":"hello"}]}' \
+  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hello"}]}' \
   | jq -r ".choices[0].message.content"
 ```
 
@@ -89,9 +90,11 @@ container port; see [CHANGELOG.md 2026-05-28 entry](../CHANGELOG.md) for
 why we don't use port 80 anymore).
 
 Use any model from `~/ai-stack/services.yml` (or `curl /v1/models | jq`).
-Verified models: `local`, `local-heavy`, `claude-sonnet`, `claude-opus`,
-`openai-gpt-5.5`, `openrouter-claude-opus-4.7`, `google-gemini-3.1-pro`,
-plus 16 more.
+Verified models: `local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`,
+`claude-sonnet`, `claude-opus`, `openai-gpt-5.5`, `openrouter-claude-opus-4.7`,
+`google-gemini-3.1-pro`, plus more (the legacy `local` / `local-heavy` /
+`local-lfm2` slugs still resolve). Run `install.sh model list` for the live
+per-agent matrix.
 
 ### Watch traces stream
 
@@ -262,22 +265,38 @@ the real liveness probe is `doctor` check 33. See
 
 ---
 
-## Which model the agents use (light by default)
+## Which model each agent uses (declarative, per-agent)
 
-The Hermes fleet defaults to the **light model** `local` (gemma4:e4b, ~9.6 GB, fast) —
-this applies to direct hermes use, the Telegram gateway, and claw3d. On the 24 GB box
-`local-heavy` (qwen3.6:27b, ~22 GB) thrashes and sticks, so it is **not** the default;
-it stays available as an explicit alias for heavy reasoning. Pick it per call:
+Each agent's LLM is **declared per-agent** in `installer/models.yml` (the single source
+of truth) and rendered into every agent's config by `install.sh model {list,assign,sync,superset}`.
+See [models.md](models.md) for the full reference. Three local models:
+
+| model | runtime | role |
+|---|---|---|
+| `local-gemma4` (`gemma4:e4b`, ~9.6 GB) | Ollama | **default** for any unassigned agent; light + fast |
+| `local-qwen3.6` (`qwen/qwen3.6-27b`, ~17.5 GB) | LM Studio MLX | heavy general reasoning (opt-in) |
+| `local-qwen3-coder` (`qwen3-coder-30b-a3b-instruct-mlx`, ~17.2 GB) | LM Studio MLX | coding specialist (opt-in) |
+
+Shipped assignments: the coder profiles `hermes_software_engineer` + `hermes_reviewer`
+and `pi` → `local-qwen3-coder`; reasoning-heavy `hermes_cos` + `hermes_researcher` +
+`hermes_data_analyst` + `deerflow` → `local-qwen3.6`; `hermes_creator` + `hermes_ops` +
+`ace` + `rlm` → `local-gemma4`. An lmstudio-assigned agent **auto-falls-back to
+`local-gemma4`** when LM Studio (:1234) is down or the model isn't served, so a plain
+`install all` works with no LM Studio. To activate the big MLX models: start LM Studio +
+load the model (or `install.sh install lmstudio`), then `install.sh model sync`.
 
 ```bash
-# Heavy reasoning on demand (LiteLLM master key):
-curl -s http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"local-heavy","messages":[{"role":"user","content":"…"}]}'
+install.sh model list                 # read-only catalog + live per-agent matrix
+install.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
+install.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
+install.sh model superset             # print the canonical scoped-key allowlist
 ```
 
-If `local-heavy` sticks/thrashes: `ollama stop`, or `brew services restart ollama` to
-clear it; prefer `local` for quick smoke tests.
+The two big MLX models (~17 GB each) **cannot be resident together** on a 24 GB box;
+LM Studio JIT-loads with idle-unload (TTL) so only one is in RAM at a time. Ollama is
+kept lazy (`OLLAMA_KEEP_ALIVE=0`, models unload right after each request). The legacy
+`local-heavy` (Ollama `qwen3.6:27b`) is **no longer auto-pulled** and 503s unless you
+`ollama pull` it by hand — the heavy/coder models live on LM Studio now.
 
 ---
 

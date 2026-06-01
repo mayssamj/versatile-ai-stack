@@ -91,32 +91,38 @@ if ! docker info >/dev/null 2>&1; then
 fi
 ok "Docker daemon ready"
 
-# --- Ollama host + origins (required for cross-container access) -----------
+# --- Ollama host + origins + keep-alive (cross-container access + lazy mem) -
 # Ollama defaults to binding 127.0.0.1 with an origin allowlist limited to
 # localhost — so LiteLLM containers calling http://ollama:11434/api/chat
 # via --add-host=ollama:host-gateway get 403 Forbidden. Set OLLAMA_HOST=0.0.0.0
 # and OLLAMA_ORIGINS=* on the brew service so any in-stack container can
-# reach it. Persist via the plist + launchctl setenv so daemons spawned
-# later in this session also see the env.
+# reach it. We also set OLLAMA_KEEP_ALIVE=0 so Ollama NEVER keeps a model
+# resident after a request — on a 24GB box the big models thrash RAM, and the
+# lazy-Ollama policy (2026-05-31) keeps only gemma4:e4b/embeddings light; a
+# resident 9.6GB model otherwise sits in memory between calls. Persist via the
+# plist + launchctl setenv so daemons spawned later in this session also see it.
 OLLAMA_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.ollama.plist"
 if command -v ollama >/dev/null && [[ -f "$OLLAMA_PLIST" ]]; then
   needs_restart=0
-  for key in OLLAMA_HOST OLLAMA_ORIGINS; do
+  for key in OLLAMA_HOST OLLAMA_ORIGINS OLLAMA_KEEP_ALIVE; do
     if ! plutil -extract "EnvironmentVariables.$key" raw "$OLLAMA_PLIST" >/dev/null 2>&1; then
       needs_restart=1
     fi
   done
   if (( needs_restart )); then
-    log "Patching $OLLAMA_PLIST with OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=*..."
+    log "Patching $OLLAMA_PLIST with OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=* + OLLAMA_KEEP_ALIVE=0..."
     # Use PlistBuddy (built-in on macOS); merge into existing EnvironmentVariables dict.
     /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OLLAMA_HOST string 0.0.0.0" "$OLLAMA_PLIST" 2>/dev/null \
       || /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:OLLAMA_HOST 0.0.0.0" "$OLLAMA_PLIST"
     /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OLLAMA_ORIGINS string *" "$OLLAMA_PLIST" 2>/dev/null \
       || /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:OLLAMA_ORIGINS *" "$OLLAMA_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OLLAMA_KEEP_ALIVE string 0" "$OLLAMA_PLIST" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:OLLAMA_KEEP_ALIVE 0" "$OLLAMA_PLIST"
     launchctl setenv OLLAMA_HOST "0.0.0.0"
     launchctl setenv OLLAMA_ORIGINS "*"
+    launchctl setenv OLLAMA_KEEP_ALIVE "0"
     brew services restart ollama 2>&1 | tail -2 || warn "brew services restart ollama failed"
-    ok "patched + restarted ollama (OLLAMA_HOST=0.0.0.0, OLLAMA_ORIGINS=*)"
+    ok "patched + restarted ollama (OLLAMA_HOST=0.0.0.0, OLLAMA_ORIGINS=*, OLLAMA_KEEP_ALIVE=0)"
   fi
 fi
 

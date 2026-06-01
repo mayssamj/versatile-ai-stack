@@ -8,6 +8,222 @@ If you're patching the installer, read this first. The choices below were
 debated through a three-way review (AI-infra, DevOps, adversarial) and the
 debate outcomes are in [CHANGELOG.md](../CHANGELOG.md).
 
+The rest of this doc is implementation-focused (file layout, idempotency,
+locking, Docker discipline). For the *runtime* shape of the stack — who calls
+whom at request time — start with the layered view immediately below.
+
+---
+
+## The layered view
+
+The stack is five layers stacked on a single inference egress. Read it
+top-down: a UI or CLI hands a request to an agent, the agent routes through
+LiteLLM, LiteLLM fans out to a local runtime, and the call lands in Phoenix as
+a trace "for free."
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  UI LAYER (host)                                                           │
+│    Open WebUI :8080   ·   Hermes Workspace :3000   ·   claw3d :4310 (local) │
+│    (browsers/chat front-ends; all dial LiteLLM)                            │
+└───────────────────────────────────┬────────────────────────────────────────┘
+                                     │  scoped virtual key (per agent)
+┌────────────────────────────────────▼───────────────────────────────────────┐
+│  AGENT LAYER (isolated)                                                     │
+│    Hermes fleet — 7 profiles in OpenShell sandbox  hermes-fleet-v1          │
+│      cos · software_engineer · researcher · creator · reviewer ·           │
+│      data_analyst · ops    (+ Telegram gateway runs inside the same box)   │
+│    Pi (Earendil) coding agent in OpenShell sandbox  pi-v1                   │
+│    DeerFlow · ACE · RLM    (host-side, each minting its own scoped key)     │
+└────────────────────────────────────┬───────────────────────────────────────┘
+                                     │  HERMES_/PI_/ACE_/RLM_LITELLM_KEY
+┌────────────────────────────────────▼───────────────────────────────────────┐
+│  MODEL-HUB LAYER  —  LiteLLM  :4000   (the single inference egress)         │
+│    · every agent's ONLY route to a model                                   │
+│    · virtual keys, each allowlisted against the canonical superset         │
+│    · models.yml is the canonical model↔agent binding                       │
+│    · emits OTLP on every call ───────────────────────────────┐             │
+└──────────┬───────────────────────────────┬───────────────────┼─────────────┘
+           │ ollama (host-gateway)          │ host.docker.internal:1234        │
+┌──────────▼──────────┐         ┌───────────▼──────────┐        │ OTLP gRPC
+│  Ollama (brew :11434)│         │  LM Studio (:1234)    │        │
+│   gemma4:e4b default │         │   MLX: qwen3.6-27b,   │        │
+│   nomic-embed-text   │         │   qwen3-coder-30b     │        │
+└─────────────────────┘         └──────────────────────┘        │
+                                                                 │
+┌──────────────────────────────────┐   ┌─────────────────────────▼─────────┐
+│  DATA / MEMORY LAYER              │   │  OBSERVABILITY LAYER              │
+│    Qdrant :6333 (vectors)         │   │    Phoenix :6006                  │
+│    FalkorDB :6379 (graph + UI)    │   │    OTLP gRPC ingest :4317         │
+│    Honcho :8000 (cross-agent mem; │   │    (alias phoenix-otlp)           │
+│      its Postgres also backs the  │   │    project "ai-stack" — every     │
+│      LiteLLM key store)           │   │    LLM call lands here for free   │
+└───────────────────────────────────┘   └───────────────────────────────────┘
+```
+
+### UI layer
+
+Host-side front-ends, all of which terminate at LiteLLM for inference:
+
+- **Open WebUI** — reached at `http://openwebui:8080` (alias `127.0.10.9:8080`
+  → container `8080`, Phase 05), the general chat UI.
+- **Hermes Workspace** — `:3000` (Phase 05), the fleet's own workspace UI.
+- **claw3d** — the 3D agent-office UI on `:4310` plus its `claw3d-bridge`
+  on `:7780` (Phase 19), routing chat across every isolated agent. Both are
+  **loopback-only by design** (no `/etc/hosts` alias — see the host/sandbox
+  boundary below); claw3d refuses to bind a public host without
+  `STUDIO_ACCESS_TOKEN`, and the bridge is auth-less and can drive all 9
+  agents, so both stay on `127.0.0.1`.
+
+### Model-hub layer — LiteLLM is the single inference egress
+
+**Every agent's only route to a model is `http://litellm:4000/v1`.** There is
+no second door. This is the architectural spine: one process holds the
+provider keys (`ANTHROPIC` / `OPENAI` / `OPENROUTER` / `GOOGLE` +
+`LITELLM_MASTER_KEY`), one process enforces the guardrails callback chain, and
+one process emits OTLP. Centralizing egress is what makes per-agent virtual
+keys, allowlists, and free tracing possible.
+
+LiteLLM fans out to two local runtimes: **Ollama** (brew service on the host,
+reached via `--add-host=ollama:host-gateway`) and **LM Studio** (host OpenAI
+server on `:1234`, reached via `host.docker.internal`, opt-in Phase 25).
+
+### Agent layer
+
+- **Hermes fleet — 7 profiles** (`hermes_cos`, `hermes_software_engineer`,
+  `hermes_researcher`, `hermes_creator`, `hermes_reviewer`,
+  `hermes_data_analyst`, `hermes_ops`) live inside the OpenShell sandbox
+  `hermes-fleet-v1` (Phase 04·F). The Hermes Telegram gateway (Phase 20)
+  runs the gateway process *inside the same sandbox*.
+- **Pi (Earendil)** coding agent is isolated in its own OpenShell sandbox
+  `pi-v1` (Phase 15) with a tight egress allowlist; it reaches LiteLLM via
+  `http://host.docker.internal:4000` with `PI_LITELLM_KEY`.
+- **DeerFlow** (Phase 10), **ACE** (Phase 17), **RLM** (Phase 18) are
+  host-side agents, each routing through LiteLLM with its own scoped key.
+
+### Data / memory layer
+
+- **Qdrant** `:6333` — vector store (RAG corpus; the Documents ingestor at
+  Phase 06 sweeps `ingestor/inbox` → Qdrant).
+- **FalkorDB** `:6379` (+ UI `:3000`) — graph/redis memory.
+- **Honcho** `:8000` — self-hosted cross-agent memory; its compose Postgres
+  *also* backs the LiteLLM key store, which is why Phase 03 (Honcho) runs
+  before Phase 01 (LiteLLM): LiteLLM's Prisma migration needs Postgres at
+  startup.
+
+### Observability layer
+
+- **Phoenix** `:6006` collects OTLP traces via the `arize_phoenix` callback
+  added to LiteLLM at Phase 01·H; OTLP gRPC ingest is on `:4317` (alias
+  `phoenix-otlp`). Because every agent's calls go through the single LiteLLM
+  egress, every LLM call lands in Phoenix project `ai-stack` with no per-agent
+  instrumentation.
+
+---
+
+## Request / data flow — a typical inference
+
+What happens end-to-end when, say, Pi answers a coding prompt:
+
+```
+1.  Pi (in pi-v1 sandbox) builds a chat request.
+2.  Pi dials  http://host.docker.internal:4000/v1  with  PI_LITELLM_KEY
+        (sandbox → host boundary; Pi has no other egress).
+3.  LiteLLM authenticates the virtual key and checks the model against that
+        key's allowlist (the canonical superset — see binding below).
+4.  Guardrails callback runs (pre-call deny on the in-process regex/keyword
+        rules + secret-leak blocker).
+5.  LiteLLM resolves Pi's bound model (local-qwen3-coder) and dispatches:
+        · ollama runtime  → Ollama on the host (host-gateway)
+        · lmstudio runtime → LM Studio :1234 (host.docker.internal)
+6.  Response streams back through LiteLLM; post-call redaction runs.
+7.  LiteLLM emits OTLP → Phoenix :4317; the call appears in project
+        "ai-stack". The trace_to_file callback also appends to
+        traces/litellm.jsonl.
+8.  Pi receives the completion. No agent ever touched Ollama / LM Studio
+        directly — LiteLLM was the only hop.
+```
+
+The same shape holds for every agent; only the key (`HERMES_LITELLM_KEY`,
+`ACE_LITELLM_KEY`, `RLM_LITELLM_KEY`, …) and the bound model differ.
+
+---
+
+## Model↔agent binding
+
+`installer/models.yml` (`version: 1`) is the **canonical single source of
+truth** for which model each agent uses. It declares 3 canonical models and a
+per-agent assignment table; `installer/lib/models.sh` is the `install.sh
+model` implementation that reconciles declarations against what LiteLLM
+actually serves.
+
+### The 3 canonical models
+
+| key | runtime | served id | notes |
+|---|---|---|---|
+| `local-gemma4` | ollama | `gemma4:e4b` | **Default** for any unassigned agent (~9.6 GB, stays on Ollama). |
+| `local-qwen3.6` | lmstudio | `qwen/qwen3.6-27b` | ~17.5 GB MLX. Cannot coexist with `local-qwen3-coder` on 24 GB. |
+| `local-qwen3-coder` | lmstudio | `qwen3-coder-30b-a3b-instruct-mlx` | ~17.2 GB MLX. Cannot coexist with `local-qwen3.6` on 24 GB. |
+
+`default: local-gemma4`. (Phase 25 separately adds an opt-in, add-only legacy
+slug `local-lfm2-mlx`; `local-heavy` / `local-lfm2` remain add-only legacy
+entries in `litellm/config.yaml` that 404 until pulled. None of these three
+are in the canonical roster.)
+
+### Availability-gating — fallback to `local-gemma4`
+
+The two big models are LM Studio MLX models that may not be loaded. If an
+agent is assigned an `lmstudio` model that LiteLLM doesn't currently serve,
+`models.sh` does **not** fail — it renders that agent against an effective
+fallback (the default, `local-gemma4`) and warns:
+
+```
+<agent>: assigned '<model>' (lmstudio) not servable — rendering '<eff>' (availability-gated)
+```
+
+This is what keeps a fresh, light 24 GB install functional before any heavy
+MLX model is pulled (and it pairs with lazy-Ollama: Phase 01 eager-pulls only
+`gemma4:e4b` + `nomic-embed-text`, and `OLLAMA_KEEP_ALIVE=0` keeps nothing
+resident).
+
+### The superset allowlist
+
+Every scoped virtual key (`HERMES_`, `PI_`, `ACE_`, `RLM_LITELLM_KEY`) is
+minted against one fixed, sorted-unique **superset** of model names —
+`install.sh model superset` prints it. Because each key already allows the
+whole superset, `model assign <agent> <model>` can re-point an agent without
+ever re-minting its key. `model sync` is the crash-safe, opt-in reconcile
+(register model_list ADD-ONLY → restart litellm once if changed → widen
+scoped-key allowlists to the superset → render agents); it is *not* run by
+`install all`. Doctor check `40_models_binding.sh` validates the binding.
+
+---
+
+## Host vs. sandbox boundary + lo0 alias networking
+
+There are three vantage points and the same alias is meant to resolve from
+each — but the *mechanism* differs, and that boundary is the security story.
+
+- **Container → container** uses Docker's embedded DNS in the `ai-stack`
+  bridge: from inside any joined container, `http://litellm:4000`,
+  `http://phoenix:6006`, `redis://falkordb:6379` resolve directly. No
+  `/etc/hosts` lookup needed.
+- **Mac host → service** uses the `/etc/hosts` block + `lo0` aliases (the
+  `127.0.10.x` scheme, installed by `prepare-sudo`). Same URL form as the
+  container side (`host_port == container_port`).
+- **Sandbox → host** (the isolated agents) uses `host.docker.internal`. Pi in
+  `pi-v1` reaches LiteLLM at `http://host.docker.internal:4000` — it cannot
+  use the `127.0.10.x` aliases, and its egress allowlist is deliberately
+  tight. This is the boundary that makes "Pi can only talk to LiteLLM" true.
+
+Two host services that drive agents are **intentionally loopback-only with no
+alias** — `claw3d` (`:4310`, refuses a public bind without
+`STUDIO_ACCESS_TOKEN`) and `claw3d-bridge` (`:7780`, auth-less and can drive
+all 9 agents). LM Studio (`:1234`) likewise has no `lo0` alias because it is
+reached from the LiteLLM *container* via `host.docker.internal`, not from a
+host alias. (The detailed two-layer aliasing mechanics live in
+[Networking (Phase 00·N)](#networking-phase-00n--two-layer-aliasing) below.)
+
 ---
 
 ## File-by-file responsibility
@@ -63,7 +279,7 @@ debate outcomes are in [CHANGELOG.md](../CHANGELOG.md).
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (31 today)
+│   │   └── checks/                  — one file per failure mode (40 today)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh

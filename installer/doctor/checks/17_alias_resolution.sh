@@ -17,6 +17,28 @@ _alias_health_path() {
   esac
 }
 
+# Is the owner of this alias actually up? We only want to PROBE aliases whose
+# owning service is running — an optional service that's legitimately stopped
+# would otherwise connection-refuse (→ 000) and false-fail (mirrors check 20,
+# which `continue`s when no matching container is running).
+#   - docker services: container_running <service_key> (and the common name
+#     variants used elsewhere: <svc>, <svc>-1, <svc>-api, <svc>-api-1).
+#   - host daemons (services.yml network: host — docs_mcp/paperclip/unsloth/
+#     claw3d): no container, so fall back to "is something LISTENING on the
+#     alias IP:host_port?" via lsof.
+_alias_owner_up() {
+  local svc_key="$1" ip="$2" host_port="$3" n
+  for n in "$svc_key" "${svc_key}-1" "${svc_key}-api" "${svc_key}-api-1"; do
+    if container_running "$n" 2>/dev/null; then return 0; fi
+  done
+  # Host-daemon fallback: a listener on the alias IP:port means the owner is up.
+  if [[ -n "$ip" && -n "$host_port" ]] \
+    && lsof -nP -iTCP@"$ip":"$host_port" -sTCP:LISTEN >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 _alias_probe_one() {
   local alias="$1" proto="$2" host_port="$3" svc_key="$4"
   local rc=0
@@ -96,11 +118,15 @@ alias_resolution_diagnose() {
     fi
   done
 
-  local fails=() a proto hp svc_key
+  local fails=() a proto hp ip svc_key
   for a in "${ALIASES_LIST[@]}"; do
     proto="${ALIAS_PROTOCOL[$a]}"
     hp="${ALIAS_HOST_PORT[$a]}"
+    ip="${ALIAS_IP[$a]}"
     svc_key="${ALIAS_SERVICE_KEY[$a]}"
+    # Only probe aliases whose owning service is up — a stopped optional service
+    # would connection-refuse and false-fail.
+    _alias_owner_up "$svc_key" "$ip" "$hp" || continue
     if ! out="$(_alias_probe_one "$a" "$proto" "$hp" "$svc_key" 2>&1)"; then
       fails+=("$out")
     fi

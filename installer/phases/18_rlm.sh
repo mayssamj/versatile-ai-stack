@@ -77,10 +77,13 @@ ok "rlms installed in $RLM_VENV"
 RLM_KEY_CURRENT="$(get_env RLM_LITELLM_KEY '')"
 if [[ -z "$RLM_KEY_CURRENT" ]] \
    || ! curl -sf --max-time 5 -H "Authorization: Bearer $RLM_KEY_CURRENT" http://litellm:4000/v1/models >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for RLM (models=[local, local-heavy, local-lfm2])..."
+  # Mint against the fixed SUPERSET so `install.sh model assign/sync` can re-point
+  # RLM without re-minting. Canonical IDs are registered in config.yaml by Phase
+  # 01 first (superset-before-mint).
+  log "Minting LiteLLM virtual key for RLM (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
   RLM_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-heavy","local-lfm2"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
+    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$RLM_KEY_NEW" ]] || { err "Failed to mint RLM_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env RLM_LITELLM_KEY "$RLM_KEY_NEW"
@@ -91,15 +94,33 @@ fi
 RLM_KEY_NOW="$(get_env RLM_LITELLM_KEY '')"
 
 # --- 3. Render rlm/.env (routes through LiteLLM) ---
+# RLM's bound model from installer/models.yml (availability-gated). RLM defaults
+# to local-gemma4 (Ollama, always servable). run_rlm.py reads $RLM_MODEL.
+RLM_MODEL_VAL="local"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _rm="$(yq -r '.assignments.rlm // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  _rrt="$(yq -r ".models.\"$_rm\".runtime" "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  if [[ -n "$_rm" && "$_rm" != "null" ]]; then
+    if [[ "$_rrt" == "lmstudio" ]] \
+       && ! { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
+              && grep -qF "model_name: ${_rm}" "$AI_STACK/litellm/config.yaml" 2>/dev/null; }; then
+      RLM_MODEL_VAL="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    else
+      RLM_MODEL_VAL="$_rm"
+    fi
+  fi
+fi
+set_env RLM_MODEL "$RLM_MODEL_VAL"
 ( umask 077; cat > "$RLM_DIR/.env" <<ENVEOF
 # ai-stack: rendered by installer/phases/18_rlm.sh. Routes RLM through LiteLLM.
 # Do not edit; re-run 'bash install.sh install 18' to regenerate.
 OPENAI_API_KEY=$RLM_KEY_NOW
 OPENAI_BASE_URL=http://litellm:4000/v1
+RLM_MODEL=$RLM_MODEL_VAL
 ENVEOF
 )
 chmod 600 "$RLM_DIR/.env"
-ok "wrote $RLM_DIR/.env (mode 0600; LiteLLM-routed)"
+ok "wrote $RLM_DIR/.env (mode 0600; LiteLLM-routed; model=$RLM_MODEL_VAL)"
 
 # --- 4. Runner (rlm/run_rlm.py) ---
 cat > "$RLM_RUNNER" <<'PYEOF'

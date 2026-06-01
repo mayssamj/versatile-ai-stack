@@ -123,11 +123,14 @@ ACE_KEY_CURRENT="$(get_env ACE_LITELLM_KEY '')"
 if [[ -z "$ACE_KEY_CURRENT" ]] \
    || ! curl -sf --max-time 5 -H "Authorization: Bearer $ACE_KEY_CURRENT" \
         http://litellm:4000/v1/models >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for ACE (models=[local, local-heavy, local-lfm2])..."
+  # Mint against the fixed SUPERSET so `install.sh model assign/sync` can re-point
+  # ACE without re-minting. Canonical IDs are registered in config.yaml by Phase
+  # 01 first (superset-before-mint).
+  log "Minting LiteLLM virtual key for ACE (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
   ACE_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-heavy","local-lfm2"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \
+    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   if [[ -z "$ACE_KEY_NEW" ]]; then
     err "Failed to mint ACE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"
@@ -141,6 +144,27 @@ fi
 
 # --- 4. Render ACE's .env to route through LiteLLM ---
 ACE_KEY_NOW="$(get_env ACE_LITELLM_KEY '')"
+# ACE's bound model from installer/models.yml (availability-gated). ACE's
+# assignment defaults to local-gemma4 (an Ollama model, always servable). If
+# ACE upstream IGNORES OPENAI_MODEL/ACE_DEFAULT_MODEL, the binding is
+# allowlist-only — `install.sh model list` flags ACE as "(allowlist-only)" so it
+# never falsely reads as model-bound.
+ACE_MODEL="local"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _am="$(yq -r '.assignments.ace // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  _art="$(yq -r ".models.\"$_am\".runtime" "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  # Gate: only render an lmstudio slug if :1234 is up + it's in config.yaml.
+  if [[ -n "$_am" && "$_am" != "null" ]]; then
+    if [[ "$_art" == "lmstudio" ]] \
+       && ! { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
+              && grep -qF "model_name: ${_am}" "$AI_STACK/litellm/config.yaml" 2>/dev/null; }; then
+      ACE_MODEL="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    else
+      ACE_MODEL="$_am"
+    fi
+  fi
+fi
+set_env ACE_DEFAULT_MODEL "$ACE_MODEL"
 # Other provider keys are set to "unused" to satisfy any unconditional
 # `from X import Y` in ACE's provider files.
 cat > "$ACE_DIR/.env" <<ENVEOF
@@ -148,12 +172,14 @@ cat > "$ACE_DIR/.env" <<ENVEOF
 # Do not edit; re-run 'bash install.sh install 17' to regenerate.
 OPENAI_API_KEY=$ACE_KEY_NOW
 OPENAI_BASE_URL=http://litellm:4000/v1
+OPENAI_MODEL=$ACE_MODEL
+ACE_DEFAULT_MODEL=$ACE_MODEL
 SAMBANOVA_API_KEY=unused
 TOGETHER_API_KEY=unused
 COMMONSTACK_API_KEY=unused
 ENVEOF
 chmod 0600 "$ACE_DIR/.env"
-ok "wrote $ACE_DIR/.env (mode 0600; LiteLLM-routed)"
+ok "wrote $ACE_DIR/.env (mode 0600; LiteLLM-routed; model=$ACE_MODEL)"
 
 # --- 5. Results dir ---
 mkdir -p "$ACE_RESULTS" && chmod 0700 "$ACE_RESULTS"

@@ -194,6 +194,20 @@ model_list:
       #   litellm_params:
       #     model: openai/gpt-realtime
       #     api_key: os.environ/OPENAI_API_KEY
+  - model_name: local-gemma4
+    litellm_params:
+      model: ollama_chat/gemma4:e4b
+      api_base: http://ollama:11434
+  - model_name: local-qwen3.6
+    litellm_params:
+      model: openai/qwen/qwen3.6-27b
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
+  - model_name: local-qwen3-coder
+    litellm_params:
+      model: openai/qwen3-coder-30b-a3b-instruct-mlx
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
 litellm_settings:
   # Custom callback writes each call to /traces/litellm.jsonl
   # (mounted to ~/ai-stack/traces on host).

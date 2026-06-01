@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 38/38 ✓
+# 1. Confirm the stack is healthy. Target: 40/40 ✓
 bash ~/ai-stack/install.sh doctor
 
 # 2. See declared vs actual state.
@@ -52,7 +52,7 @@ One chat round-trip touches **four pillars** of the stack: LiteLLM (the proxy), 
 # 1. Open the chat UI.
 open http://openwebui:8080
 
-# 2. New chat. Pick model "local" (= Gemma 4 E4B via Ollama). Send:
+# 2. New chat. Pick model "local-gemma4" (Gemma 4 E4B via Ollama, the default). Send:
 #    "What's the difference between LoRA and QLoRA?"
 
 # 3. Open the observability UI in another tab.
@@ -66,7 +66,7 @@ You'll see one trace in Phoenix containing:
 
 That single trace proves the alias chain works (Open WebUI dialed `litellm:4000`, LiteLLM dialed `ollama:11434` via host-gateway), the proxy enforces auth (LiteLLM master key), and Phoenix's OTLP exporter is wired. If any of those four is broken, you wouldn't see the trace.
 
-**Next time you're here:** swap to model "local-heavy" (Qwen 3.6 27B). Same trace, different latency profile (~10-20s, much smarter responses).
+**Next time you're here:** swap to model "local-qwen3.6" (Qwen 3.6 27B, LM Studio MLX — start LM Studio + `install.sh model sync` first, or it falls back to `local-gemma4`). Same trace, different latency profile (~10-20s, much smarter responses).
 
 ---
 
@@ -78,14 +78,15 @@ Every component in `services.yml`. Each subsection: **what it is** (one line), *
 
 #### `ollama` (host brew, port 11434)
 
-**What.** Local model server. Downloads open-weight models (Gemma, Qwen, Llama, LFM2.5, embeddings) and serves them over a REST API. Runs as a brew service on the host, not in a container — gets full Metal acceleration on Apple Silicon.
+**What.** Local model server. Serves open-weight models over a REST API. Runs as a brew service on the host, not in a container — gets full Metal acceleration on Apple Silicon. Phase 01 now eager-pulls only `gemma4:e4b` (`local-gemma4`, the default) + `nomic-embed-text`; the heavy/coder models moved to LM Studio MLX. Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=0`) so a model unloads from RAM right after each request.
 
 **When.** Almost never directly. Everything else talks to LiteLLM, which talks to Ollama. You touch Ollama directly to manage models (pull, list, remove).
 
 **Try this.**
 
 ```bash
-# List installed models. After Phase 01 you should have 4.
+# List installed models. After Phase 01 you should have 2 (gemma4:e4b + nomic-embed-text);
+# Lumen (Phase 16) adds the jina embed model.
 ollama list
 
 # Pull a new one (~9 GB; takes 5-10 min on first download).
@@ -151,25 +152,43 @@ curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
 
 #### Model tiers (the names you actually type)
 
-LiteLLM exposes the same model name no matter what's behind it. Tiers as of 2026-05-29:
+LiteLLM exposes the same model name no matter what's behind it. The **three
+canonical local models** are declared per-agent in `installer/models.yml`
+(the single source of truth for model↔agent binding) and rendered by
+`install.sh model {list,assign,sync,superset}` — see [models.md](models.md) and
+§2.16 below. The canonical three, plus the cloud routes:
 
-| Name             | Backend                           | Size  | When to use                                  |
-|------------------|-----------------------------------|-------|----------------------------------------------|
-| `local`          | Gemma 4 E4B (Ollama)              | 9.6GB | Default — fast, cheap, OK quality            |
-| `local-heavy`    | Qwen 3.6 27B Q4_K_M (Ollama)      | 17GB  | Heavy reasoning, slow, RAM-tight             |
-| `local-lfm2`     | LFM2.5-8B-A1B Q4_K_M (Ollama)     | 5.2GB | MoE, 131K context, fastest on Metal          |
-| `embed-local`    | nomic-embed-text (Ollama)         | 274MB | Local embeddings (768-dim)                   |
-| `claude-sonnet`  | Anthropic Claude Sonnet 4.6       | API   | Cloud reasoning when local isn't enough      |
-| `claude-opus`    | Anthropic Claude Opus 4.7         | API   | Cloud frontier; expensive                    |
-| `openai-gpt-5.5*`| OpenAI GPT-5.5 family             | API   | Cloud baseline                               |
-| `openrouter-*`   | Various via OpenRouter (~10)      | API   | Fallbacks / unusual models                   |
-| `google-gemini-3.1-pro` | Gemini 3.1 Pro              | API   | Long-context cloud                           |
+| Name                | Backend                                       | Size   | When to use                                  |
+|---------------------|-----------------------------------------------|--------|----------------------------------------------|
+| `local-gemma4`      | Gemma 4 E4B (Ollama)                          | 9.6GB  | **Default** for any unassigned agent — fast, cheap, always available |
+| `local-qwen3.6`     | Qwen 3.6 27B (LM Studio MLX)                  | 17.5GB | Heavy general reasoning (opt-in — needs LM Studio) |
+| `local-qwen3-coder` | qwen3-coder-30b-a3b-instruct (LM Studio MLX)  | 17.2GB | Coding specialist (opt-in — needs LM Studio) |
+| `embed-local`       | nomic-embed-text (Ollama)                     | 274MB  | Local embeddings (768-dim)                   |
+| `claude-sonnet`     | Anthropic Claude Sonnet 4.6                   | API    | Cloud reasoning when local isn't enough      |
+| `claude-opus`       | Anthropic Claude Opus 4.7                     | API    | Cloud frontier; expensive                    |
+| `openai-gpt-5.5*`   | OpenAI GPT-5.5 family                         | API    | Cloud baseline                               |
+| `openrouter-*`      | Various via OpenRouter (~10)                  | API    | Fallbacks / unusual models                   |
+| `google-gemini-3.1-pro` | Gemini 3.1 Pro                            | API    | Long-context cloud                           |
 
-**Try this (comparison).**
+`local-gemma4` is the only local model `install all` pre-pulls (alongside
+`nomic-embed-text`); the two big MLX models are opt-in (see §2.16 "Enabling the
+big MLX models"). The two big MLX models can't be resident together on a 24 GB
+box; LM Studio JIT-loads with idle-unload so only one is in RAM at a time.
+
+**Legacy aliases (add-only, NOT canonical).** `local`, `local-heavy`,
+`local-lfm2`, and `local-lfm2-mlx` still resolve in `litellm/config.yaml` for
+backward compatibility, but they are NOT among the canonical three in
+`models.yml`. `local-heavy` (Ollama `qwen3.6:27b`) is **no longer auto-pulled**
+and 404s until you `ollama pull` it; `local-lfm2-mlx` (LiquidAI LFM2.5 MLX) is
+added only when you install the opt-in Phase 25 (LM Studio). For new work, prefer
+the canonical names — they're what `install.sh model assign/sync` manages.
+
+**Try this (comparison).** (`local-qwen3.6` requires LM Studio running with the
+model loaded — start it + `install.sh model sync`, or it falls back to `local-gemma4`.)
 
 ```bash
 source ~/ai-stack/.env
-for m in local local-lfm2 local-heavy; do
+for m in local-gemma4 local-qwen3.6; do
   echo "=== $m ==="
   time curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H 'Content-Type: application/json' \
@@ -179,7 +198,7 @@ for m in local local-lfm2 local-heavy; do
 done
 ```
 
-Expect `local-lfm2` to finish in ~1-2s, `local` in ~3-5s, `local-heavy` in ~12-25s on a 24GB M4.
+Expect `local-gemma4` to finish in ~3-5s and `local-qwen3.6` in ~12-25s on a 24GB M4.
 
 **Phoenix trace pattern.** Three spans, one per model. Compare token counts and latency side by side.
 
@@ -414,19 +433,31 @@ openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c 'whoami; uname -srm'
 
 **What.** Seven specialized Hermes agent personas pre-staged in the `hermes-fleet-v1` sandbox at `~/ai-stack/openshell/fleet-souls/`. Each profile is a "soul" (system prompt + tool config + default model) — none of them are running processes by default, you boot one when you need it.
 
-**The roster:**
+**The roster (and the model each is bound to).** Each profile's default model
+is declared in `installer/models.yml` under `assignments:` and rendered into the
+soul file by `install.sh model sync`. All seven authenticate to LiteLLM with the
+shared `HERMES_LITELLM_KEY` virtual key (allowlisted to the canonical model
+superset). The bindings as shipped:
 
-| Profile                  | When you'd dispatch one                                            |
-|--------------------------|--------------------------------------------------------------------|
-| `hermes_cos`             | Chief-of-staff: triage, intake, route a request to a specialist    |
-| `hermes_software_engineer` | Write code, refactor, debug a stack trace                        |
-| `hermes_researcher`      | Long-context document research, summarize a corpus                 |
-| `hermes_creator`         | Open-ended drafting: docs, designs, marketing copy                 |
-| `hermes_reviewer`        | Critique code, designs, plans; produce structured red-team output  |
-| `hermes_data_analyst`    | SQL, JSONL crunching, write a Python notebook to answer a question |
-| `hermes_ops`             | Ops chores: log triage, "is X up?", restart-this kind of asks      |
+| Profile                  | Bound model         | When you'd dispatch one                                            |
+|--------------------------|---------------------|--------------------------------------------------------------------|
+| `hermes_cos`             | `local-qwen3.6`     | Chief-of-staff: triage, intake, route a request to a specialist    |
+| `hermes_software_engineer` | `local-qwen3-coder` | Write code, refactor, debug a stack trace                        |
+| `hermes_researcher`      | `local-qwen3.6`     | Long-context document research, summarize a corpus                 |
+| `hermes_creator`         | `local-gemma4`      | Open-ended drafting: docs, designs, marketing copy                 |
+| `hermes_reviewer`        | `local-qwen3-coder` | Critique code, designs, plans; produce structured red-team output  |
+| `hermes_data_analyst`    | `local-qwen3.6`     | SQL, JSONL crunching, write a Python notebook to answer a question |
+| `hermes_ops`             | `local-gemma4`      | Ops chores: log triage, "is X up?", restart-this kind of asks      |
 
-**When.** Whenever the workload is multi-step and benefits from a specialist persona. Quick one-off chat? Use `local` via Open WebUI. Multi-turn task with tool calls? Dispatch a Hermes profile.
+**Availability-gating.** The five profiles bound to a big MLX model
+(`local-qwen3.6` / `local-qwen3-coder`) only get that model when LM Studio is
+running and serving it. If it isn't, `install.sh model sync` renders the profile
+against the default (`local-gemma4`) and warns — so the fleet still works, just
+on the lighter model. Bring the big models up with §2.16's recipe, then re-run
+`install.sh model sync`. To re-point any profile permanently, use
+`install.sh model assign <profile> <model>` (§2.16).
+
+**When.** Whenever the workload is multi-step and benefits from a specialist persona. Quick one-off chat? Use `local-gemma4` via Open WebUI. Multi-turn task with tool calls? Dispatch a Hermes profile.
 
 **Try this.**
 
@@ -730,7 +761,7 @@ open http://autofyn:3400
 #    Provider: OpenAI-compatible
 #    Base URL: http://litellm:4000/v1
 #    API key:  <paste $LITELLM_MASTER_KEY from ~/ai-stack/.env>
-#    Default model: local-heavy
+#    Default model: local-gemma4 (always available; or local-qwen3.6 with LM Studio up)
 
 # 3. Verify Honcho is reachable from AutoFyn's container side.
 docker exec autofyn-dashboard wget -qO- http://honcho:8000/health
@@ -743,7 +774,7 @@ docker exec autofyn-dashboard wget -qO- http://honcho:8000/health
 curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?query=task" | jq
 ```
 
-**Phoenix trace pattern.** AutoFyn spans tag `agent=autofyn`. Heavy-reasoning calls show `model=local-heavy`; scratchpad calls show `model=local`.
+**Phoenix trace pattern.** AutoFyn spans tag `agent=autofyn`. Heavy-reasoning calls show whichever model you configured (`model=local-qwen3.6` with LM Studio up); scratchpad calls show `model=local-gemma4`.
 
 **Combine with.** `honcho`, `litellm`, Recipe 2 (memory-aware coding).
 
@@ -806,19 +837,24 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 
 #### `pi` (Phase 15, sandboxed in `pi-v1`)
 
-**What.** Earendil's `@earendil-works/pi-coding-agent` running inside the `pi-v1` OpenShell sandbox. Pi is a tree-branching TUI coding agent. Network policy: can reach `host.docker.internal:4000` (LiteLLM via `PI_LITELLM_KEY` virtual key, models = `local|local-heavy|local-lfm2` only), `:8000` (Honcho with `pi` peer namespace), `:8765` (docs-mcp). Cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or the master key.
+**What.** Earendil's `@earendil-works/pi-coding-agent` running inside the `pi-v1` OpenShell sandbox. Pi is a tree-branching TUI coding agent. Network policy: can reach `host.docker.internal:4000` (LiteLLM via `PI_LITELLM_KEY` virtual key, allowlisted to the local-model superset — `local`, `local-gemma4`, `local-heavy`, `local-lfm2`, `local-qwen3-coder`, `local-qwen3.6`; Pi's assigned model is `local-qwen3-coder`, see [models.md](models.md)), `:8000` (Honcho with `pi` peer namespace), `:8765` (docs-mcp). Cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or the master key.
 
 **When.** Sandboxed code experimentation. New project bootstrap. Working with code from an untrusted source. Anytime you want strong-isolation guarantees.
 
 **Try this.**
 
 ```bash
-# 1. Launch.
+# 1. Launch (defaults to local-qwen3-coder).
 bash ~/ai-stack/bin/pi
 
+# 1b. Override the model for this session (any model on Pi's allowlist superset).
+bash ~/ai-stack/bin/pi --model local-gemma4     # force the always-available default
+bash ~/ai-stack/bin/pi --model local-qwen3.6    # heavy general reasoning (needs LM Studio)
+
 # 2. Inside Pi:
-#    Default model is local-heavy. Send a task: "write a tiny Flask app
-#    in /sandbox/myapp/ that returns 'hello' on /."
+#    Default model is local-qwen3-coder (availability-gated to local-gemma4 if
+#    LM Studio is down). Send a task: "write a tiny Flask app in /sandbox/myapp/
+#    that returns 'hello' on /."
 
 # 3. Verify the sandbox bind-mount (file lives on the host too).
 ls ~/ai-stack/pi-workspace/myapp/
@@ -835,7 +871,7 @@ openshell sandbox delete pi-v1
 # Re-create with: bash ~/ai-stack/install.sh install 15
 ```
 
-**Phoenix trace pattern.** Pi's chat calls land in Phoenix because LiteLLM's `arize_phoenix` callback fires regardless of which virtual key authenticated. Filter by `model=local-heavy` + timestamp window to find Pi's session. No per-key Phoenix project isolation (deferred, see CHANGELOG 2026-05-29).
+**Phoenix trace pattern.** Pi's chat calls land in Phoenix because LiteLLM's `arize_phoenix` callback fires regardless of which virtual key authenticated. Filter by `model=local-qwen3-coder` (or `model=local-gemma4` when availability-gated) + timestamp window to find Pi's session. No per-key Phoenix project isolation (deferred, see CHANGELOG 2026-05-29).
 
 **Combine with.** `openshell`, `docs-mcp`, `honcho` (`pi` peer), Recipe 3 (Pi day-to-day).
 
@@ -855,7 +891,7 @@ The historical failure mode (still useful to know): `deer-flow/config.yaml` ship
 
 **What Phase 10 patches:**
 
-- `deer-flow/config.yaml`: injects `local` + `local-heavy` model entries under `models:`, both pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`.
+- `deer-flow/config.yaml`: rendered by `install.sh model sync` from `models.yml` (DeerFlow is assigned `local-qwen3.6`, availability-gated back to `local-gemma4` when LM Studio is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
 - `deer-flow/docker/docker-compose.yaml`: adds `- LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` to the gateway's `environment:` block so the substitution resolves inside the container.
 - `deer-flow/.env`: mirrors `LITELLM_MASTER_KEY` from `~/ai-stack/.env` (mode 0600) so `scripts/deploy.sh`'s `env_file:` lookup picks it up.
 
@@ -1195,6 +1231,118 @@ python ~/ai-stack/rlm/run_rlm.py --help
 
 ---
 
+### §2.16 Model management — assign declaratively, enable the big MLX models
+
+#### `install.sh model` (declarative model↔agent binding)
+
+**What.** `installer/models.yml` is the single source of truth for which model
+each agent runs. You never hand-edit soul files or scoped-key allowlists — you
+edit the binding and let `install.sh model sync` reconcile everything. The
+canonical three (`local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`) and the
+per-agent `assignments:` live there; see [models.md](models.md) for the full
+contract.
+
+**When.** Whenever you want to re-point an agent at a different model
+(e.g., move `hermes_researcher` from `local-qwen3.6` to `claude-sonnet`), or
+after you bring LM Studio up and want the big-MLX-bound agents to actually use
+their assigned model instead of the gated `local-gemma4` fallback.
+
+**Try this (worked examples).**
+
+```bash
+# 1. READ-ONLY catalog + live matrix. Shows what's DECLARED in models.yml vs
+#    what LiteLLM ACTUALLY serves right now (so you can see availability-gating).
+bash ~/ai-stack/install.sh model list
+bash ~/ai-stack/install.sh model list --json | jq '.assignments'
+
+# 2. Re-point ONE agent. This edits models.yml (yq -i) and syncs just that agent.
+#    Example: give the researcher a cloud model for a hard week.
+bash ~/ai-stack/install.sh model assign hermes_researcher claude-sonnet
+#    …and put it back to the local heavy model later:
+bash ~/ai-stack/install.sh model assign hermes_researcher local-qwen3.6
+
+# 3. RECONCILE everything from models.yml. Crash-safe 6-phase pass:
+#    validate → register model_list (ADD-ONLY) → restart LiteLLM ONCE if the
+#    model list changed → widen scoped-key allowlists to the superset →
+#    render every agent's soul/config. Opt-in: `install all` does NOT run this.
+bash ~/ai-stack/install.sh model sync
+
+#    Preview without touching anything, or skip the LiteLLM restart:
+bash ~/ai-stack/install.sh model sync --dry-run
+bash ~/ai-stack/install.sh model sync --no-restart
+
+#    Sync just one agent:
+bash ~/ai-stack/install.sh model sync hermes_software_engineer
+
+# 4. Print the canonical scoped-key allowlist superset. Every scoped virtual key
+#    (HERMES_LITELLM_KEY, PI_LITELLM_KEY, ACE_LITELLM_KEY, RLM_LITELLM_KEY) is
+#    minted against this fixed sorted-unique superset, so `model assign` never
+#    needs a key re-mint.
+bash ~/ai-stack/install.sh model superset
+bash ~/ai-stack/install.sh model superset --json
+```
+
+**Availability-gating, restated.** If an agent is assigned an `lmstudio` model
+that LiteLLM isn't currently serving, `model sync` renders it against an
+effective fallback (`local-gemma4`) and prints
+`"<agent>: assigned '<model>' (lmstudio) not servable — rendering '<eff>' (availability-gated)"`.
+Nothing breaks; the agent just runs lighter until LM Studio is up.
+
+**Combine with.** Every agent in the stack (Hermes fleet, `pi`, `deerflow`,
+`ace`, `rlm`), `lmstudio` (the runtime behind the big MLX models), Doctor check
+40 (`models_binding`, validates the binding is consistent).
+
+---
+
+#### Enabling the big MLX models (`local-qwen3.6` / `local-qwen3-coder`)
+
+**What.** The two big models are served by **LM Studio's MLX engine** on the
+host (OpenAI-compatible server on `:1234`), not Ollama. They're opt-in because
+they're ~17 GB each and can't be resident together on a 24 GB box. Until you
+turn LM Studio on, every agent bound to them is availability-gated down to
+`local-gemma4`.
+
+**When.** When you want the smarter local models — e.g., the coding-heavy Hermes
+profiles, Pi's default `local-qwen3-coder`, or DeerFlow's `local-qwen3.6`.
+
+**Try this (full enable path).**
+
+```bash
+# 1. Install the opt-in LM Studio phase (NOT part of `install all`).
+#    Adds the host OpenAI server on :1234 + the local-lfm2-mlx legacy slug;
+#    Ollama stays the default runtime.
+bash ~/ai-stack/install.sh install lmstudio        # or: install 25
+
+# 2. In the LM Studio app: load the model you want served.
+#      - Qwen 3.6 27B MLX           → serves as local-qwen3.6
+#      - qwen3-coder-30b-a3b MLX    → serves as local-qwen3-coder
+#    Only ONE big model fits in RAM at a time on 24 GB; load the one you need.
+#    Confirm LM Studio's server is up and serving it:
+curl -s http://localhost:1234/v1/models | jq '.data[].id'
+
+# 3. Reconcile so LiteLLM registers the now-servable model and the
+#    big-MLX-bound agents stop falling back to local-gemma4.
+bash ~/ai-stack/install.sh model sync
+
+# 4. Verify LiteLLM now serves it and the binding took.
+source ~/ai-stack/.env
+curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  http://litellm:4000/v1/models | jq '.data[].id' | grep qwen
+bash ~/ai-stack/install.sh model list              # assigned == effective now
+```
+
+**Quitting cleanly.** LM Studio idle-spins ~0.8 of a CPU core, so quit it when
+you're done with the big models — the gated agents drop back to `local-gemma4`
+automatically. (`mlx_lm.server` is a lighter alternative if you only need the
+server, not the app.)
+
+**Combine with.** `install.sh model` (§2.16 above — `model sync` is the step
+that makes the newly-loaded model take effect), `hermes_fleet` / `pi` /
+`deerflow` (the agents that benefit), `ollama` (still the default runtime for
+`local-gemma4` + embeddings).
+
+---
+
 ## §3. Multi-service recipes
 
 The catalog above tells you what each piece does. The recipes here show you canonical end-to-end workflows that exercise multiple components together.
@@ -1258,7 +1406,7 @@ open http://autofyn:3400
 #    Provider: OpenAI-compatible
 #    Base URL: http://litellm:4000/v1
 #    API key:  <paste $LITELLM_MASTER_KEY from ~/ai-stack/.env>
-#    Default model: local-heavy
+#    Default model: local-gemma4 (always available; or local-qwen3.6 with LM Studio up)
 
 # 3. Confirm Honcho reachability from AutoFyn's container.
 docker exec autofyn-dashboard wget -qO- http://honcho:8000/health
@@ -1275,7 +1423,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?quer
 
 **Expected.** Step 3 returns `{"status":"ok"}`. Step 6 lists at least one fact.
 
-**You'll see this in Phoenix.** Spans tagged `model=local-heavy` clustered around your task window. Qwen 27B latency is visibly higher than `local` — 8-15s typical for non-trivial prompts on M4. If 30s+, memory pressure is competing.
+**You'll see this in Phoenix.** Spans tagged with whatever model you configured (`model=local-qwen3.6` if you pointed AutoFyn at the heavy model with LM Studio up) clustered around your task window. Qwen 27B latency is visibly higher than `local-gemma4` — 8-15s typical for non-trivial prompts on M4. If 30s+, memory pressure is competing.
 
 **Combine with.** Recipe 4 (evals on what AutoFyn produced).
 
@@ -1283,7 +1431,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?quer
 
 ### Recipe 3 — Sandboxed coding agent in `pi-v1`
 
-**What you'll build.** Launch Pi inside `pi-v1`. Pi can reach LiteLLM (3 local models only), Honcho's `pi` peer, docs-mcp (read-only), and npm/pypi/github. It cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or `LITELLM_MASTER_KEY`.
+**What you'll build.** Launch Pi inside `pi-v1`. Pi can reach LiteLLM (local models only — `PI_LITELLM_KEY` is allowlisted to the local-model superset, no cloud), Honcho's `pi` peer, docs-mcp (read-only), and npm/pypi/github. It cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or `LITELLM_MASTER_KEY`.
 
 **Prereqs.** Phase 15 complete (`stack doctor 25` green). `PI_LITELLM_KEY` exists in `.env`.
 
@@ -1296,8 +1444,9 @@ bash ~/ai-stack/bin/pi
 # 2. Inside Pi: confirm the model list shows only local* (any cloud model
 #    is denied at LiteLLM with 403 "key not allowed").
 
-# 3. Default model is local-heavy. Give Pi a real task — write a script
-#    into /sandbox, run it, iterate.
+# 3. Default model is local-qwen3-coder (availability-gated to local-gemma4 if
+#    LM Studio is down). Override with: bash bin/pi --model local-gemma4
+#    Give Pi a real task — write a script into /sandbox, run it, iterate.
 
 # 4. Confirm Pi can reach docs-mcp (from inside the sandbox, only
 #    host.docker.internal:8765 works — the alias `docs-mcp` does NOT
@@ -1312,7 +1461,7 @@ bash ~/ai-stack/bin/pi
 bash ~/ai-stack/bin/pi-kill
 ```
 
-**You'll see this in Phoenix.** Pi's calls flow through LiteLLM → `arize_phoenix` callback → `ai-stack` project. No per-key isolation today; filter by `model=local-heavy` + window.
+**You'll see this in Phoenix.** Pi's calls flow through LiteLLM → `arize_phoenix` callback → `ai-stack` project. No per-key isolation today; filter by `model=local-qwen3-coder` (Pi's default, gated to `local-gemma4` when LM Studio is down) + window.
 
 **Combine with.** Recipe 1 (Pi searches the same docs), Recipe 8 (compare Pi vs Hermes profile for the same task).
 
@@ -1417,7 +1566,7 @@ stack start deerflow    # also: stack deerflow start
 open "http://localhost:${PORT:-2026}"
 
 # 4. As the fleet works, watch Phoenix:
-#    - hermes_researcher calls (model=local-heavy or claude-sonnet)
+#    - hermes_researcher calls (model=local-qwen3.6, gated to local-gemma4 when LM Studio is down)
 #    - docs-mcp tool calls
 #    - DeerFlow gateway calls
 
@@ -1537,7 +1686,7 @@ openshell sandbox download hermes-fleet-v1 /sandbox/test_buggy.py ~/ai-stack/san
 cd ~/ai-stack/sandbox-workspace && python -m pytest test_buggy.py -v
 ```
 
-**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_software_engineer`, model = whatever the profile defaulted to (local-heavy unless overridden), tool calls for shell ops + file writes.
+**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_software_engineer`, model = the profile's bound model (`local-qwen3-coder`, or `local-gemma4` when availability-gated because LM Studio is down), tool calls for shell ops + file writes.
 
 **Combine with.** Recipe 10 (orchestrate this dispatch from Paperclip instead of by hand).
 
@@ -1769,9 +1918,15 @@ Verified against `install.sh` and `bin/` as of 2026-05-29. Aspirational shortcut
 
 ```bash
 # Health + state
-bash ~/ai-stack/install.sh doctor                 # 31 health checks + auto-fix offers
+bash ~/ai-stack/install.sh doctor                 # 40 health checks + auto-fix offers
 bash ~/ai-stack/install.sh status                 # declared vs actual table
 bash ~/ai-stack/install.sh verify                 # phase 00·V pre-install runtime probes
+
+# Models (declarative model↔agent binding — see §2.16)
+bash ~/ai-stack/install.sh model list             # catalog + live declared-vs-served matrix
+bash ~/ai-stack/install.sh model assign <agent> <model>   # re-point one agent (yq -i + sync)
+bash ~/ai-stack/install.sh model sync             # reconcile everything from models.yml (opt-in)
+bash ~/ai-stack/install.sh model superset         # canonical scoped-key allowlist superset
 
 # Slow-mode doctor (includes 9 negative network probes for pi-v1)
 OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/install.sh doctor
@@ -1914,7 +2069,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 38/38 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 40/40 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 
