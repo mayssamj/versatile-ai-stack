@@ -12,6 +12,39 @@ container without explicit confirmation.
 
 ---
 
+## 🗺️ See the whole platform in one file — [`doc/EXPLORE.html`](doc/EXPLORE.html)
+
+The fastest way to grasp what this stack can do: open **[`doc/EXPLORE.html`](doc/EXPLORE.html)**
+in any browser. It's a **single self-contained file** — no server, no build, no internet —
+so you can just double-click it; it even works offline straight from `file://`.
+
+> **AI-Stack Explorer** — *“All 39 installed services · 47 cards across 7 tiers · self-contained — works offline from file://”*
+
+It renders an interactive, searchable card for **every** service — what it is, why you'd
+reach for it, and a copy-paste demo — grouped into seven color-coded tiers:
+
+| Tier | A few of what's inside |
+|------|------------------------|
+| **Try-me UIs (open in a browser)** | Open WebUI · Hermes Workspace · claw3d · Autofyn · Paperclip · Phoenix |
+| **Agents you talk to** | Hermes ×7 profiles · Pi · OpenShell · Telegram gateway |
+| **Research & reasoning agents** | DeerFlow · ACE · RLM · HALO · dual-LLM researcher |
+| **Inference & data plane** | LiteLLM · Ollama · Qdrant · FalkorDB · Phoenix |
+| **Memory, documents & code-intel** | Honcho · Lumen · docs-ingestor · docs-mcp |
+| **Security & plumbing** | guardrails · llm-guard · SkillSpector |
+| **Opt-in experimental extras** | portless · cmux · OpenAgents · LM Studio · Unsloth |
+
+A **Start here** row puts the four things you can click immediately front and center —
+**Open WebUI · Hermes Workspace · Phoenix · Autofyn** — each with a one-click launch link
+and a copyable demo. As the page itself puts it:
+
+> *“Search, filter by tier, hit Copy on any command, or **open ↗** to launch a UI. … Nothing here phones home.”*
+
+```bash
+open doc/EXPLORE.html      # macOS — opens it in your default browser
+```
+
+---
+
 ## What you get
 
 A plain-language tour of the headline pieces (the full inventory is in the table below):
