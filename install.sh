@@ -182,7 +182,7 @@ ai-stack-installer — usage:
 
 Phases (in install order) — pass the id OR the name (run `install.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio
 
 EOF
 }

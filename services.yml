@@ -423,6 +423,16 @@ services:
     network: none
     # Installs to ~/.openagents (its own portable Node); NOT wired into LiteLLM/
     # sandboxes/UIs. `install.sh install openagents`.
+  lmstudio:
+    enabled: true # Phase 25 — LM Studio (MLX) as a 2nd runtime behind LiteLLM
+    type: cli-only
+    phase: "25"
+    network: none
+    # Host OpenAI server on :1234 (bound 0.0.0.0 for container access). Adds
+    # `local-lfm2-mlx` to LiteLLM (LFM2.5 MLX — working tool-calling, unlike the
+    # Ollama GGUF). Ollama stays the default. `install.sh install lmstudio`.
+    consumes_env:
+      - LITELLM_MASTER_KEY
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:

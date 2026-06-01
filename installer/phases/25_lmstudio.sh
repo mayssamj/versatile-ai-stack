@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# Phase 25 — LM Studio (MLX engine) as a SECOND local runtime behind LiteLLM.
+#
+# WHY: on Apple Silicon, Apple's MLX engine can beat llama.cpp/GGUF (Ollama's
+# backend) for small/short-context decode, and — concretely for this stack — it
+# is the way to run LiquidAI LFM2.5 with WORKING tool calling (the Ollama GGUF
+# build reports "does not support tools"). We do NOT replace Ollama: LM Studio is
+# added as a parallel OpenAI-compatible provider so LiteLLM can route a few
+# `local-...-mlx` model slugs to it. Ollama stays the default (embeddings, Lumen,
+# the model library all untouched). See doc/ALTERNATIVES.md + the 2026-05-31 assessment.
+#
+# WHAT THIS PHASE DOES (idempotent, host tool — not a container):
+#   1. Ensure LM Studio is present (use an existing /Applications/LM Studio.app,
+#      else `brew install --cask lm-studio`) and the `lms` CLI is bootstrapped.
+#   2. Start the OpenAI-compatible server on :1234, BOUND so the LiteLLM container
+#      can reach it via host.docker.internal (LM Studio has NO auth — see SECURITY).
+#   3. Ensure the LFM2.5 MLX weights are on disk (pull from HF into LM Studio's
+#      models dir if missing — LM Studio's catalog doesn't index LFM2.5 yet).
+#   4. Load it, discover the served model id, and idempotently add a
+#      `local-lfm2-mlx` entry to litellm/config.yaml → host.docker.internal:1234.
+#   5. Restart LiteLLM and verify a chat completion routes :4000 → :1234 → MLX.
+#
+# SECURITY: the server binds 0.0.0.0:1234 so the OrbStack container can reach it
+# (host loopback isn't reachable from a container). LM Studio has no auth, so this
+# exposes the LLM to your LAN. On a trusted/work network that's the usual tradeoff
+# for a host LLM server; restrict via a firewall or LM Studio's network toggle if
+# you're on an untrusted network.
+#
+# Standalone:  bash install.sh install 25   (or:  install.sh install lmstudio)
+set -Eeuo pipefail
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$AI_STACK/installer/lib/common.sh"
+source "$AI_STACK/installer/lib/env.sh"
+
+PHASE=25
+LMS_PORT=1234
+LMS_URL="http://127.0.0.1:${LMS_PORT}"
+MLX_REPO="LiquidAI/LFM2.5-8B-A1B-MLX-4bit"      # 4-bit (~5GB) — RAM-friendly on 24GB
+MLX_DIR="$HOME/.lmstudio/models/${MLX_REPO}"
+LITELLM_SLUG="local-lfm2-mlx"
+CONFIG="$AI_STACK/litellm/config.yaml"
+
+# Resolve the lms CLI (bootstrapped at ~/.lmstudio/bin/lms, else inside the app bundle).
+_lms() {
+  if [[ -x "$HOME/.lmstudio/bin/lms" ]]; then echo "$HOME/.lmstudio/bin/lms"; return 0; fi
+  local appcli="/Applications/LM Studio.app/Contents/Resources/app/.webpack/lms"
+  [[ -x "$appcli" ]] && { echo "$appcli"; return 0; }
+  echo ""; return 1
+}
+_app_present() { [[ -d "/Applications/LM Studio.app" ]]; }
+_server_up() { curl -s -o /dev/null --max-time 4 "$LMS_URL/v1/models" 2>/dev/null; }
+# The served LLM id (the non-embedding model LM Studio exposes), or empty.
+_served_llm_id() {
+  curl -s --max-time 5 "$LMS_URL/v1/models" 2>/dev/null \
+    | python3 -c 'import sys,json
+ids=[m["id"] for m in json.load(sys.stdin).get("data",[]) if "embed" not in m["id"].lower()]
+print(ids[0] if ids else "")' 2>/dev/null
+}
+
+precheck() {
+  _app_present || return 1
+  [[ -n "$(_lms)" ]] || return 1
+  _server_up || return 1
+  # The LiteLLM provider must already be wired AND accepted by LiteLLM.
+  grep -q "model_name: ${LITELLM_SLUG}\b" "$CONFIG" 2>/dev/null || return 1
+  return 0
+}
+
+if precheck 2>/dev/null && stamp_check "$PHASE"; then
+  ok "Phase 25 — LM Studio — already wired ($LITELLM_SLUG → $LMS_URL)"
+  exit 0
+fi
+
+hdr "Phase 25 — LM Studio (MLX) as a second runtime behind LiteLLM"
+
+# --- 0. macOS only (MLX is Apple Silicon) ---------------------------------
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  warn "LM Studio/MLX targets macOS; this host is $(uname -s). Skipping (non-fatal)."
+  exit 0
+fi
+
+# --- 1. Ensure LM Studio.app + lms CLI ------------------------------------
+if ! _app_present; then
+  if command -v brew >/dev/null 2>&1; then
+    log "Installing LM Studio (brew install --cask lm-studio)..."
+    brew install --cask lm-studio 2>&1 | tail -5 || true
+  fi
+fi
+if ! _app_present; then
+  warn "LM Studio.app not present and brew install didn't land it. Install it from https://lmstudio.ai then re-run 'install.sh install lmstudio'. (non-fatal)"
+  exit 0
+fi
+LMS="$(_lms)"
+if [[ -z "$LMS" ]]; then
+  warn "lms CLI not found. Open LM Studio.app once (it bootstraps the CLI), or run its bundled lms bootstrap, then re-run. (non-fatal)"
+  exit 0
+fi
+ok "LM Studio present; lms CLI at $LMS"
+
+# ⚠️ CPU CAVEAT: on this machine the LM Studio *desktop app* idle-spins at
+# ~0.8–1 core even with NO model loaded and the server stopped (observed 42–88%).
+# So this is an OPT-IN phase: run it only when you actively want MLX tool-calling,
+# and QUIT LM Studio (`lms server stop` + quit the app) when done. For a headless,
+# lighter alternative that doesn't idle-spin, prefer `mlx_lm.server` (pip mlx-lm).
+# --- 2. Start the OpenAI-compatible server (bound for container access) ----
+if ! _server_up; then
+  warn "Starting LM Studio — note: its desktop app idle-spins ~0.8 core; quit it when you're done (lms server stop + quit the app)."
+  log "Starting LM Studio server on 0.0.0.0:${LMS_PORT}..."
+  "$LMS" server start -p "$LMS_PORT" --bind 0.0.0.0 2>&1 | tail -3 || true
+  sleep 3
+fi
+if ! _server_up; then
+  warn "LM Studio server not reachable on $LMS_URL after start. (non-fatal — re-run later)"
+  exit 0
+fi
+ok "LM Studio server up on $LMS_URL"
+
+# --- 3. Ensure the LFM2.5 MLX weights are on disk --------------------------
+# LM Studio's catalog doesn't index LFM2.5 yet (very new), so `lms get` can't
+# resolve it; pull the weights from HF straight into LM Studio's models dir.
+# Presence is gated on the actual WEIGHTS (*.safetensors), not just config.json —
+# a partial download leaves config/tokenizer behind but no weights.
+_weights_present() { ls "$MLX_DIR"/*.safetensors >/dev/null 2>&1; }
+if ! _weights_present; then
+  if ! command -v uv >/dev/null 2>&1 && ! command -v uvx >/dev/null 2>&1; then
+    warn "uv/uvx not on PATH — needed to fetch $MLX_REPO from HF. Run 'install.sh install 14' (ships uv), then re-run. (non-fatal)"
+    exit 0
+  fi
+  log "Downloading $MLX_REPO from HF into LM Studio's models dir (~5GB)..."
+  mkdir -p "$MLX_DIR"
+  # Modern huggingface_hub CLI entry point is `hf download` (legacy
+  # `huggingface-cli download` just prints help on current versions). hf download
+  # resumes partial downloads, so re-running after an interruption completes it.
+  if ! uvx --from huggingface_hub hf download "$MLX_REPO" --local-dir "$MLX_DIR" 2>&1 | tail -4; then
+    warn "HF download of $MLX_REPO failed (network?). (non-fatal — re-run later)"
+    exit 0
+  fi
+fi
+_weights_present || { warn "$MLX_REPO weights incomplete at $MLX_DIR (no .safetensors). (non-fatal — re-run later)"; exit 0; }
+ok "LFM2.5 MLX weights present at $MLX_DIR"
+
+# --- 4. Load it + discover the served model id -----------------------------
+log "Loading the MLX model into LM Studio (JIT/explicit)..."
+"$LMS" load "$MLX_REPO" -y >/dev/null 2>&1 || "$LMS" load "${MLX_REPO,,}" -y >/dev/null 2>&1 || true
+sleep 2
+MLX_ID="$(_served_llm_id)"
+if [[ -z "$MLX_ID" ]]; then
+  warn "Could not determine the served LLM id from $LMS_URL/v1/models (model not loaded?)."
+  warn "Load it in the LM Studio UI or 'lms load', then re-run. (non-fatal)"
+  exit 0
+fi
+ok "LM Studio is serving model id: $MLX_ID"
+
+# --- 5. Wire LiteLLM: add the local-lfm2-mlx provider (idempotent) ---------
+command -v yq >/dev/null 2>&1 || { err "yq not on PATH (Phase 00 installs it)"; exit 1; }
+if grep -q "model_name: ${LITELLM_SLUG}\b" "$CONFIG" 2>/dev/null; then
+  ok "$LITELLM_SLUG already in litellm/config.yaml"
+else
+  log "Adding $LITELLM_SLUG → $LMS_URL to litellm/config.yaml..."
+  MLXID="$MLX_ID" yq -i '.model_list += [{"model_name": "'"$LITELLM_SLUG"'", "litellm_params": {"model": "openai/" + strenv(MLXID), "api_base": "http://host.docker.internal:'"$LMS_PORT"'/v1", "api_key": "lm-studio"}}]' "$CONFIG" \
+    || { err "failed to inject the model into config.yaml"; exit 1; }
+  ok "added $LITELLM_SLUG (model openai/$MLX_ID)"
+fi
+
+# --- 6. Restart LiteLLM (reloads config.yaml) + verify the pipe ------------
+log "Restarting LiteLLM to load the new model..."
+docker restart litellm >/dev/null 2>&1 || warn "docker restart litellm failed — restart it manually"
+# Wait for LiteLLM to come back.
+for _ in $(seq 1 30); do curl -s -o /dev/null --max-time 2 http://litellm:4000/health/liveliness 2>/dev/null && break; sleep 2; done
+
+MASTER="$(get_env LITELLM_MASTER_KEY '')"
+log "Verifying :4000 → :1234 → MLX (chat completion via LiteLLM)..."
+RESP="$(curl -s --max-time 90 http://litellm:4000/v1/chat/completions \
+  -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
+  -d "{\"model\":\"$LITELLM_SLUG\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: MLX-OK\"}],\"max_tokens\":16}" 2>/dev/null \
+  | python3 -c 'import sys,json
+try: print(json.load(sys.stdin)["choices"][0]["message"]["content"][:60])
+except Exception as e: print("")' 2>/dev/null)"
+if [[ -n "$RESP" ]]; then
+  ok "LiteLLM → LM Studio (MLX) round-trip OK — model replied: $(printf '%s' "$RESP" | tr -d '\n')"
+else
+  warn "Round-trip through LiteLLM produced no content (model still loading, or scoped key needed)."
+  warn "Re-test: curl http://litellm:4000/v1/chat/completions -H \"Authorization: Bearer \$LITELLM_MASTER_KEY\" -d '{\"model\":\"$LITELLM_SLUG\",...}'"
+fi
+
+stamp_mark "$PHASE"
+record "phase 25 complete: LM Studio (MLX) wired as $LITELLM_SLUG → $LMS_URL (model $MLX_ID); Ollama unchanged"
+ok "Phase 25 — LM Studio (MLX) — complete"
+note "New model behind LiteLLM:  $LITELLM_SLUG  (LFM2.5 MLX — has working tool-calling, unlike the Ollama GGUF build)"
+note "A/B vs Ollama: point a Hermes profile at it, e.g. (relay must be up):"
+note "  openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_software_engineer config set providers.litellm.model $LITELLM_SLUG"
+note "  then run the same task on local-lfm2 (Ollama) vs $LITELLM_SLUG (MLX) and compare tok/s + tool-calls in Phoenix (http://phoenix:6006)."
+note "NOTE: to let SCOPED virtual keys (Pi/ACE/Hermes/RLM) use this model, add '$LITELLM_SLUG' to their allowlists (re-mint, or 'litellm key update'). The master key already works."
+note "Server: $LMS  |  lms ps (loaded) |  lms server status  |  Ollama is untouched (still the default)."
+warn "WHEN DONE: quit LM Studio to reclaim CPU →  $LMS server stop  + quit the LM Studio app."
+warn "Lighter headless alternative (no idle-spin): pip install mlx-lm; mlx_lm.server --model $MLX_DIR --port $LMS_PORT"

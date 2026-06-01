@@ -28,3 +28,8 @@ autofyn		127.0.10.13	http		3400		3400		07		autofyn
 paperclip	127.0.10.14	http		3100		3100		08		paperclip
 # phoenix-otlp-http	127.0.10.15	http		4318		4318		01h		phoenix
 unsloth		127.0.10.16	http		8898		8898		14		unsloth
+claw3d		127.0.10.17	http		4310		4310		19		claw3d
+# NOTE: claw3d-bridge (:7780) is INTENTIONALLY NOT aliased — it is auth-less and
+# can drive all 9 agents, so it stays bound to 127.0.0.1 (loopback-only) by design.
+# lmstudio (:1234) is reached from the LiteLLM CONTAINER, so it uses the ollama-style
+# host-gateway path (host.docker.internal), not a host lo0 alias.
