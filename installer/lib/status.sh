@@ -201,3 +201,6 @@ for grp in "${GROUP_ORDER[@]}"; do
   printf '\n── %s\n' "$(group_label "$grp")"
   for name in "${members[@]}"; do render_row "$name"; done
 done
+
+declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
+print_inference_hint

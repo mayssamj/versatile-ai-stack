@@ -80,4 +80,7 @@ done
 printf '\nDoctor done: %d checks, %d passed, %d fixed, %d remaining failed, %d skipped.\n' \
   "$((passed+failed))" "$passed" "$fixed" "$((failed-fixed))" "$skipped"
 
+declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
+print_inference_hint
+
 (( failed - fixed > 0 )) && exit 1 || exit 0

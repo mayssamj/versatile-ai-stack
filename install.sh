@@ -583,6 +583,8 @@ summary_end_of_install() {
   fi
   note "Status:  bash install.sh status"
   note "Doctor:  bash install.sh doctor"
+  declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
+  print_inference_hint
 }
 
 main() {
