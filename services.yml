@@ -210,9 +210,11 @@ services:
     enabled: true
     type: docker
     image: ghcr.io/open-webui/open-webui:main
-    port: 3001
+    # Real binding is the alias openwebui:8080 (host_port/container_port below).
+    # The old v1 `port: 3001` + `health: …:3001/health` were vestigial — nothing
+    # ever listened on :3001 — so they are removed. Open WebUI exposes no /health
+    # endpoint; liveness is covered by the alias-routability checks (doctor 17/20).
     bind: 127.0.0.1
-    health: http://127.0.0.1:3001/health
     phase: "05"
     alias: openwebui
     host_ip: 127.0.10.9
