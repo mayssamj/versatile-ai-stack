@@ -33,6 +33,11 @@ network_ensure_ai_stack || {
 recreate_guard "$NAME" "$RECREATE_FLAG" || exit 1
 ensure_image "$IMAGE"
 mkdir -p "$AI_STACK/data/openwebui"
+# RAG embeddings are wired to the stack's local Ollama (nomic-embed-text, already
+# pulled by Phase 01). Without RAG_EMBEDDING_ENGINE=ollama, Open WebUI blocks its
+# first boot downloading sentence-transformers/all-MiniLM-L6-v2 from HuggingFace —
+# which, on a cold volume after `reset --hard`, leaves the HTTP server unstarted
+# (doctor alias probe gets HTTP 000, container reported unhealthy). Local + offline.
 docker run -d \
   --name "$NAME" \
   --label "ai-stack.managed=true" \
@@ -44,6 +49,9 @@ docker run -d \
   -e OPENAI_API_BASE_URL=http://litellm:4000/v1 \
   -e OPENAI_API_KEY="$KEY" \
   -e WEBUI_AUTH=False \
+  -e RAG_EMBEDDING_ENGINE=ollama \
+  -e RAG_OLLAMA_BASE_URL=http://ollama:11434 \
+  -e RAG_EMBEDDING_MODEL=nomic-embed-text \
   -p "${ALIAS_IP[openwebui]}":"${ALIAS_HOST_PORT[openwebui]}":"${ALIAS_CONTAINER_PORT[openwebui]}" \
   -v "$AI_STACK/data/openwebui:/app/backend/data" \
   "$IMAGE" \
