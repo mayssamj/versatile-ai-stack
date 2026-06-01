@@ -145,7 +145,7 @@ succeeds without re-prompting.
 Expect 5–20 minutes on first run depending on what's already cached:
 
 - ~5 min: brew installs (orbstack cask, bash, yq, jq, node, pnpm, uv, tesseract, openssl).
-- ~10 min: Ollama model pulls (~30 GB across `gemma4:e4b`, `qwen3.6:27b-q4_K_M`, `nomic-embed-text`).
+- ~3 min: Ollama model pulls — only `gemma4:e4b` (~9.6 GB) + `nomic-embed-text` (Phase 01 `REQUIRED_MODELS`). The heavy/coder models now live on LM Studio MLX (opt-in), so `qwen3.6:27b` and LFM2.5 are **no longer auto-pulled** — a `reset --hard` → `install all` no longer triggers a ~17 GB download.
 - ~5 min: docker image pulls (litellm, phoenix, falkordb, qdrant, openwebui, llm_guard).
 - ~30 sec each: honcho, hermes-workspace, deer-flow git clones.
 
@@ -329,8 +329,11 @@ moved. If any of them logged a warning during install:
   Honcho's Postgres, (c) `pi/pi-bootstrap.tar.gz` (auto-built by Phase 15
   the first time from `pi/package.json`). To upgrade Pi: `rm
   pi/pi-bootstrap.tar.gz pi/package-lock.json && bash install.sh install
-  15`. Phase 15 mints `PI_LITELLM_KEY` server-side with model allowlist
-  `[local, local-heavy, local-lfm2]` — no cloud spend possible.
+  15`. Phase 15 mints `PI_LITELLM_KEY` server-side against the fixed local-model
+  superset (`local`, `local-gemma4`, `local-heavy`, `local-lfm2`,
+  `local-qwen3-coder`, `local-qwen3.6`) — no cloud spend possible. Pi's
+  declared model is `local-qwen3-coder` (see [models.md](models.md)); the
+  superset lets `model assign`/`sync` re-point it without re-minting the key.
 - **Phase 16 Lumen (Ory's local code semantic search MCP)** —
   `installer/phases/16_lumen.sh` downloads the pinned v0.0.41
   `darwin-arm64` binary (SHA256-verified against the release's
@@ -373,7 +376,7 @@ Then run the full doctor:
 bash install.sh doctor
 ```
 
-Expected: 39/39 checks pass after the post-install steps above and a
+Expected: 40/40 checks pass after the post-install steps above and a
 successful `sudo bash install.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more

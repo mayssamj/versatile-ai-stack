@@ -1,15 +1,131 @@
 # ai-stack
 
-A personal, self-hosted, comprehensive and versatile multi-agent AI stack.
-One command brings it up, validates it, and heals itself.
+**A local-first AI platform that runs entirely on your Mac — no cloud required.**
+
+ai-stack wires together a [LiteLLM](doc/STACK-GUIDE.md) model hub, [Phoenix](doc/STACK-GUIDE.md)
+observability, and a fleet of AI agents into one self-hosted stack. Everything —
+the models, the agents, the memory, the traces — stays on your machine. You point
+your apps and agents at a single local endpoint (`http://litellm:4000`) and they
+get model routing, tracing "for free," and isolation built in. One installer brings
+it all up, validates it end-to-end, and heals itself; it never destroys a running
+container without explicit confirmation.
+
+---
+
+## What you get
+
+A plain-language tour of the headline pieces (the full inventory is in the table below):
+
+- **LiteLLM — the model hub.** One local endpoint (`http://litellm:4000/v1`) that
+  every app and agent calls. It routes to your local models (and optionally to
+  cloud providers if you add keys) and emits traces automatically.
+- **Phoenix — observability.** Every LLM call your agents make lands in the Phoenix
+  UI (`http://phoenix:6006`) "for free" — see prompts, responses, latency, and cost
+  in one place.
+- **Hermes agent fleet — 7 profiles.** A team of role-specialized agents (chief of
+  staff, software engineer, researcher, creator, reviewer, data analyst, ops),
+  isolated inside an OpenShell sandbox. You can even chat with them from your phone
+  via a Telegram bot.
+- **Pi — sandboxed coding agent.** A coding agent locked in its own `pi-v1` sandbox
+  with a tight egress allowlist. Launch it with `bin/pi`.
+- **DeerFlow — research workflows.** Multi-step research runs that route through the
+  same local model hub.
+- **Open WebUI — chat in your browser.** A familiar ChatGPT-style UI wired to your
+  local models, at `http://openwebui:8080`.
+- **Three local models.** `local-gemma4` (Ollama `gemma4:e4b`, the lightweight
+  default for any unassigned agent), `local-qwen3.6` (LM Studio MLX, heavy
+  reasoning), and `local-qwen3-coder` (LM Studio MLX, coding). See [models.md](doc/models.md).
+
+Plus storage (FalkorDB + Qdrant), cross-agent memory (Honcho), a docs RAG pipeline,
+security guardrails, fine-tuning (Unsloth), and more — all in the table below.
+
+---
+
+## Novice quickstart — install
+
+### Prerequisites
+
+- **macOS** on Apple Silicon (tuned for an M-series, 24 GB box).
+- **[OrbStack](https://orbstack.dev)** (the Docker runtime this stack uses) — or another
+  Docker-compatible runtime. OrbStack is what Phase 00 expects.
+- **[Homebrew](https://brew.sh)** — the installer uses `brew` to install host tooling
+  (Ollama, `yq`, etc.).
+- **Disk:** budget roughly **30–40 GB** for container images plus local model weights
+  (the default `gemma4:e4b` alone is ~9.6 GB; the optional MLX models add ~17 GB each).
+
+### The happy path
+
+Run these in order, from the repo:
 
 ```bash
-bash ~/ai-stack/install.sh
+# 0. Go into the repo
+cd ~/ai-stack
+
+# 1. The ONE sudo step (first time only).
+#    Writes the /etc/hosts block, binds the 127.0.10.x loopback aliases to lo0,
+#    installs a launchd plist so they persist across reboots, and flushes DNS.
+#    Idempotent — safe to re-run.
+sudo bash install.sh prepare-sudo
+
+# 2. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
+#    Installs all 27 core phases top-to-bottom; resumes if interrupted.
+bash install.sh install all
+
+# 3. Verify everything is healthy. Expect 40/40.
+bash install.sh doctor
 ```
 
-That's the daily-driver entry point. It is idempotent, interactive only when it
-truly needs your input, and conservative by default — it never destroys a
-running container without explicit confirmation.
+> Tip: a cheap `bash install.sh verify` (< 10 sec) probes the alias chain end-to-end
+> and is worth running *before* the full install.
+
+### Open the UIs
+
+Once installed, reach services by their friendly alias (set up by `prepare-sudo` —
+these resolve to `127.0.10.x`, not `localhost`):
+
+- **Open WebUI (chat):** [http://openwebui:8080](http://openwebui:8080)
+- **Phoenix (traces):** [http://phoenix:6006](http://phoenix:6006)
+- **Hermes Workspace (fleet UI):** [http://workspace:3000](http://workspace:3000)
+- **FalkorDB browser:** [http://falkordb-ui:3000](http://falkordb-ui:3000)
+- **claw3d (3D agent office):** [http://localhost:4310](http://localhost:4310) (loopback-only by design)
+
+The full alias → port table is in [PORTS.md](doc/PORTS.md).
+
+---
+
+## First things to try
+
+- **Chat with a local model.** Open [http://openwebui:8080](http://openwebui:8080)
+  (Open WebUI) and send a message — it routes through LiteLLM to your local model
+  and the call shows up in Phoenix.
+- **Run the Pi coding agent.** `bin/pi` launches the sandboxed coder in its `pi-v1`
+  isolation, routing through LiteLLM with its own scoped key.
+- **Talk to Hermes.** Use the Hermes Workspace UI at [http://workspace:3000](http://workspace:3000),
+  or message the Telegram bot **@vz_hermes_controller_bot** to reach the fleet from
+  your phone.
+- **Watch the traces.** Open [http://phoenix:6006](http://phoenix:6006) and find the
+  `ai-stack` project — every LLM call from every agent lands there automatically.
+
+---
+
+## Where to go next
+
+- **[ONBOARDING.md](doc/ONBOARDING.md)** — *"you've installed it, now use it."* The
+  shortest path: `stack` basics, reaching services by alias, the agents you can talk
+  to, the opt-in extras, and where logs/state live. **Read this first after install.**
+- **[USER-GUIDE.md](doc/USER-GUIDE.md)** — task-oriented walkthrough: a 5-minute wow,
+  then core recipes (RAG, memory-aware coding, sandboxed Pi, Phoenix evals).
+- **[ARCHITECTURE.md](doc/ARCHITECTURE.md)** — design decisions, file-by-file
+  responsibilities, the idempotency and lock model. Read before modifying the installer.
+- **[OPERATIONS.md](doc/OPERATIONS.md)** — day-to-day commands: enable/disable services,
+  common recipes, keeping the stack healthy.
+- **[PORTS.md](doc/PORTS.md)** — the authoritative alias → port → service map.
+- **[DOCTOR.md](doc/DOCTOR.md)** — what each of the 40 doctor checks means and how to fix it.
+- **[models.md](doc/models.md)** — the model ↔ agent binding: `models.yml` as source of
+  truth, the three local models, and `install.sh model {list,assign,sync,superset}`.
+
+(More reference docs — COMPONENTS, DIAGRAMS, DEPENDENCIES, ATTRIBUTION, ALTERNATIVES,
+INSTALL, TROUBLESHOOTING, HANDOFF — are indexed in [the full doc map below](#where-to-read-next).)
 
 ---
 
@@ -52,28 +168,18 @@ idempotent pass. See [PORTS.md](doc/PORTS.md) for the full alias table.
 
 ---
 
-## Quick start
+## More commands
+
+Beyond the [quickstart happy path](#novice-quickstart--install), the daily-driver
+subcommands are:
 
 ```bash
-# First-time only: handle every sudo step in one shot
-# (writes /etc/hosts block, binds lo0 aliases, installs launchd plist)
-sudo bash ~/ai-stack/install.sh prepare-sudo
-
-# Verify the alias chain end-to-end (cheap; < 10 sec)
-bash ~/ai-stack/install.sh verify
-
-# Full install (resumes from last incomplete phase)
-bash ~/ai-stack/install.sh
-
 # Install/re-run one phase by NAME or number (run `phases` to list id→name)
 bash ~/ai-stack/install.sh install phoenix     # == install 01h
 bash ~/ai-stack/install.sh phases
 
 # See declared vs actual state
 bash ~/ai-stack/install.sh status
-
-# 39 health checks + auto-fixes
-bash ~/ai-stack/install.sh doctor
 
 # Take ownership of a container started outside the installer
 bash ~/ai-stack/install.sh adopt <service>
@@ -136,6 +242,9 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   (host vs container vs `honcho_default` network vs sandbox), talks-to
   matrix, 3 sequence diagrams for the most-important request flows,
   startup-order graph, and a failure-mode-cascade table for triage.
+- **[models.md](doc/models.md)** — declarative model ↔ agent binding. `models.yml`
+  as the single source of truth, the three local models, `install.sh model
+  {list,assign,sync,superset}`, availability-gating, and the scoped-key superset.
 
 ### Operate
 
@@ -144,7 +253,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 39
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 40
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
   for less common issues (incl. the OpenShell CPU-storm watchdog and the OrbStack CPU cap).
 
@@ -198,7 +307,7 @@ the guard rails.
 ├── installer/
 │   ├── lib/                # common, env, docker, validate, prompt, litellm, status, adopt, gc, history, reset, openshell
 │   ├── phases/             # one file per phase (00 .. 25)
-│   ├── doctor/checks/      # one file per failure mode (39 checks)
+│   ├── doctor/checks/      # one file per failure mode (40 checks)
 │   ├── smoke/              # per-phase end-to-end smoke tests
 │   └── state/              # stamp files, restart queue, lock dir
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -218,14 +327,19 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash install.sh doctor` for live state. Top-line:
 
-- **27 core install phases (+5 opt-in extras: portless · cmux · skillspector · openagents · lmstudio) · 39 services · 39 doctor checks.**
+- **27 core install phases (+5 opt-in extras: portless · cmux · skillspector · openagents · lmstudio) · 39 services · 40 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `install.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
   the 5 opt-in extras' checks (34–38) pass-as-skip when not installed, and check 39
   (`openshell_storm`) reports the watchdog status.
-- The Hermes fleet defaults to the **light model** `local` (gemma4:e4b) — fast on 24 GB;
-  `local-heavy` (qwen-27B) remains an explicit alias for heavy reasoning.
+- Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
+  of truth) and rendered by `install.sh model {list,assign,sync,superset}`. Three local
+  models: `local-gemma4` (Ollama gemma4:e4b — the default for any unassigned agent),
+  `local-qwen3.6` (LM Studio MLX, heavy reasoning), `local-qwen3-coder` (LM Studio MLX,
+  coding). lmstudio-assigned agents auto-fall-back to `local-gemma4` when LM Studio (:1234)
+  is down, so a plain `install all` works with no LM Studio. See [doc/models.md](doc/models.md).
+  (`local-heavy` is a legacy Ollama alias — no longer auto-pulled.)
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.
   A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is now

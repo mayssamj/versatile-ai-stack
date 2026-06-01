@@ -1,6 +1,6 @@
 # PORTS.md
 
-Authoritative port and service map for `~/ai-stack`. Every claim here is cross-referenced against `installer/lib/aliases.tsv` (canonical IP table), `services.yml`, `bin/start-*.sh`, an `installer/phases/*.sh`, an `installer/doctor/checks/*.sh`, or a live `docker inspect` run on **2026-05-28**.
+Authoritative port and service map for `~/ai-stack`. Every alias row here is cross-referenced cell-for-cell against `installer/lib/aliases.tsv` (the canonical IP table — if anything below disagrees with the .tsv, the .tsv wins), and supporting claims against `services.yml`, `bin/start-*.sh`, an `installer/phases/*.sh`, an `installer/doctor/checks/*.sh`, or a live `docker inspect`. Alias rows re-verified against the .tsv on **2026-05-31**.
 
 Sister doc: see [DEPENDENCIES.md](DEPENDENCIES.md) for topology, talks-to matrix, and sequence diagrams. Architecture rationale lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -18,11 +18,21 @@ Sister doc: see [DEPENDENCIES.md](DEPENDENCIES.md) for topology, talks-to matrix
 
 ## The `127.0.10.x` scheme
 
-Every `ai-stack` service is reached by an **alias** (e.g., `litellm`,
-`phoenix`, `qdrant`) that resolves to a unique `127.0.10.x` loopback IP
-via the `/etc/hosts` block written by Phase 00·N. Container-to-container
-traffic uses Docker's embedded DNS on the `ai-stack` bridge network so
-the same alias works from inside any joined container.
+Every aliased `ai-stack` service is reached by an **alias** (e.g.,
+`litellm`, `phoenix`, `qdrant`) that resolves to a unique `127.0.10.x`
+loopback IP via the `/etc/hosts` block. Container-to-container traffic
+uses Docker's embedded DNS on the `ai-stack` bridge network so the same
+alias works from inside any joined container.
+
+**`prepare-sudo` installs the whole contract — it is the ONE sudo step.**
+`sudo bash install.sh prepare-sudo` writes the managed `/etc/hosts` block
+(`hosts_ensure_block`), binds each `127.0.10.x` to `lo0`
+(`lo0_ensure_aliases`), installs the launchd persistence plist
+(`lo0_install_persistence_plist`) so the binds survive reboot, and
+flushes DNS. It is idempotent. (Phase 00·N re-asserts the same helpers
+during a normal `install`, but the alias system as a whole is owned by
+`prepare-sudo`; the rest of `install all` then runs as your normal user
+with no sudo.)
 
 Why `127.0.10.x`:
 - **Still loopback** (127.0.0.0/8) — no LAN exposure, security story
@@ -37,55 +47,108 @@ Why `127.0.10.x`:
   wildcard listener — see the note at the top of this doc.
 - **Visually recognizable** — `10.` in the second octet flags ai-stack.
 
-Phase 00·N's helper `lib/network.sh::hosts_ensure_block` is idempotent:
-no-op if the block matches `aliases.tsv`, atomic write under `sudo`
-otherwise. IPv4 only (no `::1` lines); see ARCHITECTURE.md § "What's in
-/etc/hosts" for the marker format.
+The helper `lib/network.sh::hosts_ensure_block` is idempotent: no-op if
+the block matches `aliases.tsv`, atomic write under `sudo` otherwise.
+IPv4 only (no `::1` lines); see ARCHITECTURE.md § "What's in /etc/hosts"
+for the marker format.
 
 **lo0 binding is also required.** macOS does NOT auto-route `127.0.0.0/8`;
-only `127.0.0.1` is on `lo0` by default. Phase 00·N runs
+only `127.0.0.1` is on `lo0` by default. `prepare-sudo` runs
 `lo0_ensure_aliases` (under `sudo`) to `ifconfig lo0 alias 127.0.10.X up`
 for each row of `aliases.tsv`, and `lo0_install_persistence_plist` writes
 `/Library/LaunchDaemons/com.ai-stack.loopback.plist` so the aliases
 survive reboot. Without this, /etc/hosts resolves correctly but kernel
-routing drops every packet. Doctor check 19 enforces it.
+routing drops every packet. Doctor check 19 (`19_lo0_aliases.sh`)
+enforces it.
 
 ---
 
-## At-a-glance table
+## The alias table (verbatim from `installer/lib/aliases.tsv`)
 
-Sorted by install phase, then alias. The canonical source for these rows is
-`installer/lib/aliases.tsv` — if this table and the .tsv ever disagree, the
-.tsv wins.
+These are the **15 active alias rows** in `installer/lib/aliases.tsv`, in
+file order. Each row is `alias → IP → protocol → host_port →
+container_port → phase → service_key`. Under the 2026-05-28 scheme
+`host_port == container_port` for every row, so the Mac-side and
+container-side URL are identical (e.g., `http://litellm:4000` works from
+both). If this table and the .tsv ever disagree, the .tsv wins.
 
-| Alias          | From Mac                    | From container             | Purpose                            | Phase | Default IP  |
-|----------------|-----------------------------|----------------------------|------------------------------------|-------|-------------|
-| `ollama`       | `http://ollama:11434`       | `http://ollama:11434`†     | Local models (brew on host)        | 01    | 127.0.0.1   |
-| `litellm`      | `http://litellm:4000`       | `http://litellm:4000`      | LiteLLM OpenAI-compat proxy        | 01    | 127.0.10.1  |
-| `phoenix`      | `http://phoenix:6006`       | `http://phoenix:6006`      | Phoenix UI + OTLP HTTP collector   | 01·H  | 127.0.10.2  |
-| `phoenix-otlp` | `http://phoenix-otlp:4317`  | `http://phoenix:4317`      | Phoenix OTLP gRPC                  | 01·H  | 127.0.10.3  |
-| `qdrant`       | `http://qdrant:6333`        | `http://qdrant:6333`       | Qdrant vector DB                   | 02    | 127.0.10.5  |
-| `falkordb`     | `redis://falkordb:6379`     | `redis://falkordb:6379`    | FalkorDB graph (Redis RESP)        | 02    | 127.0.10.7  |
-| `falkordb-ui`  | `http://falkordb-ui:3000`   | `http://falkordb:3000`     | FalkorDB browser UI                | 02    | 127.0.10.8  |
-| `honcho`       | `http://honcho:8000`        | `http://honcho:8000`‡      | Honcho memory API                  | 03    | 127.0.10.6  |
-| `hermes-gw`    | `http://hermes-gw:8642`     | `http://hermes-gw:8642`    | OpenShell L7 proxy (reserved)      | 04    | 127.0.10.11 |
-| `llm-guard`    | `http://llm-guard:8000`     | `http://llm-guard:8000`    | LLM Guard scanner sidecar          | 04·G  | 127.0.10.12 |
-| `openwebui`    | `http://openwebui:8080`     | `http://openwebui:8080`    | Open WebUI chat UI                 | 05    | 127.0.10.9  |
-| `workspace`    | `http://workspace:3000`     | `http://workspace:3000`    | Hermes Workspace UI                | 05    | 127.0.10.10 |
-| `docs-mcp`     | `http://docs-mcp:8765`      | `http://docs-mcp:8765`     | Docs MCP server                    | 06    | 127.0.10.4  |
-| `autofyn`      | `http://autofyn:3400`       | `http://autofyn:3400`      | AutoFyn coding agent               | 07    | 127.0.10.13 |
-| `paperclip`    | `http://paperclip:3100`     | `http://paperclip:3100`    | Paperclip orchestrator             | 08    | 127.0.10.14 |
-| `unsloth`      | `http://unsloth:8898`       | `http://unsloth:8898`      | Unsloth Studio (fine-tuning UI)    | 14    | 127.0.10.16 |
-| `pi` (sandbox) | `bin/pi` (no HTTP)          | n/a                         | Pi coding agent inside `pi-v1`     | 15    | (sandboxed) |
-| `lumen` (CLI)  | `bin/lumen` (stdio MCP)     | n/a (subprocess per client) | Local code semantic search         | 16    | (no port)   |
+| Alias          | Alias URL                  | IP          | Host port | Container port | Phase | What it is                                  |
+|----------------|----------------------------|-------------|-----------|----------------|-------|---------------------------------------------|
+| `litellm`      | `http://litellm:4000`      | 127.0.10.1  | 4000      | 4000           | 01    | LiteLLM OpenAI-compat proxy (the model hub) |
+| `phoenix`      | `http://phoenix:6006`      | 127.0.10.2  | 6006      | 6006           | 01h   | Phoenix UI + OTLP HTTP collector            |
+| `phoenix-otlp` | `phoenix-otlp:4317` (gRPC) | 127.0.10.3  | 4317      | 4317           | 01h   | Phoenix OTLP gRPC ingest (`extra_alias`)    |
+| `docs-mcp`     | `http://docs-mcp:8765`     | 127.0.10.4  | 8765      | 8765           | 06    | Docs MCP search server                      |
+| `qdrant`       | `http://qdrant:6333`       | 127.0.10.5  | 6333      | 6333           | 02    | Qdrant vector DB (REST)                     |
+| `honcho`       | `http://honcho:8000`       | 127.0.10.6  | 8000      | 8000           | 03    | Honcho cross-agent memory API               |
+| `falkordb`     | `redis://falkordb:6379`    | 127.0.10.7  | 6379      | 6379           | 02    | FalkorDB graph (Redis RESP)                 |
+| `falkordb-ui`  | `http://falkordb-ui:3000`  | 127.0.10.8  | 3000      | 3000           | 02    | FalkorDB browser UI (`extra_alias`)         |
+| `openwebui`    | `http://openwebui:8080`    | 127.0.10.9  | 8080      | 8080           | 05    | Open WebUI chat UI                          |
+| `workspace`    | `http://workspace:3000`    | 127.0.10.10 | 3000      | 3000           | 05    | Hermes Workspace UI                         |
+| `hermes-gw`    | `http://hermes-gw:8642`    | 127.0.10.11 | 8642      | 8642           | 04    | Hermes/OpenShell L7 gateway                 |
+| `llm-guard`    | `http://llm-guard:8000`    | 127.0.10.12 | 8000      | 8000           | 04g   | LLM Guard scanner sidecar                   |
+| `autofyn`      | `http://autofyn:3400`      | 127.0.10.13 | 3400      | 3400           | 07    | AutoFyn coding agent                        |
+| `paperclip`    | `http://paperclip:3100`    | 127.0.10.14 | 3100      | 3100           | 08    | Paperclip personal task agent               |
+| `unsloth`      | `http://unsloth:8898`      | 127.0.10.16 | 8898      | 8898           | 14    | Unsloth Studio (fine-tuning + train UI)     |
 
-† Ollama runs as a brew service on the host (not a container). From inside a container, `ollama:11434` resolves to the host's gateway IP via the `--add-host=ollama:host-gateway` flag baked into each consumer's `docker run`. Port `:11434` stays in the URL on both sides — the one HTTP-port-not-on-80 exception.
+**Notes on the table:**
+- The `phoenix-otlp` row carries protocol `grpc` in the .tsv — it is an
+  OTLP/gRPC endpoint, not HTTP, so dial it as `phoenix-otlp:4317` (gRPC),
+  not with an `http://` prefix.
+- **`127.0.10.15` is skipped.** The .tsv has a commented-out reserved row
+  `phoenix-otlp-http  127.0.10.15  http  4318  4318  01h  phoenix` (OTLP/HTTP
+  spec port 4318), ready to uncomment if a Phoenix/OTel client mandates it.
+  The live range therefore jumps `127.0.10.14` → `127.0.10.16`. `.17`+ is
+  free for future services.
 
-‡ Honcho's `api` and `deriver` containers are on multiple Docker networks (`honcho_default` + `ai-stack`). Cross-stack call sites use **fully-qualified DNS**: `http://litellm.ai-stack:4000/v1` (not `http://litellm:4000/v1`) to avoid Docker's unspec'd multi-network resolution order.
+### Brew host service with no alias row — `ollama`
 
-### Reserved-but-commented
+`ollama` is NOT in `aliases.tsv` (it is a brew service, not a container,
+and not on `lo0`). It binds `127.0.0.1:11434` on the host. Containers
+reach it as `http://ollama:11434` via the `--add-host=ollama:host-gateway`
+flag baked into each consumer's `docker run` (e.g., LiteLLM). Port
+`:11434` stays in the URL on both sides.
 
-`aliases.tsv` carries a commented-out row for `phoenix-otlp-http  127.0.10.15  http  4318  4318  01h  phoenix` ready to uncomment when a Phoenix/OTel client mandates OTLP/HTTP spec port 4318. `unsloth` occupies `127.0.10.16`. .17+ stays free for future services. **Pi** (Phase 15) does NOT get its own loopback alias — it runs inside the `pi-v1` OpenShell sandbox and reaches LiteLLM via `host.docker.internal:4000` from the sandbox VM.
+### Fully-qualified DNS for multi-network containers
+
+Honcho's `api` and `deriver` containers are on multiple Docker networks
+(`honcho_default` + `ai-stack`). Cross-stack call sites use
+**fully-qualified DNS**: `http://litellm.ai-stack:4000/v1` (not
+`http://litellm:4000/v1`) to avoid Docker's unspec'd multi-network
+resolution order.
+
+---
+
+## Loopback-only services with NO alias (intentional)
+
+These newer host services LISTEN on a port but are deliberately left OUT
+of `aliases.tsv` — they get no `/etc/hosts` alias and no `127.0.10.x`
+`lo0` bind. The reasons are spelled out in the comment block at the foot
+of `aliases.tsv`:
+
+| Service          | Reach it at                          | Port | Phase | Why no alias                                                                                                   |
+|------------------|--------------------------------------|------|-------|----------------------------------------------------------------------------------------------------------------|
+| claw3d UI        | `http://localhost:4310`              | 4310 | 19    | claw3d REFUSES to bind a public host without `STUDIO_ACCESS_TOKEN` (its own security), so it binds `127.0.0.1`. |
+| claw3d-bridge    | `http://localhost:7780`              | 7780 | 19    | Auth-less and can drive **all 9 agents** → loopback-only by design (never expose it under a named address).     |
+| lmstudio         | `host.docker.internal:1234` (OPT-IN) | 1234 | 25    | Reached from the LiteLLM **container**, so it uses host-gateway (`host.docker.internal`), not a host `lo0` alias. |
+
+Detail:
+- **claw3d UI (`:4310`)** and **claw3d-bridge (`:7780`)** both run with
+  `network: host` (Phase 19). The bridge routes chat across every
+  isolated agent; because it is auth-less it must stay on loopback. Reach
+  the 3D agent-office UI at `http://localhost:4310` in a browser.
+- **lmstudio (`:1234`)** is an OPT-IN extra (Phase 25 — install by name).
+  When enabled, LM Studio's OpenAI server is bound `0.0.0.0:1234` on the
+  host and LiteLLM dials it from inside its container via
+  `http://host.docker.internal:1234`. It is a 2nd local runtime behind
+  LiteLLM; Ollama stays the default. There is no `lo0` alias because the
+  caller is a container, not the Mac.
+
+**Pi** (Phase 15) also has no alias — but unlike the above it has no host
+listener at all. Pi runs inside the `pi-v1` OpenShell sandbox; launch via
+`bin/pi`. From inside that sandbox VM it reaches LiteLLM via
+`http://host.docker.internal:4000` (which resolves to the Mac's
+`127.0.0.1:4000`), authenticating with `PI_LITELLM_KEY`. See the per-service
+detail below.
 
 ### Services with no host port (CLI-only / pattern-only)
 
@@ -126,7 +189,7 @@ Each entry: ports listened on, what calls in, healthcheck command.
 - **Listens**: `127.0.0.1:11434` (Mac brew). Reached from containers as `ollama:11434` via `--add-host=ollama:host-gateway`.
 - **Internal**: none (single-process; runs as the user's `ollama` daemon via `brew services start ollama`)
 - **Callers**:
-  - `litellm` → `http://ollama:11434` (api_base for `local`, `local-heavy`, `embed-local`; see `litellm/config.yaml`; container reaches host via host-gateway alias)
+  - `litellm` → `http://ollama:11434` (api_base for the Ollama-served models — canonically `local-gemma4` → `gemma4:e4b` plus `nomic-embed-text` embeddings; see `installer/models.yml` for the canonical bindings and `litellm/config.yaml` for any legacy add-only slugs that 404 until pulled; container reaches host via host-gateway alias)
 - **Healthcheck**: `curl -s http://ollama:11434/api/tags` (Mac side, after `/etc/hosts` setup)
 - **Source**: `services.yml:18-24`, `installer/phases/01_inference.sh:60`
 
@@ -267,15 +330,16 @@ The compose stack publishes one host port via the new alias scheme and keeps thr
 
 ### `paperclip` (node-bg)
 
-- **Listens**: `127.0.10.14:3100:3100` (Mac dials `http://paperclip:3100`) → `paperclip:3100`
-- **Internal**: _unverified_ (not currently running; phase 08's `bin/start-paperclip.sh` is referenced but not present in `bin/`)
-- **Source**: `services.yml:158-162`, `installer/phases/08_paperclip.sh:46`, `installer/lib/aliases.tsv`
+- **Listens**: Paperclip's `pnpm dev` binds `127.0.0.1:3100` only (its upstream-recommended "trusted local loopback" mode, which also bypasses the auth gate for loopback connections). The `aliases.tsv` row maps `paperclip → 127.0.10.14:3100 → :3100`, but because Paperclip binds `127.0.0.1` (not `127.0.10.14`), `bin/start-paperclip.sh` runs a tiny Node TCP **relay** on `127.0.10.14:3100` that forwards to `127.0.0.1:3100`. So `http://paperclip:3100` works on the Mac via the relay; `http://localhost:3100` hits Paperclip directly.
+- **Embedded Postgres**: `pnpm dev` **auto-provisions an embedded PostgreSQL** (with an auto-generated DB password); this is internal to Paperclip and not exposed via any alias. Our tooling does not pin its port, so do not assume a fixed value — inspect with `lsof -nP -iTCP -sTCP:LISTEN | grep -i postgres` while Paperclip is up if you need the live port.
+- **Health**: `http://127.0.0.1:3100/api/health`. First build can take 60–120s before the port binds.
+- **Source**: `services.yml:158-162`, `installer/phases/08_paperclip.sh`, `bin/start-paperclip.sh`, `installer/lib/aliases.tsv`
 
 ### `pi` (openshell-sandbox) — Phase 15
 
 - **Listens**: nothing on the host. Pi runs inside the `pi-v1` OpenShell sandbox; launch via `bin/pi` which `exec`s into the sandbox.
 - **Egress**: per `openshell/policies/pi-v1.yaml` — Pi can reach `host.docker.internal:4000` (LiteLLM), `:8000` (Honcho), `:8765` (docs-mcp), and npm/pypi/github for runtime fetches. All other destinations return HTTP 403 with body `{"error":"policy_denied"}` from the OpenShell egress proxy.
-- **Auth**: Pi calls LiteLLM with `PI_LITELLM_KEY` (a LiteLLM virtual key minted in Phase 15, scoped to `models=[local,local-heavy,local-lfm2]`). Lives in `.env` mode 0600. Pi never sees `LITELLM_MASTER_KEY`.
+- **Auth**: Pi calls LiteLLM with `PI_LITELLM_KEY` (a LiteLLM virtual key minted in Phase 15, allowlisted against the canonical scoped-key superset — see `install.sh model superset`). Pi's assigned model is `local-qwen3-coder` (`installer/models.yml`). Lives in `.env` mode 0600. Pi never sees `LITELLM_MASTER_KEY`.
 - **Stop / kill**: `bin/pi-kill` (pkills the pi process inside the sandbox without removing the sandbox itself).
 - **Source**: `services.yml:308-323`, `installer/phases/15_pi.sh`, `bin/pi`, `bin/pi-kill`, `pi/inference-local.ts`, `openshell/policies/pi-v1.yaml`
 
@@ -374,7 +438,7 @@ These ports are declared in `services.yml` but only listen when their service is
 |-------|----------------|--------------------------------------------------------------------------------------------------------|
 | 8765  | `docs_mcp`     | Foreground `python mcp_server.py` (no `start-docs_mcp.sh`); only up when user runs it.                |
 | 3000  | `hermes_workspace` | Clone may not be present (upstream `NousResearch/hermes-workspace` may not exist); best-effort.   |
-| 3100  | `paperclip`    | No `bin/start-paperclip.sh` shipped; launched on-demand from `~/ai-stack/tools/paperclip`.            |
+| 3100  | `paperclip`    | Started via `bin/start-paperclip.sh` (daemonizes `pnpm dev` in `~/ai-stack/tools/paperclip`); only listening when running. Reached on the alias via the `127.0.10.14:3100 → 127.0.0.1:3100` relay. |
 | 3400  | `autofyn`      | Clone may not be present (best-effort upstream).                                                       |
 | 2026  | `deerflow`     | Phase 10 auto-starts via `bin/start-deerflow.sh` (wrapper exports `LITELLM_MASTER_KEY` so compose's `${VAR}` substitution resolves warning-free). Stop with `stack stop deerflow` (~520 MB), restart with `stack start deerflow`. Doctor check 28 guards the config patches. |
 | 5432  | `honcho-database-1` | Only when honcho compose is up.                                                                   |

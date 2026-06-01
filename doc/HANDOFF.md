@@ -13,13 +13,14 @@ in fifteen minutes.
 | Host | Mayssam Sayyadian's MacBook Pro M4 24 GB, macOS Sequoia, OrbStack docker, Homebrew, Python 3.13, brew bash 5.x |
 | Stack root | `~/ai-stack/` (= `/Users/mayssam.sayyadian/ai-stack/`) |
 | Entry point | `bash install.sh` (and the `stack` alias = `bash install.sh`) |
-| Total phases | **26** (00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19) |
-| Default phase order | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19` (note: 03 before 01 — see §3.1) |
-| Total services in `services.yml` | **33** (added `rlm` Phase 18; `claw3d` + `claw3d_bridge` Phase 19) |
-| Total doctor checks | **33** (added `hermes_routing` #30, `rlm_install` #31, `claw3d` #32, `hermes_telegram` #33) |
+| Total phases | **27 core + 5 opt-in extras** = 32 phase files. Core: 00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. Opt-in (install by name, NOT in `install all`): 21 portless, 22 cmux, 23 skillspector, 24 openagents, 25 lmstudio. |
+| Default phase order (`install all`) | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20` (note: 03 before 01 — see §3.1) |
+| Total services in `services.yml` | **39** (added `rlm` Phase 18; `claw3d` + `claw3d_bridge` Phase 19; `hermes_telegram` Phase 20; the 5 opt-in extras 21–25) |
+| Total doctor checks | **40** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40) |
+| Model↔agent binding | `installer/models.yml` is the single source of truth; **3 canonical models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in). `install.sh model {list,assign,sync,superset}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs now live under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed` (drop files into `~/ai-stack/ingestor/inbox`); there is NO top-level `docs/` dir anymore. |
-| Last verified doctor pass | 2026-05-31: a fresh `install all` reaches **38/38** (Phase 18 RLM + Phase 19 claw3d + Phase 20 Telegram; checks 31/32/33 verified individually). ⚠️ A long-idle live stack can show 2 OpenShell-exec checks (25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
-| Last verified cold install | 2026-05-31 — `reset --confirm hard --yes` → `install all` → `doctor` 38/38 green, end-to-end (Phases 19 claw3d + 20 Telegram verified; check 33 skips→passes when no `HERMES_TELEGRAM_BOT_TOKEN`. See CHANGELOG 2026-05-31) |
+| Last verified doctor pass | 2026-05-31: a fresh `install all` reaches **40/40** (Phase 18 RLM + Phase 19 claw3d + Phase 20 Telegram + check 40 models_binding). ⚠️ A long-idle live stack can show 2 OpenShell-exec checks (25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
+| Last verified cold install | 2026-05-31 — `reset --confirm hard --yes` → `install all` → `doctor` 40/40 green, end-to-end (Phases 19 claw3d + 20 Telegram verified; check 33 skips→passes when no `HERMES_TELEGRAM_BOT_TOKEN`. See CHANGELOG 2026-05-31) |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
 1. **Autonomous execution.** Diagnose → fix in code → update installer → sweep docs → verify → THEN report. Don't hand back a recipe.
@@ -36,7 +37,7 @@ in fifteen minutes.
 - `feedback-autonomous-execution.md`
 - `feedback-background-tasks.md`
 - `project_pi_phase15.md`
-- `project_doctor_count.md` (was 26, now 31 — update if you add checks)
+- `project_doctor_count.md` (now **40** checks — update if you add checks)
 
 ---
 
@@ -45,7 +46,7 @@ in fifteen minutes.
 ### Inference + observability
 - **LiteLLM** (`http://litellm:4000`) — virtual-key gateway, Postgres-backed key store, Phoenix OTLP export, custom JSONL trace logger, in-built guardrails (denied-words + secrets regex). On `ai-stack` docker network.
 - **Phoenix** (`http://phoenix:6006`) — observability UI + OTLP collector. Project `ai-stack` for all traces.
-- **Ollama** — host brew service. Models pulled: `gemma4:e4b`, `qwen3.6:27b-q4_K_M`, `nomic-embed-text`, `hf.co/LiquidAI/LFM2.5-8B-A1B-GGUF:Q4_K_M`.
+- **Ollama** — host brew service. Eager-pulled models (Phase 01 `REQUIRED_MODELS`, lazy policy 2026-05-31): `gemma4:e4b` (=`local-gemma4`, default) + `nomic-embed-text` only. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder`, ~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b` (`local-heavy`) and LFM2.5 GGUF are **no longer auto-pulled**. `OLLAMA_KEEP_ALIVE=0` (set in Phase 00) keeps Ollama from holding a model resident.
 
 ### Storage
 - **FalkorDB** (`redis://falkordb:6379`, browser `http://falkordb-ui:3000`) — graph DB on Redis protocol.
@@ -55,7 +56,7 @@ in fifteen minutes.
 ### Agent runtimes
 - **OpenShell** (brew service, gateway `:17670`) — sandbox host. Two sandboxes:
   - **hermes-fleet-v1** — 7 Hermes profiles (cos, software_engineer, researcher, creator, reviewer, data_analyst, ops). Installed via PyPI `hermes-agent` v0.15.2 inside `/sandbox/.venv` (uv-managed venv inside the sandbox).
-  - **pi-v1** — Pi (`@earendil-works/pi-coding-agent`) installed from pre-staged tarball at `pi/pi-bootstrap.tar.gz` to bypass scoped-npm-URL proxy issue. Auth via `PI_LITELLM_KEY` virtual key scoped to `[local, local-heavy, local-lfm2]`.
+  - **pi-v1** — Pi (`@earendil-works/pi-coding-agent`) installed from pre-staged tarball at `pi/pi-bootstrap.tar.gz` to bypass scoped-npm-URL proxy issue. Auth via `PI_LITELLM_KEY` virtual key scoped to the fixed canonical superset (`local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6`). Pi's assigned model is `local-qwen3-coder` (per `models.yml`); the superset lets `model assign`/`sync` re-point it without re-minting the key.
 
 ### UIs
 - **Open WebUI** (`http://openwebui:8080`) — chat UI in front of LiteLLM.
@@ -82,7 +83,8 @@ in fifteen minutes.
 - `prepare-sudo` — sudo'd /etc/hosts + lo0 + launchd plist setup (idempotent)
 - `verify` — runtime probes (lo0, /etc/hosts, host-gateway, end-to-end routing). Cheap, < 10s.
 - `status` — declared vs actual + ownership table
-- `doctor [<filter>]` — 38 checks, per-check auto-fix
+- `model list|assign|sync|superset` — declarative model↔agent binding (see [models.md](models.md)); `sync` is opt-in
+- `doctor [<filter>]` — 40 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -285,11 +287,11 @@ bash ~/ai-stack/install.sh reset --confirm hard --yes
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/install.sh install all
 
-# 4. Verify (38/38 expected)
+# 4. Verify (40/40 expected)
 bash ~/ai-stack/install.sh doctor
 ```
 
-This canonical flow is VERIFIED end-to-end (38/38 doctor, 2026-05-31). OpenShell sandbox-create hangs are now auto-recovered in-code (§2.2), so step 3 should no longer stall there.
+This canonical flow is VERIFIED end-to-end (40/40 doctor, 2026-05-31). OpenShell sandbox-create hangs are now auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash
@@ -332,7 +334,7 @@ bash ~/ai-stack/install.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 38 checks, each with auto-fix offer.
+2. `stack doctor` — 40 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -355,11 +357,11 @@ If you keep these as constraints, you'll write the right code.
 | File | Purpose |
 |---|---|
 | `install.sh` | Entry point, phase dispatcher, lock + bash5 gate |
-| `services.yml` | Single source of truth: 39 services with type/enabled/path/port/project/process_pattern/etc. |
+| `services.yml` | Single source of truth: 39 services with type/enabled/path/port/project/process_pattern/etc. (schema `version: 2`) |
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (38 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (40 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |

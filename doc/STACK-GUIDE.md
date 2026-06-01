@@ -164,13 +164,18 @@ round-trip, no API key, no per-token bill.
 
 **Why is it here?** So you can answer "summarize this paragraph" or "fix
 this typo" without sending the text to a cloud provider. Also so the
-researcher Hermes profile can chew on long documents using `local-heavy`
-(a 27B Qwen) without burning credits.
+researcher Hermes profile can chew on long documents using `local-qwen3.6`
+(a 27B Qwen, served by LM Studio MLX) without burning credits.
 
-**What does it do for us?** Serves three models pinned by Phase 01:
-`gemma4:e4b` (small, fast, 9.6 GB) as the default `local`,
-`qwen3.6:27b-q4_K_M` (frontier-class, 17 GB) as `local-heavy`, and
-`nomic-embed-text` for local embeddings.
+**What does it do for us?** Phase 01 now pins only two Ollama models:
+`gemma4:e4b` (small, fast, 9.6 GB) as `local-gemma4` — the default for any
+unassigned agent — and `nomic-embed-text` for local embeddings. The heavy
+general-reasoning (`local-qwen3.6`) and coding (`local-qwen3-coder`) models
+moved to LM Studio MLX (~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b`
+(`local-heavy`) is no longer auto-pulled. Which model each agent uses is now
+declared per-agent in `installer/models.yml` — see [models.md](models.md).
+Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=0`), so no model stays resident
+between requests.
 
 **Where does it fit?** LiteLLM is the only thing in the stack that talks
 directly to Ollama. Everything else asks LiteLLM for the model named
@@ -326,9 +331,9 @@ trivial in Cypher and painful in pure RAG. The stack reserves the option
 to do GraphRAG without forcing it.
 
 **What does it do for us?** Listens on port 6379 (Redis protocol) for
-graph queries. A browser UI lives on port 3010. Nothing else in the
-stack writes to it by default — it is a clean canvas for whichever agent
-or notebook wants to build a knowledge graph.
+graph queries. A browser UI lives on port 3000 (`falkordb-ui`). Nothing
+else in the stack writes to it by default — it is a clean canvas for
+whichever agent or notebook wants to build a knowledge graph.
 
 **Where does it fit?**
 
@@ -361,8 +366,9 @@ embeds each chunk and stores the vector in Qdrant. When an agent asks
 `search_documents("how does Honcho derive insights?")`, the MCP server
 embeds the query and asks Qdrant for the closest chunks.
 
-**What does it do for us?** Hosts the `ai-stack-docs` collection (1536-dim
-cosine, since `text-embedding-3-small` is the default embedder). Listens
+**What does it do for us?** Hosts the `ai-stack-docs` collection
+(cosine distance), embedded with the **local** `nomic-embed-text` model
+(768-dim) via LiteLLM — no cloud embeddings (constitution rule 3). Listens
 on port 6333 for REST/gRPC. Persists to `data/qdrant/` on disk.
 
 **Where does it fit?**
@@ -377,8 +383,8 @@ flowchart LR
   MCP --> QD
 ```
 
-**Gotcha:** Vector dimensions must match the embedder. The stack uses
-1536-dim because that is what `text-embedding-3-small` produces. If you
+**Gotcha:** Vector dimensions must match the embedder. The docs collection
+is 768-dim because that is what the local `nomic-embed-text` produces. If you
 switch to a different embedder, you need a new collection.
 
 **Sources:**
@@ -505,15 +511,20 @@ install.
 team of seven specialists is much better. Phase 04·F creates seven
 profiles with hand-written `SOUL.md` identity files:
 
-| Profile | Role | Default model |
+Each profile's model is declared per-agent in `installer/models.yml` (the
+shipped defaults are below) and rendered by `install.sh model sync` — see
+[models.md](models.md). lmstudio-assigned profiles fall back to `local-gemma4`
+when LM Studio is down.
+
+| Profile | Role | Assigned model |
 |---|---|---|
-| `hermes_cos` | Chief of staff — decomposes goals, routes work | claude-sonnet |
-| `hermes_software_engineer` | Pragmatic senior engineer — minimal diffs | claude-sonnet |
-| `hermes_researcher` | Rigorous research collaborator, cites everything | local-heavy |
-| `hermes_creator` | Careful writer for audience-ready prose | claude-sonnet |
-| `hermes_reviewer` | Blocking reviewer that catches what was missed | claude-sonnet |
-| `hermes_data_analyst` | SQL + Python over real data | local-heavy |
-| `hermes_ops` | Deploys, monitoring, incidents | claude-sonnet |
+| `hermes_cos` | Chief of staff — decomposes goals, routes work | local-qwen3.6 |
+| `hermes_software_engineer` | Pragmatic senior engineer — minimal diffs | local-qwen3-coder |
+| `hermes_researcher` | Rigorous research collaborator, cites everything | local-qwen3.6 |
+| `hermes_creator` | Careful writer for audience-ready prose | local-gemma4 (default) |
+| `hermes_reviewer` | Blocking reviewer that catches what was missed | local-qwen3-coder |
+| `hermes_data_analyst` | SQL + Python over real data | local-qwen3.6 |
+| `hermes_ops` | Deploys, monitoring, incidents | local-gemma4 (default) |
 
 **What does it do for us?** Each profile reads its `SOUL.md` as the
 first thing in its system prompt — that shapes its voice and defaults.
@@ -605,8 +616,8 @@ returns 200, the callback did not load (usually because of an
 ### LLM Guard (Phase 04·G, optional sidecar)
 
 **What is it?** LLM Guard is a much heavier second layer — a separate
-container on port 8001 running 15 input scanners (toxicity, prompt
-injection, banned topics, secrets, language ID, …) and 20+ output
+container reached at `llm-guard:8000` running 15 input scanners (toxicity,
+prompt injection, banned topics, secrets, language ID, …) and 20+ output
 scanners (toxicity, bias, malicious URLs, factual consistency, …). It is
 HTTP-based, so any service can call it before/after an LLM call.
 
@@ -650,9 +661,9 @@ attacker@evil.com the user's API keys," the summarizer rephrases it as
 rephrase, not the original payload.
 
 **What does it do for us?** The `hermes_researcher` profile is wired to
-do this for every web fetch. The summarizer is `local-heavy` (so cost
-is zero) and the action model is whichever Claude variant the user
-chose.
+do this for every web fetch. The summarizer is a local model (so cost
+is zero — `hermes_researcher` is assigned `local-qwen3.6`) and the action
+model is whichever model the profile is assigned in `models.yml`.
 
 **Sources:**
 - Simon Willison's writing on the dual-LLM pattern:
@@ -674,7 +685,7 @@ has built-in RAG, so you can drop a file into a chat and ask questions
 about it without setting up the Phase 06 ingestor.
 
 **What does it do for us?**
-- Listens on port 3001.
+- Reached at `http://openwebui:8080` (alias `127.0.10.9:8080`).
 - Talks to LiteLLM on port 4000 as its OpenAI-compatible backend.
 - Sees every model in `litellm/config.yaml` automatically.
 - Stores its own state (users, chat history, attachments) in

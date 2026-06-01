@@ -128,19 +128,20 @@
 
 <div class="layout">
   <aside>
-    <h3>Sections (15 diagrams)</h3>
+    <h3>Sections (16 diagrams)</h3>
     <ul id="toc">
       <li><a href="#sec-1-1-system-overview-what-talks-to-what">1. System overview — what talks to what</a></li>
 <li><a href="#sec-2-2-layer-boundary-diagram">2. Layer / boundary diagram</a></li>
 <li><a href="#sec-3-3-user-story-chatting-with-a-model-via-open-webui">3. User story: chatting with a model via Open WebUI</a></li>
 <li><a href="#sec-4-4-user-story-hermes-researcher-answers-a-question-using-local-cloud">4. User story: Hermes researcher answers a question using local + cloud</a></li>
-<li><a href="#sec-5-5-user-story-ingesting-a-new-pdf-into-rag">5. User story: ingesting a new PDF into RAG</a></li>
-<li><a href="#sec-6-6-user-story-an-agent-runs-a-shell-command-sandbox-in-action">6. User story: an agent runs a shell command (sandbox in action)</a></li>
-<li><a href="#sec-7-7-security-and-sandbox-boundaries">7. Security and sandbox boundaries</a></li>
-<li><a href="#sec-8-8-where-your-data-goes-privacy-story">8. Where your data goes (privacy story)</a></li>
-<li><a href="#sec-9-9-per-call-observability-where-a-trace-lives">9. Per-call observability: where a trace lives</a></li>
-<li><a href="#sec-10-10-memory-profiles-what-runs-in-each-mode">10. Memory profiles — what runs in each mode</a></li>
-<li><a href="#sec-11-11-network-topology-host-vs-ai-stack-vs-openshell">11. Network topology — host vs ai-stack vs OpenShell</a></li>
+<li><a href="#sec-5-5-model-agent-binding-and-availability-gating">5. Model ↔ agent binding and availability-gating</a></li>
+<li><a href="#sec-6-6-user-story-ingesting-a-new-pdf-into-rag">6. User story: ingesting a new PDF into RAG</a></li>
+<li><a href="#sec-7-7-user-story-an-agent-runs-a-shell-command-sandbox-in-action">7. User story: an agent runs a shell command (sandbox in action)</a></li>
+<li><a href="#sec-8-8-security-and-sandbox-boundaries">8. Security and sandbox boundaries</a></li>
+<li><a href="#sec-9-9-where-your-data-goes-privacy-story">9. Where your data goes (privacy story)</a></li>
+<li><a href="#sec-10-10-per-call-observability-where-a-trace-lives">10. Per-call observability: where a trace lives</a></li>
+<li><a href="#sec-11-11-memory-profiles-what-runs-in-each-mode">11. Memory profiles — what runs in each mode</a></li>
+<li><a href="#sec-12-12-network-topology-host-vs-ai-stack-vs-openshell">12. Network topology — host vs ai-stack vs OpenShell</a></li>
     </ul>
   </aside>
 
@@ -198,6 +199,7 @@
   subgraph Infer[Inference]
     LL[litellm :4000]
     OL[ollama :11434]
+    LMS["lmstudio :1234 (opt-in)"]
     CLOUD[(Cloud APIs)]
   end
 
@@ -234,6 +236,7 @@
   HF --> MCP
 
   LL --> OL
+  LL -.opt-in.-> LMS
   LL --> CLOUD
   LL --> PX
   LL --> GR
@@ -248,7 +251,12 @@
 </div>
 <p>Key things to notice:</p>
 <ul>
-<li>Every LLM call funnels through LiteLLM.</li>
+<li>Every LLM call funnels through LiteLLM. It fronts two local runtimes —</li>
+</ul>
+<p>  Ollama (default, serves <code>local-gemma4</code>) and, when you opt into Phase 25,</p>
+<p>  LM Studio&#x27;s MLX server (<code>:1234</code>, serves the heavy <code>local-qwen3.6</code> /</p>
+<p>  <code>local-qwen3-coder</code> MLX models) — plus the cloud APIs.</p>
+<ul>
 <li>Phoenix only receives; it never sits in the request path.</li>
 <li>Honcho and Qdrant are the long-term state. Everything else is</li>
 </ul>
@@ -403,7 +411,7 @@ sequenceDiagram
   participant R as hermes_researcher (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as Local heavy (Qwen 27B)
+  participant LH as local-qwen3.6 (LM Studio MLX)
   participant CL as Claude Opus
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
@@ -419,19 +427,22 @@ sequenceDiagram
   MCP-->>R: chunks with sources
 
   Note over R,SBX: All outbound calls go via inference.local
-  R->>SBX: chat completion (model=local-heavy)
-  SBX->>L: forward
+  R->>SBX: chat completion (model=local-qwen3.6)
+  SBX->>L: forward + inject HERMES_LITELLM_KEY
+  Note over L: scoped key allowlist check (superset)
   L->>LH: forward
   LH-->>L: summary of chunks
   L-->>SBX: response
   SBX-->>R: response
 
   R->>SBX: chat completion (model=claude-opus, "synthesize")
-  SBX->>L: forward
+  SBX->>L: forward + inject HERMES_LITELLM_KEY
   L->>CL: forward
   CL-->>L: structured comparison
   L-->>SBX: response
   SBX-->>R: response
+
+  L->>L: every call traced to Phoenix (project ai-stack)
 
   R->>HO: store conclusions for future sessions
   R-->>CoS: final report with citations
@@ -440,20 +451,107 @@ sequenceDiagram
 </div>
 <p>Three things this shows:</p>
 <ul>
-<li>The researcher uses <strong>local-heavy</strong> for cheap summarization and</li>
+<li>The researcher (assigned <strong>local-qwen3.6</strong>, see <a href="models.md">models.md</a>) uses a</li>
 </ul>
-<p>  <strong>claude-opus</strong> for the high-stakes synthesis. Mixed cost discipline.</p>
+<p>  local model for cheap summarization and <strong>claude-opus</strong> for the high-stakes</p>
+<p>  synthesis. Mixed cost discipline.</p>
 <ul>
 <li>Every external call goes via <code>inference.local</code>, the OpenShell L7</li>
 </ul>
-<p>  proxy. The agent never sees a real API key.</p>
+<p>  proxy. The agent never sees a real API key — the proxy injects the</p>
+<p>  fleet&#x27;s scoped <code>HERMES_LITELLM_KEY</code>, and LiteLLM checks every model</p>
+<p>  against that key&#x27;s allowlist (the canonical superset, so re-assigning</p>
+<p>  a model never needs a key re-mint). Each call also lands in Phoenix</p>
+<p>  project <code>ai-stack</code> for free.</p>
 <ul>
 <li>The researcher both reads and writes Honcho, so a follow-up question</li>
 </ul>
 <p>  next week starts with the conclusions from today.</p>
 
 <hr>
-<section id="sec-5-5-user-story-ingesting-a-new-pdf-into-rag"><h2>5. User story: ingesting a new PDF into RAG</h2>
+<section id="sec-5-5-model-agent-binding-and-availability-gating"><h2>5. Model ↔ agent binding and availability-gating</h2>
+<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is</p>
+<p>the canonical source of truth for the binding; <code>install.sh model sync</code></p>
+<p>reconciles it into LiteLLM and re-renders each agent. The interesting</p>
+<p>wrinkle is <strong>availability-gating</strong>: if an agent is assigned an</p>
+<p>LM Studio (MLX) model but LiteLLM isn&#x27;t currently serving it (LM Studio</p>
+<p>is opt-in and may be off), the agent is rendered against the default</p>
+<p><code>local-gemma4</code> instead — never left pointing at a dead route.</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-5b" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-5b" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-5b" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-5b" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-5b" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-5b-viewport">
+    <div class="mermaid" id="diag-5b">flowchart TB
+  subgraph SoT[Source of truth]
+    MY["installer/models.yml — 3 canonical models + per-agent assignments"]
+  end
+
+  subgraph Models[Canonical models]
+    GM["local-gemma4 (ollama, default)"]
+    Q36["local-qwen3.6 (lmstudio, big)"]
+    QC["local-qwen3-coder (lmstudio, big)"]
+  end
+
+  MY --> GM
+  MY --> Q36
+  MY --> QC
+
+  Sync["install.sh model sync"]
+  MY --> Sync
+
+  Sync --> P1["P1 register model_list (ADD-ONLY)"]
+  P1 --> P2["P2 restart litellm ONCE if changed"]
+  P2 --> P3["P3 widen scoped-key allowlists to superset"]
+  P3 --> P4["P4 render agents"]
+
+  P4 --> Gate{LiteLLM actually<br/>serving the model?}
+  Gate -- "yes" --> Bind["render agent against assigned model"]
+  Gate -- "no (lmstudio off)" --> Fall["availability-gated:<br/>render against local-gemma4 + warn"]
+
+  Bind --> Agents["7 Hermes profiles · pi · deerflow · ace · rlm"]
+  Fall --> Agents</div>
+  </div>
+</div>
+<p>What the assignments look like (from <code>models.yml</code>, see</p>
+<p><a href="models.md">models.md</a>):</p>
+<ul>
+<li><strong>local-qwen3.6</strong> — <code>hermes_cos</code>, <code>hermes_researcher</code>,</li>
+</ul>
+<p>  <code>hermes_data_analyst</code>, <code>deerflow</code>.</p>
+<ul>
+<li><strong>local-qwen3-coder</strong> — <code>hermes_software_engineer</code>, <code>hermes_reviewer</code>,</li>
+</ul>
+<p>  <code>pi</code>.</p>
+<ul>
+<li><strong>local-gemma4</strong> (the default) — <code>hermes_creator</code>, <code>hermes_ops</code>,</li>
+</ul>
+<p>  <code>ace</code>, <code>rlm</code>.</p>
+<p>Notes:</p>
+<ul>
+<li>The two heavy MLX models (<code>local-qwen3.6</code> ~17.5GB and</li>
+</ul>
+<p>  <code>local-qwen3-coder</code> ~17.2GB) <strong>cannot coexist</strong> on a 24GB box, which is</p>
+<p>  exactly why availability-gating exists — turn LM Studio off and the</p>
+<p>  fleet keeps working on <code>local-gemma4</code>.</p>
+<ul>
+<li><code>model sync</code> is opt-in and crash-safe; it is <strong>not</strong> run by</li>
+</ul>
+<p>  <code>install all</code>. Phase 1 only ever adds to LiteLLM&#x27;s <code>model_list</code></p>
+<p>  (ADD-ONLY), and LiteLLM is restarted at most once.</p>
+<ul>
+<li>Because every scoped key (<code>HERMES_LITELLM_KEY</code>, <code>PI_LITELLM_KEY</code>,</li>
+</ul>
+<p>  <code>ACE_LITELLM_KEY</code>, <code>RLM_LITELLM_KEY</code>) is minted against the fixed</p>
+<p>  <code>model superset</code>, <code>model assign &lt;agent&gt; &lt;model&gt;</code> re-points an agent</p>
+<p>  without ever re-minting a key.</p>
+
+<hr>
+<section id="sec-6-6-user-story-ingesting-a-new-pdf-into-rag"><h2>6. User story: ingesting a new PDF into RAG</h2>
 <p>You drop a file in <code>ingestor/inbox/</code>. Eventually agents can search it.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
@@ -500,7 +598,7 @@ sequenceDiagram
 <p>Qdrant collection.</p>
 
 <hr>
-<section id="sec-6-6-user-story-an-agent-runs-a-shell-command-sandbox-in-action"><h2>6. User story: an agent runs a shell command (sandbox in action)</h2>
+<section id="sec-7-7-user-story-an-agent-runs-a-shell-command-sandbox-in-action"><h2>7. User story: an agent runs a shell command (sandbox in action)</h2>
 <p>The path that justifies OpenShell&#x27;s existence. The agent wants to `pip</p>
 <p>install something`. We let it install from pypi but not write to</p>
 <p><code>~/.ssh/</code>.</p>
@@ -509,7 +607,7 @@ sequenceDiagram
 <p>because the sandbox is not. Five distinct scenarios — one per diagram so</p>
 <p>each stays legible.</p>
 
-<p><strong>6.1 Allowed write inside the sandbox.</strong></p>
+<p><strong>7.1 Allowed write inside the sandbox.</strong></p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-6" data-action="out" title="Zoom out">−</button>
@@ -528,7 +626,7 @@ sequenceDiagram
   FS-->>A: ok (path in allow list)</div>
   </div>
 </div>
-<p><strong>6.2 Denied read of host secrets.</strong> The agent asks for an SSH key; the</p>
+<p><strong>7.2 Denied read of host secrets.</strong> The agent asks for an SSH key; the</p>
 <p>FS layer checks with the policy engine and refuses.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
@@ -551,7 +649,7 @@ sequenceDiagram
   FS-->>A: permission denied</div>
   </div>
 </div>
-<p><strong>6.3 Allowed network egress to an allowlisted host.</strong> `pip install</p>
+<p><strong>7.3 Allowed network egress to an allowlisted host.</strong> `pip install</p>
 <p>requests` goes to pypi.org via the L4 firewall and L7 proxy.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
@@ -580,7 +678,7 @@ sequenceDiagram
   NET-->>A: install done</div>
   </div>
 </div>
-<p><strong>6.4 Denied network egress to a non-allowlisted host.</strong> The agent tries</p>
+<p><strong>7.4 Denied network egress to a non-allowlisted host.</strong> The agent tries</p>
 <p>to exfil to <code>attacker.com</code>; the L4 firewall rejects.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
@@ -603,7 +701,7 @@ sequenceDiagram
   NET-->>A: connection refused</div>
   </div>
 </div>
-<p><strong>6.5 Inference call through <code>inference.local</code>.</strong> The agent dials the</p>
+<p><strong>7.5 Inference call through <code>inference.local</code>.</strong> The agent dials the</p>
 <p>sandbox-internal endpoint; the L7 proxy rewrites to <code>litellm:4000</code> on the</p>
 <p>ai-stack network and injects the real bearer token server-side. The</p>
 <p>agent never sees the master key.</p>
@@ -629,7 +727,7 @@ sequenceDiagram
   </div>
 </div>
 <hr>
-<section id="sec-7-7-security-and-sandbox-boundaries"><h2>7. Security and sandbox boundaries</h2>
+<section id="sec-8-8-security-and-sandbox-boundaries"><h2>8. Security and sandbox boundaries</h2>
 <p>A different view of the same story — who can talk to whom, drawn as</p>
 <p>trust boundaries instead of as a sequence.</p>
 <div class="diagram-card">
@@ -667,17 +765,21 @@ sequenceDiagram
     LG[llm-guard :8000]
   end
 
-  subgraph Sandbox[OpenShell sandbox - untrusted]
-    HF["hermes-fleet-v1 (sandbox)"]
+  subgraph Sandbox[OpenShell sandboxes - untrusted]
+    HF["hermes-fleet-v1 (7 profiles + telegram gw)"]
+    PI["pi-v1 (Pi coding agent)"]
   end
 
-  Sandbox -- inference.local --> SBProxy[hermes-gw :8642]
-  SBProxy --> LL
+  HF -- inference.local --> SBProxy[hermes-gw :8642]
+  SBProxy -- HERMES_LITELLM_KEY --> LL
+  PI -- "host.docker.internal:4000 + PI_LITELLM_KEY" --> LL
 
-  Sandbox -- allowlisted --> PyPI
-  Sandbox -- allowlisted --> GH
-  Sandbox -- allowlisted --> NPM
-  Sandbox -.denied.-> Bad
+  HF -- allowlisted --> PyPI
+  HF -- allowlisted --> GH
+  HF -- allowlisted --> NPM
+  HF -.denied.-> Bad
+  PI -- "tight egress allowlist" --> PyPI
+  PI -.denied.-> Bad
 
   LL -- master key in .env --> Claude
   LL --> OL
@@ -693,13 +795,19 @@ sequenceDiagram
 <p>2. <strong>Containers</strong> — semi-trusted. Bound to <code>127.0.10.x</code> loopback only, so</p>
 <p>   nothing on your network can reach them. They hold service state but no</p>
 <p>   personal data. Inter-container traffic stays on the <code>ai-stack</code> bridge.</p>
-<p>3. <strong>Sandbox</strong> — untrusted. Network deny-by-default. Filesystem locked</p>
-<p>   to <code>/sandbox/</code> and <code>/tmp/</code>. API keys substituted by the L7 proxy.</p>
+<p>3. <strong>Sandboxes</strong> — untrusted. There are two: <code>hermes-fleet-v1</code> (the</p>
+<p>   7-profile Hermes fleet plus the Telegram gateway) and <code>pi-v1</code> (the Pi</p>
+<p>   coding agent). Both are network deny-by-default with a tight egress</p>
+<p>   allowlist; filesystem locked to <code>/sandbox/</code> and <code>/tmp/</code>. The fleet</p>
+<p>   reaches LiteLLM through the <code>hermes-gw</code> L7 proxy (which injects</p>
+<p>   <code>HERMES_LITELLM_KEY</code>); Pi dials <code>host.docker.internal:4000</code> with its</p>
+<p>   own minted <code>PI_LITELLM_KEY</code>. Neither agent ever sees a real provider</p>
+<p>   key.</p>
 
 <p>The arrows that <strong>don&#x27;t exist</strong> matter as much as the ones that do.</p>
 
 <hr>
-<section id="sec-8-8-where-your-data-goes-privacy-story"><h2>8. Where your data goes (privacy story)</h2>
+<section id="sec-9-9-where-your-data-goes-privacy-story"><h2>9. Where your data goes (privacy story)</h2>
 <p>The most important diagram for anyone deciding whether to use this</p>
 <p>stack. Color and direction tell you what stays on your machine and what</p>
 <p>leaves it.</p>
@@ -760,7 +868,7 @@ sequenceDiagram
 <ul>
 <li><strong>Your prompts</strong> only leave the machine if you pick a cloud model</li>
 </ul>
-<p>  (anything not named <code>local</code> or <code>local-heavy</code>).</p>
+<p>  (anything not a <code>local-*</code> model).</p>
 <ul>
 <li><strong>Your documents</strong> never leave the machine. Docling parses locally;</li>
 </ul>
@@ -783,11 +891,11 @@ sequenceDiagram
 <p>  installed but nothing deploys until you run <code>bl deploy</code>.</p>
 
 <p>If you want fully air-gapped operation: use the <code>paranoid</code> profile</p>
-<p>(<code>stack profile paranoid</code>), set every model to <code>local</code> / <code>local-heavy</code>,</p>
-<p>disable cloud API keys in <code>.env</code>.</p>
+<p>(<code>stack profile paranoid</code>), set every model to a <code>local-*</code> model</p>
+<p>(<code>local-gemma4</code>, or the LM Studio MLX models), disable cloud API keys in <code>.env</code>.</p>
 
 <hr>
-<section id="sec-9-9-per-call-observability-where-a-trace-lives"><h2>9. Per-call observability: where a trace lives</h2>
+<section id="sec-10-10-per-call-observability-where-a-trace-lives"><h2>10. Per-call observability: where a trace lives</h2>
 <p>Every LiteLLM call produces traces in three places. This helps when</p>
 <p>you want to figure out where to look for what.</p>
 <div class="diagram-card">
@@ -827,7 +935,7 @@ sequenceDiagram
 </ul>
 
 <hr>
-<section id="sec-10-10-memory-profiles-what-runs-in-each-mode"><h2>10. Memory profiles — what runs in each mode</h2>
+<section id="sec-11-11-memory-profiles-what-runs-in-each-mode"><h2>11. Memory profiles — what runs in each mode</h2>
 <p><code>stack profile &lt;name&gt;</code> flips a curated set of services on or off.</p>
 <p>This diagram shows the four built-in profiles side by side.</p>
 <div class="diagram-card">
@@ -865,7 +973,7 @@ sequenceDiagram
 <p>it.</p>
 
 <hr>
-<section id="sec-11-11-network-topology-host-vs-ai-stack-vs-openshell"><h2>11. Network topology — host vs ai-stack vs OpenShell</h2>
+<section id="sec-12-12-network-topology-host-vs-ai-stack-vs-openshell"><h2>12. Network topology — host vs ai-stack vs OpenShell</h2>
 <p>Three distinct networks; the bridge points are where the interesting</p>
 <p>traffic crosses.</p>
 <div class="diagram-card">
@@ -964,7 +1072,7 @@ sequenceDiagram
 </div>
 
 <footer>
-  Generated from <a href="DIAGRAMS.md">DIAGRAMS.md</a> on 2026-05-29. Mermaid v11.4.1 + pure CSS-transform zoom/pan (no svg-pan-zoom dependency).
+  Generated from <a href="DIAGRAMS.md">DIAGRAMS.md</a> on 2026-05-31. Mermaid v11.4.1 + pure CSS-transform zoom/pan (no svg-pan-zoom dependency).
   Companions: <a href="USER-GUIDE.html">USER-GUIDE.html</a> · <a href="USER-GUIDE.md">USER-GUIDE.md</a> · <a href="STACK-GUIDE.md">STACK-GUIDE.md</a>
 </footer>
 

@@ -20,9 +20,10 @@ Then the four you'll use daily:
 
 ```bash
 stack status        # declared vs actual — what's enabled, what's running, what drifted
-stack doctor        # 39 health checks + per-check auto-fix offers (your first move when something's off)
+stack doctor        # 40 health checks + per-check auto-fix offers (your first move when something's off)
 stack phases        # list every phase as  id → name
 stack logs <svc>    # docker logs wrapper, e.g.  stack logs litellm -f
+stack model list    # which LLM each agent is bound to (models.yml) — assign/sync/superset too
 ```
 
 `stack doctor <filter>` runs only matching checks — e.g. `stack doctor phoenix`,
@@ -76,9 +77,13 @@ host-gateway / routing). See [TROUBLESHOOTING.md § Connection refused](TROUBLES
 
 ## 3. The agents you can talk to
 
-All agents call local models through LiteLLM and default to the **light model**
-`local` (gemma4:e4b) — fast on the 24 GB box. `local-heavy` (qwen-27B) is available
-explicitly for heavy reasoning but is not the default (it thrashes 24 GB).
+All agents call local models through LiteLLM. Which model each agent uses is
+**declared per-agent** in `installer/models.yml` and rendered by `install.sh model
+sync` (see [models.md](models.md)). Unassigned agents default to `local-gemma4`
+(gemma4:e4b, fast on the 24 GB box); the coder profiles + Pi use `local-qwen3-coder`
+and the reasoning-heavy profiles + DeerFlow use `local-qwen3.6` (both LM Studio MLX,
+opt-in). lmstudio-assigned agents fall back to `local-gemma4` automatically when LM
+Studio is down, so a plain `install all` works with no LM Studio.
 
 | Agent | How to reach it | What it is |
 |---|---|---|
@@ -95,7 +100,7 @@ Talk to LiteLLM directly to test the plumbing:
 KEY="$(grep ^LITELLM_MASTER_KEY= ~/ai-stack/.env | cut -d= -f2-)"
 curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-  -d '{"model":"local","messages":[{"role":"user","content":"hello"}]}' \
+  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hello"}]}' \
   | jq -r '.choices[0].message.content'
 ```
 
@@ -171,4 +176,5 @@ Full write-ups: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
   sandboxed Pi, Phoenix evals).
 - **What each tool is** → [COMPONENTS.md](COMPONENTS.md) (index) / [STACK-GUIDE.md](STACK-GUIDE.md) (tour).
 - **Day-to-day commands** → [OPERATIONS.md](OPERATIONS.md).
+- **Which model each agent uses** → [models.md](models.md) (`install.sh model` binding).
 - **Something's broken** → [DOCTOR.md](DOCTOR.md) then [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

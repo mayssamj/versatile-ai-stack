@@ -292,10 +292,10 @@
 
 <section id="overview" class="hero">
   <h1>Your AI stack, made operational.</h1>
-  <p>33 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>install.sh</code> done to a working multi-service workflow.</p>
+  <p>39 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>install.sh</code> done to a working multi-service workflow.</p>
   <div class="stat-row">
-    <div class="stat"><span class="n">31</span><span class="l">Services</span></div>
-    <div class="stat"><span class="n">31</span><span class="l">Doctor checks</span></div>
+    <div class="stat"><span class="n">39</span><span class="l">Services</span></div>
+    <div class="stat"><span class="n">40</span><span class="l">Doctor checks</span></div>
     <div class="stat"><span class="n">12</span><span class="l">Recipes</span></div>
     <div class="stat"><span class="n">4</span><span class="l">Profiles</span></div>
     <div class="stat"><span class="n">~25</span><span class="l">Model routes</span></div>
@@ -309,7 +309,7 @@
     <div class="step">
       <span class="n">Step 1</span>
       <h3>Confirm health</h3>
-      <p>Run doctor. Target: 32/32 ✓.</p>
+      <p>Run doctor. Target: 40/40 ✓.</p>
       <a class="link" href="#cheatsheet">Cheatsheet →</a>
     </div>
     <div class="step">
@@ -474,7 +474,7 @@ const services = [
    tryThis:[
      {desc:'Enumerate models.', cmd:'source ~/ai-stack/.env\ncurl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  http://litellm:4000/v1/models | jq \'.data[].id\''},
      {desc:'Send a chat.', cmd:'curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -H \'Content-Type: application/json\' http://litellm:4000/v1/chat/completions \\\n  -d \'{"model":"local","messages":[{"role":"user","content":"hi"}],"max_tokens":20}\''},
-     {desc:'Mint a budget-capped virtual key for a teammate.', cmd:'curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -X POST http://litellm:4000/key/generate \\\n  -d \'{"models":["local","local-heavy"],"max_budget":2.0,"key_alias":"teammate"}\' | jq'}
+     {desc:'Mint a budget-capped virtual key for a teammate.', cmd:'curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \\\n  -X POST http://litellm:4000/key/generate \\\n  -d \'{"models":["local-gemma4","local-qwen3.6"],"max_budget":2.0,"key_alias":"teammate"}\' | jq'}
    ],
    combine:['ollama','phoenix','honcho','openwebui']},
 
@@ -549,10 +549,11 @@ const services = [
    combine:['hermes_fleet','pi']},
 
   {id:'hermes_fleet', layer:'agent', layerLabel:'Agent runtime', name:'hermes-fleet', port:'(sandbox)', phase:'04·F', tagline:'7 specialist agent profiles',
-   what:'cos, software_engineer, researcher, creator, reviewer, data_analyst, ops. Each a soul (system prompt + tools + default model). Booted on demand inside hermes-fleet-v1.',
-   when:'Multi-step tasks benefit from specialist personas. Quick chats use Open WebUI; multi-turn tool-using tasks dispatch a Hermes profile.',
+   what:'cos, software_engineer, researcher, creator, reviewer, data_analyst, ops. Each a soul (system prompt + tools + a model bound in models.yml). All share the HERMES_LITELLM_KEY virtual key. Bindings: cos/researcher/data_analyst → local-qwen3.6; software_engineer/reviewer → local-qwen3-coder; creator/ops → local-gemma4. The five big-MLX-bound profiles are availability-gated to local-gemma4 when LM Studio is down. Booted on demand inside hermes-fleet-v1.',
+   when:'Multi-step tasks benefit from specialist personas. Quick chats use Open WebUI; multi-turn tool-using tasks dispatch a Hermes profile. Re-point a profile with `install.sh model assign <profile> <model>` then `model sync`.',
    tryThis:[
      {desc:'See the soul files.', cmd:'ls ~/ai-stack/openshell/fleet-souls/'},
+     {desc:'See each profile\'s bound model (declared vs served).', cmd:'bash ~/ai-stack/install.sh model list'},
      {desc:'Run hermes_software_engineer.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_software_engineer "refactor /workspace/main.py for memoization"\''},
      {desc:'Long research task.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_researcher "summarize top themes in /workspace/papers/*.pdf"\''}
    ],
@@ -672,10 +673,11 @@ const services = [
    combine:['paperclip','honcho']},
 
   {id:'pi', layer:'coding', layerLabel:'Coding agents', name:'pi', port:'(pi-v1 sandbox)', phase:'15', tagline:'Sandboxed coding agent with virtual key',
-   what:'Earendil\'s @earendil-works/pi-coding-agent inside OpenShell pi-v1. Tree-branching TUI. Network: LiteLLM (local-only models), Honcho (pi peer), docs-mcp. Cannot see master key.',
+   what:'Earendil\'s @earendil-works/pi-coding-agent inside OpenShell pi-v1. Tree-branching TUI. Defaults to local-qwen3-coder (availability-gated to local-gemma4 when LM Studio is down); override per-session with `bin/pi --model <name>`. Network: LiteLLM via PI_LITELLM_KEY (local-model superset only, no cloud), Honcho (pi peer), docs-mcp. Cannot see master key.',
    when:'Sandboxed code experimentation. New project bootstrap. Untrusted-source code.',
    tryThis:[
-     {desc:'Launch.', cmd:'bash ~/ai-stack/bin/pi'},
+     {desc:'Launch (defaults to local-qwen3-coder).', cmd:'bash ~/ai-stack/bin/pi'},
+     {desc:'Override the model for this session.', cmd:'bash ~/ai-stack/bin/pi --model local-gemma4    # always-available default\nbash ~/ai-stack/bin/pi --model local-qwen3.6   # heavy reasoning (needs LM Studio)'},
      {desc:'Panic stop.', cmd:'bash ~/ai-stack/bin/pi-kill'},
      {desc:'Confirm a denied destination is denied (from inside Pi).', cmd:'curl -s http://host.docker.internal:6006/healthz\n# expect: 403 body {"error":"policy_denied"}'}
    ],
@@ -797,26 +799,26 @@ const recipes = [
    prereqs:'autofyn, honcho, litellm, ollama green.',
    steps:[
      'open http://autofyn:3400',
-     '# Settings → OpenAI-compatible, base http://litellm:4000/v1, key $LITELLM_MASTER_KEY, model local-heavy',
+     '# Settings → OpenAI-compatible, base http://litellm:4000/v1, key $LITELLM_MASTER_KEY, model local-gemma4 (or local-qwen3.6 with LM Studio up)',
      'docker exec autofyn-dashboard wget -qO- http://honcho:8000/health',
      'yq -i \'.services.autofyn.peer = "autofyn-main"\' ~/ai-stack/services.yml',
      'cd ~/ai-stack/autofyn && docker compose restart',
      '# Run a task; ask AutoFyn to "remember this decision"',
      'curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?query=decision" | jq'
    ],
-   phoenix:'Spans tagged model=local-heavy clustered around your task window. Qwen 27B is visibly slower than local — 8-15s typical on M4.'
+   phoenix:'Spans tagged with whatever model you configured (model=local-qwen3.6 if you pointed AutoFyn at the heavy model with LM Studio up) clustered around your task window. Qwen 27B is visibly slower than local-gemma4 — 8-15s typical on M4.'
   },
   {id:'recipe3', num:3, title:'Sandboxed coding agent in pi-v1', tag:'core', desc:'Pi inside the OpenShell sandbox. Local-only models. Cannot see master key.',
    prereqs:'Phase 15 complete (doctor 25 green). PI_LITELLM_KEY in .env.',
    steps:[
      'bash ~/ai-stack/bin/pi',
      '# Inside Pi: confirm models list shows only local*',
-     '# Default model is local-heavy; give it a task in /sandbox/',
+     '# Default model is local-qwen3-coder (gated to local-gemma4 when LM Studio is down); give it a task in /sandbox/',
      '# From Pi\'s bash tool: curl -s http://host.docker.internal:8765/health  # docs-mcp OK',
      '# curl -s http://host.docker.internal:6006/healthz  # Phoenix → 403 policy_denied',
      'bash ~/ai-stack/bin/pi-kill'
    ],
-   phoenix:'Pi calls land in ai-stack project. No per-key isolation today; filter by model=local-heavy + window.'
+   phoenix:'Pi calls land in ai-stack project. No per-key isolation today; filter by model=local-qwen3-coder (or local-gemma4 when gated) + window.'
   },
   {id:'recipe4', num:4, title:'Phoenix evaluations from JSONL replay', tag:'core', desc:'Turn last week\'s traces into a regression baseline. Realistic at small data volumes (Recipe 7 is the fine-tune story for when you have 5K+ traces).',
    prereqs:'≥100 lines in traces/litellm.jsonl. arize-phoenix-evals installed.',
@@ -840,7 +842,7 @@ const recipes = [
      '# Watch Phoenix as the fleet works.',
      '# When done: stack stop deerflow'
    ],
-   phoenix:'hermes_researcher (local-heavy or claude-sonnet) + docs-mcp tool calls + DeerFlow gateway calls.'
+   phoenix:'hermes_researcher (local-qwen3.6, gated to local-gemma4 when LM Studio is down) + docs-mcp tool calls + DeerFlow gateway calls.'
   },
   {id:'recipe6', num:6, title:'Paranoid mode', tag:'stretch', desc:'Only inference + guardrails + LLM Guard + dual-LLM. Phoenix is OFF (trade observability for not having an OTel sink see prompts).',
    prereqs:'See USER-GUIDE.md §Recipe 6 for the full apply script.',
@@ -934,10 +936,16 @@ const recipes = [
 // ============ Data: cheatsheet ============
 const cheatsheet = [
   {section:'Health + state', items:[
-    {cmd:'bash ~/ai-stack/install.sh doctor', desc:'32 health checks + auto-fix offers'},
+    {cmd:'bash ~/ai-stack/install.sh doctor', desc:'40 health checks + auto-fix offers'},
     {cmd:'bash ~/ai-stack/install.sh status', desc:'declared vs actual table'},
     {cmd:'bash ~/ai-stack/install.sh verify', desc:'phase 00·V pre-install runtime probes'},
     {cmd:'OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/install.sh doctor', desc:'+9 negative network probes for pi-v1'}
+  ]},
+  {section:'Models (declarative model↔agent binding — see USER-GUIDE.md §2.16)', items:[
+    {cmd:'bash ~/ai-stack/install.sh model list', desc:'catalog + live declared-vs-served matrix (shows availability-gating)'},
+    {cmd:'bash ~/ai-stack/install.sh model assign <agent> <model>', desc:'re-point one agent (yq -i models.yml + sync that agent)'},
+    {cmd:'bash ~/ai-stack/install.sh model sync', desc:'reconcile everything from models.yml (opt-in; NOT run by install all). --dry-run / --no-restart available'},
+    {cmd:'bash ~/ai-stack/install.sh model superset', desc:'canonical scoped-key allowlist superset every virtual key is minted against'}
   ]},
   {section:'Install / re-run', items:[
     {cmd:'bash ~/ai-stack/install.sh install 15', desc:'idempotent phase install'},
@@ -1215,7 +1223,7 @@ async function listModels() {
     const ids = (data.data || []).map(m => m.id).sort();
     const sel = document.getElementById('demoModel');
     sel.innerHTML = ids.map(id => `<option value="${escapeAttr(id)}">${escapeHtml(id)}</option>`).join('');
-    if (ids.includes('local-lfm2')) sel.value = 'local-lfm2';
+    if (ids.includes('local-gemma4')) sel.value = 'local-gemma4';
     else if (ids.includes('local')) sel.value = 'local';
     setOut(`Found ${ids.length} model${ids.length===1?'':'s'}. Picked "${sel.value}".`, 'success');
   } catch(e) {

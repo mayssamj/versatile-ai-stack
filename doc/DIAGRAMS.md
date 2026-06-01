@@ -53,6 +53,7 @@ flowchart LR
   subgraph Infer[Inference]
     LL[litellm :4000]
     OL[ollama :11434]
+    LMS["lmstudio :1234 (opt-in)"]
     CLOUD[(Cloud APIs)]
   end
 
@@ -89,6 +90,7 @@ flowchart LR
   HF --> MCP
 
   LL --> OL
+  LL -.opt-in.-> LMS
   LL --> CLOUD
   LL --> PX
   LL --> GR
@@ -102,7 +104,10 @@ flowchart LR
 ```
 
 Key things to notice:
-- Every LLM call funnels through LiteLLM.
+- Every LLM call funnels through LiteLLM. It fronts two local runtimes —
+  Ollama (default, serves `local-gemma4`) and, when you opt into Phase 25,
+  LM Studio's MLX server (`:1234`, serves the heavy `local-qwen3.6` /
+  `local-qwen3-coder` MLX models) — plus the cloud APIs.
 - Phoenix only receives; it never sits in the request path.
 - Honcho and Qdrant are the long-term state. Everything else is
   ephemeral.
@@ -241,7 +246,7 @@ sequenceDiagram
   participant R as hermes_researcher (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as Local heavy (Qwen 27B)
+  participant LH as local-qwen3.6 (LM Studio MLX)
   participant CL as Claude Opus
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
@@ -257,19 +262,22 @@ sequenceDiagram
   MCP-->>R: chunks with sources
 
   Note over R,SBX: All outbound calls go via inference.local
-  R->>SBX: chat completion (model=local-heavy)
-  SBX->>L: forward
+  R->>SBX: chat completion (model=local-qwen3.6)
+  SBX->>L: forward + inject HERMES_LITELLM_KEY
+  Note over L: scoped key allowlist check (superset)
   L->>LH: forward
   LH-->>L: summary of chunks
   L-->>SBX: response
   SBX-->>R: response
 
   R->>SBX: chat completion (model=claude-opus, "synthesize")
-  SBX->>L: forward
+  SBX->>L: forward + inject HERMES_LITELLM_KEY
   L->>CL: forward
   CL-->>L: structured comparison
   L-->>SBX: response
   SBX-->>R: response
+
+  L->>L: every call traced to Phoenix (project ai-stack)
 
   R->>HO: store conclusions for future sessions
   R-->>CoS: final report with citations
@@ -277,16 +285,87 @@ sequenceDiagram
 ```
 
 Three things this shows:
-- The researcher uses **local-heavy** for cheap summarization and
-  **claude-opus** for the high-stakes synthesis. Mixed cost discipline.
+- The researcher (assigned **local-qwen3.6**, see [models.md](models.md)) uses a
+  local model for cheap summarization and **claude-opus** for the high-stakes
+  synthesis. Mixed cost discipline.
 - Every external call goes via `inference.local`, the OpenShell L7
-  proxy. The agent never sees a real API key.
+  proxy. The agent never sees a real API key — the proxy injects the
+  fleet's scoped `HERMES_LITELLM_KEY`, and LiteLLM checks every model
+  against that key's allowlist (the canonical superset, so re-assigning
+  a model never needs a key re-mint). Each call also lands in Phoenix
+  project `ai-stack` for free.
 - The researcher both reads and writes Honcho, so a follow-up question
   next week starts with the conclusions from today.
 
 ---
 
-## 5. User story: ingesting a new PDF into RAG
+## 5. Model ↔ agent binding and availability-gating
+
+How a per-agent model assignment becomes a live route. `models.yml` is
+the canonical source of truth for the binding; `install.sh model sync`
+reconciles it into LiteLLM and re-renders each agent. The interesting
+wrinkle is **availability-gating**: if an agent is assigned an
+LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio
+is opt-in and may be off), the agent is rendered against the default
+`local-gemma4` instead — never left pointing at a dead route.
+
+```mermaid
+flowchart TB
+  subgraph SoT[Source of truth]
+    MY["installer/models.yml — 3 canonical models + per-agent assignments"]
+  end
+
+  subgraph Models[Canonical models]
+    GM["local-gemma4 (ollama, default)"]
+    Q36["local-qwen3.6 (lmstudio, big)"]
+    QC["local-qwen3-coder (lmstudio, big)"]
+  end
+
+  MY --> GM
+  MY --> Q36
+  MY --> QC
+
+  Sync["install.sh model sync"]
+  MY --> Sync
+
+  Sync --> P1["P1 register model_list (ADD-ONLY)"]
+  P1 --> P2["P2 restart litellm ONCE if changed"]
+  P2 --> P3["P3 widen scoped-key allowlists to superset"]
+  P3 --> P4["P4 render agents"]
+
+  P4 --> Gate{LiteLLM actually<br/>serving the model?}
+  Gate -- "yes" --> Bind["render agent against assigned model"]
+  Gate -- "no (lmstudio off)" --> Fall["availability-gated:<br/>render against local-gemma4 + warn"]
+
+  Bind --> Agents["7 Hermes profiles · pi · deerflow · ace · rlm"]
+  Fall --> Agents
+```
+
+What the assignments look like (from `models.yml`, see
+[models.md](models.md)):
+- **local-qwen3.6** — `hermes_cos`, `hermes_researcher`,
+  `hermes_data_analyst`, `deerflow`.
+- **local-qwen3-coder** — `hermes_software_engineer`, `hermes_reviewer`,
+  `pi`.
+- **local-gemma4** (the default) — `hermes_creator`, `hermes_ops`,
+  `ace`, `rlm`.
+
+Notes:
+- The two heavy MLX models (`local-qwen3.6` ~17.5GB and
+  `local-qwen3-coder` ~17.2GB) **cannot coexist** on a 24GB box, which is
+  exactly why availability-gating exists — turn LM Studio off and the
+  fleet keeps working on `local-gemma4`.
+- `model sync` is opt-in and crash-safe; it is **not** run by
+  `install all`. Phase 1 only ever adds to LiteLLM's `model_list`
+  (ADD-ONLY), and LiteLLM is restarted at most once.
+- Because every scoped key (`HERMES_LITELLM_KEY`, `PI_LITELLM_KEY`,
+  `ACE_LITELLM_KEY`, `RLM_LITELLM_KEY`) is minted against the fixed
+  `model superset`, `model assign <agent> <model>` re-points an agent
+  without ever re-minting a key.
+
+---
+
+## 6. User story: ingesting a new PDF into RAG
 
 You drop a file in `ingestor/inbox/`. Eventually agents can search it.
 
@@ -328,7 +407,7 @@ Qdrant collection.
 
 ---
 
-## 6. User story: an agent runs a shell command (sandbox in action)
+## 7. User story: an agent runs a shell command (sandbox in action)
 
 The path that justifies OpenShell's existence. The agent wants to `pip
 install something`. We let it install from pypi but not write to
@@ -338,7 +417,7 @@ This is the threat model. The agent does not need to be trustworthy
 because the sandbox is not. Five distinct scenarios — one per diagram so
 each stays legible.
 
-**6.1 Allowed write inside the sandbox.**
+**7.1 Allowed write inside the sandbox.**
 
 ```mermaid
 %%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
@@ -350,7 +429,7 @@ sequenceDiagram
   FS-->>A: ok (path in allow list)
 ```
 
-**6.2 Denied read of host secrets.** The agent asks for an SSH key; the
+**7.2 Denied read of host secrets.** The agent asks for an SSH key; the
 FS layer checks with the policy engine and refuses.
 
 ```mermaid
@@ -366,7 +445,7 @@ sequenceDiagram
   FS-->>A: permission denied
 ```
 
-**6.3 Allowed network egress to an allowlisted host.** `pip install
+**7.3 Allowed network egress to an allowlisted host.** `pip install
 requests` goes to pypi.org via the L4 firewall and L7 proxy.
 
 ```mermaid
@@ -388,7 +467,7 @@ sequenceDiagram
   NET-->>A: install done
 ```
 
-**6.4 Denied network egress to a non-allowlisted host.** The agent tries
+**7.4 Denied network egress to a non-allowlisted host.** The agent tries
 to exfil to `attacker.com`; the L4 firewall rejects.
 
 ```mermaid
@@ -404,7 +483,7 @@ sequenceDiagram
   NET-->>A: connection refused
 ```
 
-**6.5 Inference call through `inference.local`.** The agent dials the
+**7.5 Inference call through `inference.local`.** The agent dials the
 sandbox-internal endpoint; the L7 proxy rewrites to `litellm:4000` on the
 ai-stack network and injects the real bearer token server-side. The
 agent never sees the master key.
@@ -424,7 +503,7 @@ sequenceDiagram
 
 ---
 
-## 7. Security and sandbox boundaries
+## 8. Security and sandbox boundaries
 
 A different view of the same story — who can talk to whom, drawn as
 trust boundaries instead of as a sequence.
@@ -456,17 +535,21 @@ flowchart TB
     LG[llm-guard :8000]
   end
 
-  subgraph Sandbox[OpenShell sandbox - untrusted]
-    HF["hermes-fleet-v1 (sandbox)"]
+  subgraph Sandbox[OpenShell sandboxes - untrusted]
+    HF["hermes-fleet-v1 (7 profiles + telegram gw)"]
+    PI["pi-v1 (Pi coding agent)"]
   end
 
-  Sandbox -- inference.local --> SBProxy[hermes-gw :8642]
-  SBProxy --> LL
+  HF -- inference.local --> SBProxy[hermes-gw :8642]
+  SBProxy -- HERMES_LITELLM_KEY --> LL
+  PI -- "host.docker.internal:4000 + PI_LITELLM_KEY" --> LL
 
-  Sandbox -- allowlisted --> PyPI
-  Sandbox -- allowlisted --> GH
-  Sandbox -- allowlisted --> NPM
-  Sandbox -.denied.-> Bad
+  HF -- allowlisted --> PyPI
+  HF -- allowlisted --> GH
+  HF -- allowlisted --> NPM
+  HF -.denied.-> Bad
+  PI -- "tight egress allowlist" --> PyPI
+  PI -.denied.-> Bad
 
   LL -- master key in .env --> Claude
   LL --> OL
@@ -482,14 +565,20 @@ Trust tiers:
 2. **Containers** — semi-trusted. Bound to `127.0.10.x` loopback only, so
    nothing on your network can reach them. They hold service state but no
    personal data. Inter-container traffic stays on the `ai-stack` bridge.
-3. **Sandbox** — untrusted. Network deny-by-default. Filesystem locked
-   to `/sandbox/` and `/tmp/`. API keys substituted by the L7 proxy.
+3. **Sandboxes** — untrusted. There are two: `hermes-fleet-v1` (the
+   7-profile Hermes fleet plus the Telegram gateway) and `pi-v1` (the Pi
+   coding agent). Both are network deny-by-default with a tight egress
+   allowlist; filesystem locked to `/sandbox/` and `/tmp/`. The fleet
+   reaches LiteLLM through the `hermes-gw` L7 proxy (which injects
+   `HERMES_LITELLM_KEY`); Pi dials `host.docker.internal:4000` with its
+   own minted `PI_LITELLM_KEY`. Neither agent ever sees a real provider
+   key.
 
 The arrows that **don't exist** matter as much as the ones that do.
 
 ---
 
-## 8. Where your data goes (privacy story)
+## 9. Where your data goes (privacy story)
 
 The most important diagram for anyone deciding whether to use this
 stack. Color and direction tell you what stays on your machine and what
@@ -542,7 +631,7 @@ flowchart LR
 
 The rules:
 - **Your prompts** only leave the machine if you pick a cloud model
-  (anything not named `local` or `local-heavy`).
+  (anything not a `local-*` model).
 - **Your documents** never leave the machine. Docling parses locally;
   embeddings are computed via LiteLLM. If you pick `embed-local` (Ollama
   nomic-embed) instead of `embed-openai-small`, even the embeddings
@@ -557,12 +646,12 @@ The rules:
   installed but nothing deploys until you run `bl deploy`.
 
 If you want fully air-gapped operation: use the `paranoid` profile
-(`stack profile paranoid`), set every model to `local` / `local-heavy`,
-disable cloud API keys in `.env`.
+(`stack profile paranoid`), set every model to a `local-*` model
+(`local-gemma4`, or the LM Studio MLX models), disable cloud API keys in `.env`.
 
 ---
 
-## 9. Per-call observability: where a trace lives
+## 10. Per-call observability: where a trace lives
 
 Every LiteLLM call produces traces in three places. This helps when
 you want to figure out where to look for what.
@@ -593,7 +682,7 @@ So:
 
 ---
 
-## 10. Memory profiles — what runs in each mode
+## 11. Memory profiles — what runs in each mode
 
 `stack profile <name>` flips a curated set of services on or off.
 This diagram shows the four built-in profiles side by side.
@@ -626,7 +715,7 @@ it.
 
 ---
 
-## 11. Network topology — host vs ai-stack vs OpenShell
+## 12. Network topology — host vs ai-stack vs OpenShell
 
 Three distinct networks; the bridge points are where the interesting
 traffic crosses.

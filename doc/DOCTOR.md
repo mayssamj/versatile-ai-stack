@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash install.sh doctor` runs all 39 checks and offers a per-check auto-fix
+`bash install.sh doctor` runs all 40 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 39
+stack doctor                    # all 40
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -75,7 +75,8 @@ installer/doctor/checks/
 ├── 36_skillspector.sh                     (opt-in Phase 23; pass-as-skip)
 ├── 37_openagents.sh                       (opt-in Phase 24; pass-as-skip)
 ├── 38_lmstudio.sh                         (opt-in Phase 25; pass-as-skip)
-└── 39_openshell_storm.sh                  (expired-token CPU storm + watchdog status)
+├── 39_openshell_storm.sh                  (expired-token CPU storm + watchdog status)
+└── 40_models_binding.sh                   (models.yml <-> config.yaml <-> agent render + scoped keys)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -170,11 +171,11 @@ modes.
 
 | | |
 |---|---|
-| Asserts | `ollama` binary on PATH; `/api/tags` 200; `gemma4:e4b`, `qwen3.6:27b-q4_K_M`, `nomic-embed-text` all installed (matches either bare name or `:latest`-tag variant). |
-| Fails when | Ollama isn't running, or someone `ollama rm`'d a model, or the model never finished downloading. |
+| Asserts | `ollama` binary on PATH; `/api/tags` 200; the lazy `REQUIRED_MODELS` set — `gemma4:e4b` (`local-gemma4`, the default) + `nomic-embed-text` — both installed (matches either bare name or `:latest`-tag variant). |
+| Fails when | Ollama isn't running, or someone `ollama rm`'d a required model, or the model never finished downloading. |
 | Auto-fix | `brew services start ollama`; `ollama pull` per missing model. On partial-pull (download corrupted), `ollama rm` first then retry. |
 
-Note: this can take many minutes (qwen3.6:27b is 17GB).
+Note: per the lazy-Ollama policy (2026-05-31, `01_inference.sh`), only `gemma4:e4b` + `nomic-embed-text` are eager-pulled. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder` — opt-in), and the legacy Ollama `qwen3.6:27b` (`local-heavy`) is no longer auto-pulled, so this check no longer requires it. `OLLAMA_KEEP_ALIVE=0` (Phase 00) keeps Ollama from holding a model resident.
 
 ---
 
@@ -398,7 +399,7 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 
 | | |
 |---|---|
-| Asserts | (1) `PI_LITELLM_KEY` is present in `.env`. (2) `GET http://litellm:4000/v1/models` with the virtual key returns exactly `local,local-heavy,local-lfm2` (sorted). (3) `POST /v1/chat/completions` with `model=claude-opus` returns a body containing the case-insensitive substring `"key not allowed"`. The substring match (rather than the full message) makes the check resilient to LiteLLM's wording across minor versions. |
+| Asserts | (1) `PI_LITELLM_KEY` is present in `.env`. (2) `GET http://litellm:4000/v1/models` with the virtual key returns exactly the canonical superset `local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6` (sorted) — every scoped key is minted against this fixed superset so `model assign`/`sync` can re-point Pi without re-minting. (3) `POST /v1/chat/completions` with `model=claude-opus` returns a body containing the case-insensitive substring `"key not allowed"`. The substring match (rather than the full message) makes the check resilient to LiteLLM's wording across minor versions. |
 | Fails when | Phase 15 never minted the key (LiteLLM has no Postgres DB; `LITELLM_MASTER_KEY` rotation; .env got nuked). The allowlist itself was changed via LiteLLM's `/key/update`. The virtual key path was bypassed by changing Pi's extension to use the master key directly. |
 | Auto-fix | Surfaces `bash install.sh install 15` — Phase 15 detects an invalid key via the same `/v1/models` probe and re-mints. |
 
@@ -444,7 +445,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 
 **What this check does NOT prove.** That any eval has been run. Playbooks live under `ace/results/` and are user-state, not install-state. `bin/ace --help` lists the eval surface.
 
-**Routing.** ACE uses the OpenAI Python SDK; `OPENAI_BASE_URL` is the canonical env-var that SDK reads to redirect every chat-completion call. Setting it to `http://litellm:4000/v1` means every LLM call from ACE — generator, reflector, curator — passes through LiteLLM and gets traced in the `ai-stack` Phoenix project for free. The `ACE_LITELLM_KEY` virtual key is scoped to `[local, local-heavy, local-lfm2]` only, so even if ACE's prompts somehow request cloud models, LiteLLM rejects with HTTP 403 ("key not allowed to access model").
+**Routing.** ACE uses the OpenAI Python SDK; `OPENAI_BASE_URL` is the canonical env-var that SDK reads to redirect every chat-completion call. Setting it to `http://litellm:4000/v1` means every LLM call from ACE — generator, reflector, curator — passes through LiteLLM and gets traced in the `ai-stack` Phoenix project for free. The `ACE_LITELLM_KEY` virtual key is scoped to the canonical local-model superset (`local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6`) only, so even if ACE's prompts somehow request cloud models, LiteLLM rejects with HTTP 403 ("key not allowed to access model"). ACE's assigned model in `models.yml` is `local-gemma4`.
 
 ---
 
@@ -524,6 +525,20 @@ install`, runs every 600s) — this check is the on-demand twin that surfaces a 
 the watchdog hasn't swept yet and confirms the watchdog is loaded. See
 [TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md) for the watchdog's
 `status` / `uninstall` subcommands and the detect-only mode.
+
+---
+
+## 40 · Model <-> agent binding
+
+| | |
+|---|---|
+| Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); no rendered-vs-declared **DRIFT** across every agent surface (the 7 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
+| Fails when | A `models.yml` model is missing from `config.yaml`, a non-lmstudio model fails its chat_ping, an agent's rendered config drifts from the declared (availability-gated) model, or a scoped key's allowlist doesn't cover its agent's effective model. |
+| Auto-fix | `bash install.sh model sync`. |
+
+WARN-skips (does not fail) when LiteLLM is down or the Hermes OpenShell sandbox
+isn't Ready — both are required to verify bindings end-to-end. See
+[models.md](models.md) for the full `install.sh model` workflow.
 
 ---
 
