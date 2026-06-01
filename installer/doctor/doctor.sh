@@ -48,19 +48,25 @@ for __check in "${CHECKS[@]}"; do
     continue
   fi
   printf '  %-60s ' "$__title"
-  if "${__check}_diagnose" >/dev/null 2>&1; then
+  # Detach diagnose/fix from the doctor's stdin. Checks that run
+  # `openshell sandbox exec …` stream their stdin INTO the sandbox, so an
+  # inherited prompt stdin (an interactive tty, or a `yes |` pipe used to
+  # auto-answer the fix prompts) leaks into the probe and corrupts it —
+  # producing false failures (seen on checks 25/30/33). The confirm prompt
+  # below still reads the real stdin, so auto-fix answers keep working.
+  if "${__check}_diagnose" </dev/null >/dev/null 2>&1; then
     printf '%s\n' "${C_GREEN}✓${C_RESET}"
     passed=$((passed+1))
   else
     printf '%s\n' "${C_RED}✗${C_RESET}"
     failed=$((failed+1))
     # Re-run to show the user the actual failure detail.
-    "${__check}_diagnose" 2>&1 | sed 's/^/      /' || true
+    "${__check}_diagnose" </dev/null 2>&1 | sed 's/^/      /' || true
     if declare -F "${__check}_fix" >/dev/null; then
       if [[ "${NO_PROMPT:-0}" == "1" ]]; then
         note "    (auto-fix available; NO_PROMPT=1 so skipping)"
       elif confirm "    Auto-fix available. Apply?" Y; then
-        if "${__check}_fix"; then
+        if "${__check}_fix" </dev/null; then
           ok   "    fixed."
           fixed=$((fixed+1))
         else
