@@ -95,6 +95,11 @@ The full alias → port table is in [PORTS.md](doc/PORTS.md).
 
 ## First things to try
 
+> **🗺️ See the whole stack at a glance — open [`doc/EXPLORE.html`](doc/EXPLORE.html).**
+> A single self-contained page (just double-click it; works offline) with an
+> interactive, searchable card for **all 39 services**: what each one is, why it
+> exists, and a copy-paste demo. The fastest way to discover and play with the stack.
+
 - **Chat with a local model.** Open [http://openwebui:8080](http://openwebui:8080)
   (Open WebUI) and send a message — it routes through LiteLLM to your local model
   and the call shows up in Phoenix.
@@ -110,6 +115,10 @@ The full alias → port table is in [PORTS.md](doc/PORTS.md).
 
 ## Where to go next
 
+- **[EXPLORE.html](doc/EXPLORE.html)** — *the interactive map of the stack.* One
+  self-contained page (open in any browser, even offline) with a searchable card for
+  every one of the 39 services: what it is, why you'd reach for it, copy-paste demos,
+  and an opt-in in-stack live-status check. **The visual front door — start here.**
 - **[ONBOARDING.md](doc/ONBOARDING.md)** — *"you've installed it, now use it."* The
   shortest path: `stack` basics, reaching services by alias, the agents you can talk
   to, the opt-in extras, and where logs/state live. **Read this first after install.**
