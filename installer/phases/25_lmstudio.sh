@@ -31,6 +31,9 @@ set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
+# Shared LM Studio helpers (served-id discovery, config.yaml yq-upsert, RAM
+# policy). Factored out so Phase 25 + lib/models.sh share ONE implementation.
+source "$AI_STACK/installer/lib/lmstudio.sh"
 
 PHASE=25
 LMS_PORT=1234
@@ -39,23 +42,14 @@ MLX_REPO="LiquidAI/LFM2.5-8B-A1B-MLX-4bit"      # 4-bit (~5GB) — RAM-friendly 
 MLX_DIR="$HOME/.lmstudio/models/${MLX_REPO}"
 LITELLM_SLUG="local-lfm2-mlx"
 CONFIG="$AI_STACK/litellm/config.yaml"
+LMS_CONFIG="$CONFIG"   # lib/lmstudio.sh writes here
 
-# Resolve the lms CLI (bootstrapped at ~/.lmstudio/bin/lms, else inside the app bundle).
-_lms() {
-  if [[ -x "$HOME/.lmstudio/bin/lms" ]]; then echo "$HOME/.lmstudio/bin/lms"; return 0; fi
-  local appcli="/Applications/LM Studio.app/Contents/Resources/app/.webpack/lms"
-  [[ -x "$appcli" ]] && { echo "$appcli"; return 0; }
-  echo ""; return 1
-}
+# Thin shims kept for this phase's existing call sites — delegate to the lib so
+# there is exactly one implementation (NO behaviour change for LFM2.5).
+_lms() { lms_cli; }
 _app_present() { [[ -d "/Applications/LM Studio.app" ]]; }
-_server_up() { curl -s -o /dev/null --max-time 4 "$LMS_URL/v1/models" 2>/dev/null; }
-# The served LLM id (the non-embedding model LM Studio exposes), or empty.
-_served_llm_id() {
-  curl -s --max-time 5 "$LMS_URL/v1/models" 2>/dev/null \
-    | python3 -c 'import sys,json
-ids=[m["id"] for m in json.load(sys.stdin).get("data",[]) if "embed" not in m["id"].lower()]
-print(ids[0] if ids else "")' 2>/dev/null
-}
+_server_up() { lms_server_up; }
+_served_llm_id() { lms_served_first; }
 
 precheck() {
   _app_present || return 1
@@ -152,14 +146,43 @@ fi
 ok "LM Studio is serving model id: $MLX_ID"
 
 # --- 5. Wire LiteLLM: add the local-lfm2-mlx provider (idempotent) ---------
+# Uses the shared lms_register_model (ADD-ONLY yq-upsert, atomic temp+mv,
+# idempotent) instead of an inline `yq +=` — same result for LFM2.5.
 command -v yq >/dev/null 2>&1 || { err "yq not on PATH (Phase 00 installs it)"; exit 1; }
-if grep -q "model_name: ${LITELLM_SLUG}\b" "$CONFIG" 2>/dev/null; then
-  ok "$LITELLM_SLUG already in litellm/config.yaml"
-else
-  log "Adding $LITELLM_SLUG → $LMS_URL to litellm/config.yaml..."
-  MLXID="$MLX_ID" yq -i '.model_list += [{"model_name": "'"$LITELLM_SLUG"'", "litellm_params": {"model": "openai/" + strenv(MLXID), "api_base": "http://host.docker.internal:'"$LMS_PORT"'/v1", "api_key": "lm-studio"}}]' "$CONFIG" \
-    || { err "failed to inject the model into config.yaml"; exit 1; }
-  ok "added $LITELLM_SLUG (model openai/$MLX_ID)"
+case "$(lms_register_model "$LITELLM_SLUG" "$MLX_ID" lmstudio)" in
+  CHANGED)   ok "added $LITELLM_SLUG (model openai/$MLX_ID)" ;;
+  UNCHANGED) ok "$LITELLM_SLUG already in litellm/config.yaml" ;;
+  *)         err "failed to inject $LITELLM_SLUG into config.yaml"; exit 1 ;;
+esac
+
+# --- 5b. Register the canonical MLX slugs from models.yml (if assigned) -----
+# When an agent is assigned local-qwen3.6 / local-qwen3-coder (installer/models.yml),
+# this phase can serve them too. We load the one whose served id we can confirm
+# (one-big-MLX RAM policy) and ADD-ONLY register it. Best-effort, non-fatal — the
+# canonical config.yaml rows already exist (Phase 01); here we just make sure the
+# running LM Studio is actually serving an assigned id so `model sync` can promote
+# the agents off the gemma4 fallback.
+MODELS_YML="$AI_STACK/installer/models.yml"
+if [[ -f "$MODELS_YML" ]]; then
+  while IFS= read -r _slug; do
+    [[ -z "$_slug" ]] && continue
+    # Only the canonical MLX slugs are relevant to LM Studio.
+    case "$_slug" in local-qwen3.6|local-qwen3-coder) : ;; *) continue ;; esac
+    _served="$(yq -r ".models.\"$_slug\".served" "$MODELS_YML" 2>/dev/null)"
+    _ttl="$(yq -r ".models.\"$_slug\".ttl // 1800" "$MODELS_YML" 2>/dev/null)"
+    [[ -z "$_served" || "$_served" == "null" ]] && continue
+    # Is any agent actually assigned this slug? (skip work otherwise)
+    if ! yq -r '.assignments | to_entries | .[].value' "$MODELS_YML" 2>/dev/null | grep -qxF "$_slug"; then
+      continue
+    fi
+    log "Loading assigned MLX model $_slug ($_served) per the one-big-MLX policy..."
+    if lms_load_big "$_served" "$_ttl"; then
+      lms_register_model "$_slug" "$_served" lmstudio >/dev/null \
+        && ok "registered $_slug → $_served in litellm/config.yaml"
+    else
+      warn "$_slug ($_served) not loadable right now — config row stays, agent stays on the fallback until 'model sync'"
+    fi
+  done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
 fi
 
 # --- 6. Restart LiteLLM (reloads config.yaml) + verify the pipe ------------

@@ -33,7 +33,7 @@ _pi_v1_np_resolve_openshell() {
 _pi_v1_np_probe() {
   local osh="$1" host="$2" port="$3"
   local body code
-  body="$("$osh" sandbox exec -n pi-v1 --no-tty -- \
+  body="$("$osh" sandbox exec -n pi-v1 --no-tty --timeout 15 -- \
     curl -s --connect-timeout 2 --max-time 3 -w '\n__CODE_%{http_code}' \
     "http://${host}:${port}/" 2>/dev/null || echo '__CODE_000')"
   code="$(echo "$body" | awk '/__CODE_/{sub(/^.*__CODE_/,""); print; exit}')"

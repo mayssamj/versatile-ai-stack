@@ -18,11 +18,11 @@ source "$AI_STACK/installer/lib/validate.sh"
 CLAW_DIR="$AI_STACK/claw3d"
 PID_FILE="$STATE_DIR/claw3d.pid"
 LOG_FILE="$STATE_DIR/claw3d.log"
-# Bind 0.0.0.0 so the UI is reachable both as http://localhost:4310 AND, once
-# `prepare-sudo` adds the alias to /etc/hosts + lo0, as http://claw3d:4310 (the
-# stack's name-based pattern). Health checks dial 127.0.0.1 (0.0.0.0 isn't a
-# valid client address on macOS). The bridge stays loopback-only by design.
-BIND_HOST="${CLAW3D_HOST:-0.0.0.0}"
+# Bind 127.0.0.1 (localhost-only). claw3d REFUSES to bind a public host like
+# 0.0.0.0 without STUDIO_ACCESS_TOKEN (its own security stance), and the bridge is
+# loopback-only by design too — so neither host service gets an /etc/hosts alias;
+# they are intentionally local-only. Open the UI at http://localhost:4310.
+BIND_HOST="${CLAW3D_HOST:-127.0.0.1}"
 CHECK_HOST=127.0.0.1
 PORT="${CLAW3D_PORT:-4310}"
 

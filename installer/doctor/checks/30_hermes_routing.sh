@@ -48,6 +48,9 @@ hermes_routing_diagnose() {
     echo "HERMES_LITELLM_KEY missing from .env (profile wired but no key minted)"
     return 1
   fi
+  # If the 'litellm' alias doesn't resolve (prepare-sudo not run), the probe
+  # below returns 000 and would mis-report the key as revoked. Defer.
+  dscacheutil -q host -a name litellm 2>/dev/null | grep -q ip_address || { echo "(litellm alias unresolved — see checks 15/19) [skip]"; return 0; }
   if ! curl -sf --max-time 5 -H "Authorization: Bearer $hk" http://litellm:4000/v1/models >/dev/null 2>&1; then
     echo "HERMES_LITELLM_KEY present but rejected by LiteLLM /v1/models (key revoked?)"
     return 1

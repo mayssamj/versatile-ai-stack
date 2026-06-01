@@ -17,17 +17,19 @@ source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
 source "$AI_STACK/installer/lib/litellm.sh"
+source "$AI_STACK/installer/lib/lmstudio.sh"   # lms_register_model (ADD-ONLY upsert)
 
 PHASE=01
 
+# LAZY-OLLAMA policy (2026-05-31): eager-pull ONLY the default chat model
+# (gemma4:e4b = `local`/`local-gemma4`) + the embedding model. qwen3.6 moved to
+# LM Studio MLX (local-qwen3.6, opt-in) and the LFM2.5 GGUF is no longer
+# pre-pulled — both keep a fresh install light on a 24GB box. See
+# installer/models.yml + 'install.sh model'. (local-heavy/local-lfm2 stay in
+# litellm/config.yaml as ADD-ONLY legacy slugs; they just 404 until pulled.)
 REQUIRED_MODELS=(
   gemma4:e4b
-  qwen3.6:27b-q4_K_M
   nomic-embed-text
-  # Liquid AI LFM2.5-8B-A1B (Nov 2025): 8.3B total / 1.5B active MoE,
-  # 131K ctx. Q4_K_M is 5.16GB — fits alongside other models on 24GB
-  # M-series. Surfaced as `local-lfm2` in litellm/config.yaml.
-  hf.co/LiquidAI/LFM2.5-8B-A1B-GGUF:Q4_K_M
 )
 
 precheck() {
@@ -104,6 +106,34 @@ yq -e '.model_list[0]' "$AI_STACK/litellm/config.yaml" >/dev/null || {
   err "litellm/config.yaml has no model_list — refusing to start LiteLLM"
   exit 1
 }
+
+# --- Register the 3 canonical model IDs in config.yaml (ADD-ONLY) ----------
+# So they exist BEFORE any scoped key is minted (constraint: superset-before-mint):
+#   local-gemma4      -> Ollama gemma4:e4b   (works immediately)
+#   local-qwen3.6     -> LM Studio MLX       (row exists but 503s until 'install lmstudio')
+#   local-qwen3-coder -> LM Studio MLX       (idem)
+# We register straight from installer/models.yml when present (the canonical
+# source of truth), else fall back to the hardcoded triple. lms_register_model
+# is ADD-ONLY + atomic (temp+mv) + idempotent — legacy slugs are untouched and
+# no model is loaded/inferenced here (lazy-Ollama).
+MODELS_YML="$AI_STACK/installer/models.yml"
+if [[ -f "$MODELS_YML" ]]; then
+  while IFS= read -r _mn; do
+    [[ -z "$_mn" ]] && continue
+    _rt="$(yq -r ".models.\"$_mn\".runtime" "$MODELS_YML" 2>/dev/null)"
+    _sv="$(yq -r ".models.\"$_mn\".served"  "$MODELS_YML" 2>/dev/null)"
+    [[ -z "$_sv" || "$_sv" == "null" ]] && continue
+    if [[ "$(lms_register_model "$_mn" "$_sv" "$_rt")" == "CHANGED" ]]; then
+      ok "registered $_mn ($_rt/$_sv) in litellm/config.yaml"
+    fi
+  done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
+else
+  # models.yml absent (partial checkout): register the canonical triple directly.
+  lms_register_model local-gemma4      gemma4:e4b                        ollama   >/dev/null
+  lms_register_model local-qwen3.6     qwen/qwen3.6-27b                  lmstudio >/dev/null
+  lms_register_model local-qwen3-coder qwen3-coder-30b-a3b-instruct-mlx  lmstudio >/dev/null
+  ok "registered 3 canonical model IDs in litellm/config.yaml (models.yml absent — used defaults)"
+fi
 
 # --- LiteLLM custom callback file ---
 [[ -f "$AI_STACK/litellm/trace_to_file.py" ]] || {

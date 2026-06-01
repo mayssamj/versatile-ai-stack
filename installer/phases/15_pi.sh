@@ -95,13 +95,19 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
   exit 1
 fi
 
+# Scoped key minted against the fixed SUPERSET (legacy IDs UNION the 3 canonical
+# model<->agent slugs) so `install.sh model assign/sync` can point Pi at
+# local-qwen3-coder (its declared default) without ever re-minting. The canonical
+# IDs are registered in config.yaml by Phase 01 BEFORE this mint
+# (superset-before-mint). LiteLLM enforces the allowlist server-side (cloud => 403).
+PI_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"]'
 PI_KEY_CURRENT="$(get_env PI_LITELLM_KEY '')"
 if [[ -z "$PI_KEY_CURRENT" ]] \
    || ! curl -sf --max-time 5 -H "Authorization: Bearer $PI_KEY_CURRENT" http://litellm:4000/v1/models >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for Pi (models=[local, local-heavy, local-lfm2])..."
+  log "Minting LiteLLM virtual key for Pi (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
   PI_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-heavy","local-lfm2"],"key_alias":"pi-coding-agent","metadata":{"owner":"pi","purpose":"phase15"}}' \
+    -d "{\"models\":${PI_SUPERSET_JSON},\"key_alias\":\"pi-coding-agent\",\"metadata\":{\"owner\":\"pi\",\"purpose\":\"phase15\"}}" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   if [[ -z "$PI_KEY_NEW" ]]; then
     err "Failed to mint PI_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"
@@ -109,10 +115,32 @@ if [[ -z "$PI_KEY_CURRENT" ]] \
     exit 1
   fi
   set_env PI_LITELLM_KEY "$PI_KEY_NEW"
-  ok "PI_LITELLM_KEY minted + saved to .env (mode 0600)"
+  ok "PI_LITELLM_KEY minted (superset allowlist) + saved to .env (mode 0600)"
 else
   ok "PI_LITELLM_KEY already present + valid"
 fi
+
+# --- Pi default model: local-qwen3-coder, AVAILABILITY-GATED ---------------
+# Pi's declared default is local-qwen3-coder (an LM Studio MLX model). On a
+# fresh install LM Studio is down, so we gate the value down to `local` (gemma4)
+# — never write an MLX slug Pi/LiteLLM can't serve. Promote it later by starting
+# LM Studio + `install.sh model sync` (which re-renders PI_DEFAULT_MODEL).
+PI_KEY_PROBE="$(get_env PI_LITELLM_KEY '')"
+# Gated-fallback target = models.yml .default (local-gemma4), matching doctor 40 +
+# `model sync` so a fresh install (LM Studio down) shows no false DRIFT. Literal
+# `local` only when models.yml is absent.
+PI_DEFAULT="local"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _pd="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  [[ -n "$_pd" && "$_pd" != "null" ]] && PI_DEFAULT="$_pd"
+fi
+if curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
+   && grep -qF 'model_name: local-qwen3-coder' "$AI_STACK/litellm/config.yaml" 2>/dev/null \
+   && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $PI_KEY_PROBE" 2>/dev/null | grep -q '"local-qwen3-coder"'; then
+  PI_DEFAULT="local-qwen3-coder"
+fi
+set_env PI_DEFAULT_MODEL "$PI_DEFAULT"
+ok "PI_DEFAULT_MODEL=$PI_DEFAULT (availability-gated; bin/pi injects --model \${PI_DEFAULT_MODEL:-local} when -m absent)"
 
 # --- Sandbox: hang-resilient create-with-policy (shared lib) --------------
 # openshell_sandbox_ensure (installer/lib/openshell.sh) creates pi-v1 WITH its
@@ -165,12 +193,37 @@ ok "pi-bootstrap.tar.gz ready ($(du -h "$PI_BOOTSTRAP_TAR" | awk '{print $1}'))"
 # Skip upload + install if Pi is already in place.
 if ! "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- \
      /bin/sh -c 'test -x /sandbox/node_modules/.bin/pi' 2>/dev/null; then
-  log "Uploading + extracting pi-bootstrap.tar.gz → $SANDBOX:/sandbox/..."
-  "$OSH" sandbox upload "$SANDBOX" "$PI_BOOTSTRAP_TAR" /sandbox/ 2>&1 | tail -3 \
-    || { err "sandbox upload failed"; exit 1; }
-  "$OSH" sandbox exec -n "$SANDBOX" --workdir /sandbox --no-tty -- \
+  # ⚠️ `openshell sandbox upload` SILENTLY DROPS large binaries: the ~24MB tar
+  # lands NOWHERE despite "✓ Upload complete" (it exceeds the gateway's gRPC
+  # message cap, ~4MB). Small files upload fine. This was the long-standing
+  # "tar: Child returned status 2 / tar extract failed" bug. FIX: split into
+  # sub-cap chunks, upload each, reassemble + SHA-VERIFY inside (a dropped chunk
+  # fails loudly instead of producing a corrupt tar), then extract.
+  log "Uploading pi-bootstrap.tar.gz in 3MB chunks → $SANDBOX:/sandbox/ (upload caps at ~4MB)..."
+  HOST_SHA="$(shasum -a 256 "$PI_BOOTSTRAP_TAR" | awk '{print $1}')"
+  CHUNK_DIR="$(mktemp -d)"
+  split -b 3000000 "$PI_BOOTSTRAP_TAR" "$CHUNK_DIR/pibt.part."
+  "$OSH" sandbox exec -n "$SANDBOX" --no-tty --timeout 30 -- \
+    /bin/sh -c 'rm -f /sandbox/pibt.part.* /sandbox/pi-bootstrap.tar.gz 2>/dev/null; true' >/dev/null 2>&1 || true
+  for part in "$CHUNK_DIR"/pibt.part.*; do
+    "$OSH" sandbox upload "$SANDBOX" "$part" /sandbox/ >/dev/null 2>&1 \
+      || { err "chunk upload failed ($(basename "$part"))"; rm -rf "$CHUNK_DIR"; exit 1; }
+  done
+  rm -rf "$CHUNK_DIR"
+  # Reassemble (sorted) + SHA-verify against the host BEFORE trusting it.
+  SBX_SHA="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty --timeout 90 -- \
+    bash -c 'cat $(ls -1 /sandbox/pibt.part.* | sort) > /sandbox/pi-bootstrap.tar.gz && rm -f /sandbox/pibt.part.* && sha256sum /sandbox/pi-bootstrap.tar.gz | awk "{print \$1}"' \
+    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+  if [[ "$SBX_SHA" != "$HOST_SHA" ]]; then
+    err "reassembled tar SHA mismatch (host=$HOST_SHA sandbox=${SBX_SHA:-none}) — chunk upload corrupted"; exit 1
+  fi
+  ok "tar reassembled + SHA-verified in sandbox"
+  "$OSH" sandbox exec -n "$SANDBOX" --workdir /sandbox --no-tty --timeout 120 -- \
     tar xzf pi-bootstrap.tar.gz 2>&1 | tail -3 \
     || { err "tar extract failed inside sandbox"; exit 1; }
+  "$OSH" sandbox exec -n "$SANDBOX" --no-tty --timeout 20 -- \
+    /bin/sh -c 'test -x /sandbox/node_modules/.bin/pi' \
+    || { err "pi binary missing after extract"; exit 1; }
   ok "Pi installed at /sandbox/node_modules/.bin/pi"
 else
   ok "Pi already installed in $SANDBOX"

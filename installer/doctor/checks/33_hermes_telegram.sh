@@ -60,7 +60,13 @@ hermes_telegram_diagnose() {
   #     doesn't false-match the regex below.
   local gwlog
   gwlog="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- bash -c 'tail -40 /sandbox/.hermes-gateway.log 2>/dev/null' 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
-  if grep -viE 'allowlist|users will be denied' <<<"$gwlog" | grep -qiE 'unauthorized|invalid token|\b401\b'; then
+  # Drop benign lines first: the allowlist warning (contains "unauthorized" but
+  # is not a failure) AND the transient 409/conflict/reconnect churn that
+  # `run --replace` emits while Telegram expires the prior long-poll (self-heals).
+  # Then match only REAL auth-failure shapes — a bare "401" appears in benign
+  # contexts, so anchor to Telegram's actual error wording instead.
+  if grep -viE 'allowlist|users will be denied|409|conflict|reconnect' <<<"$gwlog" \
+    | grep -qiE 'unauthorized|invalid token|error_code["[:space:]:]*401'; then
     echo "gateway log shows an auth error — the bot token may be revoked or malformed"
     return 1
   fi

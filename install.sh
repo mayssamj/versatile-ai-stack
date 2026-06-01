@@ -163,6 +163,10 @@ ai-stack-installer — usage:
     install.sh phases                   list every phase as `id  name` (also: steps, list)
     install.sh test <phase>             run smoke tests for one phase (id or name)
     install.sh status                   tabular service status
+    install.sh model list [--json]      show the model<->agent binding matrix (models.yml)
+    install.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
+    install.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
+                                        (opt-in; NOT run by 'install all'. --dry-run / --no-restart)
     install.sh doctor [<service>]       diagnose & offer fixes
     install.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
     install.sh adopt <service>          take ownership of a foreign container
@@ -433,6 +437,7 @@ cmd_phases() {
 
 cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; bash "$AI_STACK/installer/smoke/${id}.sh"; }
 cmd_status()  { bash "$AI_STACK/installer/lib/status.sh"; }
+cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
@@ -589,6 +594,7 @@ main() {
     test)              cmd_test "$1" ;;
     phases|steps|list) cmd_phases ;;
     status)            cmd_status ;;
+    model)             cmd_model "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
     verify)            cmd_verify ;;
     adopt)             cmd_adopt "$1" ;;

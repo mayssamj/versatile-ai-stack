@@ -20,7 +20,15 @@ SOULS_DIR="$AI_STACK/openshell/fleet-souls"
 # 24GB box. (local-heavy = qwen3.6:27b ~22GB thrashes 24GB → slow; still available
 # as an explicit alias for heavy reasoning, just not the default.) All-local, no cloud.
 LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
+# Availability-gating fallback target = models.yml .default (local-gemma4), so a
+# fresh install (LM Studio down) renders gated profiles to the SAME id that doctor
+# check 40 + `model sync` expect — no false-positive DRIFT. Falls back to the
+# literal `local` only when models.yml is absent (partial checkout).
 HERMES_MODEL="local"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _hd="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  [[ -n "$_hd" && "$_hd" != "null" ]] && HERMES_MODEL="$_hd"
+fi
 
 PROFILES=(
   "hermes_cos|chief of staff — decomposes goals, routes to specialists, does not implement|local-heavy"
@@ -358,18 +366,24 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
   err "LITELLM_MASTER_KEY missing from .env — Phase 01 must run first."
   exit 1
 fi
+# Scoped key is minted against the fixed SUPERSET (legacy IDs UNION the 3
+# canonical model<->agent slugs) so a later `install.sh model assign/sync` never
+# needs to re-mint when a profile is pointed at local-qwen3.6 / local-qwen3-coder.
+# These canonical IDs are registered in config.yaml by Phase 01 BEFORE this mint
+# (superset-before-mint). LiteLLM still enforces the allowlist server-side.
+HERMES_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"]'
 HERMES_KEY="$(get_env HERMES_LITELLM_KEY '')"
 if [[ -z "$HERMES_KEY" ]] \
    || ! curl -sf --max-time 5 -H "Authorization: Bearer $HERMES_KEY" http://litellm:4000/v1/models >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for Hermes (models=[local, local-heavy, local-lfm2])..."
+  log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
   HERMES_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-heavy","local-lfm2"],"key_alias":"hermes-fleet","metadata":{"owner":"hermes","purpose":"phase04f"}}' \
+    -d "{\"models\":${HERMES_SUPERSET_JSON},\"key_alias\":\"hermes-fleet\",\"metadata\":{\"owner\":\"hermes\",\"purpose\":\"phase04f\"}}" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$HERMES_KEY_NEW" ]] || { err "Failed to mint HERMES_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env HERMES_LITELLM_KEY "$HERMES_KEY_NEW"
   HERMES_KEY="$HERMES_KEY_NEW"
-  ok "HERMES_LITELLM_KEY minted + saved to .env (mode 0600)"
+  ok "HERMES_LITELLM_KEY minted (superset allowlist) + saved to .env (mode 0600)"
 else
   ok "HERMES_LITELLM_KEY already present + valid"
 fi
@@ -381,19 +395,52 @@ fi
 # config uses the top-level `--profile <name>` flag (sets HERMES_HOME to the
 # profile dir). Non-secret keys go in the command; the virtual key is piped via
 # STDIN so it never appears in argv or the install log. CHANGELOG 2026-05-30.
+# resolve_profile_model <profile> — the per-profile model from installer/models.yml,
+# availability-gated. Falls back to HERMES_MODEL (=local) when:
+#   - models.yml is absent (fresh checkout / partial install), OR
+#   - the assigned model is lmstudio AND LM Studio (:1234) is down / the served id
+#     isn't in litellm/config.yaml (we must NOT render an MLX slug LiteLLM can't
+#     serve — that would 503/404 the profile). FIXES the old dead `local-heavy`
+#     3rd-field tag: every profile was hardcoded to HERMES_MODEL=local before.
+MODELS_YML="$AI_STACK/installer/models.yml"
+LITELLM_CFG="$AI_STACK/litellm/config.yaml"
+_lms_up() { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
+resolve_profile_model() {
+  local profile="$1" declared rt served
+  [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1 || { echo "$HERMES_MODEL"; return; }
+  declared="$(yq -r ".assignments.\"$profile\" // \"\"" "$MODELS_YML" 2>/dev/null)"
+  [[ -z "$declared" || "$declared" == "null" ]] && { echo "$HERMES_MODEL"; return; }
+  rt="$(yq -r ".models.\"$declared\".runtime" "$MODELS_YML" 2>/dev/null)"
+  if [[ "$rt" != "lmstudio" ]]; then echo "$declared"; return; fi
+  # lmstudio: availability-gate.
+  if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
+     && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
+        | grep -qF "\"$declared\""; then
+    echo "$declared"; return
+  fi
+  echo "$HERMES_MODEL"   # gated fallback
+}
+
+# configure_hermes_profile <pflag> <model>
+# <pflag>: "" for the default profile, or "--profile <name>".
+# provider=custom:litellm + base_url are model-independent (set once here; safe
+# to re-set). api_key is re-piped via STDIN ONLY (never in argv/log).
 configure_hermes_profile() {
-  local pflag="$1"   # "" for the default profile, or "--profile <name>"
+  local pflag="$1" model="$2"
   openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
-    "hermes $pflag config set model.default $HERMES_MODEL >/dev/null; hermes $pflag config set model.provider custom:litellm >/dev/null; hermes $pflag config set providers.litellm.base_url $LITELLM_SANDBOX_URL >/dev/null; hermes $pflag config set providers.litellm.model $HERMES_MODEL >/dev/null" \
+    "hermes $pflag config set model.default $model >/dev/null; hermes $pflag config set model.provider custom:litellm >/dev/null; hermes $pflag config set providers.litellm.base_url $LITELLM_SANDBOX_URL >/dev/null; hermes $pflag config set providers.litellm.model $model >/dev/null" \
     2>&1 | tail -2 || warn "hermes ${pflag:-(default)} non-secret config returned non-zero"
   printf '%s' "$HERMES_KEY" | openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
     "read -r K; hermes $pflag config set providers.litellm.api_key \"\$K\" >/dev/null" \
     >/dev/null 2>&1 || warn "hermes ${pflag:-(default)} api_key config returned non-zero"
 }
-log "Configuring Hermes profiles → LiteLLM ($HERMES_MODEL via virtual key)..."
-configure_hermes_profile ""                       # default profile (root config)
+log "Configuring Hermes profiles → LiteLLM (per-profile model from models.yml, availability-gated)..."
+configure_hermes_profile "" "$HERMES_MODEL"       # default profile (root config) keeps the safe default
 for entry in "${PROFILES[@]}"; do
-  configure_hermes_profile "--profile ${entry%%|*}"
+  _prof="${entry%%|*}"
+  _model="$(resolve_profile_model "$_prof")"
+  note "  $_prof -> $_model"
+  configure_hermes_profile "--profile $_prof" "$_model"
 done
 ok "configured default + ${#PROFILES[@]} profiles"
 

@@ -8,6 +8,9 @@ CHECK_TITLE[phoenix_api_key]="PHOENIX_API_KEY set (auth-on Phoenix needs it to a
 phoenix_api_key_diagnose() {
   # Only relevant if Phoenix is running with auth ON.
   container_running phoenix || return 0
+  # If the 'phoenix' alias doesn't resolve (prepare-sudo not run), the probe
+  # below returns 000 and would mis-report as an auth/state issue. Defer.
+  dscacheutil -q host -a name phoenix 2>/dev/null | grep -q ip_address || { echo "(phoenix alias unresolved — see checks 15/19) [skip]"; return 0; }
   # Probe auth state — if /v1/projects returns 401, auth is on.
   local status
   status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://phoenix:6006/v1/projects 2>/dev/null)"

@@ -1,0 +1,49 @@
+# /Users/mayssam.sayyadian/ai-stack/installer/models.yml
+# CANONICAL single source of truth for model<->agent binding.
+# Inspect:  install.sh model list
+# Re-render every agent + the LiteLLM model_list (idempotent):  install.sh model sync
+# Re-point one agent:  install.sh model assign <agent> <model>
+version: 1
+models:
+  local-gemma4:
+    runtime: ollama
+    served: gemma4:e4b
+    big: false
+    note: "Default for any unassigned agent. ~9.6GB, stays on Ollama."
+  local-qwen3.6:
+    runtime: lmstudio
+    served: qwen/qwen3.6-27b
+    big: true
+    ttl: 1800
+    note: "~17.5GB MLX. Cannot coexist with local-qwen3-coder on 24GB."
+  local-qwen3-coder:
+    runtime: lmstudio
+    served: qwen3-coder-30b-a3b-instruct-mlx
+    big: true
+    ttl: 1800
+    note: "~17.2GB MLX. Cannot coexist with local-qwen3.6 on 24GB."
+default: local-gemma4
+assignments:
+  hermes_cos: local-qwen3.6
+  hermes_software_engineer: local-qwen3-coder
+  hermes_researcher: local-qwen3.6
+  hermes_creator: local-gemma4
+  hermes_reviewer: local-qwen3-coder
+  hermes_data_analyst: local-qwen3.6
+  hermes_ops: local-gemma4
+  pi: local-qwen3-coder
+  deerflow: local-qwen3.6
+  ace: local-gemma4
+  rlm: local-gemma4
+kinds:
+  hermes_cos: {kind: hermes-profile, profile: hermes_cos, key_env: HERMES_LITELLM_KEY}
+  hermes_software_engineer: {kind: hermes-profile, profile: hermes_software_engineer, key_env: HERMES_LITELLM_KEY}
+  hermes_researcher: {kind: hermes-profile, profile: hermes_researcher, key_env: HERMES_LITELLM_KEY}
+  hermes_creator: {kind: hermes-profile, profile: hermes_creator, key_env: HERMES_LITELLM_KEY}
+  hermes_reviewer: {kind: hermes-profile, profile: hermes_reviewer, key_env: HERMES_LITELLM_KEY}
+  hermes_data_analyst: {kind: hermes-profile, profile: hermes_data_analyst, key_env: HERMES_LITELLM_KEY}
+  hermes_ops: {kind: hermes-profile, profile: hermes_ops, key_env: HERMES_LITELLM_KEY}
+  pi: {kind: pi, phase: 15, key_env: PI_LITELLM_KEY}
+  deerflow: {kind: deerflow, phase: 10}
+  ace: {kind: ace, phase: 17, key_env: ACE_LITELLM_KEY}
+  rlm: {kind: rlm, phase: 18, key_env: RLM_LITELLM_KEY}

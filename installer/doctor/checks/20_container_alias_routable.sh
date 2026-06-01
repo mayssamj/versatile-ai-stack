@@ -52,8 +52,17 @@ container_alias_routable_diagnose() {
     # redis + grpc cases with protocol-aware probes.
     [[ "${ALIAS_PROTOCOL[$_a]}" == "http" ]] || continue
 
+    # A service that is still warming up right after `install all` can return
+    # 5xx (e.g. 503) or transiently fail to connect. verify_container_reachable_
+    # by_alias already treats 2xx/3xx/4xx as "reached an HTTP server"; give a
+    # not-yet-ready container one short retry before flagging it, so a starting
+    # service isn't false-red. Genuinely-unreachable (persistent 000/5xx) still
+    # fails after the retry.
     if ! verify_container_reachable_by_alias "$name" "$alias" "$port" "$path" 2>/dev/null; then
-      offenders+=("$alias→$name (port $port path $path)")
+      sleep 2
+      if ! verify_container_reachable_by_alias "$name" "$alias" "$port" "$path" 2>/dev/null; then
+        offenders+=("$alias→$name (port $port path $path)")
+      fi
     fi
   done
 

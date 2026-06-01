@@ -36,13 +36,25 @@ import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AI_STACK = os.path.expanduser("~/ai-stack")
-LITELLM_MODELS = ["local", "local-heavy", "local-lfm2"]
+# Allowlist of LiteLLM model_names the bridge will forward. Includes the 3
+# canonical model<->agent slugs (installer/models.yml) alongside the legacy IDs —
+# otherwise _safe_model() would strip a forwarded canonical model back to the
+# default and the agent's bound model would be silently ignored.
+LITELLM_MODELS = [
+    "local", "local-heavy", "local-lfm2",
+    "local-gemma4", "local-qwen3.6", "local-qwen3-coder",
+]
+# LM Studio MLX slugs among the above (used for best-effort pre-warm).
+LMSTUDIO_MODELS = {"local-qwen3.6": "qwen/qwen3.6-27b",
+                   "local-qwen3-coder": "qwen3-coder-30b-a3b-instruct-mlx"}
 HERMES_SANDBOX = "hermes-fleet-v1"
 PI_SANDBOX = "pi-v1"
 DEERFLOW_URL = os.environ.get("DEERFLOW_URL", "http://localhost:2026")
 DEERFLOW_AUTH = os.environ.get("DEER_FLOW_INTERNAL_AUTH_TOKEN", "")
 HERMES_TIMEOUT = int(os.environ.get("CLAW3D_HERMES_TIMEOUT", "120"))
-PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "180"))  # pi agent turn on cold local model is slow
+# Pi on a big MLX coder model (local-qwen3-coder) is much slower than gemma4;
+# raised 180 -> 600 so a real coder turn doesn't get cut off.
+PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "600"))
 DEERFLOW_TIMEOUT = int(os.environ.get("CLAW3D_DEERFLOW_TIMEOUT", "600"))
 DEFAULT_MODEL = os.environ.get("CLAW3D_DEFAULT_MODEL", "local")
 
@@ -146,12 +158,44 @@ def run_hermes(profile: str, prompt: str, model: str) -> str:
     return text
 
 
+def _lms_cli() -> str:
+    for c in (os.path.expanduser("~/.lmstudio/bin/lms"),
+              "/Applications/LM Studio.app/Contents/Resources/app/.webpack/lms"):
+        if os.path.exists(c):
+            return c
+    return ""
+
+
+def _prewarm_lmstudio(model: str) -> None:
+    """Best-effort: if `model` is an LM Studio MLX slug, `lms load` its served id
+    before the Pi turn so the first request doesn't time out on a cold load.
+    Never raises — a missing CLI / down server just means no pre-warm."""
+    served = LMSTUDIO_MODELS.get(model)
+    if not served:
+        return
+    lms = _lms_cli()
+    if not lms:
+        return
+    try:
+        subprocess.run([lms, "load", served, "--identifier", served, "--ttl", "1800", "-y"],
+                       capture_output=True, text=True, timeout=120)
+    except Exception:  # noqa: BLE001 — pre-warm is best-effort
+        pass
+
+
 def run_pi(prompt: str, model: str) -> str:
     if not _sandbox_ready(PI_SANDBOX):
         raise RuntimeError("pi-v1 not reachable (OpenShell relay down? `brew services restart openshell`)")
     pi_key = _get_env("PI_LITELLM_KEY")
-    # Pi only completes reliably on `local` (gemma4) — local-heavy/lfm2 exceed Pi's
-    # timeout. `--thinking off` is REQUIRED: Pi's default sends reasoning_effort as a
+    # Use the PASSED-THROUGH model (allowlisted via _safe_model), NOT a hardcoded
+    # 'local'. This is what lets Pi run on its bound model (local-qwen3-coder when
+    # LM Studio is up). _safe_model already strips anything not in LITELLM_MODELS
+    # back to DEFAULT_MODEL (CWE-88: no leading '-' reaching argv).
+    model = _safe_model(model)
+    # Best-effort pre-warm: load the MLX coder model before the turn so a cold
+    # ~17GB load doesn't eat the whole PI_TIMEOUT on the first request.
+    _prewarm_lmstudio(model)
+    # `--thinking off` is REQUIRED: Pi's default sends reasoning_effort as a
     # dict, which crashes LiteLLM's Ollama transform (TypeError: unhashable type).
     # SECURITY: (CWE-78) prompt/model/key are separate argv via `env` (no shell);
     # (CWE-88) the trailing `--` keeps a leading-'-' prompt positional.
@@ -159,7 +203,7 @@ def run_pi(prompt: str, model: str) -> str:
     # no --extension; no --no-tools (broke the run). pi has NO `--` end-of-options
     # separator (it errors "Unknown option: --"), so to keep a flag-like prompt from
     # being parsed as an option (CWE-88), prepend a space — pi then treats it as the
-    # positional prompt (content preserved). The "Model local not found" line is a
+    # positional prompt (content preserved). The "Model ... not found" line is a
     # benign warning; pi proceeds with it as a custom model id via the extension.
     if prompt[:1] == "-":
         prompt = " " + prompt
@@ -167,7 +211,7 @@ def run_pi(prompt: str, model: str) -> str:
            "--timeout", str(PI_TIMEOUT), "--",
            "env", f"PI_LITELLM_KEY={pi_key}", "HOME=/sandbox",
            "/sandbox/node_modules/.bin/pi",
-           "--provider", "openai", "--model", "local", "--thinking", "off",
+           "--provider", "openai", "--model", model, "--thinking", "off",
            "-p", prompt]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
     if "relay open timed out" in (out.stderr or "") or "DeadlineExceeded" in (out.stderr or ""):
@@ -295,7 +339,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "bad json"})
         agent_id = req.get("role") or req.get("model") or req.get("agent") or "hermes_cos"
         agent = AGENTS_BY_ID.get(agent_id) or AGENTS_BY_ID.get("hermes_cos")
+        # Honor each agent's BOUND model (installer/models.yml, rendered into .env
+        # by `model sync`). Pi reads PI_DEFAULT_MODEL (already availability-gated:
+        # local-qwen3-coder when LM Studio is up, else `local`). Other backends keep
+        # the bridge default. _safe_model() (in the adapters) re-allowlists it.
         model = DEFAULT_MODEL
+        if agent.get("backend") == "pi":
+            model = _get_env("PI_DEFAULT_MODEL") or DEFAULT_MODEL
         prompt = _last_user_message(req.get("messages"))
         if not prompt:
             return self._send(400, {"error": "no user message"})

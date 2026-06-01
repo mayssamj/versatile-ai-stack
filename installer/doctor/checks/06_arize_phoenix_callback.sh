@@ -1,7 +1,8 @@
-# arize_phoenix is in the LiteLLM callbacks list AND the OTLP exporter is
-# actively running inside the container (proven by either a successful trace
-# export or a "Failed to export batch" line — both prove the exporter is
-# initialized; a missing callback would show NEITHER).
+# arize_phoenix is in the LiteLLM callbacks list AND the OTLP exporter is not
+# emitting errors. A healthy exporter logs NOTHING on success, so we do NOT
+# require proof-of-success — we only hard-fail on an explicit OTLP *error*
+# line (e.g. "Failed to export batch", connection refused, 401/403). Absence
+# of activity (fresh container, quiet success) stays green.
 CHECKS+=(arize_phoenix_callback)
 CHECK_TITLE[arize_phoenix_callback]="arize_phoenix callback in config.yaml AND OTLP exporter active"
 
@@ -15,12 +16,9 @@ arize_phoenix_callback_diagnose() {
     return 1
   fi
   if container_running litellm; then
-    # The OTLP exporter shows up in logs once any chat-completion request
-    # has fired (success or 'Failed to export batch'). A FRESH container
-    # has no logs yet — don't fail on that; just note.
-    # Only fail when the container has been up > 2 min AND logs contain
-    # multiple successful chat completions but no OTLP activity at all
-    # (that would prove the callback is genuinely not loaded).
+    # Only inspect logs once the container has been up > 2 min (a fresh
+    # container has no logs yet). Even then we look ONLY for explicit OTLP
+    # error lines — a healthy exporter is silent on success.
     #
     # We compute uptime in Python because macOS `date -j -f` parses RFC3339
     # without the Z suffix as LOCAL time, which produces a TZ-shifted epoch
@@ -45,14 +43,13 @@ PY
     )"
     : "${uptime_sec:=0}"
     if (( uptime_sec > 120 )); then
-      local chat_calls
-      chat_calls="$(docker logs litellm 2>&1 | grep -ciE 'chat/completions|completion_tokens' || true)"
-      : "${chat_calls:=0}"
-      if (( chat_calls >= 2 )); then
-        if ! docker logs litellm 2>&1 | grep -qiE 'opentelemetry|otlp|export batch|arize|phoenix'; then
-          echo "litellm logs show $chat_calls chat call(s) but NO OTLP activity — callback may have failed to load"
-          return 1
-        fi
+      # A healthy, quiet exporter logs NOTHING on success — so the absence of a
+      # success line proves nothing. Only hard-fail on an EXPLICIT OTLP error
+      # line (export failure / refused connection / auth reject). Quiet success
+      # is the common case on a fresh stack and must stay green.
+      if docker logs litellm 2>&1 | grep -qiE 'failed to export batch|otlp.*(connection refused|failed)|export batch code: (401|403)'; then
+        echo "litellm logs show an OTLP export error — Phoenix endpoint unreachable or rejecting (see check 04/13)"
+        return 1
       fi
     fi
     # Fresh container or no traffic yet: pass — callback is in config.yaml,

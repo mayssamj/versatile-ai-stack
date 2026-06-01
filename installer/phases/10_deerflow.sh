@@ -112,21 +112,52 @@ if [[ ! -f "$DF_CONFIG" && -f "$DF_DIR/config.example.yaml" ]]; then
 fi
 
 # Patch 1: inject local-model entries under `models:` if none exist.
+# Resolve the deerflow reasoning-tier model from installer/models.yml,
+# availability-gated. DeerFlow's two-tier `models:` block is: a "basic" entry
+# (name: local) pinned to the default local-gemma4, and a "reasoning" entry
+# (name: local-heavy) pointed at the deerflow assignment (local-qwen3.6) — but
+# gated DOWN to the default when LM Studio is down / the slug isn't in
+# config.yaml, so DeerFlow never gets a model_name LiteLLM can't serve. We map
+# BOTH tiers, never silently rewrite only one. DeerFlow uses the MASTER key, so
+# there is NO scoped-key allowlist to widen.
+DF_BASIC_MODEL="local-gemma4"
+DF_REASON_MODEL="local-gemma4"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  DF_BASIC_MODEL="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  _dfa="$(yq -r '.assignments.deerflow // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  _dfrt="$(yq -r ".models.\"$_dfa\".runtime" "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  if [[ -n "$_dfa" && "$_dfa" != "null" ]]; then
+    if [[ "$_dfrt" == "lmstudio" ]] \
+       && ! { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
+              && grep -qF "model_name: ${_dfa}" "$AI_STACK/litellm/config.yaml" 2>/dev/null; }; then
+      DF_REASON_MODEL="$DF_BASIC_MODEL"   # gated fallback
+    else
+      DF_REASON_MODEL="$_dfa"
+    fi
+  fi
+fi
+
 if [[ -f "$DF_CONFIG" ]] && ! grep -q '# ai-stack: local models via LiteLLM' "$DF_CONFIG"; then
-  python3 - "$DF_CONFIG" <<'PYEOF'
-import re, sys
+  DF_BASIC_MODEL="$DF_BASIC_MODEL" DF_REASON_MODEL="$DF_REASON_MODEL" python3 - "$DF_CONFIG" <<'PYEOF'
+import os, re, sys
 path = sys.argv[1]
+basic = os.environ.get("DF_BASIC_MODEL", "local-gemma4")
+reason = os.environ.get("DF_REASON_MODEL", "local-gemma4")
 src = open(path).read()
+# Two-tier `models:` block: a "basic" entry (name: local) pinned to the default,
+# and a "reasoning" entry (name: local-heavy) pointed at the deerflow assignment
+# (availability-gated). Entry NAMES stay stable (DeerFlow references them by name);
+# only the LiteLLM model_name each targets changes.
 patch = """models:
-  # ai-stack: local models via LiteLLM (port 4000 on host).
-  # `api_key: $LITELLM_MASTER_KEY` is resolved from env at startup;
-  # the gateway container receives it via docker-compose.yaml.
-  # `host.docker.internal` lets the deer-flow network reach the host's
-  # LiteLLM on the ai-stack network without joining both networks.
+  # ai-stack: local models via LiteLLM (port 4000 on host). Two tiers —
+  # basic (name: local) and reasoning (name: local-heavy) — wired to the
+  # canonical model<->agent slugs from installer/models.yml. Re-render with
+  # `install.sh model sync`. `api_key: $LITELLM_MASTER_KEY` resolves from env;
+  # `host.docker.internal` reaches the host LiteLLM from the deer-flow network.
   - name: local
-    display_name: Local (Qwen3 via LiteLLM)
+    display_name: Basic (ai-stack default via LiteLLM)
     use: langchain_openai:ChatOpenAI
-    model: local
+    model: %s
     api_key: $LITELLM_MASTER_KEY
     base_url: http://host.docker.internal:4000/v1
     request_timeout: 600.0
@@ -135,9 +166,9 @@ patch = """models:
     temperature: 0.7
 
   - name: local-heavy
-    display_name: Local heavy (Qwen3 27B via LiteLLM)
+    display_name: Reasoning (ai-stack deerflow assignment via LiteLLM)
     use: langchain_openai:ChatOpenAI
-    model: local-heavy
+    model: %s
     api_key: $LITELLM_MASTER_KEY
     base_url: http://host.docker.internal:4000/v1
     request_timeout: 600.0
@@ -145,16 +176,36 @@ patch = """models:
     max_tokens: 8192
     temperature: 0.7
 
-  """
+  """ % (basic, reason)
 # Replace the bare `models:` line with the patched block.
 new = re.sub(r'^models:\s*\n', patch, src, count=1, flags=re.MULTILINE)
 if new == src:
     sys.exit("WARNING: no `models:` line found in config.yaml; not patched")
 open(path, "w").write(new)
 PYEOF
-  ok "patched $DF_CONFIG: injected local + local-heavy model entries"
+  ok "patched $DF_CONFIG: injected two-tier models (basic=$DF_BASIC_MODEL, reasoning=$DF_REASON_MODEL)"
 else
-  ok "$DF_CONFIG: local model entries already present"
+  # Already injected: idempotently RE-RENDER both tiers' model: lines so a later
+  # 'model sync' / re-run converges them. Rewrites only the `model:` line of the
+  # named entry; never touches one tier silently.
+  DF_BASIC_MODEL="$DF_BASIC_MODEL" DF_REASON_MODEL="$DF_REASON_MODEL" python3 - "$DF_CONFIG" <<'PYEOF'
+import os, re, sys
+path = sys.argv[1]
+basic = os.environ.get("DF_BASIC_MODEL", "local-gemma4")
+reason = os.environ.get("DF_REASON_MODEL", "local-gemma4")
+src = open(path).read()
+def set_model(text, entry_name, model_name):
+    # group1 anchored to the single `- name:` line ([^\n]*, no re.DOTALL) with a
+    # (?![\w-]) guard so `local` does not match inside `local-heavy` — otherwise
+    # the basic tier never re-renders (review finding). Mirrors lib/models.sh.
+    pat = re.compile(r'(- name: %s(?![\w-])[^\n]*\n)((?:\s+\w[\w-]*:.*\n)*?)(\s*model:\s*)([^\n]*)' % re.escape(entry_name))
+    return pat.subn(lambda m: m.group(1) + m.group(2) + m.group(3) + model_name, text, count=1)
+new, n1 = set_model(src, "local", basic)
+new, n2 = set_model(new, "local-heavy", reason)
+if new != src:
+    open(path, "w").write(new)
+PYEOF
+  ok "$DF_CONFIG: two-tier models re-rendered (basic=$DF_BASIC_MODEL, reasoning=$DF_REASON_MODEL)"
 fi
 
 # Patch 2: ensure docker-compose.yaml passes LITELLM_MASTER_KEY to gateway.
