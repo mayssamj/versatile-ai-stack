@@ -119,6 +119,9 @@ models_binding_diagnose() {
   # (3)+(4) DRIFT + ALLOWLIST coverage across every agent surface.
   local hermes_ready=0; _mb_hermes_ready && hermes_ready=1
   local a kind keyenv eff rendered
+  # Compute the derived superset ONCE (was re-forking models.sh per agent — slow
+  # on a CPU-capped box). The inner drift guard reads this cached value.
+  local _mb_superset; _mb_superset="$(bash "$AI_STACK/installer/lib/models.sh" superset 2>/dev/null || true)"
   while IFS= read -r a; do
     [[ -z "$a" ]] && continue
     kind="$(yq -r ".kinds.\"$a\".kind" "$yml" 2>/dev/null)"
@@ -137,18 +140,19 @@ models_binding_diagnose() {
           fail=1
         fi
         # Superset-drift guard (review #6): scoped keys are minted with the FULL
-        # canonical superset (see 'install.sh model superset'), so a phase/bridge
+        # DERIVED superset (see 'install.sh model superset'), so a phase/bridge
         # that hardcoded a stale/narrow allowlist is caught HERE rather than
-        # silently 403-ing a future `model assign`. Only assert for canonical IDs
-        # actually registered in config.yaml.
+        # silently 403-ing a future `model assign`/`model add`. Only assert for
+        # superset members actually registered in config.yaml.
         local _cm
-        for _cm in local-qwen3.6 local-qwen3-coder; do
+        while IFS= read -r _cm; do
+          [[ -z "$_cm" ]] && continue
           if yq -e ".model_list[] | select(.model_name == \"$_cm\")" "$cfg" >/dev/null 2>&1 \
              && ! _mb_key_covers "$kv" "$_cm"; then
-            echo "agent '$a' scoped key $keyenv missing canonical '$_cm' (superset drift — run: bash install.sh model sync)"
+            echo "agent '$a' scoped key $keyenv missing '$_cm' (superset drift — run: bash install.sh model sync)"
             fail=1
           fi
-        done
+        done < <(printf '%s\n' "$_mb_superset")
       fi
     fi
 

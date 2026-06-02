@@ -42,9 +42,25 @@ PENDING_HERMES="$STATE_DIR/models-pending-hermes.txt"
 HERMES_SANDBOX="hermes-fleet-v1"
 LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
 
-# The scoped-key allowlist is ALWAYS this fixed SUPERSET (sorted-unique), so
-# `assign` never needs a re-mint (constraint 3). Legacy IDs UNION the 3 canonical.
-SUPERSET=(local local-gemma4 local-heavy local-lfm2 local-qwen3-coder local-qwen3.6)
+# The scoped-key allowlist is ALWAYS the DERIVED superset (sorted-unique), so
+# `assign`/`add` never need a re-mint (constraint 3). It is the union of the
+# legacy names {local local-heavy local-lfm2} and EVERY model declared in
+# models.yml (so a `model add`-ed slug is automatically covered). If models.yml
+# is absent/unparseable we fall back to the legacy 6-name list.
+LEGACY_SUPERSET=(local local-gemma4 local-heavy local-lfm2 local-qwen3-coder local-qwen3.6)
+
+# superset_members — print the sorted-unique union of the legacy names and every
+# models.yml model key, one per line. Errexit/pipefail-safe.
+superset_members() {
+  local names
+  names="$(my_q '.models | keys | .[]' 2>/dev/null || echo '')"
+  if [[ -z "$names" ]]; then
+    printf '%s\n' "${LEGACY_SUPERSET[@]}" | LC_ALL=C sort -u
+    return 0
+  fi
+  { printf '%s\n' local local-heavy local-lfm2; printf '%s\n' "$names"; } \
+    | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u
+}
 
 # ---------------------------------------------------------------------------
 # 0. models.yml accessors (fail-closed; exit 2 if the file is missing/unparseable)
@@ -286,8 +302,22 @@ preflight_superset_in_config() {
   for s in local-gemma4 local-qwen3.6 local-qwen3-coder; do
     config_has_slug "$s" || missing+=("$s")
   done
+  # Beyond the 3 canonical IDs, every superset member that is a REAL models.yml
+  # model (ollama/lmstudio runtime) must also be registered before we mint. The
+  # legacy aliases (local/local-heavy/local-lfm2) are pre-existing config entries
+  # not declared in models.yml, so they stay WARN-tolerant (never hard-fail here).
+  local mem rt
+  while IFS= read -r mem; do
+    [[ -z "$mem" ]] && continue
+    case "$mem" in local|local-heavy|local-lfm2) continue ;; esac
+    case "$mem" in local-gemma4|local-qwen3.6|local-qwen3-coder) continue ;; esac  # already checked above
+    model_exists "$mem" || continue
+    rt="$(model_runtime "$mem")"
+    case "$rt" in ollama|lmstudio) : ;; *) continue ;; esac
+    config_has_slug "$mem" || missing+=("$mem")
+  done < <(superset_members)
   if (( ${#missing[@]} > 0 )); then
-    err "pre-flight: canonical model_name(s) absent from config.yaml: ${missing[*]}"
+    err "pre-flight: model_name(s) absent from config.yaml: ${missing[*]}"
     err "  (register_model_list must run before minting keys — refusing to widen allowlists)"
     return 1
   fi
@@ -298,8 +328,8 @@ preflight_superset_in_config() {
 # 3. Scoped-key allowlist widening (constraint 3, P3)
 # ---------------------------------------------------------------------------
 allowlist_superset_json() {
-  # JSON array of the fixed SUPERSET.
-  printf '%s\n' "${SUPERSET[@]}" | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))'
+  # JSON array of the DERIVED superset.
+  superset_members | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))'
 }
 
 # key_covers <key> <model> — does GET /v1/models under <key> include <model>?
@@ -341,8 +371,18 @@ ensure_key_widened() {
   local key_env="$1" alias="$2" owner="$3"
   [[ -n "$key_env" && "$key_env" != "null" ]] || return 0   # e.g. deerflow uses master key
   local key; key="$(get_env "$key_env" '')"
-  if [[ -n "$key" ]] && key_covers "$key" local-qwen3.6 && key_covers "$key" local-qwen3-coder; then
-    return 0   # already widened
+  if [[ -n "$key" ]]; then
+    # Already widened iff the key covers EVERY superset member that is actually
+    # registered in config.yaml. Members not yet in config.yaml are skipped so a
+    # freshly `model add`-ed (not-yet-synced) name can't trigger a false re-mint
+    # before its model_list entry exists.
+    local covered=1 mem
+    while IFS= read -r mem; do
+      [[ -z "$mem" ]] && continue
+      config_has_slug "$mem" || continue   # not registered yet — can't be covered
+      if ! key_covers "$key" "$mem"; then covered=0; break; fi
+    done < <(superset_members)
+    if (( covered )); then return 0; fi     # already widened
   fi
   remint_key "$key_env" "$alias" "$owner" || warn "could not widen $key_env (non-fatal)"
 }
@@ -689,6 +729,248 @@ cmd_assign() {
 }
 
 # ---------------------------------------------------------------------------
+# 6b. discover — READ-ONLY LM Studio library catalog (never loads a model)
+# ---------------------------------------------------------------------------
+# cmd_discover — list the on-disk LM Studio library (LLMs + embeddings), marking
+# which LLMs are already DECLARED in models.yml (exact served-id match). Advisory:
+# never fatal, never auto-starts LM Studio, writes nothing, takes no lock, and
+# NEVER echoes a key.
+cmd_discover() {
+  local lib; lib="$(lms_library_json || true)"
+  if [[ -z "$lib" ]]; then
+    note "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: install.sh model discover"
+    return 0
+  fi
+
+  # Build a served-id -> models.yml-name map for declared lmstudio entries.
+  local declared_json m rt sv
+  declared_json="$( { local first=1; printf '{'
+    while IFS= read -r m; do
+      [[ -z "$m" ]] && continue
+      rt="$(model_runtime "$m")"
+      [[ "$rt" == "lmstudio" ]] || continue
+      sv="$(model_served "$m")"
+      [[ -n "$sv" && "$sv" != "null" ]] || continue
+      (( first )) || printf ','
+      first=0
+      SV="$sv" NM="$m" python3 -c 'import json,os,sys
+sys.stdout.write(json.dumps(os.environ["SV"])+":"+json.dumps(os.environ["NM"]))'
+    done < <(my_q '.models | keys | .[]')
+    printf '}'; } )"
+  [[ -n "$declared_json" ]] || declared_json='{}'
+
+  local up=0; lms_server_up && up=1
+
+  printf '%s' "$lib" | DECLARED_MAP="$declared_json" python3 -c '
+import sys, os, json
+try:
+    d = json.loads(sys.stdin.read())
+except Exception:
+    print("  (could not parse lms ls --json)"); sys.exit(0)
+declared = {}
+try:
+    declared = json.loads(os.environ.get("DECLARED_MAP","{}"))
+except Exception:
+    declared = {}
+entries = d if isinstance(d, list) else []
+def human(sz):
+    if not isinstance(sz, int): return "size?"
+    return "%.2fGB" % (sz/1e9)
+llms = [m for m in entries if isinstance(m, dict) and m.get("type")=="llm"]
+embs = [m for m in entries if isinstance(m, dict) and m.get("type")=="embedding"]
+print("LM Studio library — LLMs (chat):")
+print("  %-44s %-10s %-9s %s" % ("MODELKEY","PARAMS","SIZE","DECLARED"))
+for m in sorted(llms, key=lambda x: x.get("modelKey","")):
+    mk = m.get("modelKey","")
+    params = m.get("paramsString") or "-"
+    sz = human(m.get("sizeBytes"))
+    dec = declared.get(mk, "-")
+    print("  %-44s %-10s %-9s %s" % (mk, params, sz, dec))
+print("")
+print("LM Studio library — EMBEDDINGS:")
+print("  %-44s %-10s %-9s %s" % ("MODELKEY","PARAMS","SIZE","DECLARED"))
+for m in sorted(embs, key=lambda x: x.get("modelKey","")):
+    mk = m.get("modelKey","")
+    params = m.get("paramsString") or "-"
+    sz = human(m.get("sizeBytes"))
+    print("  %-44s %-10s %-9s %s" % (mk, params, sz, "-"))
+if embs:
+    print("  note: `model add` declares chat LLMs only (embeddings shown for reference).")
+' 2>/dev/null || { note "could not render LM Studio library"; return 0; }
+
+  if (( up )); then
+    note "server up: listed slugs are loadable now."
+  else
+    note "server down: reads the on-disk library; nothing is loaded."
+  fi
+  note "DECLARED matches by exact served-id string only (near-duplicates like qwen3.6-27b-mlx vs qwen/qwen3.6-27b are distinct)."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# 6c. add — declare an LM Studio library slug as a models.yml model (no load)
+# ---------------------------------------------------------------------------
+# cmd_add <lms-slug> [as <name>] [--dry-run] [--no-sync] — declare an existing
+# LM Studio library LLM into models.yml + (unless --no-sync) register it via
+# cmd_sync. NEVER loads a model. Does NOT take its own lock (cmd_sync takes it).
+cmd_add() {
+  local slug="" name="" dry=0 nosync=0 expect_name=0 a
+  for a in "$@"; do
+    if (( expect_name )); then name="$a"; expect_name=0; continue; fi
+    case "$a" in
+      as)        expect_name=1 ;;
+      --dry-run) dry=1 ;;
+      --no-sync) nosync=1 ;;
+      -*) err "add: unknown flag '$a'"; exit 2 ;;
+      *) if [[ -z "$slug" ]]; then slug="$a"; elif [[ -z "$name" ]]; then name="$a"; fi ;;
+    esac
+  done
+
+  validate || exit $?
+
+  if [[ -z "$slug" ]]; then
+    err "usage: install.sh model add <lms-slug> [as <name>] [--dry-run] [--no-sync]"
+    exit 2
+  fi
+
+  # Library + slug check FIRST (no auto-start, no blind add).
+  local lib; lib="$(lms_library_json || true)"
+  if [[ -z "$lib" ]]; then
+    err "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: install.sh model add"
+    exit 2
+  fi
+  if ! lms_lib_has_slug "$slug"; then
+    # Disambiguate: is the slug present but an embedding?
+    if printf '%s' "$lib" | SLUG="$slug" python3 -c 'import sys,os,json
+want=os.environ.get("SLUG","")
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(1)
+for m in (d if isinstance(d,list) else []):
+    if isinstance(m,dict) and m.get("modelKey")==want and m.get("type")=="embedding":
+        sys.exit(0)
+sys.exit(1)' 2>/dev/null; then
+      err "'$slug' is an embedding model; model add declares chat LLMs only"
+      exit 2
+    fi
+    err "unknown library slug '$slug'; available LLM modelKeys:"
+    printf '%s' "$lib" | python3 -c 'import sys,json
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(0)
+for m in (d if isinstance(d,list) else []):
+    if isinstance(m,dict) and m.get("type")=="llm":
+        print("    "+str(m.get("modelKey","")))' >&2 2>/dev/null || true
+    exit 2
+  fi
+
+  # Visual confirmation of the exact matched entry (vs near-duplicates).
+  local matched_info
+  matched_info="$(printf '%s' "$lib" | SLUG="$slug" python3 -c 'import sys,os,json
+want=os.environ.get("SLUG","")
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(0)
+def human(sz):
+    return ("%.2fGB"%(sz/1e9)) if isinstance(sz,int) else "size?"
+for m in (d if isinstance(d,list) else []):
+    if isinstance(m,dict) and m.get("modelKey")==want and m.get("type")=="llm":
+        print("%s  %s  %s" % (m.get("modelKey",""), human(m.get("sizeBytes")), m.get("displayName") or ""))
+        break' 2>/dev/null || echo "$slug")"
+  note "matched library model: ${matched_info}"
+
+  # REVERSE idempotency: is this served id already declared by some entry?
+  local existing_name
+  existing_name="$(SV="$slug" yq -r '.models | to_entries | map(select(.value.runtime == "lmstudio" and .value.served == strenv(SV))) | .[0].key // ""' "$MODELS_YML" 2>/dev/null || echo "")"
+  if [[ -n "$existing_name" && "$existing_name" != "null" ]]; then
+    if [[ -z "$name" ]]; then
+      ok "served id '$slug' already declared as '$existing_name'; nothing to do"
+      exit 0
+    else
+      err "served id '$slug' already declared as '$existing_name'; refusing a second alias"
+      exit 2
+    fi
+  fi
+
+  # Derive the name if not given via `as`.
+  if [[ -z "$name" ]]; then
+    local base
+    base="$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9.]+/-/g; s/-+/-/g; s/^[.-]+//; s/[.-]+$//')"
+    name="local-${base}"
+  fi
+
+  # Validate: local-<alnum>…<alnum>, only [a-z0-9._-] between (ONE strict pattern
+  # — the old dual-alternative made the strict branch dead code and let through
+  # 'local-.bad' / 'local-'). Reserved legacy aliases are off-limits.
+  if ! [[ "$name" =~ ^local-[a-z0-9]([a-z0-9._-]*[a-z0-9])?$ ]]; then
+    err "name '$name' invalid; use a clean \`as local-<name>\` (e.g. local-mymodel)"
+    exit 2
+  fi
+  case "$name" in
+    local|local-heavy|local-lfm2)
+      err "name '$name' is a reserved alias; choose a different \`as local-<name>\`"; exit 2 ;;
+  esac
+
+  # FORWARD idempotency: name already used?
+  if model_exists "$name"; then
+    local ert esv
+    ert="$(model_runtime "$name")"; esv="$(model_served "$name")"
+    if [[ "$ert" == "lmstudio" && "$esv" == "$slug" ]]; then
+      ok "models.$name already declared (served=$slug); nothing to do"
+      exit 0
+    fi
+    err "name '$name' already used by a different served id ('$esv'); choose \`as <other>\`"
+    exit 2
+  fi
+
+  # Infer big from the on-disk size (RAM-cautious default).
+  local bytes thresh_gb thresh big=false
+  bytes="$(lms_lib_size_bytes "$slug")"
+  thresh_gb="${MODEL_BIG_GB:-8}"
+  [[ "$thresh_gb" =~ ^[0-9]+$ ]] || thresh_gb=8   # guard a non-numeric MODEL_BIG_GB (set -u/errexit safe)
+  thresh=$(( thresh_gb * 1000000000 ))
+  if [[ -n "$bytes" ]]; then
+    if (( bytes >= thresh )); then big=true; fi
+  else
+    big=true
+    note "size unknown for '$slug' — defaulting big=true (RAM-cautious)"
+  fi
+
+  # DRY-RUN: print the planned entry; write nothing.
+  if (( dry )); then
+    note "[dry-run] planned models.$name:"
+    printf '    runtime: lmstudio\n'
+    printf '    served:  %s\n' "$slug"
+    printf '    big:     %s\n' "$big"
+    printf '    ttl:     1800\n'
+    note "would run sync (registers into config.yaml + widens scoped keys; loads nothing)"
+    exit 0
+  fi
+
+  # WRITE — single atomic yq (1800 literal so it lands as !!int).
+  NM="$name" SV="$slug" BIG="$big" yq -i '.models[strenv(NM)] = {"runtime":"lmstudio","served":strenv(SV),"big":(strenv(BIG)=="true"),"ttl":1800,"note":"added via model add"}' "$MODELS_YML" \
+    || { err "yq -i add model failed"; exit 1; }
+  ok "declared models.$name (served=$slug, big=$big, ttl=1800)"
+
+  # Served-id caveat for non-MLX / namespaced slugs.
+  local fmt
+  fmt="$(printf '%s' "$lib" | SLUG="$slug" python3 -c 'import sys,os,json
+want=os.environ.get("SLUG","")
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(0)
+for m in (d if isinstance(d,list) else []):
+    if isinstance(m,dict) and m.get("modelKey")==want and m.get("type")=="llm":
+        print(m.get("format") or ""); break' 2>/dev/null || echo "")"
+  if [[ "$slug" == */* || "$slug" == *@* || "$fmt" != "mlx" ]]; then
+    note "verify served: matches LM Studio /v1/models once loaded; if a request 404s, edit .served in installer/models.yml"
+  fi
+
+  # Sync unless told not to.
+  if (( nosync )); then
+    note "declared only; run install.sh model sync to register it into LiteLLM + widen scoped keys"
+  else
+    cmd_sync
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # 7. sync — the crash-safe 6-phase reconcile (constraint 4)
 # ---------------------------------------------------------------------------
 cmd_sync() {
@@ -830,7 +1112,7 @@ _dry_run() {
   fi
   rm -rf "$tmp"
 
-  note "P3 allowlist widening plan: scoped keys -> [${SUPERSET[*]}]"
+  note "P3 allowlist widening plan: scoped keys -> [$(superset_members | paste -sd' ' - 2>/dev/null || true)]"
   note "P4 per-agent render plan:"
   printf '    %-26s %-18s %s\n' AGENT ASSIGNED 'EFFECTIVE (gated)'
   local ag eff
@@ -846,7 +1128,7 @@ _dry_run() {
 # source of truth). Phases/bridge that mint keys SHOULD read this instead of
 # re-hardcoding the list; doctor check 40 turns RED if a scoped key drifts below it.
 cmd_superset() {
-  if [[ "${1:-}" == "--json" ]]; then allowlist_superset_json; else printf '%s\n' "${SUPERSET[@]}"; fi
+  if [[ "${1:-}" == "--json" ]]; then allowlist_superset_json; else superset_members; fi
 }
 
 # ---------------------------------------------------------------------------
@@ -858,6 +1140,8 @@ main() {
   case "$sub" in
     list)     cmd_list "$@" ;;
     assign)   cmd_assign "$@" ;;
+    discover) cmd_discover "$@" ;;
+    add)      cmd_add "$@" ;;
     sync)     cmd_sync "$@" ;;
     superset) cmd_superset "$@" ;;
     -h|--help|help)
@@ -865,11 +1149,13 @@ main() {
 install.sh model — declarative model<->agent binding (installer/models.yml)
   model list [--json]              READ-ONLY catalog + live agent matrix
   model assign <agent> <model> [--dry-run] [--no-sync]
+  model discover                   READ-ONLY LM Studio library (LLMs + embeddings); loads nothing
+  model add <lms-slug> [as <name>] [--dry-run] [--no-sync]   declare a library LLM (no load)
   model sync [<agent>] [--dry-run] [--no-restart]
   model superset [--json]          print the canonical scoped-key allowlist
 EOF
       ;;
-    *) err "model: unknown subcommand '$sub' (want list|assign|sync|superset)"; exit 2 ;;
+    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|sync|superset)"; exit 2 ;;
   esac
 }
 

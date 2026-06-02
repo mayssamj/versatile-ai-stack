@@ -49,6 +49,55 @@ for m in d.get("data",[]):
         print(i)' 2>/dev/null
 }
 
+# ── READ-ONLY library catalog helpers (never load a model) ──────────────────
+# These read the on-disk LM Studio model catalog (`lms ls --json`), which works
+# with the server DOWN. They NEVER call `lms load` — declaration/discovery only.
+
+# lms_library_json — READ-ONLY library catalog — never loads a model.
+# Echo the raw `lms ls --json` array (on-disk catalog). Empty + return 1 if the
+# CLI is missing or the catalog is empty/unreadable.
+lms_library_json() {
+  local lms; lms="$(lms_cli)" || { echo ''; return 1; }
+  local out; out="$("$lms" ls --json 2>/dev/null || echo '')"
+  [[ -n "$out" ]] || { echo ''; return 1; }
+  echo "$out"
+}
+
+# lms_lib_has_slug <slug> — READ-ONLY library catalog — never loads a model.
+# Return 0 iff some catalog entry has .modelKey == slug AND .type == 'llm'
+# (EXACT string equality; no prefix/fuzzy). Return 1 if CLI/library unavailable.
+lms_lib_has_slug() {
+  local slug="$1"
+  [[ -n "$slug" ]] || return 1
+  local lib; lib="$(lms_library_json)" || return 1
+  printf '%s' "$lib" | SLUG="$slug" python3 -c 'import sys,os,json
+want=os.environ.get("SLUG","")
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(1)
+for m in (d if isinstance(d,list) else []):
+    if isinstance(m,dict) and m.get("modelKey")==want and m.get("type")=="llm":
+        sys.exit(0)
+sys.exit(1)' 2>/dev/null
+}
+
+# lms_lib_size_bytes <slug> — READ-ONLY library catalog — never loads a model.
+# Echo the integer sizeBytes for the entry whose .modelKey == slug AND
+# .type == 'llm'; echo nothing if not found or null.
+lms_lib_size_bytes() {
+  local slug="$1"
+  [[ -n "$slug" ]] || { echo ''; return 0; }
+  local lib; lib="$(lms_library_json)" || { echo ''; return 0; }
+  printf '%s' "$lib" | SLUG="$slug" python3 -c 'import sys,os,json
+want=os.environ.get("SLUG","")
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(0)
+for m in (d if isinstance(d,list) else []):
+    if isinstance(m,dict) and m.get("modelKey")==want and m.get("type")=="llm":
+        sz=m.get("sizeBytes")
+        if isinstance(sz,int): print(sz)
+        break' 2>/dev/null || echo ''
+}
+
 # lms_served_first — the first served LLM id (Phase 25 compatibility helper).
 lms_served_first() { lms_served_ids | head -1; }
 
