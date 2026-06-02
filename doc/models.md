@@ -301,16 +301,21 @@ extracts user representations from messages and runs them through LiteLLM at
 `AUTH_USE_AUTH=false`; data persists in `data/honcho` Postgres and never leaves
 the machine.
 
-**Deliberate exception to `models.yml` selection.** The deriver is pinned to
-`local-heavy` (intended Ollama `qwen3.6:27b-q4_K_M`) — independent of each
-agent's chat-model assignment, because a small model confabulates personas. The
-memory plane does **not** go through `models.yml` availability-gating.
+**Deliberate exception to per-agent `models.yml` selection.** The deriver uses a
+single stack-wide model for *all* derivation (independent of each agent's
+chat-model assignment), since persona extraction wants one consistent model. It
+defaults to the canonical stack default — `models.yml .default` (`local-gemma4`,
+served by Ollama) — like every other service, and is **overridable via the
+`HONCHO_DERIVER_MODEL` env var** in the stack `.env`. The memory plane does
+**not** go through `models.yml` per-agent availability-gating.
 
-> **KNOWN GAP (present-day).** `local-heavy` maps (in `litellm/config.yaml`) to
-> `ollama_chat/qwen3.6:27b-q4_K_M`, but that tag is **not pre-pulled** — Phase 01
-> pulls only `gemma4:e4b` + `nomic-embed-text`, and `ollama list` on this box
-> shows only `gemma4:e4b`, `nomic-embed-text`, and a jina embedding model. So
-> Honcho derivation **404s today**. Fix: `ollama pull qwen3.6:27b-q4_K_M`, **or**
-> repoint Phase 03's `LLM_OPENAI_MODEL` (`installer/phases/03_honcho.sh:139`) to
-> a model that is actually served. Verify with `ollama list` or a LiteLLM call
-> to `local-heavy` before relying on memory.
+> **Default source.** `installer/phases/03_honcho.sh` reads
+> `HONCHO_DERIVER_MODEL` (falling back to `models.yml .default`) and writes it to
+> `honcho/.env` as `LLM_OPENAI_MODEL`. To use a heavier model for richer
+> personas, set `HONCHO_DERIVER_MODEL=local-qwen3.6` (or pull `qwen3.6:27b` and
+> use `local-heavy`) in `.env`, then `docker compose up -d deriver` from
+> `honcho/` to recreate the container so it reloads the env.
+>
+> *(Was previously pinned to `local-heavy` → `ollama_chat/qwen3.6:27b-q4_K_M`,
+> which is not pre-pulled, so every derivation hit the `local-heavy: ["local"]`
+> fallback. Now points directly at the served default — no wasted retry.)*

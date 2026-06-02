@@ -214,13 +214,15 @@ fail-closed. A refusal makes the agent availability-gate to `local-gemma4`. The
 one-big-MLX policy unloads any other model before load; bypass with
 `LMS_SKIP_RAM_PREFLIGHT=1`. See `installer/lib/lmstudio.sh`.
 
-The **Honcho deriver** is a deliberate exception to `models.yml` selection: it
-is pinned to `local-heavy` (intended Ollama `qwen3.6:27b-q4_K_M`) regardless of
-each agent's chat-model binding, and the memory plane does not go through
-`models.yml` availability-gating. **Known gap:** `qwen3.6:27b` is not pre-pulled
-(Phase 01 pulls only `gemma4:e4b` + `nomic-embed-text`), so derivation **404s**
-until the tag is pulled or Phase 03 (`installer/phases/03_honcho.sh`) is
-repointed.
+The **Honcho deriver** is a deliberate exception to *per-agent* `models.yml`
+selection: it uses one stack-wide model for all derivation, regardless of each
+agent's chat-model binding, and the memory plane does not go through `models.yml`
+availability-gating. It defaults to the canonical stack default
+(`models.yml .default` = `local-gemma4`/gemma4:e4b, which is pre-pulled and
+resident) like every other service, and is **overridable via the
+`HONCHO_DERIVER_MODEL` env var** in `.env` (Phase 03 reads it and writes
+`LLM_OPENAI_MODEL` into `honcho/.env`). Set it to a heavier slug (e.g.
+`local-qwen3.6`) for richer personas when you have the RAM headroom.
 
 ---
 

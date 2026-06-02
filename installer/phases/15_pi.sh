@@ -57,8 +57,11 @@ precheck() {
   # Pi CLI must be installed inside the sandbox.
   "$osh" sandbox exec -n "$SANDBOX" --no-tty -- \
     /bin/sh -c 'test -x /sandbox/node_modules/.bin/pi' 2>/dev/null || return 1
-  # Inference route must be wired at the gateway.
-  "$osh" inference get 2>/dev/null | grep -q "Model: local-heavy" || return 1
+  # Inference route must be wired at the gateway. Pi injects its own
+  # --model (PI_DEFAULT_MODEL), so don't pin a specific gateway model here —
+  # just assert the LiteLLM provider is wired (was "Model: local-heavy",
+  # which broke after local-heavy stopped being the gateway default).
+  "$osh" inference get 2>/dev/null | grep -q "Provider: litellm" || return 1
   # Extension file in place inside the sandbox.
   "$osh" sandbox exec -n "$SANDBOX" --no-tty -- \
     /bin/sh -c 'test -f /sandbox/.pi/extensions/inference-local.ts' 2>/dev/null \
@@ -270,7 +273,7 @@ esac
 # never set and tripped `set -u` on this line). CHANGELOG 2026-05-30.
 PI_VERSION="$(sed -nE 's/.*"@earendil-works\/pi-coding-agent":[[:space:]]*"([0-9.]+)".*/\1/p' "$PI_DIR/package.json" 2>/dev/null | head -1)"
 stamp_mark "$PHASE"
-record "phase 15 complete: pi v${PI_VERSION:-unknown} in $SANDBOX, inference.local→litellm/local-heavy, honcho peer=$PI_PEER_ID"
+record "phase 15 complete: pi v${PI_VERSION:-unknown} in $SANDBOX, inference.local→litellm (Pi injects PI_DEFAULT_MODEL=${PI_DEFAULT:-local}), honcho peer=$PI_PEER_ID"
 ok "Phase 15 — Pi — complete"
 note "Run:    bin/pi    (launches Pi TUI inside $SANDBOX)"
 note "Kill:   bin/pi-kill"

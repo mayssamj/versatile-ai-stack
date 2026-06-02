@@ -132,11 +132,18 @@ honcho_set_env LLM_OPENAI_API_KEY  "$LITELLM_KEY"
 # `litellm` could collide with a name on the default network. Per D28 in
 # refactor-design-final.md.
 honcho_set_env LLM_OPENAI_API_BASE "http://litellm.ai-stack:4000/v1"
-# Honcho's deriver extracts user representations from messages — a small
-# model (gemma4) confabulates personas. Pin to local-heavy (qwen3.6:27b)
-# so derivation quality matches the rest of the stack. The user explicitly
-# said "use qwen". (Was 'local' which mapped to gemma4.)
-honcho_set_env LLM_OPENAI_MODEL    "local-heavy"
+# Honcho's deriver extracts user representations from messages. It uses the
+# stack default model (gemma4) like every other service — resolved from
+# models.yml `.default` so it tracks the canonical default — and is
+# overridable via HONCHO_DERIVER_MODEL in the stack .env.
+#   Was hardcoded `local-heavy` (qwen3.6:27b-q4_K_M), which has since been
+#   REMOVED from Ollama, so the deriver 404'd on every derivation. gemma4:e4b
+#   is fast + resident on the 24GB box. Bump HONCHO_DERIVER_MODEL to a heavier
+#   slug (e.g. local-qwen3.6) for richer personas when you have RAM headroom.
+HONCHO_DERIVER_DEFAULT="$(yq -r '.default // "local-gemma4"' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+[[ -n "$HONCHO_DERIVER_DEFAULT" && "$HONCHO_DERIVER_DEFAULT" != "null" ]] || HONCHO_DERIVER_DEFAULT="local-gemma4"
+HONCHO_DERIVER_MODEL="$(get_env HONCHO_DERIVER_MODEL "$HONCHO_DERIVER_DEFAULT")"
+honcho_set_env LLM_OPENAI_MODEL    "$HONCHO_DERIVER_MODEL"
 honcho_set_env AUTH_USE_AUTH       "false"
 ok "patched $HONCHO_DIR/.env to use LiteLLM"
 

@@ -512,8 +512,8 @@ flowchart TB
 ## 5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)
 
 Not to be confused with [§11 Memory profiles](#11-memory-profiles--what-runs-in-each-ram-mode)
-(RAM modes). The deriver is pinned to `local-heavy`; the **KNOWN GAP** note marks
-that `qwen3.6:27b` is not pre-pulled, so derivation 404s today.
+(RAM modes). The deriver uses the stack default model (`local-gemma4`/gemma4:e4b)
+like every other service, overridable via the `HONCHO_DERIVER_MODEL` env var.
 
 ```mermaid
 sequenceDiagram
