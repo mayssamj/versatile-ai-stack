@@ -28,6 +28,7 @@ services:
   ollama:
     enabled: true
     type: brew-service
+    desc: "Local open-weight model server (host brew service, Metal-accelerated)"
     port: 11434
     bind: 127.0.0.1
     health: http://127.0.0.1:11434/api/tags
@@ -36,6 +37,7 @@ services:
   litellm:
     enabled: true
     type: docker
+    desc: "OpenAI-compatible proxy fronting every model behind one endpoint"
     image: ghcr.io/berriai/litellm:main-stable
     port: 4000
     bind: 127.0.0.1
@@ -60,6 +62,7 @@ services:
   phoenix:
     enabled: true
     type: docker
+    desc: "Arize Phoenix OpenTelemetry collector + tracing/eval UI for LiteLLM"
     image: arizephoenix/phoenix:latest
     ports: [6006, 4317]
     bind: 127.0.0.1
@@ -83,6 +86,7 @@ services:
   falkordb:
     enabled: true
     type: docker
+    desc: "Graph database speaking Cypher over the Redis protocol, with web UI"
     image: falkordb/falkordb:latest
     ports: [6379, 3010] # 3010 on host → 3000 in container (DEPRECATED: see alias falkordb-ui)
     bind: 127.0.0.1
@@ -103,6 +107,7 @@ services:
   qdrant:
     enabled: true
     type: docker
+    desc: "Vector database for embeddings and nearest-neighbor search"
     image: qdrant/qdrant
     port: 6333
     bind: 127.0.0.1
@@ -118,6 +123,7 @@ services:
   honcho:
     enabled: true
     type: compose
+    desc: "Self-hosted cross-agent, per-user memory server (Postgres + Redis)"
     path: ~/ai-stack/honcho
     port: 8000
     bind: 127.0.0.1
@@ -134,18 +140,21 @@ services:
   openshell:
     enabled: true
     type: openshell
+    desc: "Linux sandbox platform hosting the Hermes fleet and Pi sandboxes"
     sandbox: hermes-fleet-v1
     phase: "04"
     network: openshell
   hermes_fleet:
     enabled: true
     type: hermes-profiles
+    desc: "The 7-profile Hermes agent fleet in the hermes-fleet-v1 OpenShell sandbox"
     profiles: [hermes_cos, hermes_software_engineer, hermes_researcher, hermes_creator, hermes_reviewer, hermes_data_analyst, hermes_ops]
     phase: "04f"
     network: openshell
   hermes_telegram:
     enabled: true # Phase 20 — native hermes gateway → Telegram (@vz_hermes_controller_bot)
     type: sandbox-daemon
+    desc: "Hermes gateway inside the sandbox bridging the fleet to a Telegram bot"
     phase: "20"
     sandbox: hermes-fleet-v1
     network: openshell
@@ -163,16 +172,19 @@ services:
   litellm_guardrails_builtin:
     enabled: true # in-process regex/keyword; near-zero cost
     type: litellm-feature
+    desc: "In-process LiteLLM pre-call hook denying prompts that match a deny-set"
     phase: "04g"
     network: none
   litellm_guardrails_secrets:
     enabled: true # secret-leak blocker; do not disable lightly
     type: litellm-feature
+    desc: "LiteLLM post-call hook redacting secrets a model echoes in responses"
     phase: "04g"
     network: none
   llm_guard:
     enabled: true # second-layer scanner sidecar (user chose ON)
     type: docker
+    desc: "Optional second-layer security scanner sidecar (Docker container)"
     image: laiyer/llm-guard-api:latest
     port: 8001
     bind: 127.0.0.1
@@ -186,12 +198,14 @@ services:
   dual_llm_researcher:
     enabled: true # researcher reads via summarizer first
     type: agent-pattern
+    desc: "Prompting convention: operator only sees a summarizer's safe summary"
     phase: "04g"
     network: none
   # --- UIs (Phase 05) ---------------------------------------------------
   hermes_workspace:
     enabled: true
     type: compose
+    desc: "Web UI for managing the Hermes fleet (profiles, load, memory state)"
     path: ~/ai-stack/hermes-workspace
     # Compose normalizes the project name to dashes — actual containers are
     # named `hermes-workspace-…`, not `hermes_workspace-…`. Without this
@@ -209,6 +223,7 @@ services:
   openwebui:
     enabled: true
     type: docker
+    desc: "ChatGPT-style web chat UI wired to LiteLLM (model picker, file RAG)"
     image: ghcr.io/open-webui/open-webui:main
     # Real binding is the alias openwebui:8080 (host_port/container_port below).
     # The old v1 `port: 3001` + `health: …:3001/health` were vestigial — nothing
@@ -229,12 +244,14 @@ services:
     # (`python ingest.py`), not a daemon. status.sh now reports n/a instead
     # of false-flagging "should be running". 2-agent root cause 2026-05-29.
     type: cli-only
+    desc: "One-shot CLI that parses dropped files and embeds them into Qdrant"
     path: ~/ai-stack/ingestor
     phase: "06"
     network: host
   docs_mcp:
     enabled: true # user chose ON
     type: python-bg
+    desc: "Host MCP daemon serving semantic retrieval over the Qdrant doc store"
     path: ~/ai-stack/ingestor
     # The actual process cmdline is `python ingestor/mcp_server.py` —
     # the string "docs_mcp" never appears. Override pgrep pattern so
@@ -253,6 +270,7 @@ services:
   autofyn:
     enabled: true # user chose ON
     type: docker-compose
+    desc: "Docker-compose coding-automation agent with a dashboard UI on :3400"
     path: ~/ai-stack/autofyn
     port: 3400
     bind: 127.0.0.1
@@ -266,6 +284,7 @@ services:
   paperclip:
     enabled: true # user chose ON
     type: node-bg
+    desc: "Personal task agent (Node host daemon) serving its API+UI on :3100"
     port: 3100
     bind: 127.0.0.1
     phase: "08"
@@ -277,21 +296,25 @@ services:
   paperclip_honcho_plugin:
     enabled: true # activated inside Paperclip UI after install
     type: paperclip-plugin
+    desc: "In-UI Paperclip plugin wiring every dispatched task into Honcho memory"
     phase: "08"
     network: none
   remnic_hermes:
     enabled: true # Phase 09 — alternative memory (installed-disabled)
     type: pip-package
+    desc: "Alternative agent-memory Python library; installed-disabled candidate"
     phase: "09"
     network: none
   byterover_cli:
     enabled: true # Phase 09 — host-side memory CLI (installed-disabled)
     type: npm-global
+    desc: "Host npm-global Node CLI for a local, curatable context-tree memory"
     phase: "09"
     network: host
   deerflow:
     enabled: true # user chose ON
     type: docker-compose
+    desc: "Multi-step deep-research agent (LangGraph) that writes cited reports"
     path: ~/ai-stack/deer-flow
     # Compose project name pinned to `deer-flow` (with dash) by upstream's
     # deploy.sh: `docker compose -p deer-flow …`. Containers are named
@@ -303,16 +326,19 @@ services:
   halo:
     enabled: true # Phase 11 — CLI, run on demand
     type: cli-only
+    desc: "CLI agent reading a LiteLLM trace to find failures and propose fixes"
     phase: "11"
     network: none
   autoreason:
     enabled: true # Phase 11 — research artifact (clone-only)
     type: clone-only
+    desc: "Clone-only research artifact: an A/B/AB self-refinement tournament"
     phase: "11"
     network: none
   ace:
     enabled: true # Phase 17 — Agentic Context Engineering (batch CLI; no daemon)
     type: cli-only
+    desc: "Batch CLI that evolves reusable agent-context playbooks via LiteLLM"
     phase: "17"
     network: none
     # Routes via LiteLLM virtual key ACE_LITELLM_KEY (minted by Phase 17).
@@ -320,6 +346,7 @@ services:
   rlm:
     enabled: true # Phase 18 — Recursive Language Models (rlms; library + bin/rlm)
     type: cli-only
+    desc: "CLI + library for recursive long-context inference over huge inputs"
     phase: "18"
     network: none
     # Routes via LiteLLM virtual key RLM_LITELLM_KEY (minted by Phase 18).
@@ -328,6 +355,7 @@ services:
   claw3d_bridge:
     enabled: true # Phase 19 — stack-agents bridge (host python daemon, :7780)
     type: python-bg
+    desc: "Host daemon exposing every stack agent on one OpenAI-style endpoint"
     phase: "19"
     process_pattern: claw3d-bridge/bridge.py
     network: host
@@ -336,6 +364,7 @@ services:
   claw3d:
     enabled: true # Phase 19 — 3D agent office UI (host node daemon)
     type: node-bg
+    desc: "Next.js 3D virtual-office UI to visualize and chat with stack agents"
     phase: "19"
     process_pattern: claw3d/server/index.js
     network: host
@@ -345,6 +374,7 @@ services:
   blaxel_cli:
     enabled: true # CLI installed; deploys are on-demand
     type: cli-only
+    desc: "Cloud-only CLI for deploying agents on Blaxel; no local service runs"
     phase: "12"
     network: none
     # ---------------------------------------------------------------------
@@ -367,6 +397,7 @@ services:
   unsloth:
     enabled: true # local fine-tuning + training UI; macOS M-series uses MLX
     type: python-bg
+    desc: "Local fine-tuning + training web UI (LoRA/QLoRA, MLX) on :8898"
     port: 8898
     bind: 0.0.0.0
     phase: "14"
@@ -374,6 +405,7 @@ services:
   pi:
     enabled: true # Phase 15 — Pi coding agent in pi-v1 OpenShell sandbox
     type: openshell
+    desc: "Earendil's tree-branching TUI coding agent in its own pi-v1 sandbox"
     sandbox: pi-v1
     phase: "15"
     network: openshell
@@ -384,6 +416,7 @@ services:
   pi_gateway_litellm:
     enabled: true # Phase 15 — LiteLLM virtual key minted for Pi
     type: litellm-virtual-key
+    desc: "LiteLLM virtual key minted for Pi: local-model superset, no master key."
     phase: "15"
     network: none
   lumen_mcp:
@@ -391,6 +424,7 @@ services:
     # stdio-only — no daemon, no port. Each MCP client spawns its own
     # `lumen stdio` subprocess via the bin/lumen wrapper.
     type: cli-only
+    desc: "Ory's Lumen: semantic code search as a CLI or stdio MCP server"
     phase: "16"
     network: none
     # Reads from Ollama for embeddings; index lives in ~/.local/share/lumen/.
@@ -400,6 +434,7 @@ services:
   portless:
     enabled: true # Phase 21 — agent-aware local dev proxy (named name.localhost URLs)
     type: cli-only
+    desc: "Agent-aware local dev proxy mapping named HTTPS URLs to dev servers"
     phase: "21"
     network: none
     # Global npm CLI on the host; ships a Claude Code skill (portless get/list).
@@ -407,6 +442,7 @@ services:
   cmux:
     enabled: true # Phase 22 — native macOS terminal for parallel agent sessions
     type: cli-only
+    desc: "Native macOS terminal for many parallel agent sessions in tabs"
     phase: "22"
     network: none
     # GUI app via `brew install --cask cmux` (tap manaflow-ai/cmux). No daemon;
@@ -414,6 +450,7 @@ services:
   skillspector:
     enabled: true # Phase 23 — NVIDIA agent-skill / MCP security scanner (offline-first)
     type: cli-only
+    desc: "NVIDIA offline-first scanner vetting a skill/MCP server before install"
     phase: "23"
     network: none
     # Vendored clone (gitignored) + uv venv + bin/skillspector wrapper (--no-llm
@@ -421,6 +458,7 @@ services:
   openagents:
     enabled: true # Phase 24 — OpenAgents Launcher (`agn`); opt-in, OVERLAPS the stack
     type: cli-only
+    desc: "Launcher/dashboard + agn CLI to install and manage coding agents"
     phase: "24"
     network: none
     # Installs to ~/.openagents (its own portable Node); NOT wired into LiteLLM/
@@ -428,6 +466,7 @@ services:
   lmstudio:
     enabled: true # Phase 25 — LM Studio (MLX) as a 2nd runtime behind LiteLLM
     type: cli-only
+    desc: "LM Studio MLX engine as a 2nd OpenAI-compatible runtime behind LiteLLM"
     phase: "25"
     network: none
     # Host OpenAI server on :1234 (bound 0.0.0.0 for container access). Adds

@@ -30,24 +30,63 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   [[ -n "$_hd" && "$_hd" != "null" ]] && HERMES_MODEL="$_hd"
 fi
 
-PROFILES=(
-  "hermes_cos|chief of staff — decomposes goals, routes to specialists, does not implement|local-heavy"
-  "hermes_software_engineer|pragmatic senior engineer — minimal-diff code, tests, refactors|local-heavy"
-  "hermes_researcher|research collaborator — cites every claim, distinguishes evidence from speculation|local-heavy"
-  "hermes_creator|careful writer — shapes research into audience-ready prose|local-heavy"
-  "hermes_reviewer|rigorous reviewer — blocks with review-required: prefix when changes needed|local-heavy"
-  "hermes_data_analyst|data analyst — SQL and Python answering specific questions over real data|local-heavy"
-  "hermes_ops|ops engineer — deploys, monitoring, incidents; prefers boring working systems|local-heavy"
-)
+MODELS_YML="$AI_STACK/installer/models.yml"
+
+# fleet_profiles — DATA-DRIVEN roster: top-level kinds entries whose
+# kind==hermes-profile. Capture-then-grep (errexit/pipefail-safe).
+# NOTE: byte-identical to installer/lib/fleet.sh::fleet_profiles — keep the yq
+# expression in sync (divergence would silently break the SOUL_COUNT guard).
+fleet_profiles() {
+  local out
+  out="$(yq -r '.kinds | to_entries | map(select(.value.kind=="hermes-profile")) | .[].key' "$MODELS_YML" 2>/dev/null || true)"
+  grep -v '^[[:space:]]*$' <<<"$out" || true
+}
+
+# profile_desc <name> — the kinds.<name>.desc role string ("" if absent).
+profile_desc() { yq -r ".kinds.\"$1\".desc // \"\"" "$MODELS_YML" 2>/dev/null || true; }
+
+# Canonical descriptions for the core 7 (profile_desc fallback so 04f renders
+# byte-identically to the legacy hardcoded PROFILES array for them).
+core7_desc() {
+  case "$1" in
+    hermes_cos)               echo "chief of staff — decomposes goals, routes to specialists, does not implement" ;;
+    hermes_software_engineer) echo "pragmatic senior engineer — minimal-diff code, tests, refactors" ;;
+    hermes_researcher)        echo "research collaborator — cites every claim, distinguishes evidence from speculation" ;;
+    hermes_creator)           echo "careful writer — shapes research into audience-ready prose" ;;
+    hermes_reviewer)          echo "rigorous reviewer — blocks with review-required: prefix when changes needed" ;;
+    hermes_data_analyst)      echo "data analyst — SQL and Python answering specific questions over real data" ;;
+    hermes_ops)               echo "ops engineer — deploys, monitoring, incidents; prefers boring working systems" ;;
+    *)                        echo "" ;;
+  esac
+}
+
+# resolve_desc <name> — kinds.desc, else the canonical core-7 description, else
+# the profile name (used as the minimal-soul role + the bootstrap roster field).
+resolve_desc() {
+  local d; d="$(profile_desc "$1")"
+  [[ -z "$d" || "$d" == "null" ]] && d="$(core7_desc "$1")"
+  [[ -z "$d" ]] && d="$1"
+  printf '%s' "$d"
+}
+
+# CORE7 force-seed list (preserve restore-on-reinstall for the canonical souls).
+CORE7=(hermes_cos hermes_software_engineer hermes_researcher hermes_creator hermes_reviewer hermes_data_analyst hermes_ops)
+
+# PROFILES — derived `name|desc` roster for the host-side configure loop.
+PROFILES=()
+while IFS= read -r _p; do
+  [[ -z "$_p" ]] && continue
+  PROFILES+=("$_p|$(resolve_desc "$_p")")
+done < <(fleet_profiles)
 
 precheck() {
   command -v openshell >/dev/null || return 1
   [[ -d "$SOULS_DIR" ]] || return 1
   local prof
-  for entry in "${PROFILES[@]}"; do
-    prof="${entry%%|*}"
+  while IFS= read -r prof; do
+    [[ -z "$prof" ]] && continue
     [[ -f "$SOULS_DIR/${prof}.md" ]] || return 1
-  done
+  done < <(fleet_profiles)
   # Sandbox existence check: tolerate the case where `openshell sandbox list`
   # exits non-zero (e.g. no gateway registered yet). If the sandbox isn't
   # there, this precheck reports "not done" and the phase tries to run.
@@ -238,6 +277,34 @@ You prefer boring, working systems to clever, fragile ones.
 - Heroics.
 '
 
+# --- Universal seed for any DERIVED non-core profile missing a soul ---------
+# After the unconditional core-7 seeds above, ensure EVERY derived profile has a
+# soul before upload (so the SOUL_COUNT guard can't false-abort). Only seeds when
+# ABSENT — user-edited fleet (non-core) souls survive re-runs by design. Shares
+# the minimal template byte-for-byte with installer/lib/fleet.sh::render_minimal_soul.
+seed_minimal_soul() {
+  local name="$1" role="$2" f="$SOULS_DIR/${name}.md"
+  printf '%s\n' \
+'# Identity' \
+"$role" \
+'' \
+'# Style' \
+'- Be concise and concrete.' \
+'' \
+'# Defaults' \
+'- Ask one clarifying question when the request is ambiguous.' \
+'' \
+'# Avoid' \
+'- Inventing facts, APIs, or behavior you did not verify.' > "$f"
+  ok "seeded minimal soul $f"
+}
+while IFS= read -r _dp; do
+  [[ -z "$_dp" ]] && continue
+  _is_core=0; for _c in "${CORE7[@]}"; do [[ "$_dp" == "$_c" ]] && { _is_core=1; break; }; done
+  (( _is_core )) && continue
+  [[ -f "$SOULS_DIR/${_dp}.md" ]] || seed_minimal_soul "$_dp" "$(resolve_desc "$_dp")"
+done < <(fleet_profiles)
+
 # --- Render the bootstrap script and run it INSIDE the sandbox ---
 BOOT_DIR="$AI_STACK/openshell/fleet-bootstrap"
 mkdir -p "$BOOT_DIR"
@@ -255,18 +322,28 @@ if ! command -v hermes >/dev/null 2>&1; then
   echo "PATH=$PATH" >&2
   exit 1
 fi
-ROSTER=(
-  "hermes_cos|chief of staff|local-heavy"
-  "hermes_software_engineer|pragmatic senior engineer|local-heavy"
-  "hermes_researcher|research collaborator|local-heavy"
-  "hermes_creator|careful writer|local-heavy"
-  "hermes_reviewer|rigorous reviewer|local-heavy"
-  "hermes_data_analyst|data analyst|local-heavy"
-  "hermes_ops|ops engineer|local-heavy"
-)
+EOF
+# Inject the DERIVED roster (name|description only — the legacy 3rd `local-heavy`
+# field was dead; bootstrap's create only uses fields 1-2). Generated from the
+# data-driven fleet_profiles roster so `fleet add` profiles appear here too.
+{
+  printf 'ROSTER=(\n'
+  for entry in "${PROFILES[@]}"; do
+    _rn="${entry%%|*}"; _rd="${entry#*|}"
+    # Strip any '|' from the description so the `read -r name desc` split is clean.
+    _rd="${_rd//|/ }"
+    printf '  "%s|%s"\n' "$_rn" "$_rd"
+  done
+  printf ')\n'
+} >> "$BOOT_DIR/bootstrap.sh"
+cat >> "$BOOT_DIR/bootstrap.sh" <<'EOF'
 for entry in "${ROSTER[@]}"; do
-  IFS='|' read -r name desc model <<< "$entry"
-  if hermes profile list 2>/dev/null | awk '{print $1}' | grep -qxF "$name"; then
+  IFS='|' read -r name desc <<< "$entry"
+  # Capture-then-grep: a direct `hermes profile list | awk | grep -q` pipe dies
+  # under `set -o pipefail` when grep -q closes the pipe (SIGPIPE 141) — that
+  # could wedge the bootstrap mid-roster. Capture first, then grep the var.
+  _plist="$(hermes profile list 2>/dev/null | awk '{print $1}')"
+  if grep -qxF "$name" <<<"$_plist"; then
     echo "==> $name exists — updating SOUL + config"
   else
     echo "==> creating $name"
@@ -350,8 +427,18 @@ openshell sandbox upload "$SANDBOX" "$BOOT_DIR/bootstrap.sh" /sandbox/fleet-boot
   || { err "sandbox upload bootstrap failed"; exit 1; }
 # Verify souls actually landed (defense against silent upload misbehavior).
 SOUL_COUNT="$(openshell sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'ls /sandbox/fleet-souls/*.md 2>/dev/null | wc -l' 2>/dev/null | tr -d '[:space:]')"
-if [[ "${SOUL_COUNT:-0}" -lt 7 ]]; then
-  err "Expected 7 souls in /sandbox/fleet-souls, found ${SOUL_COUNT:-0}. Aborting."
+# Expect one uploaded soul per DERIVED profile (>=7; the reserved guard keeps the
+# core 7 unremovable so this floor always holds). The universal seeder above
+# guarantees a soul exists on disk for every derived profile before upload.
+_EXPECT="$(fleet_profiles | wc -l | tr -d '[:space:]')"
+[[ "$_EXPECT" =~ ^[0-9]+$ ]] || _EXPECT=7
+if [[ "${SOUL_COUNT:-0}" -lt "$_EXPECT" ]]; then
+  err "Expected $_EXPECT souls in /sandbox/fleet-souls, found ${SOUL_COUNT:-0}. Aborting."
+  err "Profiles lacking an uploaded soul (derived vs on-disk):"
+  while IFS= read -r _ep; do
+    [[ -z "$_ep" ]] && continue
+    [[ -f "$SOULS_DIR/${_ep}.md" ]] || err "    $_ep (no soul on host)"
+  done < <(fleet_profiles)
   err "Diagnose: openshell sandbox exec -n $SANDBOX --no-tty -- ls -la /sandbox/fleet-souls/"
   exit 1
 fi
@@ -458,5 +545,5 @@ else
 fi
 
 stamp_mark "$PHASE"
-record "phase 04·F complete: 7 hermes profiles bootstrapped + routed to LiteLLM ($HERMES_MODEL) in sandbox $SANDBOX"
+record "phase 04·F complete: $_EXPECT hermes profiles bootstrapped + routed to LiteLLM ($HERMES_MODEL) in sandbox $SANDBOX"
 ok "Phase 04·F — Hermes fleet — complete"

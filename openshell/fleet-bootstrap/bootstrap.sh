@@ -12,17 +12,21 @@ if ! command -v hermes >/dev/null 2>&1; then
   exit 1
 fi
 ROSTER=(
-  "hermes_cos|chief of staff|local-heavy"
-  "hermes_software_engineer|pragmatic senior engineer|local-heavy"
-  "hermes_researcher|research collaborator|local-heavy"
-  "hermes_creator|careful writer|local-heavy"
-  "hermes_reviewer|rigorous reviewer|local-heavy"
-  "hermes_data_analyst|data analyst|local-heavy"
-  "hermes_ops|ops engineer|local-heavy"
+  "hermes_cos|chief of staff — decomposes goals, routes to specialists, does not implement"
+  "hermes_software_engineer|pragmatic senior engineer — minimal-diff code, tests, refactors"
+  "hermes_researcher|research collaborator — cites every claim, distinguishes evidence from speculation"
+  "hermes_creator|careful writer — shapes research into audience-ready prose"
+  "hermes_reviewer|rigorous reviewer — blocks with review-required: prefix when changes needed"
+  "hermes_data_analyst|data analyst — SQL and Python answering specific questions over real data"
+  "hermes_ops|ops engineer — deploys, monitoring, incidents; prefers boring working systems"
 )
 for entry in "${ROSTER[@]}"; do
-  IFS='|' read -r name desc model <<< "$entry"
-  if hermes profile list 2>/dev/null | awk '{print $1}' | grep -qxF "$name"; then
+  IFS='|' read -r name desc <<< "$entry"
+  # Capture-then-grep: a direct `hermes profile list | awk | grep -q` pipe dies
+  # under `set -o pipefail` when grep -q closes the pipe (SIGPIPE 141) — that
+  # could wedge the bootstrap mid-roster. Capture first, then grep the var.
+  _plist="$(hermes profile list 2>/dev/null | awk '{print $1}')"
+  if grep -qxF "$name" <<<"$_plist"; then
     echo "==> $name exists — updating SOUL + config"
   else
     echo "==> creating $name"

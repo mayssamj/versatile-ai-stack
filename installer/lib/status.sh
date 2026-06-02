@@ -9,11 +9,57 @@ source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 
+# --- flags ---------------------------------------------------------------------
+# -d|--describe  add a dim one-line description sub-line under each row
+# --legend       decode the columns (alone: print legend and exit, zero probes)
+# Unknown flags warn (common.sh warn) but never abort; non-flag args are ignored.
+# `for a in "$@"` is a no-op with zero args (the current install.sh call site),
+# so default behavior is unchanged under set -Eeuo pipefail.
+SHOW_DESC=0; SHOW_LEGEND=0
+for a in "$@"; do case "$a" in
+  -d|--describe) SHOW_DESC=1 ;;
+  --legend)      SHOW_LEGEND=1 ;;
+  -h|--help)     printf 'usage: install.sh status [-d|--describe] [--legend]\n'; exit 0 ;;
+  -*)            warn "status: unknown flag '$a' (ignored)" ;;
+  *)             : ;;
+esac; done
+
 ROW_FMT='%-30s %-10s %-10s %-12s %s\n'
 
 print_header() {
   printf "$ROW_FMT" NAME DECLARED ACTUAL OWNERSHIP NOTES
   printf "$ROW_FMT" "------------------------------" "--------" "--------" "----------" "-----"
+}
+
+# Decode the columns. Printed under --describe/--legend (and standalone for
+# `--legend` alone, which early-exits before any probe). Heading uses common.sh's
+# tty-gated C_BOLD/C_DIM/C_RESET; the body is plain so it stays aligned.
+print_legend() {
+  printf '\n%sLegend%s\n' "$C_BOLD" "$C_RESET"
+  printf '  DECLARED   enabled / disabled   your intent in services.yml (change: install.sh enable|disable <svc>)\n'
+  printf '  ACTUAL     running              process/container is up\n'
+  printf '             stopped              should be up but is not (see NOTES)\n'
+  printf '             n/a                  not a long-running daemon — CLI, config, sandbox-internal, or a minted key\n'
+  printf '  OWNERSHIP  managed              container started & labeled by this installer\n'
+  printf '             foreign              running but not ours (run: install.sh adopt <svc>)\n'
+  printf '             absent               no container exists\n'
+  printf '             -                    N/A — not a container (brew/host/CLI/feature)\n'
+  printf '  NOTES      drift hints + the exact command to fix it\n'
+}
+
+# Footer: a single always-on dim pointer line by default; the fuller act-on-drift
+# block prints only when --describe/--legend is set (keeps the constantly-run
+# default output nearly byte-identical). EXPLORE link is a click-to-open file://
+# URL built from the already-absolute $AI_STACK.
+print_status_footer() {
+  if (( SHOW_DESC )) || (( SHOW_LEGEND )); then
+    printf '\n%sWhat is each service?%s  Open the interactive explorer:  %sfile://%s/doc/EXPLORE.html%s\n' \
+      "$C_BOLD" "$C_RESET" "$C_DIM" "$AI_STACK" "$C_RESET"
+    printf '  Act on drift:  install.sh start <svc> · adopt <svc> · doctor · model sync   (see: install.sh help)\n'
+  else
+    printf '\n%sRun %sinstall.sh status --describe%s for one-line descriptions, %s--legend%s to decode columns, or open doc/EXPLORE.html%s\n' \
+      "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET"
+  fi
 }
 
 # Returns: "managed" (we own it), "foreign" (running but not labeled by us),
@@ -46,28 +92,10 @@ ownership_compose() {
   [[ "$wd" == "$AI_STACK"* ]] && echo managed || echo foreign
 }
 
-svc_type() { yq -r ".services.$1.type // \"unknown\"" "$SERVICES_YML"; }
-svc_enabled() { yq -r ".services.$1.enabled // false" "$SERVICES_YML"; }
-
-# Compose-project name can differ from the service-key (e.g. `deerflow` →
-# project `deer-flow` because compose normalizes underscores to dashes when
-# generating container names from a directory). Override per-service via
-# `services.<name>.project:` in services.yml; default = service name.
-svc_project() {
-  local p
-  p="$(yq -r ".services.$1.project // \"\"" "$SERVICES_YML")"
-  [[ -z "$p" || "$p" == "null" ]] && echo "$1" || echo "$p"
-}
-
-# python-bg/node-bg services: `pgrep -f $name` works only when the service
-# key string appears in the actual process command line. That's false for
-# docs_mcp (cmdline is `…/mcp_server.py`). Allow per-service override via
-# `services.<name>.process_pattern:` in services.yml; default = service name.
-svc_process_pattern() {
-  local p
-  p="$(yq -r ".services.$1.process_pattern // \"\"" "$SERVICES_YML")"
-  [[ -z "$p" || "$p" == "null" ]] && echo "$1" || echo "$p"
-}
+# Pure per-service yq accessors (svc_type/svc_enabled/svc_project/
+# svc_process_pattern + image/path/phase/sandbox/health) live in a shared,
+# side-effect-free lib so status.sh and upgrade.sh use one source of truth.
+source "$AI_STACK/installer/lib/services_accessors.sh"
 
 # Many python-bg/node-bg services drop a PID file under installer/state/. Prefer
 # checking that PID first (more precise than pgrep on shared-name binaries).
@@ -118,10 +146,14 @@ render_row() {
         actual=running
       fi
       ;;
-    cli-only|clone-only|pip-package|npm-global|litellm-feature|agent-pattern|paperclip-plugin|openshell|hermes-profiles|sandbox-daemon)
-      # sandbox-daemon (hermes_telegram): the gateway runs INSIDE the sandbox and
-      # is invisible to host pgrep; doctor check 33 does the real liveness probe
-      # via `hermes gateway status`. Mark n/a here like the other sandbox services.
+    cli-only|clone-only|pip-package|npm-global|litellm-feature|agent-pattern|paperclip-plugin|openshell|hermes-profiles|sandbox-daemon|litellm-virtual-key)
+      # None of these are host-pollable long-running daemons: CLIs/clones/pip/npm
+      # packages, in-process litellm features, the dual-LLM prompting pattern, a
+      # Paperclip UI plugin, sandbox-internal agents, and litellm-virtual-key
+      # (pi_gateway_litellm — a minted key, not a process). sandbox-daemon
+      # (hermes_telegram) runs INSIDE the sandbox, invisible to host pgrep; doctor
+      # check 33 does its real liveness probe via `hermes gateway status`. All
+      # report n/a (previously litellm-virtual-key fell through to a meaningless ?).
       actual="n/a"
       ;;
     *) actual="?" ;;
@@ -146,6 +178,15 @@ render_row() {
   [[ "$own" == "foreign" ]] && notes="${notes}foreign (run 'install.sh adopt $name'); "
 
   printf "$ROW_FMT" "$name" "$declared" "$actual" "$own" "$notes"
+
+  # --describe: dim, 4-space-indented one-line description sub-line. C_DIM/C_RESET
+  # come from common.sh and are empty when stdout is not a tty (or TERM=dumb), so
+  # piped/redirected output carries no escape codes. Slice at 74 → 4+74 = 78 cols
+  # (fits an 80-col terminal). One extra yq read per row, only on the -d path.
+  if (( SHOW_DESC )); then
+    local d; d="$(svc_desc "$name")"; d="${d:0:74}"; d="${d%"${d##*[![:space:]]}"}"
+    printf '    %s%s%s\n' "$C_DIM" "$d" "$C_RESET"
+  fi
 }
 
 # --- logical service sections for the status view -----------------------------
@@ -183,6 +224,11 @@ svc_group() {
   esac
 }
 
+# `--legend` alone: print the legend and exit BEFORE print_header and before any
+# yq/docker/brew/pgrep work — zero probes, returns instantly. (With --describe
+# also set, fall through so the legend prints after the table instead.)
+if (( SHOW_LEGEND )) && (( ! SHOW_DESC )); then print_legend; exit 0; fi
+
 print_header
 
 # Collect declared service keys (in services.yml order) once.
@@ -201,6 +247,10 @@ for grp in "${GROUP_ORDER[@]}"; do
   printf '\n── %s\n' "$(group_label "$grp")"
   for name in "${members[@]}"; do render_row "$name"; done
 done
+
+# Legend (when describing or asked), then the footer, then the inference hint.
+if (( SHOW_DESC )) || (( SHOW_LEGEND )); then print_legend; fi
+print_status_footer
 
 declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
 print_inference_hint

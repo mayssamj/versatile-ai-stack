@@ -167,6 +167,15 @@ ai-stack-installer — usage:
     install.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
     install.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
                                         (opt-in; NOT run by 'install all'. --dry-run / --no-restart)
+    install.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
+    install.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
+    install.sh fleet remove <name>      remove a fleet profile (reverses add)
+    install.sh fleet new <name> [--profiles a,b,c]   create a SEPARATE isolated fleet sandbox <name>-v1
+    install.sh fleet destroy <name>     tear down a fleet created by `fleet new`
+                                        NOTE: `install.sh install fleet|hermes` runs the PHASE (04f
+                                        re-render); `install.sh fleet <add|remove|list|new|destroy>`
+                                        is the fleet MANAGER. (add/remove default new profiles to the
+                                        gemma4 default; nothing loads a model.)
     install.sh doctor [<service>]       diagnose & offer fixes
     install.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
     install.sh adopt <service>          take ownership of a foreign container
@@ -175,6 +184,8 @@ ai-stack-installer — usage:
     install.sh history                  assemble CHANGELOG.d/* into one view
     install.sh gc                       list/clean partial container orphans
     install.sh migrate-v2               run the v1→v2 services.yml migration
+    install.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
+                                        (or all enabled), type-dispatched
     install.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
@@ -436,13 +447,16 @@ cmd_phases() {
 }
 
 cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; bash "$AI_STACK/installer/smoke/${id}.sh"; }
-cmd_status()  { bash "$AI_STACK/installer/lib/status.sh"; }
+cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
+cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
 cmd_gc()      { bash "$AI_STACK/installer/lib/gc.sh"; }
 cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
+# Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
+cmd_upgrade() { bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }
 
 # cmd_start <svc> — invoke bin/start-<svc>.sh (the canonical per-service
 # launcher). All managed services have one. For docker-compose services
@@ -595,8 +609,9 @@ main() {
     prepare-sudo)      cmd_prepare_sudo ;;
     test)              cmd_test "$1" ;;
     phases|steps|list) cmd_phases ;;
-    status)            cmd_status ;;
+    status)            cmd_status "$@" ;;
     model)             cmd_model "$@" ;;
+    fleet)             cmd_fleet "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
     verify)            cmd_verify ;;
     adopt)             cmd_adopt "$1" ;;
@@ -605,6 +620,7 @@ main() {
     history)           cmd_history ;;
     gc)                cmd_gc ;;
     migrate-v2)        cmd_migrate_v2 ;;
+    upgrade)           cmd_upgrade "$@" ;;
     reset)             cmd_reset "$@" ;;
     start|enable)      cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;
