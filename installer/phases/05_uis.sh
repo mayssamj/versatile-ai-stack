@@ -65,14 +65,18 @@ if [[ -f "$WS_DIR/docker-compose.yml" ]]; then
     cat "$WS_DIR/.env.example" > "$WS_DIR/.env"
     ok "seeded $WS_DIR/.env from .env.example"
   fi
-  # Two passwords are required for the stack to start:
-  #   - HERMES_PASSWORD: workspace session password (workspace binds 0.0.0.0:3000)
-  #   - API_SERVER_KEY:  hermes-agent's API server bearer token (workspace
-  #                       sends it as HERMES_API_TOKEN; both must match)
-  if ! grep -qE '^HERMES_PASSWORD=.+' "$WS_DIR/.env" 2>/dev/null; then
-    echo "HERMES_PASSWORD=$(openssl rand -hex 24)" >> "$WS_DIR/.env"
-    ok "generated random HERMES_PASSWORD in $WS_DIR/.env"
-  fi
+  # ai-stack runs this localhost-only UI WITHOUT a login: the override pins the
+  # workspace's in-container bind to HOST=127.0.0.1 so the published image's
+  # fail-closed guard (non-loopback HOST + no password) stays inert. So we leave
+  # HERMES_PASSWORD unset and neutralize any pre-existing one. (To require a
+  # login: set HERMES_PASSWORD=<secret> in .env + force-recreate the workspace.)
+  # API_SERVER_KEY below is unrelated — it is hermes-agent's gateway bearer token.
+  for _pk in HERMES_PASSWORD CLAUDE_PASSWORD; do
+    if grep -qE "^[[:space:]]*${_pk}=.+" "$WS_DIR/.env" 2>/dev/null; then
+      sed -i.bak -E "s|^([[:space:]]*${_pk}=.+)|# disabled by ai-stack (localhost no-auth) — \1|" "$WS_DIR/.env" && rm -f "$WS_DIR/.env.bak"
+      ok "disabled $_pk in $WS_DIR/.env (workspace runs without a login)"
+    fi
+  done
   if ! grep -qE '^API_SERVER_KEY=.+' "$WS_DIR/.env" 2>/dev/null; then
     echo "API_SERVER_KEY=$(openssl rand -hex 24)" >> "$WS_DIR/.env"
     ok "generated random API_SERVER_KEY in $WS_DIR/.env"
@@ -93,8 +97,9 @@ if [[ -f "$WS_DIR/docker-compose.yml" ]]; then
 # Upstream sets it to 0.0.0.0 which triggers the dashboard's OAuth gate;
 # without an auth provider plugin, hermes-agent refuses to start. The
 # dashboard is only reached by the workspace via Docker DNS so loopback
-# binding inside the container is sufficient. The workspace itself still
-# binds 0.0.0.0 because HERMES_PASSWORD is set in .env (covers its gate).
+# binding inside the container is sufficient. The workspace runs WITHOUT a login
+# via HERMES_ALLOW_INSECURE_REMOTE=1 (bypasses the image's fail-closed guard);
+# it stays localhost-only because the host publish is 127.0.0.1 + 127.0.10.10.
 services:
   hermes-agent:
     environment:
@@ -102,10 +107,21 @@ services:
     ports:
       - "127.0.10.11:8642:8642"
   hermes-workspace:
+    environment:
+      HERMES_ALLOW_INSECURE_REMOTE: "1"
     ports:
       - "127.0.10.10:3000:3000"
 YML
     ok "wrote $WS_DIR/docker-compose.override.yml (alias IP bindings)"
+  fi
+  # Migration/idempotency: an override.yml from a PRIOR install won't carry
+  # HERMES_ALLOW_INSECURE_REMOTE (the write above is write-once), yet the password
+  # is disabled above — without the bypass the image's fail-closed guard refuses to
+  # start. Ensure the flag is present either way (yq set is idempotent).
+  if command -v yq >/dev/null 2>&1 && [[ -f "$WS_DIR/docker-compose.override.yml" ]]; then
+    yq -i '.services.hermes-workspace.environment.HERMES_ALLOW_INSECURE_REMOTE = "1"' "$WS_DIR/docker-compose.override.yml" 2>/dev/null \
+      && ok "ensured HERMES_ALLOW_INSECURE_REMOTE=1 in workspace override (no-login)" \
+      || warn "could not patch override with HERMES_ALLOW_INSECURE_REMOTE — set it manually if the workspace won't start"
   fi
   log "Bringing up Hermes Workspace (first-pull can take 2-5 min)..."
   (cd "$WS_DIR" && docker compose up -d 2>&1 | tail -10) || warn "compose up exited non-zero — see 'docker compose -f $WS_DIR/docker-compose.yml logs'"
