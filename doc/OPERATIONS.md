@@ -359,6 +359,59 @@ it does the recreate path, not `docker restart`.
 
 ---
 
+## Upgrading services (`install.sh upgrade`)
+
+A generic, **type-dispatched** upgrade verb — it reads each service's `type`
+from `services.yml` and does the right thing: docker → `pull` + recreate,
+compose → `pull && up -d`, brew (ollama) → `brew upgrade`, openshell (hermes/pi)
+→ in-sandbox update + phase re-assert. It registers no doctor checks and pulls
+no models.
+
+### 1. See what has an update available (read-only)
+
+```bash
+stack upgrade --check            # scan; downloads nothing, changes nothing
+stack upgrade --check --all      # include non-checkable (CLI/sandbox/npm) services
+stack upgrade --check --json     # machine-readable
+stack upgrade --check openwebui  # just one service
+```
+
+How it decides — **no image is downloaded**:
+
+| type | "available?" oracle |
+|------|---------------------|
+| `docker` | local image `RepoDigest` vs the registry **index digest** (`docker buildx imagetools inspect`). Both resolve to the manifest-list digest, so the compare is sound on multi-arch images. |
+| `compose`/`docker-compose` | every image from `docker compose config --images` is digest-checked; any newer → `update-available`; locally-built/uncheckable images → `rebuild`. |
+| `brew-service` (ollama) | `brew outdated` (version compare). |
+| everything else (sandbox/CLI/npm/pip) | no cheap version oracle → reported `manual` (hidden unless `--all`). |
+
+Status legend: `update-available` · `up-to-date` · `pinned` (fixed tag, no
+rolling updates) · `rebuild` (compose stack with locally-built/uncheckable
+images — run `upgrade` to pull+rebuild) · `manual` · `unknown` (registry
+unreachable / image never pulled).
+
+### 2. Upgrade them
+
+```bash
+stack upgrade --outdated             # upgrade ONLY the services found outdated
+stack upgrade --outdated --dry-run   # scan, then print the plan; change nothing
+stack upgrade openwebui              # upgrade one, selectively (from the --check list)
+stack upgrade all                    # upgrade every enabled service
+stack upgrade all --dry-run          # plan the whole fleet, change nothing
+```
+
+`--outdated` re-runs the same read-only scan and then upgrades **only** the
+services whose status is exactly `update-available` — `rebuild`, `unknown`,
+`pinned`, and `manual` are never auto-upgraded (so a flaky registry call can't
+trigger a surprise recreate). After each upgrade it re-verifies with a health
+probe and prints a summary. Set `AI_STACK_ASSUME_YES=1` to auto-accept the
+version-pinned re-pull prompt.
+
+Typical flow: `stack upgrade --check` → eyeball the list → `stack upgrade
+--outdated` (everything) or `stack upgrade <service>` (selectively).
+
+---
+
 ## Updating LiteLLM's model list
 
 ```bash

@@ -38,17 +38,37 @@ trap 'err "ERR line $LINENO: $BASH_COMMAND (exit=$?)"' ERR
 
 DRY=0
 DOCKER_OK=1            # set 0 if `docker info` fails (skip docker/compose)
+CHECK=0               # --check  : read-only "what has an update?" report, no mutate
+OUTDATED=0            # --outdated: upgrade ONLY services the check finds outdated
+JSON=0                # --json   : machine-readable check output
+ALL_ROWS=0            # --all    : include 'manual' (non-checkable) rows in --check
 SUMMARY=()             # rows: "svc<TAB>strategy<TAB>result<TAB>reverify"
+CHECK_ROWS=()          # rows: "svc<TAB>type<TAB>current<TAB>available<TAB>status"
+CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
 
 # --- usage -------------------------------------------------------------------
 upgrade_usage() {
   cat <<'EOF'
-install.sh upgrade <service|all> [--dry-run]
+install.sh upgrade <service|all> [--dry-run]   upgrade a service (or all enabled)
+install.sh upgrade --check [service|all]       READ-ONLY: show which have an update available
+install.sh upgrade --outdated [--dry-run]      upgrade ONLY the services found outdated
+install.sh upgrade --check --all               include non-checkable (manual) services too
+install.sh upgrade --check --json              machine-readable availability report
 
-  Pull/rebuild + recreate a service (or all enabled), type-dispatched.
+  Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
+  brew→brew upgrade, openshell→in-sandbox update + phase re-assert.
+
+  --check is non-mutating and downloads nothing: docker/compose are compared by
+  registry manifest DIGEST, ollama by `brew outdated`. Sandbox/CLI/npm/pip
+  services can't be cheaply version-checked and are reported as 'manual'.
+
   --dry-run    print the per-service plan (current→new) and change nothing.
-
   Set AI_STACK_ASSUME_YES=1 to auto-accept the version-pinned re-pull prompt.
+
+  Typical flow:
+    install.sh upgrade --check        # see what's available
+    install.sh upgrade --outdated     # upgrade everything that's behind
+    install.sh upgrade openwebui      # or upgrade selectively from the list
 EOF
 }
 
@@ -89,6 +109,167 @@ image_is_pinned() {
     latest|main|main-stable|stable|nightly|edge) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+# --- availability check (read-only; downloads nothing) -----------------------
+# Local image digest (just the sha256:..., not repo@sha), or empty.
+# `|| true`: a SIGPIPE-killed sed under pipefail+inherit_errexit would otherwise
+# fire the ERR trap through the unguarded call sites.
+img_local_digest() {
+  docker_local_digest "$1" | sed 's/.*@//' || true
+}
+# Remote index/manifest digest from the registry (manifest only — no layers).
+img_remote_digest() {
+  docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true
+}
+
+# check_image <image> — echoes one of:
+#   pinned | up-to-date | update-available | build | unknown
+# (No download: compares local RepoDigest to the registry's index digest. Both
+# sides resolve to the manifest-LIST digest — verified equal on multi-arch
+# images — so the comparison is sound.)
+#   build   = no registry manifest AND no local digest → locally-built image
+#   unknown = local image exists but registry unreachable → couldn't check
+check_image() {
+  local image="$1" l r
+  image_is_pinned "$image" && { echo pinned; return 0; }
+  r="$(img_remote_digest "$image")"
+  l="$(img_local_digest "$image")"
+  if [[ -z "$r" ]]; then
+    [[ -z "$l" ]] && { echo build; return 0; }     # locally-built (no registry presence)
+    echo unknown; return 0                          # registry unreachable for a real image
+  fi
+  [[ -z "$l" ]] && { echo update-available; return 0; }  # declared but never pulled
+  [[ "$l" == "$r" ]] && echo up-to-date || echo update-available
+}
+
+# check_one <svc> — sets CHECK_STATUS / CHECK_CUR / CHECK_AVAIL.
+# CHECK_STATUS ∈ update-available | up-to-date | pinned | rebuild | manual | unknown
+check_one() {
+  local svc="$1" type; type="$(svc_type "$svc")"
+  CHECK_STATUS="manual"; CHECK_CUR="-"; CHECK_AVAIL="-"
+
+  case "$type" in
+    docker)
+      local image; image="$(svc_image "$svc")"
+      [[ -z "$image" || "$image" == "-" ]] && { CHECK_STATUS="unknown"; return 0; }
+      if (( DOCKER_OK == 0 )); then CHECK_STATUS="unknown"; return 0; fi
+      CHECK_STATUS="$(check_image "$image")"
+      local l; l="$(img_local_digest "$image")"; [[ -n "$l" ]] && CHECK_CUR="${l:0:19}…"
+      if [[ "$CHECK_STATUS" == "update-available" ]]; then
+        local r; r="$(img_remote_digest "$image")"; [[ -n "$r" ]] && CHECK_AVAIL="${r:0:19}…"
+      fi
+      ;;
+    compose|docker-compose)
+      local dir; dir="$(svc_path "$svc")"
+      { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]] || (( DOCKER_OK == 0 )); } && { CHECK_STATUS="manual"; return 0; }
+      local imgs; imgs="$( cd "$dir" && docker compose config --images 2>/dev/null || true )"
+      [[ -z "$imgs" ]] && { CHECK_STATUS="manual"; return 0; }
+      local im st any_update=0 any_unknown=0 any_build=0 n=0
+      while IFS= read -r im; do
+        [[ -z "$im" ]] && continue
+        n=$((n+1))
+        st="$(check_image "$im")"
+        case "$st" in
+          update-available) any_update=1 ;;
+          unknown)          any_unknown=1 ;;   # real image, registry unreachable
+          build)            any_build=1 ;;     # locally-built app image (honcho-api etc.)
+        esac
+      done <<< "$imgs"
+      (( n == 0 )) && { CHECK_STATUS="manual"; return 0; }   # only blank lines → nothing checked
+      CHECK_CUR="${n} imgs"
+      # Precedence: a confirmed registry update wins. Otherwise, any image we
+      # couldn't digest-check (locally-built OR registry-unreachable) → 'rebuild':
+      # for a compose stack the remediation is identical — `upgrade` runs
+      # `compose pull && up -d`, which refreshes reachable images AND rebuilds
+      # local ones. Only when every image is confirmed current → up-to-date.
+      if   (( any_update ));               then CHECK_STATUS="update-available"; CHECK_AVAIL="pull"
+      elif (( any_build || any_unknown )); then CHECK_STATUS="rebuild"
+      else                                      CHECK_STATUS="up-to-date"; fi
+      ;;
+    brew-service)
+      local out
+      out="$(brew outdated --json=v2 2>/dev/null \
+        | python3 -c "import sys,json
+d=json.load(sys.stdin)
+f=[x for x in d.get('formulae',[]) if x['name']=='$svc']
+print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else print('')" 2>/dev/null || true)"
+      if [[ -n "$out" ]]; then
+        CHECK_CUR="$(printf '%s' "$out" | cut -f1)"
+        CHECK_AVAIL="$(printf '%s' "$out" | cut -f2)"
+        CHECK_STATUS="update-available"
+      else
+        # Not in `brew outdated`. Distinguish genuinely-current from
+        # not-installed/unreachable: if the formula isn't installed, `brew list`
+        # yields nothing → report 'unknown' rather than a false 'up-to-date'.
+        # `|| true`: brew list exits 1 for an uninstalled formula (would abort).
+        local cur; cur="$(brew list --versions "$svc" 2>/dev/null | awk '{print $2}' || true)"
+        if [[ -z "$cur" ]]; then CHECK_STATUS="unknown"
+        else CHECK_STATUS="up-to-date"; CHECK_CUR="$cur"; fi
+      fi
+      ;;
+    *)
+      # openshell, sandbox-daemon, cli-only, npm-global, pip-package, litellm-*,
+      # agent-pattern, paperclip-plugin, clone-only — no cheap version oracle.
+      CHECK_STATUS="manual"
+      ;;
+  esac
+}
+
+# collect_targets <out-array-name> [target] — fill an array with the enabled
+# services to act on (or the single named target).
+collect_targets() {
+  local -n _out="$1"; local target="${2:-all}" name
+  _out=()
+  if [[ "$target" == "all" ]]; then
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
+      [[ "$(svc_enabled "$name")" == "true" ]] && _out+=("$name")
+    done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+  else
+    _out=("$target")
+  fi
+}
+
+# print_check_report — render CHECK_ROWS as a table (or JSON) + a next-step footer.
+print_check_report() {
+  local row svc type cur avail status
+  if (( JSON )); then
+    printf '['
+    local first=1
+    for row in "${CHECK_ROWS[@]}"; do
+      IFS=$'\t' read -r svc type cur avail status <<<"$row"
+      (( first )) || printf ','; first=0
+      printf '{"service":"%s","type":"%s","current":"%s","available":"%s","status":"%s"}' \
+        "$svc" "$type" "$cur" "$avail" "$status"
+    done
+    printf ']\n'
+    return 0
+  fi
+  printf '\n'; hdr "Upgrade availability (read-only — nothing downloaded or changed)"
+  local fmt='%-20s %-15s %-22s %-22s %s\n'
+  printf "$fmt" SERVICE TYPE CURRENT AVAILABLE STATUS
+  printf "$fmt" "--------------------" "---------------" "----------------------" "----------------------" "------"
+  local -a outdated=(); local hidden=0
+  for row in "${CHECK_ROWS[@]}"; do
+    IFS=$'\t' read -r svc type cur avail status <<<"$row"
+    # Hide non-checkable ('manual') rows unless --all — they carry no signal.
+    if [[ "$status" == "manual" ]] && (( ALL_ROWS == 0 )); then hidden=$((hidden+1)); continue; fi
+    printf "$fmt" "$svc" "$type" "$cur" "$avail" "$status"
+    [[ "$status" == "update-available" ]] && outdated+=("$svc")
+  done
+  printf '\n'
+  if (( hidden )); then
+    note "$hidden service(s) not version-checkable (sandbox/CLI/npm/pip) hidden — use --check --all to list them."
+  fi
+  if (( ${#outdated[@]} )); then
+    ok "${#outdated[@]} update(s) available: ${outdated[*]}"
+    note "Upgrade all of them:   install.sh upgrade --outdated"
+    note "Or selectively:        install.sh upgrade <service>   (e.g. install.sh upgrade ${outdated[0]})"
+  else
+    ok "Everything that can be auto-checked is up to date."
+  fi
+  note "Legend: pinned=fixed tag (no rolling updates) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=no version oracle (sandbox/CLI/npm/pip) · unknown=registry unreachable or no local image"
 }
 
 # --- phase / start-script resolution (lock-free recreate paths) --------------
@@ -368,13 +549,18 @@ upgrade_one() {
 
 # --- main --------------------------------------------------------------------
 upgrade_main() {
-  local target=""
-  local arg
+  local target="" arg
   for arg in "$@"; do
     case "$arg" in
-      --dry-run) DRY=1 ;;
-      -h|--help) upgrade_usage; exit 0 ;;
-      -*) err "Unknown flag: $arg"; upgrade_usage; exit 2 ;;
+      --dry-run)        DRY=1 ;;
+      --check)          CHECK=1 ;;
+      --outdated)       OUTDATED=1 ;;
+      --json)           JSON=1 ;;
+      --all|-a)         ALL_ROWS=1 ;;
+      check)            CHECK=1 ;;        # friendly bare aliases
+      outdated)         OUTDATED=1 ;;
+      -h|--help)        upgrade_usage; exit 0 ;;
+      -*)               err "Unknown flag: $arg"; upgrade_usage; exit 2 ;;
       *)
         if [[ -z "$target" ]]; then target="$arg"
         else err "Unexpected extra argument: $arg"; upgrade_usage; exit 2; fi
@@ -382,44 +568,76 @@ upgrade_main() {
     esac
   done
 
-  if [[ -z "$target" ]]; then
-    err "upgrade requires a target: a service name or 'all'."
-    upgrade_usage
-    exit 2
+  if (( CHECK && OUTDATED )); then
+    err "--check and --outdated are mutually exclusive."; upgrade_usage; exit 2
   fi
-
-  lock_acquire
 
   # Docker-info guard: only blocks docker/compose handlers, not brew/openshell.
   if ! docker info >/dev/null 2>&1; then
     DOCKER_OK=0
-    warn "docker unavailable; docker/compose services will be skipped"
+    warn "docker unavailable; docker/compose services will be reported 'unknown'/skipped"
   fi
 
-  # Build the target list.
+  # --- read-only availability report (no lock, no mutation) ------------------
+  if (( CHECK )); then
+    local -a list=(); collect_targets list "${target:-all}"
+    local svc
+    for svc in "${list[@]}"; do
+      [[ "$(svc_type "$svc")" == "unknown" ]] && { err "Unknown service: $svc"; exit 2; }
+      check_one "$svc"
+      CHECK_ROWS+=("$svc"$'\t'"$(svc_type "$svc")"$'\t'"$CHECK_CUR"$'\t'"$CHECK_AVAIL"$'\t'"$CHECK_STATUS")
+    done
+    print_check_report
+    return 0
+  fi
+
+  # --- build the list to upgrade ---------------------------------------------
   local -a targets=()
-  if [[ "$target" == "all" ]]; then
-    local name
-    while IFS= read -r name; do
-      [[ -z "$name" ]] && continue
-      [[ "$(svc_enabled "$name")" == "true" ]] && targets+=("$name")
-    done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+  if (( OUTDATED )); then
+    # Run the same read-only check across all enabled, then upgrade only the
+    # ones that came back 'update-available'.
+    local -a list=(); collect_targets list "${target:-all}"
+    local svc
+    hdr "Scanning for available updates…"
+    for svc in "${list[@]}"; do
+      check_one "$svc"
+      if [[ "$CHECK_STATUS" == "update-available" ]]; then
+        targets+=("$svc")
+        note "  $svc: $CHECK_STATUS ($CHECK_CUR → $CHECK_AVAIL)"
+      fi
+    done
+    if (( ${#targets[@]} == 0 )); then
+      ok "Nothing to upgrade — all auto-checkable services are up to date."
+      note "(sandbox/CLI/npm/pip services aren't version-checked; upgrade those by name if needed.)"
+      return 0
+    fi
+    ok "${#targets[@]} service(s) to upgrade: ${targets[*]}"
   else
-    # Validate the service exists.
-    if [[ "$(svc_type "$target")" == "unknown" ]]; then
-      err "Unknown service: $target"
-      echo "Upgradable (enabled) services:" >&2
-      while IFS= read -r name; do
-        [[ -z "$name" ]] && continue
-        [[ "$(svc_enabled "$name")" == "true" ]] && printf '  - %s\n' "$name" >&2
-      done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+    if [[ -z "$target" ]]; then
+      err "upgrade requires a target: a service name, 'all', --check, or --outdated."
+      upgrade_usage
       exit 2
     fi
-    if [[ "$(svc_enabled "$target")" != "true" ]]; then
-      warn "$target is disabled; upgrading anyway (explicit intent)"
+    if [[ "$target" == "all" ]]; then
+      collect_targets targets all
+    else
+      if [[ "$(svc_type "$target")" == "unknown" ]]; then
+        err "Unknown service: $target"
+        echo "Upgradable (enabled) services:" >&2
+        local name
+        while IFS= read -r name; do
+          [[ -z "$name" ]] && continue
+          [[ "$(svc_enabled "$name")" == "true" ]] && printf '  - %s\n' "$name" >&2
+        done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+        exit 2
+      fi
+      [[ "$(svc_enabled "$target")" != "true" ]] && warn "$target is disabled; upgrading anyway (explicit intent)"
+      targets=("$target")
     fi
-    targets=("$target")
   fi
+
+  # --- mutate: acquire the lock and run the upgrade loop ---------------------
+  lock_acquire
 
   hdr "Upgrade plan ($([[ $DRY == 1 ]] && echo dry-run || echo live))"
   local svc
