@@ -40,7 +40,7 @@ a trace "for free."
 ┌────────────────────────────────────▼───────────────────────────────────────┐
 │  MODEL-HUB LAYER  —  LiteLLM  :4000   (the single inference egress)         │
 │    · every agent's ONLY route to a model                                   │
-│    · virtual keys, each allowlisted against the canonical superset         │
+│    · virtual keys, each allowlisted against the derived superset           │
 │    · models.yml is the canonical model↔agent binding                       │
 │    · emits OTLP on every call ───────────────────────────────┐             │
 └──────────┬───────────────────────────────┬───────────────────┼─────────────┘
@@ -130,7 +130,7 @@ What happens end-to-end when, say, Pi answers a coding prompt:
 2.  Pi dials  http://host.docker.internal:4000/v1  with  PI_LITELLM_KEY
         (sandbox → host boundary; Pi has no other egress).
 3.  LiteLLM authenticates the virtual key and checks the model against that
-        key's allowlist (the canonical superset — see binding below).
+        key's allowlist (the derived superset — see binding below).
 4.  Guardrails callback runs (pre-call deny on the in-process regex/keyword
         rules + secret-leak blocker).
 5.  LiteLLM resolves Pi's bound model (local-qwen3-coder) and dispatches:
@@ -189,13 +189,38 @@ resident).
 ### The superset allowlist
 
 Every scoped virtual key (`HERMES_`, `PI_`, `ACE_`, `RLM_LITELLM_KEY`) is
-minted against one fixed, sorted-unique **superset** of model names —
-`install.sh model superset` prints it. Because each key already allows the
-whole superset, `model assign <agent> <model>` can re-point an agent without
+minted against a **DERIVED**, sorted-unique **superset** of model names
+(`install.sh model superset` prints it — the union of the legacy
+`{local, local-heavy, local-lfm2}` plus every model key in `models.yml`, **not**
+a hardcoded list; the `LEGACY_SUPERSET` array in `installer/lib/models.sh` is
+only the fallback when `models.yml` is absent). Because each key already allows
+the whole superset, `model assign <agent> <model>` can re-point an agent without
 ever re-minting its key. `model sync` is the crash-safe, opt-in reconcile
 (register model_list ADD-ONLY → restart litellm once if changed → widen
 scoped-key allowlists to the superset → render agents); it is *not* run by
-`install all`. Doctor check `40_models_binding.sh` validates the binding.
+`install all`. Doctor check 40 (`40_models_binding.sh`) validates the binding
+and turns RED on scoped-key/superset drift.
+
+### Overkill protection — the RAM-budget preflight
+
+Before loading a big MLX model, `lms_ram_preflight`
+(`installer/lib/lmstudio.sh`) refuses the load **iff**, *strictly*,
+`cap + padded_model + headroom > total` RAM — equality **loads**. Constants:
+headroom **5 GiB** (`5368709120` B), unknown-size fallback **18 GiB**
+(`19327352832` B), resident pad **+15%**, `cap` from `~/.orbstack/vmconfig.json`
+`memory_mib` (fallback `max(8 GiB, total/2)`), `total` from `sysctl hw.memsize`.
+It **degrades OPEN** (allows, with a note) on any measurement failure — never
+fail-closed. A refusal makes the agent availability-gate to `local-gemma4`. The
+one-big-MLX policy unloads any other model before load; bypass with
+`LMS_SKIP_RAM_PREFLIGHT=1`. See `installer/lib/lmstudio.sh`.
+
+The **Honcho deriver** is a deliberate exception to `models.yml` selection: it
+is pinned to `local-heavy` (intended Ollama `qwen3.6:27b-q4_K_M`) regardless of
+each agent's chat-model binding, and the memory plane does not go through
+`models.yml` availability-gating. **Known gap:** `qwen3.6:27b` is not pre-pulled
+(Phase 01 pulls only `gemma4:e4b` + `nomic-embed-text`), so derivation **404s**
+until the tag is pulled or Phase 03 (`installer/phases/03_honcho.sh`) is
+repointed.
 
 ---
 

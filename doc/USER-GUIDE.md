@@ -169,6 +169,8 @@ canonical local models** are declared per-agent in `installer/models.yml`
 | `openai-gpt-5.5*`   | OpenAI GPT-5.5 family                         | API    | Cloud baseline                               |
 | `openrouter-*`      | Various via OpenRouter (~10)                  | API    | Fallbacks / unusual models                   |
 | `google-gemini-3.1-pro` | Gemini 3.1 Pro                            | API    | Long-context cloud                           |
+| `claude-code`       | Claude Opus via your **subscription** (Meridian) | sub | Opus on your Pro/Max plan — **no API key** (Pro is rate-tight) |
+| `claude-code-sonnet`| Claude Sonnet 4.6 via subscription (Meridian) | sub | Everyday subscription chat + coding (Pro-friendly) |
 
 `local-gemma4` is the only local model `install all` pre-pulls (alongside
 `nomic-embed-text`); the two big MLX models are opt-in (see §2.16 "Enabling the
@@ -201,6 +203,76 @@ done
 Expect `local-gemma4` to finish in ~3-5s and `local-qwen3.6` in ~12-25s on a 24GB M4.
 
 **Phoenix trace pattern.** Three spans, one per model. Compare token counts and latency side by side.
+
+#### Model selection cheat-sheet
+
+`installer/models.yml` is the single source of truth; everything below is rendered
+from it (deep dive: [models.md](models.md)).
+
+| Command | What it does |
+|---------|--------------|
+| `install.sh model list` | live agent matrix (ASSIGNED / LITELLM / SERVED / KEY-OK / DRIFT / EFFECTIVE) |
+| `install.sh model list --json` | machine-readable matrix |
+| `install.sh model assign <agent> <model>` | re-point one agent, then sync it |
+| `install.sh model sync [agent]` | reconcile everything (or one agent) |
+| `install.sh model sync --dry-run` | preview the plan + config diff, write nothing |
+| `install.sh model discover` | READ-ONLY LM Studio library catalog (server may be down) |
+| `install.sh model add <slug> [as <name>]` | declare an LM Studio library model, then sync |
+| `install.sh model superset` | print the derived scoped-key allowlist |
+
+#### When LM Studio is off
+
+LM Studio-bound agents (`local-qwen3.6` / `local-qwen3-coder`)
+**availability-gate to `local-gemma4`** and are recorded as *pending* in the
+installer state file. To promote them: start LM Studio
+(`lms server start -p 1234 --bind 0.0.0.0`), load the model, then re-run
+`install.sh model sync`. See
+[models.md → Per-agent selection pipeline](models.md#per-agent-selection-pipeline).
+
+#### Chatting / coding on your Claude subscription (no API key)
+
+Want Open WebUI to use your **Claude Pro/Max subscription** — the same auth as
+your `claude login` — instead of a metered `ANTHROPIC_API_KEY`? That's what the
+`claude-code` / `claude-code-sonnet` models are. They route
+`Open WebUI → LiteLLM → Meridian (host :3456) → Anthropic`, where **Meridian**
+is a small launchd-supervised host daemon that reuses your Claude Code OAuth
+(auto-refreshed) and runs the agent loop in *internal mode*.
+
+```bash
+npm install -g @rynfar/meridian      # one-time
+claude login                         # if not already logged in (OAuth → Keychain)
+bash ~/ai-stack/bin/start-meridian.sh install   # launchd: always-on, survives reboot
+bash ~/ai-stack/bin/start-litellm.sh --recreate # reload config so claude-code appears
+```
+
+Then open `http://openwebui:8080`, refresh, and pick **`claude-code`** (Opus) or
+**`claude-code-sonnet`** in the model dropdown — no Open WebUI Function/pipe
+needed, no API key. Manage it with `start-meridian.sh status|restart|uninstall`;
+`install.sh doctor` check 41 reports its health.
+
+`claude-code` runs **Opus 4.8** (`claude-opus-4-8`) — verified end-to-end via the
+LiteLLM trace. Meridian's `/v1/models` catalog is a static list that stops at 4.7,
+but it **passes through** any model id to its bundled claude-code (2.1.160), so
+4.8 works today; no `npm update` needed.
+
+Caveats: **loopback-only** — Meridian holds a live OAuth and can run host tools,
+so never expose `:3456` off-box. On a **Pro** plan Opus is rate-limited (Meridian
+warns "Max recommended") — prefer `claude-code-sonnet` for high-volume work and
+save `claude-code` (Opus 4.8) for when you need the frontier model. Subscription
+auth is for **personal use** — don't re-share it to other users through a
+multi-user deployment.
+
+#### RAM guard refused my load
+
+The F1 RAM-budget preflight refuses a big-MLX load when
+`cap + padded_model + headroom > total RAM`; the agent then falls back to
+`local-gemma4`. Two safe knobs: **lower** the OrbStack memory cap in
+`~/.orbstack/vmconfig.json`, or **pick a smaller model**. Escape hatch:
+`LMS_SKIP_RAM_PREFLIGHT=1` (use sparingly — the box crashed from RAM
+over-commit). Details:
+[models.md → Overkill protection](models.md#overkill-protection--the-ram-budget-preflight-f1)
+and
+[DIAGRAMS.md §5d](DIAGRAMS.md#5d-ram-budget-preflight--the-overkill-guard-that-refuses-an-over-commit).
 
 ---
 
@@ -1276,8 +1348,8 @@ bash ~/ai-stack/install.sh model sync hermes_software_engineer
 
 # 4. Print the canonical scoped-key allowlist superset. Every scoped virtual key
 #    (HERMES_LITELLM_KEY, PI_LITELLM_KEY, ACE_LITELLM_KEY, RLM_LITELLM_KEY) is
-#    minted against this fixed sorted-unique superset, so `model assign` never
-#    needs a key re-mint.
+#    minted against this DERIVED sorted-unique superset (union of legacy names +
+#    every models.yml key), so `model assign`/`add` never needs a key re-mint.
 bash ~/ai-stack/install.sh model superset
 bash ~/ai-stack/install.sh model superset --json
 ```

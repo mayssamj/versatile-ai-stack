@@ -291,7 +291,7 @@ Three things this shows:
 - Every external call goes via `inference.local`, the OpenShell L7
   proxy. The agent never sees a real API key — the proxy injects the
   fleet's scoped `HERMES_LITELLM_KEY`, and LiteLLM checks every model
-  against that key's allowlist (the canonical superset, so re-assigning
+  against that key's allowlist (the derived superset, so re-assigning
   a model never needs a key re-mint). Each call also lands in Phoenix
   project `ai-stack` for free.
 - The researcher both reads and writes Honcho, so a follow-up question
@@ -359,9 +359,186 @@ Notes:
   `install all`. Phase 1 only ever adds to LiteLLM's `model_list`
   (ADD-ONLY), and LiteLLM is restarted at most once.
 - Because every scoped key (`HERMES_LITELLM_KEY`, `PI_LITELLM_KEY`,
-  `ACE_LITELLM_KEY`, `RLM_LITELLM_KEY`) is minted against the fixed
-  `model superset`, `model assign <agent> <model>` re-points an agent
+  `ACE_LITELLM_KEY`, `RLM_LITELLM_KEY`) is minted against the DERIVED
+  `model superset` (`install.sh model superset` — a sorted-unique union,
+  not a hardcoded list), `model assign <agent> <model>` re-points an agent
   without ever re-minting a key.
+- The four diagrams below (§5a–§5e) zoom into this pipeline: §5a the
+  per-agent selection (assignment → gate → effective → rendered + drift),
+  §5b the multi-engine topology, §5c the discover/add/sync lifecycle, §5d
+  the RAM-budget preflight, §5e Honcho agent memory.
+
+---
+
+## 5a. Per-agent model selection pipeline (assignment -> gate -> effective -> rendered)
+
+Zooms into §5's per-agent step: the per-`kind` dispatch and the
+rendered-vs-effective **drift** readback that §5 omits. `render_deerflow`
+writes **two tiers** — `basic` is **always** `local-gemma4`, `reasoning` is the
+gated effective model — and uses the **master key**, so the P3 superset-widening
+does not apply to it (and its basic tier does not "flip" to gemma4 on gate-down,
+it already *is* gemma4).
+
+```mermaid
+flowchart TB
+  A["agent (e.g. hermes_researcher)"] --> ASG["assignment in models.yml<br/>(agent_assigned)"]
+  ASG --> RT{runtime of<br/>assigned model?}
+
+  RT -- ollama --> EFF["effective = assigned<br/>(render as-is)"]
+
+  RT -- lmstudio --> G1{LM Studio server<br/>up on :LMS_PORT?}
+  G1 -- no --> FB
+  G1 -- yes --> G2{slug present in<br/>litellm/config.yaml?}
+  G2 -- no --> FB
+  G2 -- yes --> G3{LiteLLM /v1/models<br/>lists the slug?}
+  G3 -- no --> FB
+  G3 -- yes --> EFF
+
+  FB["availability-gated:<br/>effective = local-gemma4<br/>+ record pending"] --> EFF
+
+  EFF --> DISP{dispatch by kind}
+  DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]
+  DISP -- pi --> RP["render_pi<br/>(PI_DEFAULT_MODEL in .env)"]
+  DISP -- deerflow --> RD["render_deerflow<br/>(two tiers; master key)"]
+  DISP -- ace --> RA["render_ace<br/>(.env, allowlist-only)"]
+  DISP -- rlm --> RR["render_rlm<br/>(RLM_MODEL in .env)"]
+
+  RH --> RDR["rendered model<br/>(what is actually wired)"]
+  RP --> RDR
+  RD --> RDR
+  RA --> RDR
+  RR --> RDR
+
+  RDR --> DR{rendered == effective?}
+  DR -- yes --> OK["consistent"]
+  DR -- no --> DRIFT["DRIFT - re-run model sync agent"]
+```
+
+## 5b. Multi-engine inference topology — one hub, three runtimes
+
+Provider keys live **only** in LiteLLM's env — no agent, sandbox, or scoped key
+carries one. LM Studio's `api_base` is rendered with `${LMS_PORT}` (default
+`1234`), never a bare literal.
+
+```mermaid
+flowchart LR
+  subgraph Callers[Callers]
+    HF["Hermes profiles (sandbox)"]
+    PI["pi (sandbox)"]
+    DF["deerflow / ace / rlm"]
+    OWU["openwebui :8080"]
+    HO["honcho deriver"]
+  end
+
+  HUB["litellm :4000<br/>(single egress + scoped-key allowlist + tracing)"]
+
+  HF -- "hermes-gw injects HERMES_LITELLM_KEY" --> HUB
+  PI -- "host.docker.internal:4000 + PI_LITELLM_KEY" --> HUB
+  DF --> HUB
+  OWU --> HUB
+  HO -- "litellm.ai-stack:4000" --> HUB
+
+  subgraph Runtimes[Runtimes]
+    OL["ollama :11434 (host, lazy, KEEP_ALIVE=0)<br/>local-gemma4 = default"]
+    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local-qwen3.6 / local-qwen3-coder"]
+    CLOUD["Cloud APIs - only if you pick a non-local model<br/>Anthropic / OpenAI / OpenRouter / Gemini"]
+  end
+
+  HUB -- "ollama_chat/<served> @ ollama:11434" --> OL
+  HUB -. "openai/<served> @ host.docker.internal:LMS_PORT/v1" .-> LMS
+  HUB -. "provider key from LiteLLM env only" .-> CLOUD
+
+  HUB --> PX["phoenix :6006 (trace, async)"]
+```
+
+## 5c. Model discovery / add / sync lifecycle (LM Studio library -> models.yml -> LiteLLM)
+
+Adds the READ-ONLY catalog → `models.yml` story §5 omits: `discover` and `add`
+read the on-disk LM Studio library (server may be down) and **load nothing**;
+only `sync` touches LiteLLM.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as You
+  participant M as install.sh model
+  participant LMS as LM Studio library (lms ls --json)
+  participant YML as installer/models.yml
+  participant CFG as litellm/config.yaml
+  participant LL as litellm :4000
+
+  U->>M: model discover
+  M->>LMS: read on-disk catalog (READ-ONLY, server may be down)
+  LMS-->>M: LLMs + embeddings + sizes
+  M-->>U: table, marks DECLARED (exact served-id match) - loads nothing
+
+  U->>M: model add <slug> [as local-name]
+  M->>LMS: verify slug exists + read sizeBytes
+  M->>YML: declare runtime=lmstudio, served, big (size>=MODEL_BIG_GB), ttl=1800
+  Note over M: never loads the model
+
+  M->>M: model sync (P0 validate)
+  M->>CFG: P1 register model_list (ADD-ONLY, atomic)
+  M->>LL: P2 restart ONCE iff config.yaml changed
+  M->>LL: P3 widen scoped keys to the DERIVED superset
+  M->>M: P4 render agents (availability-gated)
+  M->>LL: P5 verify (drift + key coverage; advisory)
+  M-->>U: synced - slug servable once LM Studio loads it
+```
+
+## 5d. RAM-budget preflight — the overkill guard that refuses an over-commit
+
+Constants (see `installer/lib/lmstudio.sh`): headroom **5 GiB**
+(`5368709120` B), unknown-size fallback **18 GiB** (`19327352832` B), resident
+pad **+15%**. Refuses with the **strict** `> total` (equality loads); degrades
+**OPEN** on any measurement failure.
+
+```mermaid
+flowchart TB
+  L["lms_load_big(served, ttl)"] --> SV{already served?}
+  SV -- yes --> IDEM["return 0 (idempotent)"]
+  SV -- no --> SKIP{LMS_SKIP_RAM_PREFLIGHT set?}
+  SKIP -- yes --> LOAD
+  SKIP -- no --> MEAS["measure:<br/>total = hw.memsize<br/>cap = OrbStack memory_mib (~/.orbstack/vmconfig.json)<br/>size = LM Studio on-disk bytes"]
+  MEAS --> FAIL{total <= 0 /<br/>cannot measure?}
+  FAIL -- yes --> OPEN["degrade OPEN -> allow (note)"]
+  OPEN --> LOAD
+  FAIL -- no --> PAD["padded = size + 15%<br/>(size unknown -> 18 GiB fallback)<br/>headroom = 5 GiB"]
+  PAD --> CHK{cap + padded + headroom<br/>> total RAM?}
+  CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local-gemma4<br/>fix: lower OrbStack cap or smaller model"]
+  CHK -- no --> LOAD["unload OTHER MLX models (one-big-at-a-time)<br/>lms load --ttl -> verify in /v1/models"]
+```
+
+## 5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)
+
+Not to be confused with [§11 Memory profiles](#11-memory-profiles--what-runs-in-each-ram-mode)
+(RAM modes). The deriver is pinned to `local-heavy`; the **KNOWN GAP** note marks
+that `qwen3.6:27b` is not pre-pulled, so derivation 404s today.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant AG as Agent (peer namespace)
+  participant HO as honcho :8000 (api)
+  participant DR as honcho deriver
+  participant LL as litellm.ai-stack:4000
+  participant LH as local-heavy (intended Ollama qwen3.6:27b)
+  participant PG as Postgres (data/honcho)
+
+  AG->>HO: write message (session, peer-scoped)
+  HO->>PG: persist raw message
+  HO->>DR: enqueue derivation
+  DR->>LL: extract user representation (model=local-heavy, pinned)
+  LL->>LH: forward
+  Note over LL,LH: KNOWN GAP - qwen3.6:27b not pre-pulled in Ollama -> 404 until pulled or phase 03 repointed
+  LH-->>LL: derived facts
+  LL-->>DR: derived facts (also traced to Phoenix)
+  DR->>PG: persist derived representation (namespace-isolated)
+  AG->>HO: later - query peer memory
+  HO->>PG: read peer-scoped facts
+  PG-->>HO: facts
+  HO-->>AG: context (never leaves the machine)
+```
 
 ---
 
