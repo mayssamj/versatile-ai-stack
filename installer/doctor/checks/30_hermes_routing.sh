@@ -41,6 +41,21 @@ hermes_routing_diagnose() {
     echo "  Hermes would resolve provider 'auto' and never reach local models."
     return 1
   fi
+  # Frankenfleet guard: the in-sandbox profile SET must equal the models.yml roster.
+  # A half-run / interrupted 04f rebuild can leave stale OLD profiles or a mixed set
+  # (REPLACE semantics). Compare sorted sets (ignore the built-in `default`).
+  if command -v yq >/dev/null 2>&1; then
+    local want got
+    want="$(yq -r '.kinds | to_entries | map(select(.value.kind=="hermes-profile")) | .[].key' "$AI_STACK/installer/models.yml" 2>/dev/null | sort | tr '\n' ' ')"
+    got="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- /bin/sh -c 'ls -1 "$HOME"/.hermes/profiles 2>/dev/null' 2>/dev/null \
+      | sed $'s/\x1b\\[[0-9;]*m//g' | grep -vxE '[[:space:]]*|default' | sort | tr '\n' ' ')"
+    if [[ -n "$want" && "$got" != "$want" ]]; then
+      echo "in-sandbox hermes profile set != models.yml roster (stale/half-built fleet)"
+      echo "  want: $want"
+      echo "  got:  $got"
+      return 1
+    fi
+  fi
   # Confirm a Hermes virtual key exists + is accepted by LiteLLM (no value echo).
   local hk
   hk="$(get_env HERMES_LITELLM_KEY '' 2>/dev/null)"

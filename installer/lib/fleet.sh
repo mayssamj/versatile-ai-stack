@@ -401,18 +401,29 @@ cmd_fleet_list() {
 # HERMES_KEY, MODELS_YML, LITELLM_CFG). Falls back to HERMES_MODEL when
 # models.yml absent OR the assigned model is an unservable lmstudio slug.
 _lms_up() { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
+_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
 resolve_profile_model() {
   local profile="$1" declared rt
   [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1 || { echo "$HERMES_MODEL"; return; }
   declared="$(yq -r ".assignments.\"$profile\" // \"\"" "$MODELS_YML" 2>/dev/null)"
   [[ -z "$declared" || "$declared" == "null" ]] && { echo "$HERMES_MODEL"; return; }
   rt="$(yq -r ".models.\"$declared\".runtime" "$MODELS_YML" 2>/dev/null)"
-  if [[ "$rt" != "lmstudio" ]]; then echo "$declared"; return; fi
-  if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
-     && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
-        | grep -qF "\"$declared\""; then
-    echo "$declared"; return
-  fi
+  case "$rt" in
+    lmstudio)
+      if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
+         && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
+            | grep -qF "\"$declared\""; then
+        echo "$declared"; return
+      fi ;;
+    meridian)
+      # Claude subscription: gate on the Meridian daemon (:3456) being up + registered;
+      # else fall back to the local default. Mirrors 04f + lib/models.sh.
+      if _meridian_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null; then
+        echo "$declared"; return
+      fi ;;
+    *)
+      echo "$declared"; return ;;
+  esac
   echo "$HERMES_MODEL"
 }
 

@@ -123,24 +123,41 @@ else
   ok "PI_LITELLM_KEY already present + valid"
 fi
 
-# --- Pi default model: local-qwen3-coder, AVAILABILITY-GATED ---------------
-# Pi's declared default is local-qwen3-coder (an LM Studio MLX model). On a
-# fresh install LM Studio is down, so we gate the value down to `local` (gemma4)
-# — never write an MLX slug Pi/LiteLLM can't serve. Promote it later by starting
-# LM Studio + `install.sh model sync` (which re-renders PI_DEFAULT_MODEL).
+# --- Pi default model: pi's models.yml assignment, AVAILABILITY-GATED ------
+# PI_DEFAULT_MODEL = the model assigned to `pi` in installer/models.yml, gated to
+# the local default (local-gemma4) when its runtime backend is down — never write
+# a slug Pi/LiteLLM can't reach. lmstudio gates on LM Studio (:1234); meridian
+# (Claude subscription) gates on the Meridian daemon (:3456). Mirrors 04f +
+# lib/models.sh::resolve_effective so a fresh install shows no false doctor-40 DRIFT.
+# (Was hardcoded to probe only local-qwen3-coder; pi is now assigned a subscription
+# model, so the gate must follow the assignment's runtime.)
 PI_KEY_PROBE="$(get_env PI_LITELLM_KEY '')"
-# Gated-fallback target = models.yml .default (local-gemma4), matching doctor 40 +
-# `model sync` so a fresh install (LM Studio down) shows no false DRIFT. Literal
-# `local` only when models.yml is absent.
+MODELS_YML="$AI_STACK/installer/models.yml"
+LITELLM_CFG="$AI_STACK/litellm/config.yaml"
+_lms_up() { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
+_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
 PI_DEFAULT="local"
-if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
-  _pd="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
+  _pd="$(yq -r '.default' "$MODELS_YML" 2>/dev/null)"
   [[ -n "$_pd" && "$_pd" != "null" ]] && PI_DEFAULT="$_pd"
-fi
-if curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
-   && grep -qF 'model_name: local-qwen3-coder' "$AI_STACK/litellm/config.yaml" 2>/dev/null \
-   && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $PI_KEY_PROBE" 2>/dev/null | grep -q '"local-qwen3-coder"'; then
-  PI_DEFAULT="local-qwen3-coder"
+  _declared="$(yq -r '.assignments.pi // ""' "$MODELS_YML" 2>/dev/null)"
+  if [[ -n "$_declared" && "$_declared" != "null" ]]; then
+    _rt="$(yq -r ".models.\"$_declared\".runtime" "$MODELS_YML" 2>/dev/null)"
+    case "$_rt" in
+      lmstudio)
+        if _lms_up && grep -qF "model_name: ${_declared}" "$LITELLM_CFG" 2>/dev/null \
+           && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $PI_KEY_PROBE" 2>/dev/null | grep -qF "\"$_declared\""; then
+          PI_DEFAULT="$_declared"
+        fi ;;
+      meridian)
+        # Gate on Meridian daemon up + registered. The PI key is local-only until
+        # Phase 04h widens it, so don't probe /v1/models with the PI key here.
+        if _meridian_up && grep -qF "model_name: ${_declared}" "$LITELLM_CFG" 2>/dev/null; then
+          PI_DEFAULT="$_declared"
+        fi ;;
+      *) PI_DEFAULT="$_declared" ;;
+    esac
+  fi
 fi
 set_env PI_DEFAULT_MODEL "$PI_DEFAULT"
 ok "PI_DEFAULT_MODEL=$PI_DEFAULT (availability-gated; bin/pi injects --model \${PI_DEFAULT_MODEL:-local} when -m absent)"

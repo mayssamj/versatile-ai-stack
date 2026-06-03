@@ -370,20 +370,33 @@ fi
 MODELS_YML="$AI_STACK/installer/models.yml"
 LITELLM_CFG="$AI_STACK/litellm/config.yaml"
 _lms_up() { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
+_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
 resolve_profile_model() {
-  local profile="$1" declared rt served
+  local profile="$1" declared rt
   [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1 || { echo "$HERMES_MODEL"; return; }
   declared="$(yq -r ".assignments.\"$profile\" // \"\"" "$MODELS_YML" 2>/dev/null)"
   [[ -z "$declared" || "$declared" == "null" ]] && { echo "$HERMES_MODEL"; return; }
   rt="$(yq -r ".models.\"$declared\".runtime" "$MODELS_YML" 2>/dev/null)"
-  if [[ "$rt" != "lmstudio" ]]; then echo "$declared"; return; fi
-  # lmstudio: availability-gate.
-  if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
-     && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
-        | grep -qF "\"$declared\""; then
-    echo "$declared"; return
-  fi
-  echo "$HERMES_MODEL"   # gated fallback
+  case "$rt" in
+    lmstudio)
+      # LM Studio: render the MLX slug only when the server is up AND registered AND served.
+      if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
+         && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
+            | grep -qF "\"$declared\""; then
+        echo "$declared"; return
+      fi ;;
+    meridian)
+      # Claude subscription: render the slug only when the Meridian daemon (:3456)
+      # is up AND it's registered in config.yaml; else gate to the local default.
+      # (LiteLLM lists meridian models even when the daemon is down — probe it directly.
+      # MIRRORS lib/models.sh::resolve_effective so cold install matches doctor 40.)
+      if _meridian_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null; then
+        echo "$declared"; return
+      fi ;;
+    *)
+      echo "$declared"; return ;;
+  esac
+  echo "$HERMES_MODEL"   # gated fallback (= models.yml .default = local-gemma4)
 }
 
 # configure_hermes_profile <pflag> <model>
