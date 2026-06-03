@@ -164,7 +164,14 @@ validate() {
     sv="$(my_q ".models.\"$m\".served")"
     case "$rt" in
       ollama|lmstudio) : ;;
-      *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio)"; return 2 ;;
+      meridian)
+        # Claude subscription via Meridian. Must declare a valid effort level.
+        local ef; ef="$(my_q ".models.\"$m\".effort")"
+        case "$ef" in
+          low|medium|high|xhigh|max) : ;;
+          *) err "models.yml: meridian model '$m' has invalid effort '$ef' (want low|medium|high|xhigh|max)"; return 2 ;;
+        esac ;;
+      *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian)"; return 2 ;;
     esac
     [[ -n "$sv" && "$sv" != "null" ]] || { err "models.yml: model '$m' missing .served"; return 2; }
   done < <(my_q '.models | keys | .[]')
@@ -192,6 +199,7 @@ agent_profile()  { my_q ".kinds.\"$1\".profile"; }
 agent_keyenv()   { my_q ".kinds.\"$1\".key_env"; }
 model_runtime()  { my_q ".models.\"$1\".runtime"; }
 model_served()   { my_q ".models.\"$1\".served"; }
+model_effort()   { my_q ".models.\"$1\".effort"; }
 model_ttl()      { local t; t="$(my_q ".models.\"$1\".ttl")"; [[ "$t" == "null" || -z "$t" ]] && echo 1800 || echo "$t"; }
 default_model()  { my_q '.default'; }
 
@@ -207,6 +215,15 @@ config_has_slug() {
 # we never mis-judge key coverage when LiteLLM is simply down.
 litellm_reachable() {
   curl -sf --max-time 3 "${LITELLM_BASE_URL:-http://litellm:4000}/health/readiness" >/dev/null 2>&1
+}
+
+# meridian_up — is the Claude-subscription host daemon answering? Loopback only
+# (host-side; lib runs on the host). LiteLLM lists meridian models even when the
+# daemon is down (model_list is static config), so we MUST probe Meridian itself
+# to availability-gate — litellm_serves_slug can't detect a down upstream here.
+meridian_up() {
+  curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" \
+    -H "Authorization: Bearer x" >/dev/null 2>&1
 }
 
 # litellm_serves_slug <model_name> — does the master-key /v1/models list it?
@@ -234,18 +251,27 @@ resolve_effective() {
   default="$(default_model)"
   rt="$(model_runtime "$declared")"
   _GATED=0
-  if [[ "$rt" != "lmstudio" ]]; then
-    echo "$declared"; return 0
-  fi
-  # lmstudio: availability-gate.
-  local served; served="$(model_served "$declared")"
-  if lms_server_up && config_has_slug "$declared" && litellm_serves_slug "$declared"; then
-    echo "$declared"; return 0
-  fi
-  # Not servable — gate down to the default. Record the intent (unless the
-  # caller is the READ-ONLY `list`/dry-run path, which must not mutate state).
+  case "$rt" in
+    lmstudio)
+      # LM Studio: render the slug only when the server is up AND it's registered
+      # AND LiteLLM lists it; else fall through to the default.
+      if lms_server_up && config_has_slug "$declared" && litellm_serves_slug "$declared"; then
+        echo "$declared"; return 0
+      fi ;;
+    meridian)
+      # Claude subscription: render only when the Meridian daemon is up AND the
+      # model is registered; else fall through to the default. (LiteLLM lists the
+      # model even when Meridian is down, so we probe Meridian directly.)
+      if meridian_up && config_has_slug "$declared"; then
+        echo "$declared"; return 0
+      fi ;;
+    *)
+      echo "$declared"; return 0 ;;
+  esac
+  # Availability gate fell through — render the default. Record the intent (unless
+  # the caller is the READ-ONLY `list`/dry-run path, which must not mutate state).
   _GATED=1
-  [[ "${_NO_PENDING:-0}" != "1" ]] && _record_pending "$agent" "$declared" "$default" "$served"
+  [[ "${_NO_PENDING:-0}" != "1" ]] && _record_pending "$agent" "$declared" "$default" "$(model_served "$declared")"
   echo "$default"; return 0
 }
 
@@ -255,7 +281,8 @@ resolve_effective() {
 # reaches the caller. Gated == the assigned model is lmstudio but we rendered
 # something else (the availability fallback).
 is_gated() {
-  [[ "$(model_runtime "$(agent_assigned "$1")")" == "lmstudio" && "$2" != "$(agent_assigned "$1")" ]]
+  local rt; rt="$(model_runtime "$(agent_assigned "$1")")"
+  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" ) && "$2" != "$(agent_assigned "$1")" ]]
 }
 
 _record_pending() {
@@ -283,11 +310,12 @@ _clear_pending() {
 # Returns 0 always; sets _CONFIG_CHANGED=1 (global) if config.yaml changed.
 register_model_list() {
   _CONFIG_CHANGED=0
-  local m rt sv res
+  local m rt sv ef res
   while IFS= read -r m; do
     [[ -z "$m" ]] && continue
     rt="$(model_runtime "$m")"; sv="$(model_served "$m")"
-    res="$(lms_register_model "$m" "$sv" "$rt")" || { warn "register_model_list: $m failed"; continue; }
+    ef=""; [[ "$rt" == "meridian" ]] && ef="$(model_effort "$m")"
+    res="$(lms_register_model "$m" "$sv" "$rt" "$ef")" || { warn "register_model_list: $m failed"; continue; }
     [[ "$res" == "CHANGED" ]] && _CONFIG_CHANGED=1
   done < <(my_q '.models | keys | .[]')
   return 0
@@ -353,14 +381,40 @@ remint_key() {
   [[ -n "$master" ]] || { err "remint_key: LITELLM_MASTER_KEY missing"; return 1; }
   preflight_superset_in_config || return 1
   local models_json; models_json="$(allowlist_superset_json)"
+  local base="${LITELLM_BASE_URL:-http://litellm:4000}"
+
+  # PREFER an in-place /key/update on the EXISTING key: it widens the allowlist
+  # without changing the key value (no .env churn) and — crucially — without
+  # hitting LiteLLM's UNIQUE-key_alias rule. A blind /key/generate re-using the
+  # same alias 400s once a key already exists ("alias already exists"), which is
+  # exactly what a superset expansion triggers. Only mint fresh when none is set.
+  local existing; existing="$(get_env "$key_env" '')"
+  if [[ -n "$existing" ]]; then
+    local upd
+    upd="$(curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+      -X POST "$base/key/update" -d "{\"key\":\"${existing}\",\"models\":${models_json}}")"
+    if printf '%s' "$upd" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
+      ok "$key_env allowlist widened to the superset (in place)"
+      return 0
+    fi
+    warn "$key_env in-place update failed — minting a fresh key"
+  fi
+
+  # Fresh mint. Recycle the alias first (unique-alias rule) in case a stale key
+  # holds it; ignore errors (alias may not exist / endpoint may lack alias-delete).
+  curl -s --max-time 10 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+    -X POST "$base/key/delete" -d "{\"key_aliases\":[\"${alias}\"]}" >/dev/null 2>&1 || true
   local newkey
   newkey="$(curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
-    -X POST "${LITELLM_BASE_URL:-http://litellm:4000}/key/generate" \
+    -X POST "$base/key/generate" \
     -d "{\"models\":${models_json},\"key_alias\":\"${alias}\",\"metadata\":{\"owner\":\"${owner}\",\"purpose\":\"model-sync\"}}" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$newkey" ]] || { err "remint_key: failed to mint $key_env (LiteLLM up + DATABASE_URL set?)"; return 1; }
   set_env "$key_env" "$newkey"          # set_env never logs the value
-  ok "$key_env (re)minted against the superset + saved to .env"
+  ok "$key_env minted against the superset + saved to .env"
   return 0
 }
 
@@ -575,9 +629,13 @@ rendered_model() {
     hermes-profile)
       local osh profile; osh="$(osh_bin)"; profile="$(agent_profile "$agent")"
       if [[ -n "$osh" ]] && hermes_sandbox_ready; then
+        # `</dev/null`: openshell exec drains its stdin; without this it would eat
+        # the `while read < <(agents)` loop's input in cmd_list and truncate the
+        # matrix to the first hermes agent. (Sync's render paths use `for`, so
+        # they're unaffected — this guard is for the read-loop callers.)
         "$osh" sandbox exec -n "$HERMES_SANDBOX" --no-tty -- bash -c \
           "grep -E '^[[:space:]]*model:' \"\$HOME/.hermes/profiles/$profile/config.yaml\" 2>/dev/null | head -1 | awk '{print \$2}'" \
-          2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]'
+          </dev/null 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]'
       fi ;;
   esac
 }

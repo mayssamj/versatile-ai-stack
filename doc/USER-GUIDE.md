@@ -164,13 +164,13 @@ canonical local models** are declared per-agent in `installer/models.yml`
 | `local-qwen3.6`     | Qwen 3.6 27B (LM Studio MLX)                  | 17.5GB | Heavy general reasoning (opt-in — needs LM Studio) |
 | `local-qwen3-coder` | qwen3-coder-30b-a3b-instruct (LM Studio MLX)  | 17.2GB | Coding specialist (opt-in — needs LM Studio) |
 | `embed-local`       | nomic-embed-text (Ollama)                     | 274MB  | Local embeddings (768-dim)                   |
-| `claude-sonnet`     | Anthropic Claude Sonnet 4.6                   | API    | Cloud reasoning when local isn't enough      |
-| `claude-opus`       | Anthropic Claude Opus 4.7                     | API    | Cloud frontier; expensive                    |
+| `claude-sonnet-4.6` | Anthropic claude-sonnet-4-6 (API key)         | API    | Cloud reasoning when local isn't enough (metered $) |
+| `claude-opus-4.7`   | Anthropic claude-opus-4-7 (API key)           | API    | Cloud frontier (metered $)                   |
 | `openai-gpt-5.5*`   | OpenAI GPT-5.5 family                         | API    | Cloud baseline                               |
 | `openrouter-*`      | Various via OpenRouter (~10)                  | API    | Fallbacks / unusual models                   |
 | `google-gemini-3.1-pro` | Gemini 3.1 Pro                            | API    | Long-context cloud                           |
-| `claude-code`       | Claude Opus via your **subscription** (Meridian) | sub | Opus on your Pro/Max plan — **no API key** (Pro is rate-tight) |
-| `claude-code-sonnet`| Claude Sonnet 4.6 via subscription (Meridian) | sub | Everyday subscription chat + coding (Pro-friendly) |
+| `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` | claude-opus-4-8 via **subscription** (Meridian), one model per effort level | sub | **no API key**. `-max` is the Open WebUI default; use `-low/-medium` for simple work |
+| `claude-sonnet-4.6-sub-{low,medium,high,max}` | claude-sonnet-4-6 via subscription (Meridian) | sub | Everyday subscription chat + coding (no `xhigh` — ≡ `high` on Sonnet) |
 
 `local-gemma4` is the only local model `install all` pre-pulls (alongside
 `nomic-embed-text`); the two big MLX models are opt-in (see §2.16 "Enabling the
@@ -233,33 +233,46 @@ installer state file. To promote them: start LM Studio
 
 Want Open WebUI to use your **Claude Pro/Max subscription** — the same auth as
 your `claude login` — instead of a metered `ANTHROPIC_API_KEY`? That's what the
-`claude-code` / `claude-code-sonnet` models are. They route
-`Open WebUI → LiteLLM → Meridian (host :3456) → Anthropic`, where **Meridian**
-is a small launchd-supervised host daemon that reuses your Claude Code OAuth
-(auto-refreshed) and runs the agent loop in *internal mode*.
+`claude-opus-4.8-sub-*` / `claude-sonnet-4.6-sub-*` models are (the `-sub-`
+infix = subscription). They route `Open WebUI → LiteLLM → Meridian (host :3456)
+→ Anthropic`, where **Meridian** is a small launchd-supervised host daemon that
+reuses your Claude Code OAuth (auto-refreshed) and runs the agent loop in
+*internal mode*.
 
 ```bash
 npm install -g @rynfar/meridian      # one-time
 claude login                         # if not already logged in (OAuth → Keychain)
-bash ~/ai-stack/bin/start-meridian.sh install   # launchd: always-on, survives reboot
-bash ~/ai-stack/bin/start-litellm.sh --recreate # reload config so claude-code appears
+bash ~/ai-stack/bin/start-meridian.sh install   # launchd: always-on + seeds thinking
+bash ~/ai-stack/bin/start-litellm.sh --recreate # reload config so the *-sub-* models appear
 ```
 
-Then open `http://openwebui:8080`, refresh, and pick **`claude-code`** (Opus) or
-**`claude-code-sonnet`** in the model dropdown — no Open WebUI Function/pipe
-needed, no API key. Manage it with `start-meridian.sh status|restart|uninstall`;
-`install.sh doctor` check 41 reports its health.
+Open `http://openwebui:8080`, refresh — the default model is
+**`claude-opus-4.8-sub-max`**. No Open WebUI Function/pipe, no API key. Manage
+with `start-meridian.sh status|restart|uninstall`; `install.sh doctor` check 41
+reports health. The subscription models run **claude-opus-4-8** /
+**claude-sonnet-4-6** — verified end-to-end via the LiteLLM trace. (Meridian's
+`/v1/models` catalog lists ≤4.7 but **passes through** any model id to its
+bundled claude-code 2.1.160, so 4.8 works.)
 
-`claude-code` runs **Opus 4.8** (`claude-opus-4-8`) — verified end-to-end via the
-LiteLLM trace. Meridian's `/v1/models` catalog is a static list that stops at 4.7,
-but it **passes through** any model id to its bundled claude-code (2.1.160), so
-4.8 works today; no `npm update` needed.
+**Effort / reasoning level — pick by picking the model.** Per-chat effort can't
+be sent from Open WebUI (LiteLLM's `drop_params` strips it), so each effort level
+is its own model: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` and
+`claude-sonnet-4.6-sub-{low,medium,high,max}` (Sonnet has no `xhigh` — it falls
+back to `high`). Use `-low`/`-medium` for simple work, `-max` for hard problems.
+Effort is `output_config.effort` (NOT a token budget — `budget_tokens` is rejected
+on 4.7+); each model injects `extra_body: { effort: <level> }`, and it's
+**verified on the wire** that LiteLLM forwards it as `body.effort` → Meridian →
+the Agent SDK `query({effort})`. ⚠️ Honest caveat: the plumbing is proven, but a
+low-vs-max output-token A/B showed **no measurable difference** — Meridian's
+internal mode hides thinking, so any extra reasoning isn't reflected in token
+counts or rendered in Open WebUI. Thinking itself is forced on by default
+(`~/.config/meridian/sdk-features.json`, seeded by `start-meridian.sh install`).
 
 Caveats: **loopback-only** — Meridian holds a live OAuth and can run host tools,
-so never expose `:3456` off-box. On a **Pro** plan Opus is rate-limited (Meridian
-warns "Max recommended") — prefer `claude-code-sonnet` for high-volume work and
-save `claude-code` (Opus 4.8) for when you need the frontier model. Subscription
-auth is for **personal use** — don't re-share it to other users through a
+so never expose `:3456` off-box. **Billing:** as of 2026-06-15 third-party
+Agent-SDK usage (Meridian) draws from a separate capped monthly credit (~$20 on
+Pro) then API rates; `max`/`xhigh` burn it fastest. Subscription auth is for
+**personal use** — don't re-share it to other users through a
 multi-user deployment.
 
 #### RAM guard refused my load

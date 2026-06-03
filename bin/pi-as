@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# bin/pi-as <role> — launch Pi inside pi-v1 wearing one team role's persona.
+#
+# Phase-1 personas (Pi has no native subagents): each role is a per-project
+# SYSTEM.md at /sandbox/agents/<role>/SYSTEM.md (uploaded by Phase 04h). This
+# wrapper `cd`s into that dir so Pi loads the role's SYSTEM.md from cwd, and
+# pins the role's model (manager/techlead/ml-engineer -> Opus, others -> Sonnet;
+# from installer/models.yml). The shared team-protocol skill governs handoffs
+# even though you switch hats manually.
+#
+#   bin/pi-as                      # list the roles
+#   bin/pi-as backend-engineer     # run Pi as the backend engineer
+#   bin/pi-as techlead -p "..."    # forward extra args to pi
+set -Eeuo pipefail
+
+if (( BASH_VERSINFO[0] < 5 )); then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x "$b" ]] && exec "$b" "$0" "$@"
+  done
+  echo "bin/pi-as: needs bash 5+" >&2; exit 2
+fi
+
+ROLES=(manager techlead frontend-engineer backend-engineer ml-engineer \
+       qa-test-engineer reviewing-engineer sre-engineer incident-manager)
+
+if [[ $# -eq 0 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  echo "usage: bin/pi-as <role> [pi args...]"
+  echo "roles:"; printf '  %s\n' "${ROLES[@]}"
+  exit 0
+fi
+
+ROLE="$1"; shift
+_ok=0; for r in "${ROLES[@]}"; do [[ "$ROLE" == "$r" ]] && { _ok=1; break; }; done
+if (( ! _ok )); then
+  echo "bin/pi-as: unknown role '$ROLE'. Known roles:" >&2
+  printf '  %s\n' "${ROLES[@]}" >&2; exit 2
+fi
+
+resolve_openshell() {
+  if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
+  elif command -v openshell >/dev/null; then command -v openshell
+  else echo ""; fi
+}
+OSH="$(resolve_openshell)"
+[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash install.sh install 04' first." >&2; exit 1; }
+
+if ! "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
+     | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}' | grep -q Ready; then
+  echo "pi-v1 sandbox not Ready — run 'bash install.sh install 15' first." >&2; exit 1
+fi
+
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AI_STACK/installer/lib/common.sh" 2>/dev/null || true
+source "$AI_STACK/installer/lib/env.sh" 2>/dev/null || true
+PI_LITELLM_KEY="$(get_env PI_LITELLM_KEY '' 2>/dev/null || true)"
+[[ -n "${PI_LITELLM_KEY:-}" ]] || { echo "PI_LITELLM_KEY missing — re-run 'install.sh install 15'." >&2; exit 1; }
+
+# The persona must be uploaded (Phase 04h).
+if ! "$OSH" sandbox exec -n pi-v1 --no-tty -- /bin/sh -c "test -f /sandbox/agents/$ROLE/SYSTEM.md" >/dev/null 2>&1; then
+  echo "persona /sandbox/agents/$ROLE/SYSTEM.md not found — run 'install.sh install agent_fleet' first." >&2; exit 1
+fi
+
+# Per-role model = the hermes_<snake> assignment from models.yml (so the persona
+# runs on its tier); falls back to PI_DEFAULT_MODEL. The PI key is widened to the
+# subscription ids by Phase 04h, so claude-*-sub-* is reachable.
+MODEL="$(get_env PI_DEFAULT_MODEL 'local' 2>/dev/null || echo local)"
+if command -v yq >/dev/null 2>&1 && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+  _prof="hermes_${ROLE//-/_}"
+  _m="$(yq -r ".assignments.\"$_prof\" // \"\"" "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
+  [[ -n "$_m" && "$_m" != "null" ]] && MODEL="$_m"
+fi
+
+# Allow an explicit -m/--model in "$@" to override our pin.
+_has_model=0; _skip=0
+for _a in "$@"; do
+  if (( _skip )); then _skip=0; continue; fi
+  case "$_a" in -m|--model|--model=*) _has_model=1; break ;; -p|--prompt) _skip=1 ;; esac
+done
+if (( _has_model == 0 )); then set -- --model "$MODEL" "$@"; fi
+
+echo "▶ Pi as ${ROLE} (model: ${MODEL})  —  cwd /sandbox/agents/${ROLE}" >&2
+
+# cwd = the role dir so Pi loads that SYSTEM.md; HOME=/sandbox so the key +
+# inference extension resolve (same as bin/pi).
+exec "$OSH" sandbox exec -n pi-v1 --workdir "/sandbox/agents/$ROLE" --tty -- \
+  /bin/sh -c "PI_LITELLM_KEY='$PI_LITELLM_KEY' HOME=/sandbox exec /sandbox/node_modules/.bin/pi \"\$@\"" -- "$@"

@@ -22,6 +22,7 @@ _mb_cfg() { echo "$AI_STACK/litellm/config.yaml"; }
 
 _mb_litellm_up() { curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; }
 _mb_lms_up()     { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
+_mb_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
 
 _mb_osh() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
@@ -42,6 +43,13 @@ _mb_effective() {
   declared="$(yq -r ".assignments.\"$agent\"" "$yml" 2>/dev/null)"
   default="$(yq -r '.default' "$yml" 2>/dev/null)"
   rt="$(yq -r ".models.\"$declared\".runtime" "$yml" 2>/dev/null)"
+  # meridian: availability-gate on the Meridian daemon (mirrors lib/models.sh).
+  if [[ "$rt" == "meridian" ]]; then
+    if _mb_meridian_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
+      echo "$declared"; return
+    fi
+    echo "$default"; return
+  fi
   if [[ "$rt" != "lmstudio" ]]; then echo "$declared"; return; fi
   served="$(yq -r ".models.\"$declared\".served" "$yml" 2>/dev/null)"
   if _mb_lms_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
@@ -99,6 +107,13 @@ models_binding_diagnose() {
     if ! yq -e ".model_list[] | select(.model_name == \"$m\")" "$cfg" >/dev/null 2>&1; then
       echo "model '$m' missing from litellm/config.yaml (run: bash install.sh model sync)"
       fail=1; continue
+    fi
+    # meridian (Claude subscription): NEVER chat_ping — it bills subscription
+    # tokens and needs the daemon up. Presence in config.yaml (checked above) is
+    # the green signal; liveness is covered by check 41. Advisory if down.
+    if [[ "$rt" == "meridian" ]]; then
+      _mb_meridian_up || advisory="${advisory}    (advisory) meridian model '$m' — Meridian daemon down; agents availability-gate to the default\n"
+      continue
     fi
     # chat_ping (max_tokens 1)
     local code

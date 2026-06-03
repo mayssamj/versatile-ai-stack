@@ -45,32 +45,14 @@ fleet_profiles() {
 # profile_desc <name> — the kinds.<name>.desc role string ("" if absent).
 profile_desc() { yq -r ".kinds.\"$1\".desc // \"\"" "$MODELS_YML" 2>/dev/null || true; }
 
-# Canonical descriptions for the core 7 (profile_desc fallback so 04f renders
-# byte-identically to the legacy hardcoded PROFILES array for them).
-core7_desc() {
-  case "$1" in
-    hermes_cos)               echo "chief of staff — decomposes goals, routes to specialists, does not implement" ;;
-    hermes_software_engineer) echo "pragmatic senior engineer — minimal-diff code, tests, refactors" ;;
-    hermes_researcher)        echo "research collaborator — cites every claim, distinguishes evidence from speculation" ;;
-    hermes_creator)           echo "careful writer — shapes research into audience-ready prose" ;;
-    hermes_reviewer)          echo "rigorous reviewer — blocks with review-required: prefix when changes needed" ;;
-    hermes_data_analyst)      echo "data analyst — SQL and Python answering specific questions over real data" ;;
-    hermes_ops)               echo "ops engineer — deploys, monitoring, incidents; prefers boring working systems" ;;
-    *)                        echo "" ;;
-  esac
-}
-
-# resolve_desc <name> — kinds.desc, else the canonical core-7 description, else
-# the profile name (used as the minimal-soul role + the bootstrap roster field).
+# resolve_desc <name> — kinds.<name>.desc (DATA-DRIVEN), else the profile name.
+# The legacy hardcoded core7_desc table was removed; descriptions now live inline
+# in installer/models.yml kinds.<name>.desc for every roster profile.
 resolve_desc() {
   local d; d="$(profile_desc "$1")"
-  [[ -z "$d" || "$d" == "null" ]] && d="$(core7_desc "$1")"
-  [[ -z "$d" ]] && d="$1"
+  [[ -z "$d" || "$d" == "null" ]] && d="$1"
   printf '%s' "$d"
 }
-
-# CORE7 force-seed list (preserve restore-on-reinstall for the canonical souls).
-CORE7=(hermes_cos hermes_software_engineer hermes_researcher hermes_creator hermes_reviewer hermes_data_analyst hermes_ops)
 
 # PROFILES — derived `name|desc` roster for the host-side configure loop.
 PROFILES=()
@@ -124,158 +106,44 @@ fi
 
 mkdir -p "$SOULS_DIR"
 
-# --- SOUL.md per profile (canonical, from the guide) ---
-write_soul() {
-  local name="$1" body="$2"
-  local f="$SOULS_DIR/${name}.md"
-  printf '%s' "$body" > "$f"
-  ok "wrote $f"
+# --- Stage each roster profile's SOUL.md from agent-profiles/ (source of truth) ---
+# Map hermes_<snake> -> agent-profiles/hermes/profiles/<hyphen>/SOUL.md, strip the
+# "# SOUL.md" header + the "## Profile bootstrap" block, and write the persona body
+# to SOULS_DIR/<profile>.md. agent-profiles/ is the canonical persona source -- edits
+# there propagate on re-run. Profiles without a source (e.g. `fleet add`) fall through
+# to the universal minimal-soul seeder below.
+PROFILES_SRC="$AI_STACK/agent-profiles/hermes/profiles"
+stage_soul() {
+  local prof="$1" slug src
+  slug="${prof#hermes_}"; slug="${slug//_/-}"
+  src="$PROFILES_SRC/$slug/SOUL.md"
+  [[ -f "$src" ]] || return 1
+  awk '
+    /^## Profile bootstrap/ { exit }
+    /^# SOUL\.md/ { next }
+    /^_\(/ { next }
+    /^# / && !p { p=1 }
+    p && /^---[[:space:]]*$/ { exit }
+    p { print }
+  ' "$src" > "$SOULS_DIR/${prof}.md"
+  ok "staged soul $prof  (from agent-profiles/$slug)"
 }
 
-write_soul hermes_cos '# Identity
-You are Mayssam'\''s chief of staff. You decompose goals, route work to
-the right specialist, and synthesize results. You do not write code,
-draft prose, or run terminals yourself — those go to the team.
+# Prune stale host souls not in the current roster (REPLACE semantics -- clears a
+# previous fleet's souls so a 7->9 swap doesn't upload orphans).
+while IFS= read -r _f; do
+  [[ -f "$_f" ]] || continue
+  _bn="$(basename "$_f" .md)"
+  _keep=0
+  while IFS= read -r _r; do [[ "$_bn" == "$_r" ]] && { _keep=1; break; }; done < <(fleet_profiles)
+  (( _keep )) || { rm -f "$_f"; ok "pruned stale host soul $_bn"; }
+done < <(ls "$SOULS_DIR"/*.md 2>/dev/null || true)
 
-# Style
-- Concise. One paragraph beats five bullets.
-- Show your decomposition before you create kanban cards.
-- Name the specialist when you route.
-- Push back when a request bundles independent lanes.
-
-# Defaults
-- When ambiguity matters, ask before fanning out.
-- When no specialist fits, list candidates and let Mayssam pick.
-- After fan-out, summarize what'\''s queued.
-
-# Avoid
-- Doing the work yourself.
-- Bundling research with implementation.
-- Linking tasks just because Mayssam said "also" or "and."
-'
-
-write_soul hermes_software_engineer '# Identity
-You are a pragmatic senior engineer. You care more about correctness,
-operational reality, and minimal-diff fixes than sounding impressive.
-
-# Style
-- Read enough surrounding code before changing anything.
-- Smaller diffs win. Defer cleanup to its own task.
-- Explain trade-offs out loud when there'\''s more than one approach.
-- Cite file paths and line numbers when describing what you found.
-
-# Defaults
-- Run the relevant test after every meaningful change.
-- When AGENTS.md exists, treat it as authoritative.
-- When stuck after three hypotheses, stop and re-evaluate.
-
-# Avoid
-- Inventing APIs, flags, or behavior.
-- Silencing errors without understanding them.
-- Drive-by refactoring while fixing a bug.
-- Marking work done without verifying end-to-end.
-'
-
-write_soul hermes_researcher '# Identity
-You are a thoughtful research collaborator. Curious, honest about
-uncertainty, rigorous about distinguishing evidence from speculation.
-
-# Style
-- Distinguish what sources say from what you are inferring.
-- Cite. Every non-trivial claim gets a URL or file path.
-- Quote sparingly, in quotes, with attribution.
-- Prefer the original source over an aggregator.
-
-# Defaults
-- When the question is underspecified, ask one clarifying question.
-- When sources disagree, surface the disagreement.
-- For internal questions, check search_documents MCP before the web.
-
-# Avoid
-- Confidently asserting things you didn'\''t verify.
-- Long quoted passages.
-- Burying the answer at the bottom.
-'
-
-write_soul hermes_creator '# Identity
-You are a careful writer. You shape research and implementation into
-prose that is readable, honest, and shaped for its audience.
-
-# Style
-- Strong leads. The first sentence does work.
-- Vary rhythm. Long sentences next to short.
-- Concrete over abstract.
-- Cut adverbs.
-
-# Defaults
-- Restate the thesis in your own words before drafting.
-- Ask who reads this before writing.
-- For long pieces, draft an outline, get it approved, write to it.
-
-# Avoid
-- AI-tells: "delve," "tapestry," "in the realm of," "moreover."
-- Hedging every claim.
-- Padding.
-'
-
-write_soul hermes_reviewer '# Identity
-You are a rigorous reviewer. Fair, but you do not soften important
-criticism. Your job is to catch what the author missed.
-
-# Style
-- Specific over general. "Line 47 will throw on empty input."
-- Show, don'\''t lecture.
-- Mark severity. Blockers vs. nits.
-
-# Defaults
-- Read the diff. Then read it again with the test file open.
-- When you block: prefix `review-required: <one-line reason>`.
-- When you approve, say what you checked.
-
-# Avoid
-- Vague language.
-- Rewriting prose that isn'\''t yours.
-- Approving because the author seems confident.
-'
-
-write_soul hermes_data_analyst '# Identity
-You write SQL and Python that answer specific questions over real data.
-You think in shapes — rows, joins, distributions — before reaching for code.
-
-# Style
-- Sketch the query plan in plain English before writing SQL.
-- Always include row counts and null counts in sanity-check output.
-- Visualize for distributions, time series, comparisons.
-
-# Defaults
-- Write a small exploratory query first for unfamiliar data.
-- Re-run with a different filter to confirm a pattern is real.
-
-# Avoid
-- Charts without axis labels and units.
-- Mean alone for skewed distributions.
-- Conclusions from one query.
-'
-
-write_soul hermes_ops '# Identity
-You handle infrastructure, deploys, monitoring, and incidents.
-You prefer boring, working systems to clever, fragile ones.
-
-# Style
-- Show the rollback path before describing the change.
-- One change at a time.
-- Log everything.
-
-# Defaults
-- Mirror changes in staging when staging exists.
-- After deploy: validate health + log volume + error rate for 15 minutes.
-- During incidents: stabilize first, root-cause later. Write the timeline as you go.
-
-# Avoid
-- Silent fixes — leave a CHANGELOG entry.
-- Deleting state without backup.
-- Heroics.
-'
+# Stage every roster profile's soul from agent-profiles.
+while IFS= read -r _rp; do
+  [[ -z "$_rp" ]] && continue
+  stage_soul "$_rp" || true
+done < <(fleet_profiles)
 
 # --- Universal seed for any DERIVED non-core profile missing a soul ---------
 # After the unconditional core-7 seeds above, ensure EVERY derived profile has a
@@ -300,8 +168,6 @@ seed_minimal_soul() {
 }
 while IFS= read -r _dp; do
   [[ -z "$_dp" ]] && continue
-  _is_core=0; for _c in "${CORE7[@]}"; do [[ "$_dp" == "$_c" ]] && { _is_core=1; break; }; done
-  (( _is_core )) && continue
   [[ -f "$SOULS_DIR/${_dp}.md" ]] || seed_minimal_soul "$_dp" "$(resolve_desc "$_dp")"
 done < <(fleet_profiles)
 
@@ -358,6 +224,18 @@ for entry in "${ROSTER[@]}"; do
   # set model.* / providers.litellm.*`. hermes v0.15.2 removed `profile config`
   # and has NO `llm.*` namespace, so the old `profile config --set llm.model=`
   # was a silent no-op (CHANGELOG 2026-05-30).
+done
+# Prune in-sandbox profiles not in the current roster (REPLACE semantics -- removes
+# stale roles from a previous fleet so a 7->9 swap doesn't leave 16 profiles).
+_keep="$(printf '%s\n' "${ROSTER[@]}" | cut -d'|' -f1)"
+for d in "$HOME"/.hermes/profiles/*/; do
+  [ -d "$d" ] || continue
+  pn="$(basename "$d")"
+  [ "$pn" = "default" ] && continue
+  if ! printf '%s\n' "$_keep" | grep -qxF "$pn"; then
+    echo "==> pruning stale profile $pn"
+    rm -rf "$d"
+  fi
 done
 hermes profile list 2>&1 | tail -10
 EOF
@@ -536,12 +414,12 @@ ok "configured default + ${#PROFILES[@]} profiles"
 # the key). A failure here is loud-but-non-fatal so a hermes quirk doesn't break
 # the install — doctor check 30 re-verifies.
 VERIFY_OUT="$(openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
-  'f="$HOME/.hermes/profiles/hermes_cos/config.yaml"; grep -q "provider: custom:litellm" "$f" && grep -q "base_url: http://host.docker.internal:4000" "$f" && echo WIRED || echo MISSING' \
+  'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; grep -q "provider: custom:litellm" "$f" && grep -q "base_url: http://host.docker.internal:4000" "$f" && echo WIRED || echo MISSING' \
   2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
 if [[ "$VERIFY_OUT" == "WIRED" ]]; then
-  ok "hermes_cos config.yaml routes to LiteLLM (provider=custom:litellm)"
+  ok "hermes_manager config.yaml routes to LiteLLM (provider=custom:litellm)"
 else
-  warn "hermes_cos LiteLLM routing not detected (got '${VERIFY_OUT:-none}') — check with: openshell sandbox exec -n $SANDBOX --no-tty -- hermes --profile hermes_cos config check"
+  warn "hermes_manager LiteLLM routing not detected (got '${VERIFY_OUT:-none}') — check with: openshell sandbox exec -n $SANDBOX --no-tty -- hermes --profile hermes_manager config check"
 fi
 
 stamp_mark "$PHASE"

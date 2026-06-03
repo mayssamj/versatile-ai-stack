@@ -40,8 +40,8 @@ to the `default` (`local-gemma4`).
 | `hermes_reviewer`          | `local-qwen3-coder` | hermes-profile | `HERMES_LITELLM_KEY` |
 | `hermes_data_analyst`      | `local-qwen3.6`     | hermes-profile | `HERMES_LITELLM_KEY` |
 | `hermes_ops`               | `local-gemma4`      | hermes-profile | `HERMES_LITELLM_KEY` |
-| `pi`                       | `local-qwen3-coder` | pi             | `PI_LITELLM_KEY` |
-| `deerflow`                 | `local-qwen3.6`     | deerflow       | *(none — master key)* |
+| `pi`                       | `claude-opus-4.8-sub-max` | pi       | `PI_LITELLM_KEY` |
+| `deerflow`                 | `claude-opus-4.8-sub-max` | deerflow | *(none — master key)* |
 | `ace`                      | `local-gemma4`      | ace            | `ACE_LITELLM_KEY` |
 | `rlm`                      | `local-gemma4`      | rlm            | `RLM_LITELLM_KEY` |
 
@@ -90,15 +90,40 @@ the start command for each.
   (`bin/start-meridian.sh`, launchd-supervised on `127.0.0.1:3456`) that reuses
   your `claude login` OAuth — auto-refreshed — and runs the Claude Code agent
   loop (internal mode). LiteLLM dials it exactly like LM Studio
-  (`http://host.docker.internal:3456/v1`) and serves it as `claude-code`
-  (Opus) and `claude-code-sonnet`. This is how Open WebUI chats/codes on your
-  **Pro/Max subscription** rather than a metered API key. Install:
-  `npm install -g @rynfar/meridian && bash bin/start-meridian.sh install`.
-  **Loopback-only** (holds a live OAuth + can run host tools — do not expose
-  off-box). On **Pro**, Opus is rate-tight — prefer `claude-code-sonnet` for
-  daily use. Note: these models live **directly in `litellm/config.yaml`**
-  (like the cloud chat models), not in `models.yml` — they're for chat, not
-  agent binding, so `model sync` leaves them untouched.
+  (`http://host.docker.internal:3456/v1`). The `-sub-` suffix marks the
+  SUBSCRIPTION routes, distinct from the metered API-key `claude-opus-4.7` /
+  `claude-sonnet-4.6`. This is how Open WebUI chats/codes on your **Pro/Max
+  subscription** rather than a metered API key.
+  Install: `npm install -g @rynfar/meridian && bash bin/start-meridian.sh install`.
+  - **Effort ladder (one model per level):**
+    `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` and
+    `claude-sonnet-4.6-sub-{low,medium,high,max}` (Sonnet omits `xhigh` — it
+    falls back to `high`). Open WebUI's default is `claude-opus-4.8-sub-max`
+    (`DEFAULT_MODELS` in `bin/start-openwebui.sh`). Pick effort by picking the
+    model — per-chat effort can't be sent from Open WebUI (`drop_params`).
+  - **How effort is wired:** Opus 4.8 depth is `output_config.effort`
+    (low/medium/high/xhigh/max), NOT a token budget (`budget_tokens` is rejected
+    on 4.7+). Each model sets `extra_body: { effort: <level> }`; **verified on
+    the wire** that LiteLLM forwards it as `body.effort`, which Meridian reads
+    and passes into the Agent SDK `query({effort})`. ⚠️ The plumbing is proven,
+    but a low-vs-max output-token A/B showed **no measurable difference** (Meridian's
+    internal mode hides thinking, so thinking tokens aren't reflected in
+    `completion_tokens` — effort may apply without a visible signal). Reasoning
+    TEXT also does not render in Open WebUI through this bridge.
+  - **Thinking** is forced on by default (`~/.config/meridian/sdk-features.json`,
+    `thinking: enabled` per adapter — seeded by `start-meridian.sh install`).
+  - **Billing (Pro):** as of 2026-06-15 third-party Agent-SDK usage (Meridian)
+    draws from a separate capped monthly credit (~$20 on Pro), then API rates;
+    `max`/`xhigh` burn it fastest. **Loopback-only** (holds a live OAuth + can
+    run host tools — do not expose off-box).
+  - These models are declared in **`installer/models.yml`** with `runtime:
+    meridian` (+ an `effort:` field) — `model sync` renders them into
+    `litellm/config.yaml`, joins them to the scoped-key superset, and makes them
+    **assignable** (`install.sh model assign pi claude-opus-4.8-sub-xhigh`).
+    They availability-gate to `default` (local-gemma4) when Meridian is down.
+  - **Current assignments:** `pi` (coding) and `deerflow` (research) →
+    `claude-opus-4.8-sub-max`. The Hermes fleet stays on local models (7 parallel
+    profiles would serialize on one subscription). ACE/RLM stay local.
 
 ## Workflow
 

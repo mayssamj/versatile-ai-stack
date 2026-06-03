@@ -5,7 +5,7 @@
 # silently never reached local models). The working shape is per-profile:
 #   model.provider: custom:litellm
 #   providers.litellm.base_url: http://host.docker.internal:4000/v1
-# This check confirms the representative hermes_cos profile is wired that way.
+# This check confirms the representative hermes_manager profile is wired that way.
 # It never prints the api_key. CHANGELOG 2026-05-30.
 CHECKS+=(hermes_routing)
 CHECK_TITLE[hermes_routing]="Hermes profiles route to LiteLLM (provider=custom:litellm, Phase 04f)"
@@ -34,10 +34,10 @@ hermes_routing_diagnose() {
   # Inspect the rendered profile config WITHOUT printing it (it holds the key).
   local wired
   wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- bash -c \
-    'f="$HOME/.hermes/profiles/hermes_cos/config.yaml"; [[ -f "$f" ]] && grep -q "provider: custom:litellm" "$f" && grep -q "base_url: http://host.docker.internal:4000" "$f" && echo WIRED || echo MISSING' \
+    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "provider: custom:litellm" "$f" && grep -q "base_url: http://host.docker.internal:4000" "$f" && echo WIRED || echo MISSING' \
     2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
   if [[ "$wired" != "WIRED" ]]; then
-    echo "hermes_cos profile is NOT routed to LiteLLM (got '${wired:-no-response}')"
+    echo "hermes_manager profile is NOT routed to LiteLLM (got '${wired:-no-response}')"
     echo "  Hermes would resolve provider 'auto' and never reach local models."
     return 1
   fi

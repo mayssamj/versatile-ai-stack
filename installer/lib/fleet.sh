@@ -45,8 +45,9 @@ LITELLM_CFG="$AI_STACK/litellm/config.yaml"
 GATEWAY_PORT=17670
 POLICIES_DIR="$AI_STACK/openshell/policies"
 
-# The 7 canonical hermes profiles 04f force-seeds + which doctor 30 leans on.
-CORE7=(hermes_cos hermes_software_engineer hermes_researcher hermes_creator hermes_reviewer hermes_data_analyst hermes_ops)
+# The canonical hermes profiles 04f stages + which doctor 30 leans on (the AI
+# software-engineering team). Reserved — `fleet remove` refuses these.
+CORE7=(hermes_manager hermes_techlead hermes_frontend_engineer hermes_backend_engineer hermes_ml_engineer hermes_qa_test_engineer hermes_reviewing_engineer hermes_sre_engineer hermes_incident_manager)
 
 # ---------------------------------------------------------------------------
 # models.yml accessors (mirror lib/models.sh house style)
@@ -68,22 +69,6 @@ kinds_keys()       { local out; out="$(my_q '.kinds | keys | .[]')"; grep -v '^[
 assign_keys()      { local out; out="$(my_q '.assignments | keys | .[]')"; grep -v '^[[:space:]]*$' <<<"$out" || true; }
 model_exists()     { local out; out="$(my_q '.models | keys | .[]')"; grep -qxF "$1" <<<"$out"; }
 profile_desc()     { my_q ".kinds.\"$1\".desc // \"\""; }
-
-# Canonical descriptions for the core 7 (profile_desc fallback so `fleet list`
-# shows real roles for default profiles that have no kinds.<name>.desc).
-# Kept byte-identical to phases/04f_hermes_fleet.sh:core7_desc().
-core7_desc() {
-  case "$1" in
-    hermes_cos)               echo "chief of staff — decomposes goals, routes to specialists, does not implement" ;;
-    hermes_software_engineer) echo "pragmatic senior engineer — minimal-diff code, tests, refactors" ;;
-    hermes_researcher)        echo "research collaborator — cites every claim, distinguishes evidence from speculation" ;;
-    hermes_creator)           echo "careful writer — shapes research into audience-ready prose" ;;
-    hermes_reviewer)          echo "rigorous reviewer — blocks with review-required: prefix when changes needed" ;;
-    hermes_data_analyst)      echo "data analyst — SQL and Python answering specific questions over real data" ;;
-    hermes_ops)               echo "ops engineer — deploys, monitoring, incidents; prefers boring working systems" ;;
-    *)                        echo "" ;;
-  esac
-}
 
 # valid_name — bare-underscore profile-name convention (matches hermes_cos).
 # NOT models.sh's ^local- regex (those are model names). Returns 2 + err on fail.
@@ -378,7 +363,7 @@ cmd_fleet_list() {
     entries="$( while IFS= read -r n; do
         [[ -z "$n" ]] && continue
         model="$(my_q ".assignments.\"$n\"")"
-        role="$(profile_desc "$n")"; [[ -z "$role" || "$role" == "null" ]] && role="$(core7_desc "$n")"
+        role="$(profile_desc "$n")"; [[ "$role" == "null" ]] && role=""
         if (( ready )); then present="$(grep -qxF "$n" <<<"$plist" && echo true || echo false)"; else present=null; fi
         N="$n" M="$model" R="$role" P="$present" python3 -c 'import json,os; print(json.dumps({"name":os.environ["N"],"model":os.environ["M"],"role":os.environ["R"],"present":(None if os.environ["P"]=="null" else os.environ["P"]=="true")}))'
       done < <(fleet_profiles) | python3 -c 'import sys,json; print(json.dumps({"profiles":[json.loads(l) for l in sys.stdin if l.strip()]}, indent=2))' )"
@@ -392,7 +377,7 @@ cmd_fleet_list() {
   while IFS= read -r n; do
     [[ -z "$n" ]] && continue
     model="$(my_q ".assignments.\"$n\"")"
-    role="$(profile_desc "$n")"; [[ -z "$role" || "$role" == "null" ]] && role="$(core7_desc "$n")"
+    role="$(profile_desc "$n")"; [[ "$role" == "null" ]] && role=""
     [[ -z "$role" ]] && role="-"
     if (( ready )); then
       present="$(grep -qxF "$n" <<<"$plist" && echo yes || echo no)"

@@ -23,14 +23,16 @@ model_list:
       model: ollama_chat/hf.co/LiquidAI/LFM2.5-8B-A1B-GGUF:Q4_K_M
       api_base: http://ollama:11434
   # ============================================================
-  # CLOUD CHAT — Anthropic (direct API)
+  # CLOUD CHAT — Anthropic (direct API, METERED — uses ANTHROPIC_API_KEY $).
+  # Named with explicit versions so they're distinct from the subscription
+  # routes below (`*-sub`, via Meridian, billed to your plan not your card).
   # Sonnet 4.7 does not exist — latest Sonnet is 4.6. Next is 4.8 (May 2026).
   # ============================================================
-  - model_name: claude-sonnet
+  - model_name: claude-sonnet-4.6
     litellm_params:
       model: anthropic/claude-sonnet-4-6
       api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: claude-opus
+  - model_name: claude-opus-4.7
     litellm_params:
       model: anthropic/claude-opus-4-7
       api_key: os.environ/ANTHROPIC_API_KEY
@@ -208,6 +210,100 @@ model_list:
       model: openai/qwen3-coder-30b-a3b-instruct-mlx
       api_base: http://host.docker.internal:1234/v1
       api_key: lm-studio
+  # ============================================================
+  # CLAUDE CODE — your Claude Pro/Max SUBSCRIPTION (no API key).
+  # Routed through Meridian, a host daemon that reuses your
+  # `claude login` OAuth (auto-refreshed) and exposes an
+  # OpenAI-compatible surface. Same host.docker.internal pattern
+  # as LM Studio above — Meridian listens on 127.0.0.1:3456 and
+  # OrbStack forwards host loopback into containers.
+  #   Meridian default = INTERNAL mode: the Claude Code agent loop
+  #   (tools, edits) runs on the host and returns the final result.
+  # `api_key` is a dummy — Meridian holds the real OAuth, not LiteLLM.
+  # The `-sub` suffix = SUBSCRIPTION (your Claude plan, no API key). NOTE:
+  # Meridian's /v1/models catalog is static (lists ≤4.7) but it PASSES THROUGH
+  # any model id to its bundled claude-code (2.1.160), so claude-opus-4-8 works.
+  # (The wire model id keeps hyphens — `claude-opus-4-8` — because that's what
+  # Anthropic expects; the dotted model_name is just the alias shown in Open WebUI.)
+  #
+  # EFFORT: Opus 4.8 reasoning depth is controlled by `output_config.effort`
+  # (low/medium/high/xhigh/max), NOT a token budget (budget_tokens is rejected
+  # on 4.7+). Meridian reads `body.effort` (or the `x-opencode-effort` header)
+  # and forwards it into the Claude Code Agent SDK `query({effort})` — confirmed
+  # by reading Meridian 1.42.1's dist. We inject `effort` via per-model
+  # `extra_body` (LiteLLM merges it into the request body; not subject to
+  # `drop_params`, which only strips recognized-but-unsupported OpenAI params).
+  # FULL EFFORT LADDER, one model per level so you pick effort by picking the
+  # model in Open WebUI (per-chat effort can't be sent from OWUI). `-high` ==
+  # the model default (effort:high ≡ omitting it). NOTE: on Sonnet 4.6 `xhigh`
+  # falls back to `high` (xhigh is Opus-4.7/4.8 only), so Sonnet omits it; `max`
+  # is honored on both. Reasoning TEXT is not surfaced (internal mode hides it).
+  # ============================================================
+  # --- Opus 4.8 (subscription) — low/medium/high/xhigh/max ---
+  - model_name: claude-opus-4.8-sub-low
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: low
+  - model_name: claude-opus-4.8-sub-medium
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: medium
+  - model_name: claude-opus-4.8-sub-high
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: high
+  - model_name: claude-opus-4.8-sub-xhigh
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: xhigh
+  - model_name: claude-opus-4.8-sub-max
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: max
+  # --- Sonnet 4.6 (subscription) — low/medium/high/max (no xhigh: ≡ high) ---
+  - model_name: claude-sonnet-4.6-sub-low
+    litellm_params:
+      model: openai/claude-sonnet-4-6
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: low
+  - model_name: claude-sonnet-4.6-sub-medium
+    litellm_params:
+      model: openai/claude-sonnet-4-6
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: medium
+  - model_name: claude-sonnet-4.6-sub-high
+    litellm_params:
+      model: openai/claude-sonnet-4-6
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: high
+  - model_name: claude-sonnet-4.6-sub-max
+    litellm_params:
+      model: openai/claude-sonnet-4-6
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: max
 litellm_settings:
   # Custom callback writes each call to /traces/litellm.jsonl
   # (mounted to ~/ai-stack/traces on host).
@@ -226,10 +322,10 @@ litellm_settings:
     # offline fallback. Cloud fallbacks below are retained but currently
     # unused since no profile points at a cloud slug.
     - local-heavy: ["local"]
-    - claude-opus: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
-    - claude-sonnet: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
-    - openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus"]
-    - openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet"]
+    - claude-opus-4.7: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
+    - claude-sonnet-4.6: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
+    - openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus-4.7"]
+    - openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet-4.6"]
       # Phase 01·H adds the arize_phoenix callback to the list above:
       # callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
 # Guardrails — populated by Phase 01·G. Leave empty here.

@@ -33,11 +33,13 @@ _pi_expected_allowlist() {
     echo "local,local-heavy,local-lfm2"
     return 0
   fi
-  local pi_slug
-  pi_slug="$(yq -r '.assignments.pi // ""' "$yml" 2>/dev/null)"
-  # Fixed superset = legacy UNION the 3 canonical IDs (matches lib/models.sh).
-  printf '%s\n' local local-gemma4 local-heavy local-lfm2 local-qwen3-coder local-qwen3.6 "$pi_slug" \
-    | sed '/^$/d' | sort -u | paste -sd, -
+  # The DERIVED superset is the single source of truth (lib/models.sh superset):
+  # legacy IDs UNION every models.yml model — which now includes the meridian
+  # (Claude subscription) entries. We mirror it here rather than re-hardcoding a
+  # canonical-3 list, so the check stays correct as models.yml grows.
+  local sup
+  sup="$(bash "$AI_STACK/installer/lib/models.sh" superset 2>/dev/null | sed '/^$/d' | LC_ALL=C sort -u | paste -sd, -)"
+  [[ -n "$sup" ]] && echo "$sup" || echo "local,local-heavy,local-lfm2"
 }
 
 pi_litellm_key_allowlist_diagnose() {
@@ -85,13 +87,16 @@ except Exception as e:
   # (2) Denied-model chat completion returns a 4xx with "key not allowed".
   # We use grep -q on a substring instead of the full message because
   # LiteLLM has reworded this between minor versions.
+  # Probe a REAL model that is NOT in Pi's allowlist (claude-opus-4.7 is the
+  # metered API-key route, never part of the local+meridian superset). max_tokens
+  # is intentionally tiny; the request must be REJECTED before any upstream call.
   local denied_body
   denied_body="$(curl -s --max-time 5 -H "Authorization: Bearer $pi_key" \
     -H 'Content-Type: application/json' \
-    -d '{"model":"claude-opus","messages":[{"role":"user","content":"x"}],"max_tokens":1}' \
+    -d '{"model":"claude-opus-4.7","messages":[{"role":"user","content":"x"}],"max_tokens":1}' \
     http://litellm:4000/v1/chat/completions 2>/dev/null || echo '')"
   if ! echo "$denied_body" | grep -qi "key not allowed"; then
-    echo "POST chat with model=claude-opus did NOT return 'key not allowed' — allowlist may be bypassed!"
+    echo "POST chat with model=claude-opus-4.7 did NOT return 'key not allowed' — allowlist may be bypassed!"
     echo "  body: ${denied_body:0:200}"
     return 1
   fi

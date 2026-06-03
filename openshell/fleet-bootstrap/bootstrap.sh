@@ -12,13 +12,15 @@ if ! command -v hermes >/dev/null 2>&1; then
   exit 1
 fi
 ROSTER=(
-  "hermes_cos|chief of staff — decomposes goals, routes to specialists, does not implement"
-  "hermes_software_engineer|pragmatic senior engineer — minimal-diff code, tests, refactors"
-  "hermes_researcher|research collaborator — cites every claim, distinguishes evidence from speculation"
-  "hermes_creator|careful writer — shapes research into audience-ready prose"
-  "hermes_reviewer|rigorous reviewer — blocks with review-required: prefix when changes needed"
-  "hermes_data_analyst|data analyst — SQL and Python answering specific questions over real data"
-  "hermes_ops|ops engineer — deploys, monitoring, incidents; prefers boring working systems"
+  "hermes_manager|engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; writes no code"
+  "hermes_techlead|tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"
+  "hermes_frontend_engineer|frontend engineer — accessible, performant UI against the design contract"
+  "hermes_backend_engineer|backend engineer — APIs, services, data and security basics against the contract"
+  "hermes_ml_engineer|ML engineer — model selection, evals, data pipelines, finetuning, RAG; guards against overkill models"
+  "hermes_qa_test_engineer|QA / test engineer — test strategy + automation; the green-bar quality gate"
+  "hermes_reviewing_engineer|reviewing engineer (read-only) — adversarial review including the security pass"
+  "hermes_sre_engineer|SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed"
+  "hermes_incident_manager|incident manager (read-only) — incident command + blameless postmortems"
 )
 for entry in "${ROSTER[@]}"; do
   IFS='|' read -r name desc <<< "$entry"
@@ -41,5 +43,17 @@ for entry in "${ROSTER[@]}"; do
   # set model.* / providers.litellm.*`. hermes v0.15.2 removed `profile config`
   # and has NO `llm.*` namespace, so the old `profile config --set llm.model=`
   # was a silent no-op (CHANGELOG 2026-05-30).
+done
+# Prune in-sandbox profiles not in the current roster (REPLACE semantics -- removes
+# stale roles from a previous fleet so a 7->9 swap doesn't leave 16 profiles).
+_keep="$(printf '%s\n' "${ROSTER[@]}" | cut -d'|' -f1)"
+for d in "$HOME"/.hermes/profiles/*/; do
+  [ -d "$d" ] || continue
+  pn="$(basename "$d")"
+  [ "$pn" = "default" ] && continue
+  if ! printf '%s\n' "$_keep" | grep -qxF "$pn"; then
+    echo "==> pruning stale profile $pn"
+    rm -rf "$d"
+  fi
 done
 hermes profile list 2>&1 | tail -10

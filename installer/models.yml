@@ -22,27 +22,46 @@ models:
     big: true
     ttl: 1800
     note: "~17.2GB MLX. Cannot coexist with local-qwen3.6 on 24GB."
+  # Claude SUBSCRIPTION via the Meridian host daemon (no API key). runtime:
+  # meridian renders openai/<served> @ host.docker.internal:3456 + effort in
+  # extra_body. One entry per effort level (output_config.effort; budget_tokens
+  # is rejected on 4.7+). Availability-gates to `default` (local-gemma4) when
+  # Meridian is down. NOT big (no local RAM). Sonnet has no xhigh (≡ high).
+  claude-opus-4.8-sub-low: {runtime: meridian, served: claude-opus-4-8, effort: low, big: false, note: "Claude subscription (Opus 4.8), low effort."}
+  claude-opus-4.8-sub-medium: {runtime: meridian, served: claude-opus-4-8, effort: medium, big: false, note: "Claude subscription (Opus 4.8), medium effort."}
+  claude-opus-4.8-sub-high: {runtime: meridian, served: claude-opus-4-8, effort: high, big: false, note: "Claude subscription (Opus 4.8), high effort (model default)."}
+  claude-opus-4.8-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort."}
+  claude-opus-4.8-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort."}
+  claude-sonnet-4.6-sub-low: {runtime: meridian, served: claude-sonnet-4-6, effort: low, big: false, note: "Claude subscription (Sonnet 4.6), low effort."}
+  claude-sonnet-4.6-sub-medium: {runtime: meridian, served: claude-sonnet-4-6, effort: medium, big: false, note: "Claude subscription (Sonnet 4.6), medium effort."}
+  claude-sonnet-4.6-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
+  claude-sonnet-4.6-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
 default: local-gemma4
 assignments:
-  hermes_cos: local-qwen3.6
-  hermes_software_engineer: local-qwen3-coder
-  hermes_researcher: local-qwen3.6
-  hermes_creator: local-gemma4
-  hermes_reviewer: local-qwen3-coder
-  hermes_data_analyst: local-qwen3.6
-  hermes_ops: local-gemma4
-  pi: local-qwen3-coder
-  deerflow: local-qwen3.6
+  # AI software-engineering team (9 roles). manager/techlead/ml -> Opus, rest -> Sonnet.
+  hermes_manager: claude-opus-4.8-sub-high
+  hermes_techlead: claude-opus-4.8-sub-high
+  hermes_ml_engineer: claude-opus-4.8-sub-high
+  hermes_frontend_engineer: claude-sonnet-4.6-sub-high
+  hermes_backend_engineer: claude-sonnet-4.6-sub-high
+  hermes_qa_test_engineer: claude-sonnet-4.6-sub-high
+  hermes_reviewing_engineer: claude-sonnet-4.6-sub-high
+  hermes_sre_engineer: claude-sonnet-4.6-sub-high
+  hermes_incident_manager: claude-sonnet-4.6-sub-high
+  pi: claude-opus-4.8-sub-max
+  deerflow: claude-opus-4.8-sub-high
   ace: local-gemma4
   rlm: local-gemma4
 kinds:
-  hermes_cos: {kind: hermes-profile, profile: hermes_cos, key_env: HERMES_LITELLM_KEY}
-  hermes_software_engineer: {kind: hermes-profile, profile: hermes_software_engineer, key_env: HERMES_LITELLM_KEY}
-  hermes_researcher: {kind: hermes-profile, profile: hermes_researcher, key_env: HERMES_LITELLM_KEY}
-  hermes_creator: {kind: hermes-profile, profile: hermes_creator, key_env: HERMES_LITELLM_KEY}
-  hermes_reviewer: {kind: hermes-profile, profile: hermes_reviewer, key_env: HERMES_LITELLM_KEY}
-  hermes_data_analyst: {kind: hermes-profile, profile: hermes_data_analyst, key_env: HERMES_LITELLM_KEY}
-  hermes_ops: {kind: hermes-profile, profile: hermes_ops, key_env: HERMES_LITELLM_KEY}
+  hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; writes no code"}
+  hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}
+  hermes_frontend_engineer: {kind: hermes-profile, profile: hermes_frontend_engineer, key_env: HERMES_LITELLM_KEY, desc: "frontend engineer — accessible, performant UI against the design contract"}
+  hermes_backend_engineer: {kind: hermes-profile, profile: hermes_backend_engineer, key_env: HERMES_LITELLM_KEY, desc: "backend engineer — APIs, services, data and security basics against the contract"}
+  hermes_ml_engineer: {kind: hermes-profile, profile: hermes_ml_engineer, key_env: HERMES_LITELLM_KEY, desc: "ML engineer — model selection, evals, data pipelines, finetuning, RAG; guards against overkill models"}
+  hermes_qa_test_engineer: {kind: hermes-profile, profile: hermes_qa_test_engineer, key_env: HERMES_LITELLM_KEY, desc: "QA / test engineer — test strategy + automation; the green-bar quality gate"}
+  hermes_reviewing_engineer: {kind: hermes-profile, profile: hermes_reviewing_engineer, key_env: HERMES_LITELLM_KEY, desc: "reviewing engineer (read-only) — adversarial review including the security pass"}
+  hermes_sre_engineer: {kind: hermes-profile, profile: hermes_sre_engineer, key_env: HERMES_LITELLM_KEY, desc: "SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed"}
+  hermes_incident_manager: {kind: hermes-profile, profile: hermes_incident_manager, key_env: HERMES_LITELLM_KEY, desc: "incident manager (read-only) — incident command + blameless postmortems"}
   pi: {kind: pi, phase: 15, key_env: PI_LITELLM_KEY}
   deerflow: {kind: deerflow, phase: 10}
   ace: {kind: ace, phase: 17, key_env: ACE_LITELLM_KEY}

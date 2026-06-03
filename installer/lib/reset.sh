@@ -220,6 +220,10 @@ case "$TIER" in
   soft)
     if ! confirm "Proceed with soft reset?" N; then exit 0; fi
     rm -f "$AI_STACK"/installer/state/phase_*.done
+    # Staged Hermes fleet artifacts (souls + bootstrap) are host-side; the sandbox
+    # was deleted above, so clear these too — otherwise a re-rendered roster could
+    # inherit a previous fleet's staged souls.
+    rm -f "$AI_STACK"/openshell/fleet-souls/*.md "$AI_STACK"/openshell/fleet-bootstrap/bootstrap.sh 2>/dev/null || true
     # Sweep straggler pidfiles. teardown_host_daemons already removed the
     # HOST_DAEMONS ones; this also clears pidfiles for SANDBOX-resident daemons
     # (e.g. hermes-telegram.pid — the gateway runs inside hermes-fleet-v1 and dies
@@ -257,6 +261,10 @@ case "$TIER" in
     log "Removing ai-stack docker network..."
     remove_ai_stack_network
     rm -f "$AI_STACK"/installer/state/phase_*.done
+    # Staged Hermes fleet artifacts (souls + bootstrap) are host-side; the sandbox
+    # was deleted above, so clear these too — otherwise a re-rendered roster could
+    # inherit a previous fleet's staged souls.
+    rm -f "$AI_STACK"/openshell/fleet-souls/*.md "$AI_STACK"/openshell/fleet-bootstrap/bootstrap.sh 2>/dev/null || true
     # Sweep straggler pidfiles. teardown_host_daemons already removed the
     # HOST_DAEMONS ones; this also clears pidfiles for SANDBOX-resident daemons
     # (e.g. hermes-telegram.pid — the gateway runs inside hermes-fleet-v1 and dies
@@ -292,6 +300,10 @@ case "$TIER" in
     log "Removing ai-stack docker network..."
     remove_ai_stack_network
     rm -f "$AI_STACK"/installer/state/phase_*.done
+    # Staged Hermes fleet artifacts (souls + bootstrap) are host-side; the sandbox
+    # was deleted above, so clear these too — otherwise a re-rendered roster could
+    # inherit a previous fleet's staged souls.
+    rm -f "$AI_STACK"/openshell/fleet-souls/*.md "$AI_STACK"/openshell/fleet-bootstrap/bootstrap.sh 2>/dev/null || true
     # Sweep straggler pidfiles. teardown_host_daemons already removed the
     # HOST_DAEMONS ones; this also clears pidfiles for SANDBOX-resident daemons
     # (e.g. hermes-telegram.pid — the gateway runs inside hermes-fleet-v1 and dies

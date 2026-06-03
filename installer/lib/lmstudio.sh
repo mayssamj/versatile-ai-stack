@@ -108,15 +108,17 @@ lms_is_served() {
   lms_served_ids | grep -qxF "$want"
 }
 
-# lms_register_model <model_name> <served> <runtime>
+# lms_register_model <model_name> <served> <runtime> [effort]
 # yq-UPSERT one entry into litellm/config.yaml's model_list, keyed on
 # model_name (replace litellm_params in place if it exists, else append).
 # Atomic temp+mv. Returns 0 + prints CHANGED to stdout if the file's bytes
 # changed, 0 + prints UNCHANGED otherwise; non-zero on hard failure.
 #   ollama   => model: ollama_chat/<served>, api_base: http://ollama:11434
-#   lmstudio => model: openai/<served>,      api_base: http://host.docker.internal:<port>/v1, api_key: lm-studio
+#   lmstudio => model: openai/<served>,      api_base: http://host.docker.internal:<LMS_PORT>/v1, api_key: lm-studio
+#   meridian => model: openai/<served>,      api_base: http://host.docker.internal:<MERIDIAN_PORT>/v1,
+#               api_key: meridian, extra_body: {effort: <effort>}  (Claude subscription, no API key)
 lms_register_model() {
-  local model_name="$1" served="$2" runtime="$3"
+  local model_name="$1" served="$2" runtime="$3" effort="${4:-}"
   command -v yq >/dev/null 2>&1 || { err "yq not on PATH (Phase 00 installs it)"; return 1; }
   [[ -f "$LMS_CONFIG" ]] || { err "litellm config not found: $LMS_CONFIG"; return 1; }
 
@@ -138,6 +140,13 @@ lms_register_model() {
   # on every run).
   if [[ "$runtime" == "ollama" ]]; then
     MN="$model_name" SV="$served" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "ollama_chat/" + strenv(SV), "api_base": "http://ollama:11434"}' "$tmp" \
+      || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
+  elif [[ "$runtime" == "meridian" ]]; then
+    # Claude subscription via the Meridian host daemon. effort -> extra_body.effort
+    # (LiteLLM merges it into the request body -> Meridian reads body.effort ->
+    # Agent SDK query({effort}); verified on the wire). Dummy api_key (Meridian
+    # holds the real OAuth). Default effort to the model id default if unset.
+    MN="$model_name" SV="$served" MP="${MERIDIAN_PORT:-3456}" EF="${effort:-high}" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(MP) + "/v1", "api_key": "meridian", "extra_body": {"effort": strenv(EF)}}' "$tmp" \
       || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
   else
     MN="$model_name" SV="$served" PRT="$LMS_PORT" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(PRT) + "/v1", "api_key": "lm-studio"}' "$tmp" \
