@@ -19,8 +19,8 @@ in fifteen minutes.
 | Total doctor checks | **42** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**) |
 | Model↔agent binding | `installer/models.yml` is the single source of truth. **3 local models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in) **+ the Claude SUBSCRIPTION effort-ladder** via the Meridian host daemon: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` + `claude-sonnet-4.6-sub-{low,medium,high,max}` (runtime `meridian`, availability-gated to `local-gemma4` when Meridian is down). The 9-role Hermes fleet + Pi are assigned subscription models. `vz-ai-stack.sh model {list,assign,sync,superset,discover,add}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed`. NEW: `doc/TUTORIAL.md` + `doc/TUTORIAL.html` (hands-on tutorial). |
-| Last verified doctor pass | **2026-06-03: `doctor` = 42/42** on the live stack. ⚠️ A long-idle live stack can show OpenShell-exec checks (24/25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
-| Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 42/42** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. |
+| Last verified doctor pass | **2026-06-03: `doctor` = 43/43** on the live stack (after the watchdog fix below). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) |
+| Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 43/43** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
 1. **Autonomous execution.** Diagnose → fix in code → update installer → sweep docs → verify → THEN report. Don't hand back a recipe.
@@ -89,7 +89,7 @@ in fifteen minutes.
 - `fleet list|add|remove|new|destroy` — manage the Hermes fleet (add/remove a profile in hermes-fleet-v1; `new`/`destroy` a separate fleet sandbox)
 - `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
 - `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
-- `doctor [<filter>]` — 42 checks, per-check auto-fix
+- `doctor [<filter>]` — 43 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -103,8 +103,11 @@ in fifteen minutes.
 
 These bite repeatedly. Each has a tested workaround.
 
-### 2.1 OpenShell relay times out under idle
-**Symptom:** `openshell sandbox exec` returns `× status: DeadlineExceeded, message: "relay open timed out"`. Affects pi-v1 AND hermes-fleet-v1 simultaneously. Happens after several hours of idle.
+### 2.1 OpenShell relay times out under idle — OR the sandboxes are GONE
+**Symptom:** `openshell sandbox exec` returns `× status: DeadlineExceeded` (relay open timed out) — OR `openshell sandbox list` shows **"No sandboxes found"**. Both make the sandbox-exec doctor checks (24/25/30/33/40) fail.
+
+**⚠️ If the sandboxes are GONE (not just slow): root-caused 2026-06-03.** The `openshell-watchdog` detected an ~8h expired-token storm and its old heal was *delete-then-recreate*. It deleted both sandboxes, but the rebuild shelled `vz-ai-stack.sh install …` under launchd's PATH (which lacked OrbStack's `~/.orbstack/bin/docker`) → preflight aborted → rebuild failed → **ZERO sandboxes, with a false "done" in the log** (`installer/state/openshell-watchdog.log`). **FIXED (`ed8d6c1`): the watchdog is now WARN-ONLY by default** — it never auto-deletes; it logs + notifies + writes `installer/state/openshell-watchdog.alert` (doctor check **43 `watchdog_alert`** surfaces it). Auto-recreate is opt-in (`AI_STACK_WATCHDOG_RECREATE=1`) and now verifies docker is reachable *before* deleting + verifies Ready after + fails loud. **Recreate after any drop:** `bash vz-ai-stack.sh install 04 04f 15 20 04h` (NOTE: recreation mints a fresh token but DISCARDS in-sandbox runtime state — there is no snapshot; persist anything important to the host/Honcho). See [[project_cpu_gotchas]].
+
 
 **Recovery:**
 ```bash
@@ -314,11 +317,11 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/vz-ai-stack.sh install all
 
-# 4. Verify (42/42 expected)
+# 4. Verify (43/43 expected)
 bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
-This canonical flow is VERIFIED end-to-end (42/42 doctor; cold `reset --hard → install all → doctor` on 2026-06-02). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
+This canonical flow is VERIFIED end-to-end (43/43 doctor; cold `reset --hard → install all → doctor` on 2026-06-02). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash
@@ -361,7 +364,7 @@ bash ~/ai-stack/vz-ai-stack.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 42 checks, each with auto-fix offer.
+2. `stack doctor` — 43 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -388,7 +391,7 @@ If you keep these as constraints, you'll write the right code.
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (42 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (43 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |
