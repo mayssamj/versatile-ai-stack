@@ -34,7 +34,7 @@ reach for it, and a copy-paste demo — grouped into seven color-coded tiers:
 | Tier | A few of what's inside |
 |------|------------------------|
 | **Try-me UIs (open in a browser)** | Open WebUI · Hermes Workspace · claw3d · Autofyn · Paperclip · Phoenix |
-| **Agents you talk to** | Hermes ×7 profiles · Pi · OpenShell · Telegram gateway |
+| **Agents you talk to** | Hermes 9-role eng team · Pi · OpenShell · Telegram gateway |
 | **Research & reasoning agents** | DeerFlow · ACE · RLM · HALO · dual-LLM researcher |
 | **Inference & data plane** | LiteLLM · Ollama · Qdrant · FalkorDB · Phoenix |
 | **Memory, documents & code-intel** | Honcho · Lumen · docs-ingestor · docs-mcp |
@@ -139,10 +139,12 @@ A plain-language tour of the headline pieces (the full inventory is in the table
 - **Phoenix — observability.** Every LLM call your agents make lands in the Phoenix
   UI (`http://phoenix:6006`) "for free" — see prompts, responses, latency, and cost
   in one place.
-- **Hermes agent fleet — 7 profiles.** A team of role-specialized agents (chief of
-  staff, software engineer, researcher, creator, reviewer, data analyst, ops),
-  isolated inside an OpenShell sandbox. You can even chat with them from your phone
-  via a Telegram bot.
+- **Hermes agent fleet — a 9-role software-engineering team.** Manager, tech lead,
+  frontend, backend and ML engineers, a QA/test gate, a reviewing engineer (review +
+  security), an SRE, and an incident manager — running a spec→deploy pipeline under a
+  shared `team-protocol`, isolated inside an OpenShell sandbox. The same team is also
+  realized as Pi personas (`bin/pi-as <role>`) and Claude Code subagents. You can even
+  chat with them from your phone via a Telegram bot.
 - **Pi — sandboxed coding agent.** A coding agent locked in its own `pi-v1` sandbox
   with a tight egress allowlist — it can reach local models, memory, and your docs,
   but not Phoenix, Qdrant, the master key, or the open internet. Launch it with `bin/pi`.
@@ -312,7 +314,7 @@ sequenceDiagram
 Once the basics click, these scale up — full step-by-steps live in **[USER-GUIDE.md](doc/USER-GUIDE.md)**:
 
 - **🔭 Watch a trace in Phoenix.** Tag any call (`-H 'x-trace-tag: my-exp'`) and find it instantly at [http://phoenix:6006](http://phoenix:6006) — prompt, latency, and cost, no guessing.
-- **🤖 Dispatch a Hermes specialist in a sandbox.** `hermes hermes_software_engineer "fix /sandbox/buggy.py …"` runs inside the deny-by-default `hermes-fleet-v1` — it can call models and write its workspace, but not touch the host or open internet.
+- **🤖 Dispatch a Hermes specialist in a sandbox.** `hermes hermes_backend_engineer "fix /sandbox/buggy.py …"` runs inside the deny-by-default `hermes-fleet-v1` — it can call models and write its workspace, but not touch the host or open internet.
 - **🧰 Run the Pi coding agent.** `bin/pi` drops you into a tree-branching TUI coder locked to local models + your docs; from inside, hitting Phoenix returns `403 policy_denied`. Panic-stop with `bin/pi-kill`.
 - **🔬 Kick off a DeerFlow research run.** `stack start deerflow` → open `http://localhost:2026` → ask a multi-step question; the fleet splits the work and every call is traced in Phoenix.
 
@@ -327,12 +329,12 @@ A research agent recalls past context, searches your private docs, uses a cheap 
 sequenceDiagram
   autonumber
   participant U as You
-  participant CoS as hermes_cos (sandbox)
-  participant R as hermes_researcher (sandbox)
+  participant CoS as hermes_manager (sandbox)
+  participant R as hermes_ml_engineer (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as local-qwen3.6 (LM Studio MLX)
-  participant CL as Claude Opus
+  participant LH as local-gemma4 (summarizer)
+  participant CL as Claude Opus (sub via Meridian)
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
   participant HO as honcho :8000
@@ -347,7 +349,7 @@ sequenceDiagram
   MCP-->>R: chunks with sources
 
   Note over R,SBX: All outbound calls go via inference.local
-  R->>SBX: chat completion (model=local-qwen3.6)
+  R->>SBX: chat completion (summarize chunks, cheap local model)
   SBX->>L: forward + inject HERMES_LITELLM_KEY
   Note over L: scoped key allowlist check (superset)
   L->>LH: forward
@@ -384,7 +386,7 @@ sequenceDiagram
 | Vector DB | Qdrant | `qdrant` | 02 |
 | Cross-agent memory | Honcho (self-hosted) | `honcho` | 03 |
 | Agent sandbox | OpenShell | — | 04 |
-| Agent fleet | Hermes — 7 profiles | `hermes-gw` (reserved) | 04·F |
+| Agent fleet | Hermes — 9-role eng team | `hermes-gw` (reserved) | 04·F |
 | Security | guardrails + LLM Guard + audit | `llm-guard` | 04·G |
 | Chat UI | Open WebUI | `openwebui` | 05 |
 | Fleet UI | Hermes Workspace | `workspace` | 05 |

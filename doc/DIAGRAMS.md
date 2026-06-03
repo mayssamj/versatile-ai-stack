@@ -242,12 +242,12 @@ internal docs, and running inside the OpenShell sandbox.
 sequenceDiagram
   autonumber
   participant U as You
-  participant CoS as hermes_cos (sandbox)
-  participant R as hermes_researcher (sandbox)
+  participant CoS as hermes_manager (sandbox)
+  participant R as hermes_ml_engineer (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as local-qwen3.6 (LM Studio MLX)
-  participant CL as Claude Opus
+  participant LH as local-gemma4 (summarizer)
+  participant CL as Claude Opus (sub via Meridian)
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
   participant HO as honcho :8000
@@ -262,7 +262,7 @@ sequenceDiagram
   MCP-->>R: chunks with sources
 
   Note over R,SBX: All outbound calls go via inference.local
-  R->>SBX: chat completion (model=local-qwen3.6)
+  R->>SBX: chat completion (summarize chunks, cheap local model)
   SBX->>L: forward + inject HERMES_LITELLM_KEY
   Note over L: scoped key allowlist check (superset)
   L->>LH: forward
@@ -335,26 +335,31 @@ flowchart TB
 
   P4 --> Gate{LiteLLM actually<br/>serving the model?}
   Gate -- "yes" --> Bind["render agent against assigned model"]
-  Gate -- "no (lmstudio off)" --> Fall["availability-gated:<br/>render against local-gemma4 + warn"]
+  Gate -- "no (provider off)" --> Fall["availability-gated:<br/>render against local-gemma4 + warn"]
 
-  Bind --> Agents["7 Hermes profiles · pi · deerflow · ace · rlm"]
+  Bind --> Agents["9 Hermes profiles · pi · deerflow · ace · rlm"]
   Fall --> Agents
 ```
 
 What the assignments look like (from `models.yml`, see
 [models.md](models.md)):
-- **local-qwen3.6** — `hermes_cos`, `hermes_researcher`,
-  `hermes_data_analyst`, `deerflow`.
-- **local-qwen3-coder** — `hermes_software_engineer`, `hermes_reviewer`,
-  `pi`.
-- **local-gemma4** (the default) — `hermes_creator`, `hermes_ops`,
-  `ace`, `rlm`.
+- **claude-opus-4.8-sub-high** (subscription via Meridian) — `hermes_manager`,
+  `hermes_techlead`, `hermes_ml_engineer`, `deerflow`.
+- **claude-sonnet-4.6-sub-high** (subscription via Meridian) —
+  `hermes_frontend_engineer`, `hermes_backend_engineer`,
+  `hermes_qa_test_engineer`, `hermes_reviewing_engineer`,
+  `hermes_sre_engineer`, `hermes_incident_manager`.
+- **claude-opus-4.8-sub-max** (subscription via Meridian) — `pi`.
+- **local-gemma4** (the default) — `ace`, `rlm`; also the
+  availability-gated fallback for all nine Hermes profiles when Meridian is down.
 
 Notes:
-- The two heavy MLX models (`local-qwen3.6` ~17.5GB and
-  `local-qwen3-coder` ~17.2GB) **cannot coexist** on a 24GB box, which is
-  exactly why availability-gating exists — turn LM Studio off and the
-  fleet keeps working on `local-gemma4`.
+- The Hermes fleet now routes to a Claude subscription via the Meridian host
+  daemon; availability-gating means when **Meridian is down** all nine profiles
+  render against `local-gemma4` and keep working. (The heavy MLX models
+  `local-qwen3.6` ~17.5GB and `local-qwen3-coder` ~17.2GB still exist as legacy
+  slugs and cannot coexist on a 24GB box, but no agent is bound to them by
+  default any more.)
 - `model sync` is opt-in and crash-safe; it is **not** run by
   `install all`. Phase 1 only ever adds to LiteLLM's `model_list`
   (ADD-ONLY), and LiteLLM is restarted at most once.
@@ -381,7 +386,7 @@ it already *is* gemma4).
 
 ```mermaid
 flowchart TB
-  A["agent (e.g. hermes_researcher)"] --> ASG["assignment in models.yml<br/>(agent_assigned)"]
+  A["agent (e.g. hermes_ml_engineer)"] --> ASG["assignment in models.yml<br/>(agent_assigned)"]
   ASG --> RT{runtime of<br/>assigned model?}
 
   RT -- ollama --> EFF["effective = assigned<br/>(render as-is)"]
@@ -713,7 +718,7 @@ flowchart TB
   end
 
   subgraph Sandbox[OpenShell sandboxes - untrusted]
-    HF["hermes-fleet-v1 (7 profiles + telegram gw)"]
+    HF["hermes-fleet-v1 (9 profiles + telegram gw)"]
     PI["pi-v1 (Pi coding agent)"]
   end
 

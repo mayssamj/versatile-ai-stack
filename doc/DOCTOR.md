@@ -391,7 +391,7 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 | Fails when | Allowlist hosts return `policy_denied` (policy file edited but not re-applied; sandbox restarted with stale policy; LiteLLM lost its 127.0.0.1:4000 dual-bind so `host.docker.internal:4000` is unreachable). In slow mode: a denied destination returns something OTHER than `policy_denied` — a policy leak. |
 | Auto-fix | Surfaces `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` for the apply case, and CHANGELOG 2026-05-29 (host.docker.internal dual-bind) for the LiteLLM case. |
 
-**What this check does NOT prove**: Honcho peer-level isolation. Honcho v3 has no API-key-scoped peer enforcement; a compromised Pi could still POST to `/v3/workspaces/default/peers/hermes_software_engineer/...` because the network policy allows reaching Honcho at all. The peer namespace boundary is a write-side convention, not a read-side authorization. Document this honestly in the USER-GUIDE.
+**What this check does NOT prove**: Honcho peer-level isolation. Honcho v3 has no API-key-scoped peer enforcement; a compromised Pi could still POST to `/v3/workspaces/default/peers/hermes_backend_engineer/...` because the network policy allows reaching Honcho at all. The peer namespace boundary is a write-side convention, not a read-side authorization. Document this honestly in the USER-GUIDE.
 
 ---
 
@@ -453,11 +453,11 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 
 | | |
 |---|---|
-| Asserts | The `hermes_cos` profile config has `model.provider=custom:litellm` and `providers.litellm.base_url=http://host.docker.internal:4000` (the per-profile LiteLLM routing wired by Phase 04·F), AND `HERMES_LITELLM_KEY` is accepted by LiteLLM. |
+| Asserts | The representative `hermes_manager` profile config has `model.provider=custom:litellm` and `providers.litellm.base_url=http://host.docker.internal:4000` (the per-profile LiteLLM routing wired by Phase 04·F), AND `HERMES_LITELLM_KEY` is accepted by LiteLLM. |
 | Fails when | Phase 04·F never ran, the profile config was reverted to a non-LiteLLM provider, `host.docker.internal:4000` is unreachable, or `HERMES_LITELLM_KEY` was revoked/rotated so LiteLLM rejects it. |
 | Auto-fix | Surfaces `bash vz-ai-stack.sh install 04f` — Phase 04·F is idempotent: it re-mints `HERMES_LITELLM_KEY`, re-adds the `litellm_proxy` endpoint to the hermes policy, and re-sets the per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url,api_key,model}`. |
 
-hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `llm.openai_api_base` / `llm.openai_api_key` config was a dead no-op (and raised a `ValueError`), so Hermes silently never reached local models. The fix routes via the `custom:litellm` provider against `http://host.docker.internal:4000/v1`. Verified: a real `hermes --profile hermes_cos -m local -z` returned `PONG`.
+hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `llm.openai_api_base` / `llm.openai_api_key` config was a dead no-op (and raised a `ValueError`), so Hermes silently never reached local models. The fix routes via the `custom:litellm` provider against `http://host.docker.internal:4000/v1`. Verified: a real `hermes --profile hermes_manager -m local -z` returned `PONG`.
 
 ---
 
@@ -532,7 +532,7 @@ the watchdog hasn't swept yet and confirms the watchdog is loaded. See
 
 | | |
 |---|---|
-| Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); no rendered-vs-declared **DRIFT** across every agent surface (the 7 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
+| Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); no rendered-vs-declared **DRIFT** across every agent surface (the 9 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
 | Fails when | A `models.yml` model is missing from `config.yaml`, a non-lmstudio model fails its chat_ping, an agent's rendered config drifts from the declared (availability-gated) model, or a scoped key's allowlist doesn't cover its agent's effective model. |
 | Auto-fix | `bash vz-ai-stack.sh model sync`. |
 

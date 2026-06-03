@@ -61,20 +61,25 @@ DEFAULT_MODEL = os.environ.get("CLAW3D_DEFAULT_MODEL", "local")
 # --- Agent registry: ONE place to add/remove agents shown in the office. ------
 # kind: "chat" (v1) | "task-launcher" (reserved, e.g. AutoFyn). backend selects the adapter.
 AGENTS = [
-    {"id": "hermes_cos", "name": "Chief of Staff", "role": "orchestrator", "emoji": "🧭",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_cos"},
-    {"id": "hermes_software_engineer", "name": "Software Engineer", "role": "engineer", "emoji": "🛠️",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_software_engineer"},
-    {"id": "hermes_researcher", "name": "Researcher", "role": "researcher", "emoji": "🔬",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_researcher"},
-    {"id": "hermes_creator", "name": "Creator", "role": "writer", "emoji": "✍️",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_creator"},
-    {"id": "hermes_reviewer", "name": "Reviewer", "role": "reviewer", "emoji": "🔎",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_reviewer"},
-    {"id": "hermes_data_analyst", "name": "Data Analyst", "role": "analyst", "emoji": "📊",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_data_analyst"},
-    {"id": "hermes_ops", "name": "Ops Engineer", "role": "ops", "emoji": "⚙️",
-     "kind": "chat", "backend": "hermes", "profile": "hermes_ops"},
+    # The 9-role engineering team (replaced the legacy 7 profiles 2026-06-02).
+    {"id": "hermes_manager", "name": "Manager", "role": "orchestrator", "emoji": "🧭",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_manager"},
+    {"id": "hermes_techlead", "name": "Tech Lead", "role": "architect", "emoji": "🏛️",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_techlead"},
+    {"id": "hermes_frontend_engineer", "name": "Frontend Engineer", "role": "frontend", "emoji": "🎨",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_frontend_engineer"},
+    {"id": "hermes_backend_engineer", "name": "Backend Engineer", "role": "backend", "emoji": "🛠️",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_backend_engineer"},
+    {"id": "hermes_ml_engineer", "name": "ML Engineer", "role": "ml", "emoji": "🧠",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_ml_engineer"},
+    {"id": "hermes_qa_test_engineer", "name": "QA / Test Engineer", "role": "qa", "emoji": "🧪",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_qa_test_engineer"},
+    {"id": "hermes_reviewing_engineer", "name": "Reviewing Engineer", "role": "reviewer", "emoji": "🔎",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_reviewing_engineer"},
+    {"id": "hermes_sre_engineer", "name": "SRE", "role": "sre", "emoji": "⚙️",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_sre_engineer"},
+    {"id": "hermes_incident_manager", "name": "Incident Manager", "role": "incident", "emoji": "🚨",
+     "kind": "chat", "backend": "hermes", "profile": "hermes_incident_manager"},
     {"id": "pi", "name": "Pi", "role": "coding-agent", "emoji": "🥧",
      "kind": "chat", "backend": "pi"},
     {"id": "deerflow", "name": "DeerFlow", "role": "researcher", "emoji": "🦌",
@@ -337,8 +342,8 @@ class Handler(BaseHTTPRequestHandler):
             req = json.loads(self.rfile.read(n) or b"{}")
         except Exception:  # noqa: BLE001
             return self._send(400, {"error": "bad json"})
-        agent_id = req.get("role") or req.get("model") or req.get("agent") or "hermes_cos"
-        agent = AGENTS_BY_ID.get(agent_id) or AGENTS_BY_ID.get("hermes_cos")
+        agent_id = req.get("role") or req.get("model") or req.get("agent") or "hermes_manager"
+        agent = AGENTS_BY_ID.get(agent_id) or AGENTS_BY_ID.get("hermes_manager")
         # Honor each agent's BOUND model (installer/models.yml, rendered into .env
         # by `model sync`). Pi reads PI_DEFAULT_MODEL (already availability-gated:
         # local-qwen3-coder when LM Studio is up, else `local`). Other backends keep

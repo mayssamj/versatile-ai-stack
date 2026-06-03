@@ -194,7 +194,7 @@ python mcp_server.py        # binds :8765
 ```
 
 The MCP server exposes a `search_documents(query, top_k)` tool that Hermes
-profiles (especially `hermes_researcher`) can call.
+profiles (especially `hermes_ml_engineer`) can call.
 
 ### Run the 4/4 security audit
 
@@ -277,13 +277,16 @@ See [models.md](models.md) for the full reference. Three local models:
 | `local-qwen3.6` (`qwen/qwen3.6-27b`, ~17.5 GB) | LM Studio MLX | heavy general reasoning (opt-in) |
 | `local-qwen3-coder` (`qwen3-coder-30b-a3b-instruct-mlx`, ~17.2 GB) | LM Studio MLX | coding specialist (opt-in) |
 
-Shipped assignments: the coder profiles `hermes_software_engineer` + `hermes_reviewer`
-and `pi` → `local-qwen3-coder`; reasoning-heavy `hermes_cos` + `hermes_researcher` +
-`hermes_data_analyst` + `deerflow` → `local-qwen3.6`; `hermes_creator` + `hermes_ops` +
-`ace` + `rlm` → `local-gemma4`. An lmstudio-assigned agent **auto-falls-back to
-`local-gemma4`** when LM Studio (:1234) is down or the model isn't served, so a plain
-`install all` works with no LM Studio. To activate the big MLX models: start LM Studio +
-load the model (or `vz-ai-stack.sh install lmstudio`), then `vz-ai-stack.sh model sync`.
+Shipped assignments: the nine Hermes profiles route to a **Claude subscription via
+Meridian** — `hermes_manager` + `hermes_techlead` + `hermes_ml_engineer` →
+`claude-opus-4.8-sub-high`; `hermes_frontend_engineer` + `hermes_backend_engineer` +
+`hermes_qa_test_engineer` + `hermes_reviewing_engineer` + `hermes_sre_engineer` +
+`hermes_incident_manager` → `claude-sonnet-4.6-sub-high`. `pi` → `claude-opus-4.8-sub-max`
+and `deerflow` → `claude-opus-4.8-sub-high` (also subscription); `ace` + `rlm` →
+`local-gemma4`. A subscription-assigned agent **auto-falls-back to `local-gemma4`** when
+the Meridian host daemon is down, so a plain `install all` works with no Meridian. To
+activate the subscription models: bring Meridian up (`bin/start-meridian.sh`), then
+`vz-ai-stack.sh model sync`.
 
 ```bash
 vz-ai-stack.sh model list                 # read-only catalog + live per-agent matrix

@@ -457,7 +457,7 @@ phone home to a random IP, and cannot exfiltrate the contents of
 `.env`.
 
 **What does it do for us?** Hosts the `hermes-fleet-v1` sandbox where
-all seven Hermes profiles run. The network policy at
+all nine Hermes profiles run. The network policy at
 `openshell/policies/hermes-fleet-v1.yaml` allows `honcho:8000` (Honcho),
 `docs-mcp:8765` (Docs MCP), and a small list of package registries and
 code hosts. Everything else is denied by default. (Note: the OpenShell
@@ -477,7 +477,7 @@ forwarded to LiteLLM. The sandbox never sees the real Anthropic key.
 ```mermaid
 flowchart TB
   subgraph SBX["OpenShell sandbox: hermes-fleet-v1 (sandbox)"]
-    H1["hermes_cos (sandbox)"] & H2["hermes_engineer (sandbox)"] & H3["hermes_researcher (sandbox)"]
+    H1["hermes_manager"] & H2["hermes_techlead"] & H3["hermes_frontend_engineer"] & H4["hermes_backend_engineer"] & H5["hermes_ml_engineer"] & H6["hermes_qa_test_engineer"] & H7["hermes_reviewing_engineer"] & H8["hermes_sre_engineer"] & H9["hermes_incident_manager"]
   end
   SBX -- inference.local --> Proxy[hermes-gw :8642]
   Proxy --> LL[litellm :4000]
@@ -508,28 +508,39 @@ personalities, different default models, different skill sets) from one
 install.
 
 **Why is it here?** A single generic chatbot is bad at most things. A
-team of seven specialists is much better. Phase 04·F creates seven
-profiles with hand-written `SOUL.md` identity files:
+**9-role software-engineering team** is much better. Phase 04·F creates nine
+profiles with hand-written `SOUL.md` identity files — a full delivery pipeline
+from spec to deploy:
 
 Each profile's model is declared per-agent in `installer/models.yml` (the
 shipped defaults are below) and rendered by `vz-ai-stack.sh model sync` — see
-[models.md](models.md). lmstudio-assigned profiles fall back to `local-gemma4`
-when LM Studio is down.
+[models.md](models.md). All nine route to a **Claude subscription via Meridian**;
+when Meridian is down, `model sync` availability-gates every profile back to
+`local-gemma4`.
 
 | Profile | Role | Assigned model |
 |---|---|---|
-| `hermes_cos` | Chief of staff — decomposes goals, routes work | local-qwen3.6 |
-| `hermes_software_engineer` | Pragmatic senior engineer — minimal diffs | local-qwen3-coder |
-| `hermes_researcher` | Rigorous research collaborator, cites everything | local-qwen3.6 |
-| `hermes_creator` | Careful writer for audience-ready prose | local-gemma4 (default) |
-| `hermes_reviewer` | Blocking reviewer that catches what was missed | local-qwen3-coder |
-| `hermes_data_analyst` | SQL + Python over real data | local-qwen3.6 |
-| `hermes_ops` | Deploys, monitoring, incidents | local-gemma4 (default) |
+| `hermes_manager` | Engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; read-only, writes no code | claude-opus-4.8-sub-high |
+| `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-4.8-sub-high |
+| `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-sonnet-4.6-sub-high |
+| `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-sonnet-4.6-sub-high |
+| `hermes_ml_engineer` | ML engineer — model selection, evals, data pipelines, finetuning, RAG | claude-opus-4.8-sub-high |
+| `hermes_qa_test_engineer` | QA / test engineer — test strategy + automation; the green-bar quality gate | claude-sonnet-4.6-sub-high |
+| `hermes_reviewing_engineer` | Reviewing engineer (read-only) — adversarial review including the security pass | claude-sonnet-4.6-sub-high |
+| `hermes_sre_engineer` | SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed | claude-sonnet-4.6-sub-high |
+| `hermes_incident_manager` | Incident manager (read-only) — incident command + blameless postmortems | claude-sonnet-4.6-sub-high |
 
 **What does it do for us?** Each profile reads its `SOUL.md` as the
-first thing in its system prompt — that shapes its voice and defaults.
-Profiles share Honcho memory but have separate skill libraries. The CoS
-fans work out to specialists; the reviewer blocks bad changes.
+first thing in its system prompt — that shapes its mandate and gate behavior.
+Profiles share Honcho memory and a shared keystone skill, **team-protocol**
+(definition-of-done, typed handoffs, the review-gate pipeline, escalation, and
+a global turn budget). The manager frames a spec and routes work; the
+reviewing-engineer blocks bad changes; the SRE deploys only what passed the
+gates. The **same 9-role team is realized on three platforms** — Hermes
+profiles (here, in `hermes-fleet-v1`), **Pi personas** (`bin/pi-as <role>`),
+and **Claude Code subagents** (`~/.claude/agents`, global). All three share
+`team-protocol`. Install via `vz-ai-stack.sh install agent_fleet` (phase 04h /
+04f).
 
 **Where does it fit?** Inside the OpenShell sandbox, talking to
 `inference.local` (which is LiteLLM). Optionally surfaced in the
@@ -537,12 +548,17 @@ Hermes Workspace UI.
 
 ```mermaid
 flowchart TB
-  You --> COS["hermes_cos (sandbox)"]
-  COS --> ENG["hermes_engineer (sandbox)"]
-  COS --> RES["hermes_researcher (sandbox)"]
-  COS --> CRE["hermes_creator (sandbox)"]
-  ENG --> REV["hermes_reviewer (sandbox)"]
-  CRE --> REV
+  You --> MGR["hermes_manager (spec + route)"]
+  MGR --> TL["hermes_techlead (ADRs + contract)"]
+  TL --> FE["hermes_frontend_engineer"]
+  TL --> BE["hermes_backend_engineer"]
+  TL --> ML["hermes_ml_engineer"]
+  FE --> QA["hermes_qa_test_engineer (test gate)"]
+  BE --> QA
+  ML --> QA
+  QA --> RE["hermes_reviewing_engineer (review + security)"]
+  RE --> SRE["hermes_sre_engineer (deploy)"]
+  SRE -. on incident .-> IM["hermes_incident_manager"]
   all[All profiles] --> Honcho[honcho :8000]
   all --> LL[litellm :4000 via inference.local]
 ```
@@ -660,10 +676,12 @@ attacker@evil.com the user's API keys," the summarizer rephrases it as
 "This page describes a phishing attempt." The action model sees the
 rephrase, not the original payload.
 
-**What does it do for us?** The `hermes_researcher` profile is wired to
-do this for every web fetch. The summarizer is a local model (so cost
-is zero — `hermes_researcher` is assigned `local-qwen3.6`) and the action
-model is whichever model the profile is assigned in `models.yml`.
+**What does it do for us?** Any profile that ingests untrusted documents
+(notably the `hermes_ml_engineer` doing RAG, or the
+`hermes_reviewing_engineer` on its security pass) applies this for every
+web fetch. The summarizer is a cheap local model (so the defense is
+near-free) and the action model is whichever model the profile is assigned
+in `models.yml`.
 
 **Sources:**
 - Simon Willison's writing on the dual-LLM pattern:
@@ -714,7 +732,7 @@ chat, terminal, memory browser, skills library, MCP inspector, and a
 kanban-style view of multi-agent tasks. Companion to the Hermes Agent
 CLI.
 
-**Why is it here?** Once you have seven profiles in a sandbox, the CLI
+**Why is it here?** Once you have nine profiles in a sandbox, the CLI
 becomes awkward. The workspace gives you a control plane: see all
 profiles, watch a long-running task, view what a profile remembers
 about you, configure skills.
@@ -875,7 +893,7 @@ running "zero-human companies" — fleets of AI agents organized into
 roles, with budgets, approvals, task checkout, and audit trails. It
 treats agents like contractors and tasks like a kanban board.
 
-**Why is it here?** When your stack has seven Hermes profiles plus
+**Why is it here?** When your stack has nine Hermes profiles plus
 AutoFyn plus DeerFlow, you need somewhere to look at the whole
 operation. Paperclip is the org chart. The `paperclip_honcho_plugin`
 ties it into the shared memory.

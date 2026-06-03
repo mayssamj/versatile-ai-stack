@@ -548,14 +548,14 @@ const services = [
    ],
    combine:['hermes_fleet','pi']},
 
-  {id:'hermes_fleet', layer:'agent', layerLabel:'Agent runtime', name:'hermes-fleet', port:'(sandbox)', phase:'04·F', tagline:'7 specialist agent profiles',
-   what:'cos, software_engineer, researcher, creator, reviewer, data_analyst, ops. Each a soul (system prompt + tools + a model bound in models.yml). All share the HERMES_LITELLM_KEY virtual key. Bindings: cos/researcher/data_analyst → local-qwen3.6; software_engineer/reviewer → local-qwen3-coder; creator/ops → local-gemma4. The five big-MLX-bound profiles are availability-gated to local-gemma4 when LM Studio is down. Booted on demand inside hermes-fleet-v1.',
-   when:'Multi-step tasks benefit from specialist personas. Quick chats use Open WebUI; multi-turn tool-using tasks dispatch a Hermes profile. Re-point a profile with `vz-ai-stack.sh model assign <profile> <model>` then `model sync`.',
+  {id:'hermes_fleet', layer:'agent', layerLabel:'Agent runtime', name:'hermes-fleet', port:'(sandbox)', phase:'04·F', tagline:'9-role software-engineering team',
+   what:'A full delivery team: manager (read-only orchestrator + product intake), techlead (architecture/ADRs/contracts), frontend_engineer, backend_engineer, ml_engineer (model selection/evals/RAG), qa_test_engineer (test gate), reviewing_engineer (review + security, read-only), sre_engineer (safe deploys, prod-credentialed), incident_manager (incident command, read-only). Each a soul (system prompt + tools + a model bound in models.yml). All share the HERMES_LITELLM_KEY virtual key and the team-protocol skill (definition-of-done, typed handoffs, review gate, escalation, turn budget). Bindings: manager/techlead/ml_engineer → claude-opus-4.8-sub-high; the other six → claude-sonnet-4.6-sub-high — all via a Claude subscription through Meridian, availability-gated to local-gemma4 when Meridian is down. The same team also runs as Pi personas (bin/pi-as <role>) and Claude Code subagents (~/.claude/agents). Booted on demand inside hermes-fleet-v1.',
+   when:'Multi-step delivery work that benefits from a spec→deploy pipeline. Quick chats use Open WebUI; structured build tasks go through the manager, who frames a spec and routes to specialists. Re-point a profile with `vz-ai-stack.sh model assign <profile> <model>` then `model sync`.',
    tryThis:[
      {desc:'See the soul files.', cmd:'ls ~/ai-stack/openshell/fleet-souls/'},
      {desc:'See each profile\'s bound model (declared vs served).', cmd:'bash ~/ai-stack/vz-ai-stack.sh model list'},
-     {desc:'Run hermes_software_engineer.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_software_engineer "refactor /workspace/main.py for memoization"\''},
-     {desc:'Long research task.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_researcher "summarize top themes in /workspace/papers/*.pdf"\''}
+     {desc:'Frame and route a goal with the manager.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_manager "Add rate-limiting to the API. Write the spec, acceptance criteria, and the delivery plan."\''},
+     {desc:'Run a backend coding task.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_backend_engineer "refactor /workspace/main.py for memoization"\''}
    ],
    combine:['openshell','paperclip','honcho','workspace']},
 
@@ -596,7 +596,7 @@ const services = [
 
   {id:'dual_llm_researcher', layer:'security', layerLabel:'Security', name:'dual-LLM pattern', port:'(prompting)', phase:'04·G', tagline:'Summarizer-then-operator pattern',
    what:'Two-call structure: summarizer reads untrusted docs, operator only ever sees the summary. Blocks prompt-injection.',
-   when:'Anytime the agent ingests user-supplied documents. Default in hermes_researcher.',
+   when:'Anytime the agent ingests user-supplied documents. Applied by the profiles handling untrusted content — notably hermes_ml_engineer (RAG) and hermes_reviewing_engineer (security pass).',
    tryThis:[
      {desc:'Walk the pattern with two LiteLLM calls.', cmd:'# Step 1: summarizer reads raw doc with strong system prompt\n# Step 2: operator only sees the summary\n# See USER-GUIDE.md §2.6 for the full script.'}
    ],
@@ -613,7 +613,7 @@ const services = [
    combine:['litellm','docs-mcp']},
 
   {id:'hermes_workspace', layer:'ui', layerLabel:'UIs', name:'workspace', port:'3000', phase:'05', tagline:'Hermes fleet dashboard',
-   what:'Web UI for the 7 Hermes profiles: current load, recent tasks, memory state.',
+   what:'Web UI for the 9 Hermes profiles: current load, recent tasks, memory state.',
    when:'When you want fleet activity at a glance instead of grep.',
    tryThis:[
      {desc:'Open.', cmd:'open http://workspace:3000'},
@@ -842,7 +842,7 @@ const recipes = [
      '# Watch Phoenix as the fleet works.',
      '# When done: stack stop deerflow'
    ],
-   phoenix:'hermes_researcher (local-qwen3.6, gated to local-gemma4 when LM Studio is down) + docs-mcp tool calls + DeerFlow gateway calls.'
+   phoenix:'hermes_ml_engineer (subscription via Meridian, gated to local-gemma4 when Meridian is down) + docs-mcp tool calls + DeerFlow gateway calls.'
   },
   {id:'recipe6', num:6, title:'Paranoid mode', tag:'stretch', desc:'Only inference + guardrails + LLM Guard + dual-LLM. Phoenix is OFF (trade observability for not having an OTel sink see prompts).',
    prereqs:'See USER-GUIDE.md §Recipe 6 for the full apply script.',
@@ -867,17 +867,17 @@ const recipes = [
    ],
    phoenix:'A/B against local-lfm2 with Recipe 4 to score the actual improvement numerically.'
   },
-  {id:'recipe8', num:8, title:'Sandboxed Hermes profile (end-to-end task)', tag:'core+', desc:'Dispatch hermes_software_engineer to a code fix in hermes-fleet-v1. Pull results back.',
+  {id:'recipe8', num:8, title:'Sandboxed Hermes profile (end-to-end task)', tag:'core+', desc:'Dispatch hermes_backend_engineer to a code fix in hermes-fleet-v1. Pull results back.',
    prereqs:'Phases 04 + 04F complete. Sandbox upload/download works.',
    steps:[
      'mkdir -p ~/ai-stack/sandbox-workspace',
      'echo "def parse(s): return int(s.strip().lstrip(\'user_\'))" > ~/ai-stack/sandbox-workspace/buggy.py',
      'openshell sandbox upload hermes-fleet-v1 ~/ai-stack/sandbox-workspace/buggy.py /sandbox/',
-     'openshell sandbox exec -n hermes-fleet-v1 --tty -- \\\n  /bin/sh -c \'hermes hermes_software_engineer "fix /sandbox/buggy.py to return None for invalid input. Write a pytest."\'',
+     'openshell sandbox exec -n hermes-fleet-v1 --tty -- \\\n  /bin/sh -c \'hermes hermes_backend_engineer "fix /sandbox/buggy.py to return None for invalid input. Write a pytest."\'',
      'openshell sandbox download hermes-fleet-v1 /sandbox/buggy.py ~/ai-stack/sandbox-workspace/',
      'cd ~/ai-stack/sandbox-workspace && python -m pytest test_buggy.py -v'
    ],
-   phoenix:'Span cluster tagged agent=hermes_software_engineer with tool calls for shell ops + file writes.'
+   phoenix:'Span cluster tagged agent=hermes_backend_engineer with tool calls for shell ops + file writes.'
   },
   {id:'recipe9', num:9, title:'Graph-augmented retrieval (FalkorDB + docs-mcp)', tag:'core+', desc:'Vector top-k from docs-mcp + 1-hop graph neighbors from FalkorDB.',
    prereqs:'Recipe 1 done (docs in Qdrant). FalkorDB up.',
@@ -894,7 +894,7 @@ const recipes = [
    prereqs:'Paperclip + AutoFyn + Hermes up. paperclip_honcho_plugin activated.',
    steps:[
      'curl -s http://paperclip:3100/api/health | jq',
-     '# In Paperclip: dispatch hermes_researcher with a research question.',
+     '# In Paperclip: dispatch hermes_ml_engineer with a research/RAG question.',
      'curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=research" | jq \'.[0:3]\'',
      '# In Paperclip: dispatch AutoFyn referencing the prior research.',
      '# Phoenix: filter on dispatcher=paperclip to see the full chain.'

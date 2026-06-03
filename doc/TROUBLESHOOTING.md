@@ -105,7 +105,7 @@ cat ~/ai-stack/installer/state/openshell-manual-steps.md
 
 Run the manual gateway registration there. Once `openshell sandbox list`
 shows `hermes-fleet-v1`, run `stack install 04f` to mount the SOULs and
-bootstrap the 7 profiles.
+bootstrap the 9 profiles.
 
 If OpenShell upstream changes again, update phase 04's docs to match.
 
@@ -217,10 +217,11 @@ box that's a real liability. So:
 
 If `local-lfm2-mlx` calls fail after you quit LM Studio, that's why — restart the server
 (`lms server start`) or remove the model from `litellm/config.yaml` while it's off.
-Agents **assigned** an lmstudio model (e.g. `hermes_software_engineer` → `local-qwen3-coder`)
-don't 404 when LM Studio is down — `vz-ai-stack.sh model sync` availability-gates them back to
-`local-gemma4`. Re-run `model sync` once LM Studio is up to promote them again (see
-[models.md](models.md)).
+The same availability-gating protects subscription-assigned agents: the nine Hermes
+profiles (e.g. `hermes_backend_engineer` → `claude-sonnet-4.6-sub-high`), `pi`, and
+`deerflow` don't 404 when the Meridian host daemon is down — `vz-ai-stack.sh model sync`
+gates them back to `local-gemma4`. Re-run `model sync` once Meridian is up
+(`bin/start-meridian.sh`) to promote them again (see [models.md](models.md)).
 
 ---
 

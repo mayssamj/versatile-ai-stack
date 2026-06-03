@@ -136,9 +136,13 @@ For "how does it fit?", read [DIAGRAMS.md](DIAGRAMS.md).
 
 ## Autonomous agent framework
 
-### Hermes Agent (Nous Research) — and the `hermes_fleet` of 7 profiles
+### Hermes Agent (Nous Research) — and the `hermes_fleet` of 9 profiles
 **Slot:** Terminal agent with persistent memory, skills, and profiles.
-The "fleet" is the same agent run with seven different SOUL.md identities.
+The "fleet" is the same agent run with nine different SOUL.md identities — a
+9-role software-engineering team (manager, techlead, frontend/backend/ml
+engineers, QA, reviewing engineer, SRE, incident manager) running a spec→deploy
+pipeline under a shared team-protocol. The same team is also realized as Pi
+personas and Claude Code subagents.
 
 | Alternative | Differentiator |
 |---|---|

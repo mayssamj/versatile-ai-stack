@@ -48,7 +48,7 @@ graph TD
   llm_guard[llm-guard :8000]:::docker
 
   openshell[hermes-fleet-v1 (sandbox)]:::cli
-  hermes_fleet[hermes_fleet 7 profiles (sandbox)]:::cli
+  hermes_fleet[hermes_fleet 9 profiles (sandbox)]:::cli
 
   docs_ingestor[docs-ingestor (bg)]:::cli
   docs_mcp[docs-mcp :8765]:::cli
@@ -374,7 +374,7 @@ graph TD
   p02[Phase 02 falkordb + qdrant]:::store
   p03[Phase 03 honcho compose]:::store
   p04[Phase 04 openshell CLI + policy]:::sec
-  p04f[Phase 04 F hermes_fleet 7 profiles]:::sec
+  p04f[Phase 04 F hermes_fleet 9 profiles]:::sec
   p04g[Phase 04 G guardrails + llm_guard]:::sec
   p05[Phase 05 openwebui + hermes_workspace]:::ui
   p06[Phase 06 ingestor venv + mcp]:::store

@@ -87,9 +87,9 @@ Studio is down, so a plain `install all` works with no LM Studio.
 
 | Agent | How to reach it | What it is |
 |---|---|---|
-| **claw3d office** | `http://claw3d:4310` | A 3D "office" where you click + chat with **9 agents** — the 7 Hermes profiles, **Pi**, and **DeerFlow** — routed authentically through the stack-agents bridge. The friendliest front door. |
+| **claw3d office** | `http://claw3d:4310` | A 3D "office" where you click + chat with the stack's agents — the Hermes fleet, **Pi**, and **DeerFlow** — routed authentically through the stack-agents bridge. The friendliest front door. (Note: the bridge's agent registry still lists the old 7-profile roster and is pending migration to the 9-role team.) |
 | **Telegram bot** | DM `@vz_hermes_controller_bot` | The Hermes fleet from your phone. Secure-by-default: **set an allowlist or it denies everyone** — `HERMES_TELEGRAM_ALLOWED_USERS=<your-id>` in `.env`, then `stack install 20`. (Get your id from `@userinfobot`.) |
-| **Hermes fleet** | `openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_cos -m local …` | 7 sandboxed profiles (cos, software_engineer, researcher, creator, reviewer, data_analyst, ops). |
+| **Hermes fleet** | `openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_manager -m local …` | A 9-role sandboxed engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) running a spec→deploy pipeline under the shared team-protocol. Same team also runs as Pi personas + Claude Code subagents. |
 | **Pi** | `bin/pi` | Earendil terminal coding agent, sandboxed; scoped virtual key, local-only. |
 | **DeerFlow** | `http://localhost:2026` | Multi-step LangGraph research agent. |
 | **Open WebUI** | `http://openwebui:8080` | Plain chat UI straight to LiteLLM (no agent framework). |

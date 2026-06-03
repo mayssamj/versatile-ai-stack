@@ -518,29 +518,40 @@ openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c 'whoami; uname -srm'
 
 **What.** Seven specialized Hermes agent personas pre-staged in the `hermes-fleet-v1` sandbox at `~/ai-stack/openshell/fleet-souls/`. Each profile is a "soul" (system prompt + tool config + default model) — none of them are running processes by default, you boot one when you need it.
 
-**The roster (and the model each is bound to).** Each profile's default model
-is declared in `installer/models.yml` under `assignments:` and rendered into the
-soul file by `vz-ai-stack.sh model sync`. All seven authenticate to LiteLLM with the
-shared `HERMES_LITELLM_KEY` virtual key (allowlisted to the canonical model
-superset). The bindings as shipped:
+**The roster (and the model each is bound to).** The fleet is a **9-role
+software-engineering team** that runs a spec→deploy pipeline. Each profile's
+default model is declared in `installer/models.yml` under `assignments:` and
+rendered into the soul file by `vz-ai-stack.sh model sync`. All nine
+authenticate to LiteLLM with the shared `HERMES_LITELLM_KEY` virtual key
+(allowlisted to the canonical model superset) and route to a **Claude
+subscription via Meridian**. The bindings as shipped:
 
-| Profile                  | Bound model         | When you'd dispatch one                                            |
-|--------------------------|---------------------|--------------------------------------------------------------------|
-| `hermes_cos`             | `local-qwen3.6`     | Chief-of-staff: triage, intake, route a request to a specialist    |
-| `hermes_software_engineer` | `local-qwen3-coder` | Write code, refactor, debug a stack trace                        |
-| `hermes_researcher`      | `local-qwen3.6`     | Long-context document research, summarize a corpus                 |
-| `hermes_creator`         | `local-gemma4`      | Open-ended drafting: docs, designs, marketing copy                 |
-| `hermes_reviewer`        | `local-qwen3-coder` | Critique code, designs, plans; produce structured red-team output  |
-| `hermes_data_analyst`    | `local-qwen3.6`     | SQL, JSONL crunching, write a Python notebook to answer a question |
-| `hermes_ops`             | `local-gemma4`      | Ops chores: log triage, "is X up?", restart-this kind of asks      |
+| Profile                     | Bound model                  | When you'd dispatch one                                          |
+|-----------------------------|------------------------------|------------------------------------------------------------------|
+| `hermes_manager`            | `claude-opus-4.8-sub-high`   | Frame a goal into a spec, decompose, delegate, orchestrate gates (read-only) |
+| `hermes_techlead`           | `claude-opus-4.8-sub-high`   | Architecture decisions, ADRs, interface contracts, design review |
+| `hermes_frontend_engineer`  | `claude-sonnet-4.6-sub-high` | Accessible, performant UI against the design contract            |
+| `hermes_backend_engineer`   | `claude-sonnet-4.6-sub-high` | APIs, services, data access, security basics against the contract|
+| `hermes_ml_engineer`        | `claude-opus-4.8-sub-high`   | Model selection, evals, data pipelines, finetuning, RAG          |
+| `hermes_qa_test_engineer`   | `claude-sonnet-4.6-sub-high` | Test strategy + automation; the green-bar quality gate           |
+| `hermes_reviewing_engineer` | `claude-sonnet-4.6-sub-high` | Adversarial code review + the security pass (read-only)          |
+| `hermes_sre_engineer`       | `claude-sonnet-4.6-sub-high` | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
+| `hermes_incident_manager`   | `claude-sonnet-4.6-sub-high` | Incident command + blameless postmortems (read-only)            |
 
-**Availability-gating.** The five profiles bound to a big MLX model
-(`local-qwen3.6` / `local-qwen3-coder`) only get that model when LM Studio is
-running and serving it. If it isn't, `vz-ai-stack.sh model sync` renders the profile
-against the default (`local-gemma4`) and warns — so the fleet still works, just
-on the lighter model. Bring the big models up with §2.16's recipe, then re-run
-`vz-ai-stack.sh model sync`. To re-point any profile permanently, use
-`vz-ai-stack.sh model assign <profile> <model>` (§2.16).
+**Same team, three platforms.** This identical 9-role team is also realized as
+**Pi personas** (`bin/pi-as <role>`) and **Claude Code subagents**
+(`~/.claude/agents`, global). All three share the keystone **team-protocol**
+skill — definition-of-done, typed handoffs, the review-gate pipeline,
+escalation, and a global turn budget. Install via `vz-ai-stack.sh install
+agent_fleet` (phase 04h / 04f).
+
+**Availability-gating.** All nine profiles route to a Claude subscription
+through the Meridian host daemon. If Meridian is down, `vz-ai-stack.sh model
+sync` renders every profile against the default (`local-gemma4`) and warns — so
+the fleet still works, just on the lighter local model. Bring Meridian up
+(`bin/start-meridian.sh`), then re-run `vz-ai-stack.sh model sync`. To re-point
+any profile permanently, use `vz-ai-stack.sh model assign <profile> <model>`
+(§2.16).
 
 **When.** Whenever the workload is multi-step and benefits from a specialist persona. Quick one-off chat? Use `local-gemma4` via Open WebUI. Multi-turn task with tool calls? Dispatch a Hermes profile.
 
@@ -549,20 +560,20 @@ on the lighter model. Bring the big models up with §2.16's recipe, then re-run
 ```bash
 # 1. See the soul files (every profile has a markdown spec).
 ls ~/ai-stack/openshell/fleet-souls/
-cat ~/ai-stack/openshell/fleet-souls/hermes_software_engineer.md | head -30
+cat ~/ai-stack/openshell/fleet-souls/hermes_backend_engineer.md | head -30
 
-# 2. Run hermes_software_engineer inside the sandbox.
+# 2. Run hermes_backend_engineer inside the sandbox.
 #    The fleet-bootstrap script (Phase 04F) wires `hermes` as a CLI inside
 #    the sandbox; pass the profile name as the first argument.
 openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c \
-  'hermes hermes_software_engineer "refactor the function fib in /workspace/main.py for memoization"'
+  'hermes hermes_backend_engineer "refactor the function fib in /workspace/main.py for memoization"'
 
-# 3. Long-form research example.
+# 3. Have the manager frame and route a goal (read-only orchestrator).
 openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c \
-  'hermes hermes_researcher "summarize the top 3 themes across the docs at /workspace/papers/*.pdf"'
+  'hermes hermes_manager "Add rate-limiting to the API. Write the spec, acceptance criteria, and the delivery plan."'
 ```
 
-**Phoenix trace pattern.** Each profile run produces a cluster of spans tagged with the profile name in the trace metadata (e.g., `agent=hermes_researcher`).
+**Phoenix trace pattern.** Each profile run produces a cluster of spans tagged with the profile name in the trace metadata (e.g., `agent=hermes_backend_engineer`).
 
 **Combine with.** `paperclip` (orchestrates dispatches), `honcho` (per-profile memory), Recipe 8 (sandboxed Hermes task end-to-end).
 
@@ -667,7 +678,7 @@ bash ~/ai-stack/bin/start-litellm.sh --recreate
 
 **What.** Not a process — it's a prompting convention applied to Hermes profiles that operate on untrusted documents. The flow: a "summarizer" model reads the doc and produces a structured summary, then a separate "operator" model only ever sees the summary, never the raw document. This blocks prompt-injection attacks where a doc tries to override the agent's instructions.
 
-**When.** Anytime the agent ingests user-supplied documents (web pages, PDFs, customer support tickets). Active by default in `hermes_researcher`.
+**When.** Anytime the agent ingests user-supplied documents (web pages, PDFs, customer support tickets). Applied by the profiles that handle untrusted content — notably `hermes_ml_engineer` (RAG) and `hermes_reviewing_engineer` (security pass).
 
 **Try this.**
 
@@ -698,7 +709,7 @@ curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
 
 **Phoenix trace pattern.** Two distinct trace clusters with `local` model — distinguishable by the system prompt content.
 
-**Combine with.** `hermes_researcher`, `docs-mcp` (the source of untrusted docs).
+**Combine with.** `hermes_ml_engineer`, `docs-mcp` (the source of untrusted docs).
 
 ---
 
@@ -740,7 +751,7 @@ open http://openwebui:8080
 
 #### `workspace` (Hermes Workspace, compose, port 3000)
 
-**What.** Web UI for managing the Hermes fleet. Shows the 7 profiles, their current load, recent tasks, memory state.
+**What.** Web UI for managing the Hermes fleet. Shows the 9 profiles, their current load, recent tasks, memory state.
 
 **When.** When you want to see your fleet's activity at a glance instead of grepping logs.
 
@@ -898,7 +909,7 @@ kill $(cat ~/ai-stack/installer/state/paperclip.pid 2>/dev/null) 2>/dev/null
 
 #### `paperclip_honcho_plugin` (in-UI plugin, no port)
 
-**What.** A plugin installed inside Paperclip's UI that wires every dispatched task to Honcho. The result: when Paperclip hands a task to `hermes_software_engineer`, that worker's context includes Honcho's derived facts about you and prior sessions — without any per-worker configuration.
+**What.** A plugin installed inside Paperclip's UI that wires every dispatched task to Honcho. The result: when Paperclip hands a task to `hermes_backend_engineer`, that worker's context includes Honcho's derived facts about you and prior sessions — without any per-worker configuration.
 
 **When.** Always-on once activated in the Paperclip UI. It's the difference between "fresh context every dispatch" (annoying — same explanations repeatedly) and "memory across dispatches" (the workers know what you tried yesterday).
 
@@ -1328,9 +1339,10 @@ per-agent `assignments:` live there; see [models.md](models.md) for the full
 contract.
 
 **When.** Whenever you want to re-point an agent at a different model
-(e.g., move `hermes_researcher` from `local-qwen3.6` to `claude-sonnet`), or
-after you bring LM Studio up and want the big-MLX-bound agents to actually use
-their assigned model instead of the gated `local-gemma4` fallback.
+(e.g., move `hermes_ml_engineer` from `claude-opus-4.8-sub-high` to a local
+model), or after you bring Meridian up and want the subscription-bound Hermes
+profiles to actually use their assigned Claude model instead of the gated
+`local-gemma4` fallback.
 
 **Try this (worked examples).**
 
@@ -1341,10 +1353,10 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 bash ~/ai-stack/vz-ai-stack.sh model list --json | jq '.assignments'
 
 # 2. Re-point ONE agent. This edits models.yml (yq -i) and syncs just that agent.
-#    Example: give the researcher a cloud model for a hard week.
-bash ~/ai-stack/vz-ai-stack.sh model assign hermes_researcher claude-sonnet
-#    …and put it back to the local heavy model later:
-bash ~/ai-stack/vz-ai-stack.sh model assign hermes_researcher local-qwen3.6
+#    Example: drop the ml-engineer to a local model to save subscription budget.
+bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer local-qwen3.6
+#    …and put it back to its subscription model later:
+bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer claude-opus-4.8-sub-high
 
 # 3. RECONCILE everything from models.yml. Crash-safe 6-phase pass:
 #    validate → register model_list (ADD-ONLY) → restart LiteLLM ONCE if the
@@ -1357,7 +1369,7 @@ bash ~/ai-stack/vz-ai-stack.sh model sync --dry-run
 bash ~/ai-stack/vz-ai-stack.sh model sync --no-restart
 
 #    Sync just one agent:
-bash ~/ai-stack/vz-ai-stack.sh model sync hermes_software_engineer
+bash ~/ai-stack/vz-ai-stack.sh model sync hermes_backend_engineer
 
 # 4. Print the canonical scoped-key allowlist superset. Every scoped virtual key
 #    (HERMES_LITELLM_KEY, PI_LITELLM_KEY, ACE_LITELLM_KEY, RLM_LITELLM_KEY) is
@@ -1651,7 +1663,7 @@ stack start deerflow    # also: stack deerflow start
 open "http://localhost:${PORT:-2026}"
 
 # 4. As the fleet works, watch Phoenix:
-#    - hermes_researcher calls (model=local-qwen3.6, gated to local-gemma4 when LM Studio is down)
+#    - hermes_ml_engineer calls (subscription via Meridian, gated to local-gemma4 when Meridian is down)
 #    - docs-mcp tool calls
 #    - DeerFlow gateway calls
 
@@ -1741,7 +1753,7 @@ bash ~/ai-stack/bin/start-litellm.sh --recreate
 
 ### Recipe 8 — Sandboxed Hermes profile (one task end-to-end)
 
-**What you'll build.** Dispatch `hermes_software_engineer` to a code task running inside the `hermes-fleet-v1` sandbox. The profile reads its soul file, calls inference via `inference.local`, writes results to its bind-mounted workspace.
+**What you'll build.** Dispatch `hermes_backend_engineer` to a code task running inside the `hermes-fleet-v1` sandbox. The profile reads its soul file, calls inference via `inference.local`, writes results to its bind-mounted workspace.
 
 **Prereqs.** Phase 04 + 04F complete (`stack doctor` green). A target file to operate on.
 
@@ -1759,9 +1771,9 @@ PY
 # 2. Upload to the sandbox.
 openshell sandbox upload hermes-fleet-v1 ~/ai-stack/sandbox-workspace/buggy.py /sandbox/
 
-# 3. Dispatch the engineer profile.
+# 3. Dispatch the backend-engineer profile.
 openshell sandbox exec -n hermes-fleet-v1 --tty -- \
-  /bin/sh -c 'hermes hermes_software_engineer "fix /sandbox/buggy.py so parse_user_id returns None for invalid input. Write a 5-line pytest in /sandbox/test_buggy.py covering both cases."'
+  /bin/sh -c 'hermes hermes_backend_engineer "fix /sandbox/buggy.py so parse_user_id returns None for invalid input. Write a 5-line pytest in /sandbox/test_buggy.py covering both cases."'
 
 # 4. Pull results back.
 openshell sandbox download hermes-fleet-v1 /sandbox/buggy.py ~/ai-stack/sandbox-workspace/
@@ -1771,7 +1783,7 @@ openshell sandbox download hermes-fleet-v1 /sandbox/test_buggy.py ~/ai-stack/san
 cd ~/ai-stack/sandbox-workspace && python -m pytest test_buggy.py -v
 ```
 
-**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_software_engineer`, model = the profile's bound model (`local-qwen3-coder`, or `local-gemma4` when availability-gated because LM Studio is down), tool calls for shell ops + file writes.
+**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_backend_engineer`, model = the profile's bound model (`claude-sonnet-4.6-sub-high`, or `local-gemma4` when availability-gated because Meridian is down), tool calls for shell ops + file writes.
 
 **Combine with.** Recipe 10 (orchestrate this dispatch from Paperclip instead of by hand).
 
@@ -1815,13 +1827,13 @@ PY
 
 **You'll see this in Phoenix.** Just the docs-mcp + embedding spans; FalkorDB calls don't go through LiteLLM so they're not traced.
 
-**Combine with.** Hermes researcher (have it use the augmented retriever as a tool).
+**Combine with.** The `hermes_ml_engineer` profile (have it use the augmented retriever as a tool).
 
 ---
 
 ### Recipe 10 — Orchestrated multi-agent with Paperclip
 
-**What you'll build.** Paperclip dispatches one task → Hermes researcher gathers context (writes to Honcho) → Paperclip dispatches a follow-up → AutoFyn implements based on the context. All three agents share memory via `paperclip` peer.
+**What you'll build.** Paperclip dispatches one task → `hermes_ml_engineer` gathers context (writes to Honcho) → Paperclip dispatches a follow-up → AutoFyn implements based on the context. All three agents share memory via `paperclip` peer.
 
 **Prereqs.** Paperclip + AutoFyn + Hermes fleet up. paperclip_honcho_plugin activated in Paperclip UI.
 
@@ -1831,7 +1843,7 @@ PY
 # 1. Confirm Paperclip + plugin.
 curl -s http://paperclip:3100/api/health | jq
 
-# 2. From Paperclip UI, dispatch hermes_researcher with a research question.
+# 2. From Paperclip UI, dispatch hermes_ml_engineer with a research/RAG question.
 #    Wait for completion; verify Honcho got writes:
 curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=research" | jq '.[0:3]'
 

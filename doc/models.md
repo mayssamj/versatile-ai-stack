@@ -24,22 +24,29 @@ renders it all from this file.
 | `local-qwen3.6`     | lmstudio   | `qwen/qwen3.6-27b`                 | `big: true`, `ttl: 1800`  | ~17.5GB MLX. Cannot coexist with `local-qwen3-coder` on 24GB. |
 | `local-qwen3-coder` | lmstudio   | `qwen3-coder-30b-a3b-instruct-mlx` | `big: true`, `ttl: 1800`  | ~17.2GB MLX. Cannot coexist with `local-qwen3.6` on 24GB. |
 
-### The 11 agents (assignments + kinds)
+### The 13 agents (assignments + kinds)
 
-`models.yml` binds **11 agents** — the 7 Hermes profiles plus `pi`, `deerflow`,
-`ace`, and `rlm` — each via an `assignments:` line (the model) and a `kinds:`
-entry (the renderer + scoped-key env). Any agent with no assignment falls back
-to the `default` (`local-gemma4`).
+`models.yml` binds **13 agents** — the 9 Hermes profiles (a full
+software-engineering team) plus `pi`, `deerflow`, `ace`, and `rlm` — each via
+an `assignments:` line (the model) and a `kinds:` entry (the renderer +
+scoped-key env). Any agent with no assignment falls back to the `default`
+(`local-gemma4`). The nine Hermes profiles all route to a **Claude
+subscription via Meridian** and are availability-gated to `local-gemma4` when
+Meridian is down. The same 9-role team is also realized as **Pi personas**
+(`bin/pi-as <role>`) and **Claude Code subagents** (`~/.claude/agents`),
+sharing the `team-protocol` skill.
 
 | Agent | Assigned | Kind | Scoped key |
 |-------|----------|------|------------|
-| `hermes_cos`               | `local-qwen3.6`     | hermes-profile | `HERMES_LITELLM_KEY` (shared by all 7 profiles) |
-| `hermes_software_engineer` | `local-qwen3-coder` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_researcher`        | `local-qwen3.6`     | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_creator`           | `local-gemma4`      | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_reviewer`          | `local-qwen3-coder` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_data_analyst`      | `local-qwen3.6`     | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_ops`               | `local-gemma4`      | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_manager`            | `claude-opus-4.8-sub-high`   | hermes-profile | `HERMES_LITELLM_KEY` (shared by all 9 profiles) |
+| `hermes_techlead`           | `claude-opus-4.8-sub-high`   | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_ml_engineer`        | `claude-opus-4.8-sub-high`   | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_frontend_engineer`  | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_backend_engineer`   | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_qa_test_engineer`   | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_reviewing_engineer` | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_sre_engineer`       | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_incident_manager`   | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
 | `pi`                       | `claude-opus-4.8-sub-max` | pi       | `PI_LITELLM_KEY` |
 | `deerflow`                 | `claude-opus-4.8-sub-max` | deerflow | *(none — master key)* |
 | `ace`                      | `local-gemma4`      | ace            | `ACE_LITELLM_KEY` |

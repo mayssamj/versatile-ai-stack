@@ -55,7 +55,7 @@ in fifteen minutes.
 
 ### Agent runtimes
 - **OpenShell** (brew service, gateway `:17670`) — sandbox host. Two sandboxes:
-  - **hermes-fleet-v1** — 7 Hermes profiles (cos, software_engineer, researcher, creator, reviewer, data_analyst, ops). Installed via PyPI `hermes-agent` v0.15.2 inside `/sandbox/.venv` (uv-managed venv inside the sandbox).
+  - **hermes-fleet-v1** — the 9-role Hermes engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager), running a spec→deploy pipeline under the shared team-protocol skill; all nine route to a Claude subscription via Meridian (gated to local-gemma4 when Meridian is down). Installed via PyPI `hermes-agent` v0.15.2 inside `/sandbox/.venv` (uv-managed venv inside the sandbox).
   - **pi-v1** — Pi (`@earendil-works/pi-coding-agent`) installed from pre-staged tarball at `pi/pi-bootstrap.tar.gz` to bypass scoped-npm-URL proxy issue. Auth via `PI_LITELLM_KEY` virtual key scoped to the fixed canonical superset (`local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6`). Pi's assigned model is `local-qwen3-coder` (per `models.yml`); the superset lets `model assign`/`sync` re-point it without re-minting the key.
 
 ### UIs
@@ -70,7 +70,7 @@ in fifteen minutes.
 
 ### CLI-only / on-demand
 - **Pi** — invoke via `bin/pi` (handles sandbox session inside pi-v1).
-- **Hermes** — invoke inside hermes-fleet-v1: `openshell sandbox exec -n hermes-fleet-v1 -- hermes profile use <name>`. **Now genuinely routes to LiteLLM** (verified `hermes --profile hermes_cos -m local -z` → `PONG`). Previously it silently never reached local models (dead `llm.*` config) — see §2.6.
+- **Hermes** — invoke inside hermes-fleet-v1: `openshell sandbox exec -n hermes-fleet-v1 -- hermes profile use <name>`. **Now genuinely routes to LiteLLM** (verified `hermes --profile hermes_manager -m local -z` → `PONG`). Previously it silently never reached local models (dead `llm.*` config) — see §2.6.
 - **Lumen** (Phase 16) — Ory's local code semantic-search MCP. Binary at `vendor/lumen/lumen-0.0.41-darwin-arm64`. Wrapper `bin/lumen`. Embeddings via `ordis/jina-embeddings-v2-base-code` on Ollama. Stdio MCP (no daemon).
 - **ACE** (Phase 17, NEW 2026-05-29) — Stanford's Agentic Context Engineering. Cloned at `ace/`, uv venv, wrapper `bin/ace`. Routes via LiteLLM through `OPENAI_BASE_URL=http://litellm:4000/v1`. ACE_LITELLM_KEY virtual key scoped to local models. **`ace appworld` requires explicit confirmation** (executes model-generated tool calls on host).
 - **Unsloth Studio** (Phase 14) — daemon on `:8898` for local model fine-tuning. PID file at `installer/state/unsloth.pid`.
@@ -138,7 +138,7 @@ bash vz-ai-stack.sh install 04                            # will succeed now
 ### 2.6 Hermes-agent v0.15.2 CLI drift — RESOLVED (2026-05-30)
 **Original symptoms:** `hermes config set llm.openai_api_key …` → `ValueError: Invalid environment variable name: 'LLM.OPENAI_API_KEY'`; `hermes profile config <name> --set llm.model=…` → `invalid choice: 'config'`. Root cause: hermes-agent v0.15.2 has NO `llm.*` config namespace, so the old `llm.model`/`llm.openai_api_base`/`llm.openai_api_key` config was a dead no-op + a ValueError, and Hermes silently never reached local models.
 
-**Status: RESOLVED.** Phase 04f now mints `HERMES_LITELLM_KEY`, adds a `litellm_proxy` endpoint to the hermes policy, and sets per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url=http://host.docker.internal:4000/v1, api_key, model}`. Config rewritten for the real v0.15.2 schema; per-profile model + LiteLLM routing now wired and verified live (`hermes --profile hermes_cos -m local -z` → `PONG`).
+**Status: RESOLVED.** Phase 04f now mints `HERMES_LITELLM_KEY`, adds a `litellm_proxy` endpoint to the hermes policy, and sets per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url=http://host.docker.internal:4000/v1, api_key, model}`. Config rewritten for the real v0.15.2 schema; per-profile model + LiteLLM routing now wired and verified live (`hermes --profile hermes_manager -m local -z` → `PONG`).
 
 ### 2.7 status.sh used to mislabel compose services as `absent`
 **Fixed 2026-05-29** via `ownership_compose()` + `project:` / `process_pattern:` overrides in services.yml. If you see it again, check that the `services.<name>.project:` field matches the actual compose project name (kebab-case).

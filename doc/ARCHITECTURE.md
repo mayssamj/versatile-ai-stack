@@ -30,9 +30,9 @@ a trace "for free."
                                      │  scoped virtual key (per agent)
 ┌────────────────────────────────────▼───────────────────────────────────────┐
 │  AGENT LAYER (isolated)                                                     │
-│    Hermes fleet — 7 profiles in OpenShell sandbox  hermes-fleet-v1          │
-│      cos · software_engineer · researcher · creator · reviewer ·           │
-│      data_analyst · ops    (+ Telegram gateway runs inside the same box)   │
+│    Hermes fleet — 9-role eng team in OpenShell sandbox  hermes-fleet-v1     │
+│      manager · techlead · frontend · backend · ml · qa · reviewing ·       │
+│      sre · incident   (+ Telegram gateway runs inside the same box)        │
 │    Pi (Earendil) coding agent in OpenShell sandbox  pi-v1                   │
 │    DeerFlow · ACE · RLM    (host-side, each minting its own scoped key)     │
 └────────────────────────────────────┬───────────────────────────────────────┘
@@ -90,11 +90,18 @@ server on `:1234`, reached via `host.docker.internal`, opt-in Phase 25).
 
 ### Agent layer
 
-- **Hermes fleet — 7 profiles** (`hermes_cos`, `hermes_software_engineer`,
-  `hermes_researcher`, `hermes_creator`, `hermes_reviewer`,
-  `hermes_data_analyst`, `hermes_ops`) live inside the OpenShell sandbox
-  `hermes-fleet-v1` (Phase 04·F). The Hermes Telegram gateway (Phase 20)
-  runs the gateway process *inside the same sandbox*.
+- **Hermes fleet — a 9-role software-engineering team** (`hermes_manager`,
+  `hermes_techlead`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
+  `hermes_ml_engineer`, `hermes_qa_test_engineer`, `hermes_reviewing_engineer`,
+  `hermes_sre_engineer`, `hermes_incident_manager`) lives inside the OpenShell
+  sandbox `hermes-fleet-v1` (Phase 04·F). They run a spec→deploy pipeline
+  governed by the shared **team-protocol** skill (definition-of-done, typed
+  handoffs, review gate, escalation, turn budget). The **same team is realized
+  on three platforms** — Hermes profiles here, **Pi personas** (`bin/pi-as
+  <role>`), and **Claude Code subagents** (`~/.claude/agents`). All nine route
+  to a Claude subscription via Meridian, availability-gated to `local-gemma4`
+  when Meridian is down. The Hermes Telegram gateway (Phase 20) runs the
+  gateway process *inside the same sandbox*.
 - **Pi (Earendil)** coding agent is isolated in its own OpenShell sandbox
   `pi-v1` (Phase 15) with a tight egress allowlist; it reaches LiteLLM via
   `http://host.docker.internal:4000` with `PI_LITELLM_KEY`.

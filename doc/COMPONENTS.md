@@ -39,7 +39,7 @@ FalkorDB, LFM2, etc.).
 | Component | What it is | Reach it |
 |---|---|---|
 | **OpenShell** | Sandbox host for isolated agents (`hermes-fleet-v1`, `pi-v1`) | gateway `:17670` |
-| **Hermes fleet** | 7 Hermes profiles (cos, software_engineer, researcher, creator, reviewer, data_analyst, ops) in the `hermes-fleet-v1` sandbox, routed to LiteLLM | `openshell sandbox exec -n hermes-fleet-v1 -- hermes …` |
+| **Hermes fleet** | A 9-role engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) in the `hermes-fleet-v1` sandbox, routed to LiteLLM; same team also runs as Pi personas + Claude Code subagents, sharing the `team-protocol` skill | `openshell sandbox exec -n hermes-fleet-v1 -- hermes …` |
 | **Pi** | Earendil terminal coding agent in the `pi-v1` sandbox | `bin/pi` |
 | **AutoFyn** | Multi-agent framework (dashboard + agent + sandbox) | `http://autofyn:3400` |
 | **DeerFlow** | Multi-step research agent (LangGraph) | `http://localhost:2026` |
