@@ -54,7 +54,7 @@ meridian_diagnose() {
     echo "litellm/config.yaml meridian effort does NOT match installer/models.yml (effort ladder flattened):"
     echo "$drift" | sed 's/^/    /'
     echo "  cause: a register-without-effort (e.g. Phase 01 loop) defaulted extra_body.effort to 'high'."
-    echo "  fix:   bash $AI_STACK/install.sh model sync   then   bash $AI_STACK/bin/start-litellm.sh --recreate"
+    echo "  fix:   bash $AI_STACK/vz-ai-stack.sh model sync   then   bash $AI_STACK/bin/start-litellm.sh --recreate"
     return 1
   fi
 

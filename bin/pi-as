@@ -42,22 +42,22 @@ resolve_openshell() {
   else echo ""; fi
 }
 OSH="$(resolve_openshell)"
-[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash install.sh install 04' first." >&2; exit 1; }
+[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first." >&2; exit 1; }
 
 if ! "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
      | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}' | grep -q Ready; then
-  echo "pi-v1 sandbox not Ready — run 'bash install.sh install 15' first." >&2; exit 1
+  echo "pi-v1 sandbox not Ready — run 'bash vz-ai-stack.sh install 15' first." >&2; exit 1
 fi
 
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh" 2>/dev/null || true
 source "$AI_STACK/installer/lib/env.sh" 2>/dev/null || true
 PI_LITELLM_KEY="$(get_env PI_LITELLM_KEY '' 2>/dev/null || true)"
-[[ -n "${PI_LITELLM_KEY:-}" ]] || { echo "PI_LITELLM_KEY missing — re-run 'install.sh install 15'." >&2; exit 1; }
+[[ -n "${PI_LITELLM_KEY:-}" ]] || { echo "PI_LITELLM_KEY missing — re-run 'vz-ai-stack.sh install 15'." >&2; exit 1; }
 
 # The persona must be uploaded (Phase 04h).
 if ! "$OSH" sandbox exec -n pi-v1 --no-tty -- /bin/sh -c "test -f /sandbox/agents/$ROLE/SYSTEM.md" >/dev/null 2>&1; then
-  echo "persona /sandbox/agents/$ROLE/SYSTEM.md not found — run 'install.sh install agent_fleet' first." >&2; exit 1
+  echo "persona /sandbox/agents/$ROLE/SYSTEM.md not found — run 'vz-ai-stack.sh install agent_fleet' first." >&2; exit 1
 fi
 
 # Per-role model = the hermes_<snake> assignment from models.yml (so the persona

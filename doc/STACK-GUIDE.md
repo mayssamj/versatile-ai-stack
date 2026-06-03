@@ -512,7 +512,7 @@ team of seven specialists is much better. Phase 04·F creates seven
 profiles with hand-written `SOUL.md` identity files:
 
 Each profile's model is declared per-agent in `installer/models.yml` (the
-shipped defaults are below) and rendered by `install.sh model sync` — see
+shipped defaults are below) and rendered by `vz-ai-stack.sh model sync` — see
 [models.md](models.md). lmstudio-assigned profiles fall back to `local-gemma4`
 when LM Studio is down.
 

@@ -5,7 +5,7 @@
 #   - Ollama brew install + brew services start: skipped if already.
 #   - Model pulls: skipped if model already present in `ollama list`.
 #   - LiteLLM container: if already running AND foreign (not managed by us),
-#     prompts user to `install.sh adopt litellm`. If already running AND
+#     prompts user to `vz-ai-stack.sh adopt litellm`. If already running AND
 #     managed, leaves it alone unless config.yaml has been mutated since
 #     container start (then queues a restart).
 #   - config.yaml + trace_to_file.py: written if missing, never silently
@@ -25,7 +25,7 @@ PHASE=01
 # (gemma4:e4b = `local`/`local-gemma4`) + the embedding model. qwen3.6 moved to
 # LM Studio MLX (local-qwen3.6, opt-in) and the LFM2.5 GGUF is no longer
 # pre-pulled — both keep a fresh install light on a 24GB box. See
-# installer/models.yml + 'install.sh model'. (local-heavy/local-lfm2 stay in
+# installer/models.yml + 'vz-ai-stack.sh model'. (local-heavy/local-lfm2 stay in
 # litellm/config.yaml as ADD-ONLY legacy slugs; they just 404 until pulled.)
 REQUIRED_MODELS=(
   gemma4:e4b
@@ -152,7 +152,7 @@ if container_running litellm; then
     ok "litellm container already running and managed"
   else
     warn "litellm is running but FOREIGN (started outside the installer)."
-    warn "Run:  bash install.sh adopt litellm   to take ownership."
+    warn "Run:  bash vz-ai-stack.sh adopt litellm   to take ownership."
     # Do not fail the phase — the user has a working litellm, just unmanaged.
   fi
 else

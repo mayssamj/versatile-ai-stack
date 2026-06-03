@@ -1,6 +1,6 @@
 # Install guide
 
-The installer is `bash ~/ai-stack/install.sh`. It's idempotent — re-running it
+The installer is `bash ~/ai-stack/vz-ai-stack.sh`. It's idempotent — re-running it
 on a healthy stack is a no-op of `✓ already complete` lines. Re-running on a
 partial install resumes from where it left off.
 
@@ -73,25 +73,25 @@ cd ~/ai-stack
 # Writes the /etc/hosts alias block, binds 127.0.10.x aliases on lo0,
 # installs the launchd plist for reboot persistence, flushes the macOS
 # DNS cache. Idempotent: safe to re-run.
-sudo bash install.sh prepare-sudo
+sudo bash vz-ai-stack.sh prepare-sudo
 
 # Step B — runtime verification (no sudo). Probes the alias chain
 # end-to-end before any container starts. Catches lo0/DNS regressions
 # while the fix is still cheap. Safe to re-run anytime.
-bash install.sh verify
+bash vz-ai-stack.sh verify
 
 # Step C — full install (no sudo). Interactive top-to-bottom.
 # Walks every phase, prompts to adopt foreign containers, prompts for the
 # Phoenix API key, drains the restart queue, runs the final doctor.
-bash install.sh
+bash vz-ai-stack.sh
 ```
 
 That's the whole bootstrap. **After Step A, no further `sudo` prompts will
 appear** during Steps B and C. This is the recommended path.
 
-### `install.sh verify` (Step B)
+### `vz-ai-stack.sh verify` (Step B)
 
-`bash install.sh verify` runs Phase 00·V — six runtime probes against
+`bash vz-ai-stack.sh verify` runs Phase 00·V — six runtime probes against
 the alias chain:
 
 1. `/etc/hosts` ownership (root:wheel, mode 644).
@@ -102,7 +102,7 @@ the alias chain:
 6. ai-stack network attaches transient containers cleanly (skipped if
    the network doesn't exist yet — legitimate pre-install state).
 
-Failure prints the exact fix command — usually `sudo bash install.sh
+Failure prints the exact fix command — usually `sudo bash vz-ai-stack.sh
 prepare-sudo` — and exits 1. Phase 00·V also runs automatically as part
 of Step C, between Phase 00·N (networking foundation) and Phase 01
 (inference plane); the standalone `verify` subcommand is for re-checking
@@ -111,12 +111,12 @@ after any networking change (VPN connect/disconnect, OrbStack restart).
 ### Hardening notes (Step A)
 
 `prepare-sudo` refuses to run if any of these guards trip:
-- `install.sh` lives in a temp directory (`/tmp`, `/var/tmp`).
-- `install.sh` is not under `/Users/`.
+- `vz-ai-stack.sh` lives in a temp directory (`/tmp`, `/var/tmp`).
+- `vz-ai-stack.sh` is not under `/Users/`.
 - The script path goes through a symlink.
 - `~/ai-stack` (or any ancestor of it) is owned by anyone other than the
   user invoking `sudo`.
-- Key library files (`installer/lib/{common,network,env}.sh`, `install.sh`)
+- Key library files (`installer/lib/{common,network,env}.sh`, `vz-ai-stack.sh`)
   are symlinks.
 - `SUDO_USER` is empty or `root` (use plain `sudo`, not `sudo -i` or
   `su -`).
@@ -131,14 +131,14 @@ concurrent `prepare-sudo` runs serialize cleanly, and uses `chown -h`
 
 ### Fallback: no separate Step A
 
-You can run `bash install.sh` directly without Step A **IF you're running it
+You can run `bash vz-ai-stack.sh` directly without Step A **IF you're running it
 in an interactive terminal**. Phase 00·N will prompt for your sudo password
 inline when it hits `/etc/hosts`. The two-step flow above is just cleaner
 (sudo upfront, then sit back) and is the only path that works in CI or
 piped contexts.
 
 If your terminal won't accept an inline sudo prompt, run `sudo -v` once
-before `bash install.sh` to refresh your sudo timestamp — that gives
+before `bash vz-ai-stack.sh` to refresh your sudo timestamp — that gives
 Phase 00·N's `sudo -n` (non-interactive) call a 5-minute window where it
 succeeds without re-prompting.
 
@@ -150,7 +150,7 @@ Expect 5–20 minutes on first run depending on what's already cached:
 - ~30 sec each: honcho, hermes-workspace, deer-flow git clones.
 
 If anything fails mid-install, the script prints exactly which phase failed and
-how to resume (`bash install.sh install <phase>`).
+how to resume (`bash vz-ai-stack.sh install <phase>`).
 
 The installer is **non-interactive** by default for everything except prompts
 where it genuinely needs your input (e.g., a confirmation before recreating an
@@ -160,7 +160,7 @@ existing container).
 
 ## 2. What runs at the end
 
-After a successful install, you should see this from `bash install.sh status`:
+After a successful install, you should see this from `bash vz-ai-stack.sh status`:
 
 ```
 NAME             DECLARED   ACTUAL     OWNERSHIP    NOTES
@@ -212,7 +212,7 @@ Or edit `.env` directly (mode 0600 — preserve it). Then drain the queued
 restart:
 
 ```bash
-bash install.sh apply-restarts
+bash vz-ai-stack.sh apply-restarts
 ```
 
 LiteLLM gets recreated, picks up `PHOENIX_API_KEY` from `--env-file`, and the
@@ -221,7 +221,7 @@ next inference call lands as a trace in the `ai-stack` project.
 Verify:
 
 ```bash
-bash install.sh test 01h
+bash vz-ai-stack.sh test 01h
 ```
 
 Should print `Phoenix has 'ai-stack' project — traces are flowing`.
@@ -236,10 +236,10 @@ auto-`docker rm -f` anything that holds your data.
 To take ownership:
 
 ```bash
-bash install.sh adopt qdrant       # start with the lowest-risk one
-bash install.sh adopt falkordb
-bash install.sh adopt phoenix
-bash install.sh adopt litellm
+bash vz-ai-stack.sh adopt qdrant       # start with the lowest-risk one
+bash vz-ai-stack.sh adopt falkordb
+bash vz-ai-stack.sh adopt phoenix
+bash vz-ai-stack.sh adopt litellm
 ```
 
 Adoption is a 4-step confirmed flow:
@@ -291,7 +291,7 @@ cat ~/ai-stack/installer/state/openshell-manual-steps.md
 Once the `hermes-fleet-v1` sandbox is up:
 
 ```bash
-bash install.sh install 04f       # mounts SOULs + runs the bootstrap
+bash vz-ai-stack.sh install 04f       # mounts SOULs + runs the bootstrap
 ```
 
 (SOUL templates for all 7 fleet profiles are pre-staged on the host at
@@ -304,7 +304,7 @@ moved. If any of them logged a warning during install:
 
 - **Phase 05 Hermes Workspace** — clone of `NousResearch/hermes-workspace` may
   404. If you have the source elsewhere, drop it at
-  `~/ai-stack/hermes-workspace/` and re-run `bash install.sh install 05`.
+  `~/ai-stack/hermes-workspace/` and re-run `bash vz-ai-stack.sh install 05`.
 - **Phase 07 AutoFyn** — same pattern with `~/ai-stack/autofyn/`.
 - **Phase 08 Paperclip** — `~/ai-stack/tools/paperclip/`.
 - **Phase 09 alt-memory** — `remnic-hermes` (pip) and `@byterover/cli` (npm)
@@ -328,7 +328,7 @@ moved. If any of them logged a warning during install:
   it is), (b) Phase 03 Honcho up so the LiteLLM Prisma DB can connect to
   Honcho's Postgres, (c) `pi/pi-bootstrap.tar.gz` (auto-built by Phase 15
   the first time from `pi/package.json`). To upgrade Pi: `rm
-  pi/pi-bootstrap.tar.gz pi/package-lock.json && bash install.sh install
+  pi/pi-bootstrap.tar.gz pi/package-lock.json && bash vz-ai-stack.sh install
   15`. Phase 15 mints `PI_LITELLM_KEY` server-side against the fixed local-model
   superset (`local`, `local-gemma4`, `local-heavy`, `local-lfm2`,
   `local-qwen3-coder`, `local-qwen3.6`) — no cloud spend possible. Pi's
@@ -363,21 +363,21 @@ LiteLLM + Phoenix + Honcho + Open WebUI) works without any of them.
 Run the per-phase smoke tests:
 
 ```bash
-bash install.sh test 01      # /v1/models + chat + trace file + per-model ping
-bash install.sh test 01h     # Phoenix has ai-stack project
-bash install.sh test 02      # FalkorDB + Qdrant write+read
-bash install.sh test 03      # Honcho /health
-bash install.sh test 05      # Open WebUI UI 200
+bash vz-ai-stack.sh test 01      # /v1/models + chat + trace file + per-model ping
+bash vz-ai-stack.sh test 01h     # Phoenix has ai-stack project
+bash vz-ai-stack.sh test 02      # FalkorDB + Qdrant write+read
+bash vz-ai-stack.sh test 03      # Honcho /health
+bash vz-ai-stack.sh test 05      # Open WebUI UI 200
 ```
 
 Then run the full doctor:
 
 ```bash
-bash install.sh doctor
+bash vz-ai-stack.sh doctor
 ```
 
 Expected: 40/40 checks pass after the post-install steps above and a
-successful `sudo bash install.sh prepare-sudo` (which wires `/etc/hosts`
+successful `sudo bash vz-ai-stack.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more
 (24 `pi-v1` Ready, 25 pi-v1 network policy, 26 `PI_LITELLM_KEY`
@@ -439,9 +439,9 @@ If something goes badly wrong and you want a clean slate, the installer has
 tiered resets that print the blast radius before acting:
 
 ```bash
-bash install.sh reset --confirm soft   # state + bin/  (keeps .env, data/, containers)
-bash install.sh reset --confirm hard   # + managed containers + data/ (with backup)
-bash install.sh reset --confirm nuke   # + .env + ollama models (re-download all)
+bash vz-ai-stack.sh reset --confirm soft   # state + bin/  (keeps .env, data/, containers)
+bash vz-ai-stack.sh reset --confirm hard   # + managed containers + data/ (with backup)
+bash vz-ai-stack.sh reset --confirm nuke   # + .env + ollama models (re-download all)
 ```
 
 `reset --confirm hard` now also deletes the OpenShell sandboxes and tears
@@ -469,7 +469,7 @@ By design:
   PATH and would chown `.env` to root.
 - **Does not auto-restart containers when `.env` changes.** Conservative
   policy — it queues restarts to `installer/state/restarts-needed.txt` and you
-  drain with `install.sh apply-restarts`.
+  drain with `vz-ai-stack.sh apply-restarts`.
 - **Does not adopt foreign containers without confirmation.** See § 3.2 above.
 - **Does not push your data anywhere.** Phoenix is self-hosted. Honcho is
   self-hosted. The only egress is to LLM provider APIs (per your `.env` keys)

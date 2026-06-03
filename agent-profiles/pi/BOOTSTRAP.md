@@ -23,7 +23,7 @@ Pi deliberately ships **no subagents and no plan mode**. So:
 This is the one place the three frameworks are genuinely asymmetric — don't expect a live Pi team out of the box.
 
 ## In ai-stack (automated phase-1)
-`install.sh install agent_fleet` uploads all 9 role `SYSTEM.md` into the `pi-v1` sandbox at
+`vz-ai-stack.sh install agent_fleet` uploads all 9 role `SYSTEM.md` into the `pi-v1` sandbox at
 `/sandbox/agents/<role>/`. Switch hats with `bin/pi-as <role>` (lists roles with no arg). Each role's model
 is pinned per-launch via `pi --model`; the shared `team-protocol` skill governs handoffs even when you're
 switching hats manually.

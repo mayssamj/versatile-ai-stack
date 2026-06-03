@@ -29,7 +29,7 @@ lo0_aliases_fix() {
   # Auto-fix requires sudo. Surface the canonical command rather than try sudo
   # mid-doctor (the prepare-sudo design says no inline sudo).
   warn "Auto-fix requires sudo. Run:"
-  warn "    sudo bash $AI_STACK/install.sh prepare-sudo"
+  warn "    sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo"
   warn "(idempotent; binds all 14 aliases + installs reboot persistence)"
   return 1
 }

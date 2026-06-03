@@ -6,7 +6,7 @@
 #   - it has the label but lacks `ai-stack` in its docker network list
 #     (label-but-not-on-network — e.g., ran via an older start script).
 CHECKS+=(foreign_containers)
-CHECK_TITLE[foreign_containers]="No foreign ai-stack containers (run 'install.sh adopt <svc>')"
+CHECK_TITLE[foreign_containers]="No foreign ai-stack containers (run 'vz-ai-stack.sh adopt <svc>')"
 
 foreign_containers_diagnose() {
   local foreigns=() svc reasons=()
@@ -33,7 +33,7 @@ foreign_containers_diagnose() {
 }
 
 foreign_containers_fix() {
-  warn "Run 'install.sh adopt <svc>' per foreign container — adoption is interactive"
+  warn "Run 'vz-ai-stack.sh adopt <svc>' per foreign container — adoption is interactive"
   warn "and will offer to back up data before recreating with managed config."
   warn "Adopted containers will be (re)attached to the 'ai-stack' network."
   return 1

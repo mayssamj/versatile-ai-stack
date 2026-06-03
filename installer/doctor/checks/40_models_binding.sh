@@ -13,9 +13,9 @@
 #      key includes the assigned (effective) model. NEVER prints a key.
 #
 # WARN-skip (return 0) when LiteLLM is down or the hermes sandbox isn't Ready.
-# Fix hint: 'bash install.sh model sync'.
+# Fix hint: 'bash vz-ai-stack.sh model sync'.
 CHECKS+=(models_binding)
-CHECK_TITLE[models_binding]="Model<->agent binding (models.yml) valid + rendered (install.sh model sync)"
+CHECK_TITLE[models_binding]="Model<->agent binding (models.yml) valid + rendered (vz-ai-stack.sh model sync)"
 
 _mb_yml() { echo "$AI_STACK/installer/models.yml"; }
 _mb_cfg() { echo "$AI_STACK/litellm/config.yaml"; }
@@ -85,7 +85,7 @@ models_binding_diagnose() {
   # (1) Validate via the lib (fail-closed). Reuse lib/models.sh's validate by
   # running `model list` quietly — it exits 2 only on invalid models.yml.
   if ! bash "$AI_STACK/installer/lib/models.sh" list >/dev/null 2>&1; then
-    echo "models.yml invalid or unresolvable (run: bash install.sh model list)"
+    echo "models.yml invalid or unresolvable (run: bash vz-ai-stack.sh model list)"
     return 1
   fi
 
@@ -105,7 +105,7 @@ models_binding_diagnose() {
     [[ -z "$m" ]] && continue
     rt="$(yq -r ".models.\"$m\".runtime" "$yml" 2>/dev/null)"
     if ! yq -e ".model_list[] | select(.model_name == \"$m\")" "$cfg" >/dev/null 2>&1; then
-      echo "model '$m' missing from litellm/config.yaml (run: bash install.sh model sync)"
+      echo "model '$m' missing from litellm/config.yaml (run: bash vz-ai-stack.sh model sync)"
       fail=1; continue
     fi
     # meridian (Claude subscription): NEVER chat_ping — it bills subscription
@@ -147,15 +147,15 @@ models_binding_diagnose() {
     if [[ -n "$keyenv" && "$keyenv" != "null" ]]; then
       local kv; kv="$(get_env "$keyenv" '' 2>/dev/null || echo '')"
       if [[ -z "$kv" ]]; then
-        echo "agent '$a' key_env $keyenv missing from .env (run the phase or: bash install.sh model sync)"
+        echo "agent '$a' key_env $keyenv missing from .env (run the phase or: bash vz-ai-stack.sh model sync)"
         fail=1
       else
         if ! _mb_key_covers "$kv" "$eff"; then
-          echo "agent '$a' scoped key does NOT allow its effective model '$eff' (run: bash install.sh model sync)"
+          echo "agent '$a' scoped key does NOT allow its effective model '$eff' (run: bash vz-ai-stack.sh model sync)"
           fail=1
         fi
         # Superset-drift guard (review #6): scoped keys are minted with the FULL
-        # DERIVED superset (see 'install.sh model superset'), so a phase/bridge
+        # DERIVED superset (see 'vz-ai-stack.sh model superset'), so a phase/bridge
         # that hardcoded a stale/narrow allowlist is caught HERE rather than
         # silently 403-ing a future `model assign`/`model add`. Only assert for
         # superset members actually registered in config.yaml.
@@ -164,7 +164,7 @@ models_binding_diagnose() {
           [[ -z "$_cm" ]] && continue
           if yq -e ".model_list[] | select(.model_name == \"$_cm\")" "$cfg" >/dev/null 2>&1 \
              && ! _mb_key_covers "$kv" "$_cm"; then
-            echo "agent '$a' scoped key $keyenv missing '$_cm' (superset drift — run: bash install.sh model sync)"
+            echo "agent '$a' scoped key $keyenv missing '$_cm' (superset drift — run: bash vz-ai-stack.sh model sync)"
             fail=1
           fi
         done < <(printf '%s\n' "$_mb_superset")
@@ -191,7 +191,7 @@ models_binding_diagnose() {
     # Only flag DRIFT when we could actually read a rendered value AND the
     # surface exists. Unreadable (sandbox not ready / .env not present) => skip.
     if [[ -n "$rendered" && "$rendered" != "$eff" ]]; then
-      echo "agent '$a' DRIFT: rendered='$rendered' but declared/effective='$eff' (run: bash install.sh model sync)"
+      echo "agent '$a' DRIFT: rendered='$rendered' but declared/effective='$eff' (run: bash vz-ai-stack.sh model sync)"
       fail=1
     fi
   done < <(yq -r '.assignments | keys | .[]' "$yml")
@@ -204,6 +204,6 @@ models_binding_diagnose() {
 
 models_binding_fix() {
   warn "Re-render every agent + the LiteLLM model_list from installer/models.yml:"
-  warn "    bash $AI_STACK/install.sh model sync"
+  warn "    bash $AI_STACK/vz-ai-stack.sh model sync"
   return 1
 }

@@ -38,11 +38,11 @@ IMAGE=arizephoenix/phoenix:latest
 RECREATE_FLAG="${1:-}"
 
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing"; exit 1; }
-load_env_strict || { err ".env has malformed lines; run 'install.sh doctor'."; exit 1; }
+load_env_strict || { err ".env has malformed lines; run 'vz-ai-stack.sh doctor'."; exit 1; }
 
 # Networking precondition: ai-stack network must exist (run Phase 00·N).
 network_ensure_ai_stack || {
-  err "ai-stack docker network missing. Run:  bash install.sh install 00n"
+  err "ai-stack docker network missing. Run:  bash vz-ai-stack.sh install 00n"
   exit 1
 }
 

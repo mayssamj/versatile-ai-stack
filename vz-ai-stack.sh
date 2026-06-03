@@ -2,17 +2,17 @@
 # ai-stack-installer — single-command bootstrap for the personal multi-agent AI stack.
 #
 # Usage:
-#   bash install.sh                  interactive top-to-bottom install (resumes)
-#   bash install.sh install <phase>  install one phase (e.g. 01h)
-#   bash install.sh test <phase>     run smoke tests for one phase
-#   bash install.sh status           tabular service status (declared vs actual)
-#   bash install.sh doctor [<svc>]   diagnose & offer fixes
-#   bash install.sh adopt <svc>      take ownership of a container started outside the installer
-#   bash install.sh apply-restarts   drain the queue of services needing a restart
-#   bash install.sh logs <svc> [-f]  tail recent logs from a service
-#   bash install.sh history          assemble per-run CHANGELOG.d entries into one view
-#   bash install.sh gc               list/clean partial container orphans
-#   bash install.sh reset --confirm soft|hard|nuke    destructive resets, tiered
+#   bash vz-ai-stack.sh                  interactive top-to-bottom install (resumes)
+#   bash vz-ai-stack.sh install <phase>  install one phase (e.g. 01h)
+#   bash vz-ai-stack.sh test <phase>     run smoke tests for one phase
+#   bash vz-ai-stack.sh status           tabular service status (declared vs actual)
+#   bash vz-ai-stack.sh doctor [<svc>]   diagnose & offer fixes
+#   bash vz-ai-stack.sh adopt <svc>      take ownership of a container started outside the installer
+#   bash vz-ai-stack.sh apply-restarts   drain the queue of services needing a restart
+#   bash vz-ai-stack.sh logs <svc> [-f]  tail recent logs from a service
+#   bash vz-ai-stack.sh history          assemble per-run CHANGELOG.d entries into one view
+#   bash vz-ai-stack.sh gc               list/clean partial container orphans
+#   bash vz-ai-stack.sh reset --confirm soft|hard|nuke    destructive resets, tiered
 #
 # Conservative-recreate mode by default: the installer will never `docker rm -f`
 # an already-running container without explicit confirmation. See `adopt` above.
@@ -34,7 +34,7 @@ ai-stack-installer requires bash 5+ (you're on bash 3.2, which macOS ships).
 Install brew-bash and re-run:
 
     brew install bash
-    bash ~/ai-stack/install.sh
+    bash ~/ai-stack/vz-ai-stack.sh
 
 EOF
   exit 2
@@ -46,7 +46,7 @@ shopt -s inherit_errexit nullglob
 # Use pwd -P (physical path; resolves symlinks) so attacker-planted symlink
 # chains don't redirect AI_STACK to a tree they control (Reviewer Y-2/Y-3).
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" \
-  || { echo "install.sh: cannot resolve script directory" >&2; exit 2; }
+  || { echo "vz-ai-stack.sh: cannot resolve script directory" >&2; exit 2; }
 export AI_STACK
 LIB="$AI_STACK/installer/lib"
 
@@ -62,12 +62,12 @@ if (( ${EUID:-$(id -u)} == 0 )); then
       exit 2 ;;
   esac
   if [[ -L "${BASH_SOURCE[0]}" ]]; then
-    echo "✗ install.sh is a symlink. Refusing to run as root." >&2
+    echo "✗ vz-ai-stack.sh is a symlink. Refusing to run as root." >&2
     exit 2
   fi
   if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
     echo "✗ Cannot determine invoking user (SUDO_USER unset or 'root')." >&2
-    echo "  Use 'sudo bash install.sh prepare-sudo', not 'sudo -i' or 'su -'." >&2
+    echo "  Use 'sudo bash vz-ai-stack.sh prepare-sudo', not 'sudo -i' or 'su -'." >&2
     exit 2
   fi
   __ai_stack_owner="$(stat -f '%Su' "$AI_STACK" 2>/dev/null)" \
@@ -76,7 +76,7 @@ if (( ${EUID:-$(id -u)} == 0 )); then
     echo "✗ $AI_STACK owned by '$__ai_stack_owner', not invoking user '$SUDO_USER'. Refusing." >&2
     exit 2
   fi
-  for __f in install.sh \
+  for __f in vz-ai-stack.sh \
              installer/lib/common.sh installer/lib/env.sh installer/lib/docker.sh \
              installer/lib/validate.sh installer/lib/prompt.sh installer/lib/litellm.sh \
              installer/lib/bootstrap.sh installer/lib/network.sh; do
@@ -112,7 +112,7 @@ trap 'err "ERR line $LINENO: $BASH_COMMAND (exit=$?)"' ERR
 preflight() {
   # Refuse sudo — it would strip PATH and might chown .env to root.
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-    err "Do not run install.sh under sudo. Run as your normal user."
+    err "Do not run vz-ai-stack.sh under sudo. Run as your normal user."
     exit 2
   fi
 
@@ -150,52 +150,52 @@ usage() {
 ai-stack-installer — usage:
 
   Two-step bootstrap (recommended):
-    sudo bash install.sh prepare-sudo   one-time host-system setup (sudo)
-    bash install.sh                     full install (no sudo)
+    sudo bash vz-ai-stack.sh prepare-sudo   one-time host-system setup (sudo)
+    bash vz-ai-stack.sh                     full install (no sudo)
 
   All subcommands:
-    install.sh                          interactive top-to-bottom install
-    install.sh prepare-sudo             write /etc/hosts + flush DNS (REQUIRES sudo)
-    install.sh install <phase>          install one phase BY ID or NAME, e.g.
-                                          install.sh install 01h
-                                          install.sh install phoenix
-                                          install.sh install hermes_telegram  (alias: telegram)
-    install.sh phases                   list every phase as `id  name` (also: steps, list)
-    install.sh test <phase>             run smoke tests for one phase (id or name)
-    install.sh status                   tabular service status
-    install.sh model list [--json]      show the model<->agent binding matrix (models.yml)
-    install.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
-    install.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
+    vz-ai-stack.sh                          interactive top-to-bottom install
+    vz-ai-stack.sh prepare-sudo             write /etc/hosts + flush DNS (REQUIRES sudo)
+    vz-ai-stack.sh install <phase>          install one phase BY ID or NAME, e.g.
+                                          vz-ai-stack.sh install 01h
+                                          vz-ai-stack.sh install phoenix
+                                          vz-ai-stack.sh install hermes_telegram  (alias: telegram)
+    vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
+    vz-ai-stack.sh test <phase>             run smoke tests for one phase (id or name)
+    vz-ai-stack.sh status                   tabular service status
+    vz-ai-stack.sh model list [--json]      show the model<->agent binding matrix (models.yml)
+    vz-ai-stack.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
+    vz-ai-stack.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
                                         (opt-in; NOT run by 'install all'. --dry-run / --no-restart)
-    install.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
-    install.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
-    install.sh fleet remove <name>      remove a fleet profile (reverses add)
-    install.sh fleet new <name> [--profiles a,b,c]   create a SEPARATE isolated fleet sandbox <name>-v1
-    install.sh fleet destroy <name>     tear down a fleet created by `fleet new`
-                                        NOTE: `install.sh install fleet|hermes` runs the PHASE (04f
-                                        re-render); `install.sh fleet <add|remove|list|new|destroy>`
+    vz-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
+    vz-ai-stack.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
+    vz-ai-stack.sh fleet remove <name>      remove a fleet profile (reverses add)
+    vz-ai-stack.sh fleet new <name> [--profiles a,b,c]   create a SEPARATE isolated fleet sandbox <name>-v1
+    vz-ai-stack.sh fleet destroy <name>     tear down a fleet created by `fleet new`
+                                        NOTE: `vz-ai-stack.sh install fleet|hermes` runs the PHASE (04f
+                                        re-render); `vz-ai-stack.sh fleet <add|remove|list|new|destroy>`
                                         is the fleet MANAGER. (add/remove default new profiles to the
                                         gemma4 default; nothing loads a model.)
-    install.sh doctor [<service>]       diagnose & offer fixes
-    install.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
-    install.sh adopt <service>          take ownership of a foreign container
-    install.sh apply-restarts           drain the queued-restart list
-    install.sh logs <service> [-f]      tail logs from a service
-    install.sh history                  assemble CHANGELOG.d/* into one view
-    install.sh gc                       list/clean partial container orphans
-    install.sh migrate-v2               run the v1→v2 services.yml migration
-    install.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
+    vz-ai-stack.sh doctor [<service>]       diagnose & offer fixes
+    vz-ai-stack.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
+    vz-ai-stack.sh adopt <service>          take ownership of a foreign container
+    vz-ai-stack.sh apply-restarts           drain the queued-restart list
+    vz-ai-stack.sh logs <service> [-f]      tail logs from a service
+    vz-ai-stack.sh history                  assemble CHANGELOG.d/* into one view
+    vz-ai-stack.sh gc                       list/clean partial container orphans
+    vz-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
+    vz-ai-stack.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
                                         (or all enabled), type-dispatched
-    install.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
+    vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
-    install.sh start <service>          start a service via bin/start-<service>.sh
-    install.sh stop <service>           stop a service (bin/stop-<service>.sh or docker stop)
-    install.sh <service> start          shortcut for: install.sh start <service>
-    install.sh <service> stop           shortcut for: install.sh stop <service>
+    vz-ai-stack.sh start <service>          start a service via bin/start-<service>.sh
+    vz-ai-stack.sh stop <service>           stop a service (bin/stop-<service>.sh or docker stop)
+    vz-ai-stack.sh <service> start          shortcut for: vz-ai-stack.sh start <service>
+    vz-ai-stack.sh <service> stop           shortcut for: vz-ai-stack.sh stop <service>
                                         (enable/disable are accepted as aliases for start/stop)
 
-Phases (in install order) — pass the id OR the name (run `install.sh phases` for the table):
+Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
   opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio
 
@@ -204,19 +204,19 @@ EOF
 
 # --- prepare-sudo subcommand -------------------------------------------------
 # The ONE step that needs root: write /etc/hosts and flush macOS DNS cache.
-# Designed to be invoked as `sudo bash install.sh prepare-sudo` so the
-# subsequent `bash install.sh` (no sudo) has nothing left that requires
+# Designed to be invoked as `sudo bash vz-ai-stack.sh prepare-sudo` so the
+# subsequent `bash vz-ai-stack.sh` (no sudo) has nothing left that requires
 # privilege. Idempotent — re-running is a no-op if /etc/hosts is correct.
 #
 # Hardening (post 3-agent review):
 #   - Path-injection guard: refuses if AI_STACK lives under /tmp/* or contains
 #     symlinks or is owned by anyone other than the invoking user. Stops
-#     `sudo bash /tmp/evil/install.sh prepare-sudo` from sourcing attacker-
+#     `sudo bash /tmp/evil/vz-ai-stack.sh prepare-sudo` from sourcing attacker-
 #     controlled libs as root (Reviewer C #1).
 #   - chown -h on specific files only (no -R): symlink-safe (Reviewer B Q2,
 #     Reviewer C #2).
 #   - SUDO_USER cross-checked against directory owner (Reviewer C #3).
-#   - lock_acquire serializes with concurrent install.sh runs (Reviewer B Q3).
+#   - lock_acquire serializes with concurrent vz-ai-stack.sh runs (Reviewer B Q3).
 #   - chown failures surfaced as a warning, not silently swallowed
 #     (Reviewer C #4).
 cmd_prepare_sudo() {
@@ -247,7 +247,7 @@ cmd_prepare_sudo() {
   esac
   # Refuse if any key library file is a symlink (could redirect to attacker code).
   local f
-  for f in install.sh installer/lib/common.sh installer/lib/network.sh installer/lib/env.sh; do
+  for f in vz-ai-stack.sh installer/lib/common.sh installer/lib/network.sh installer/lib/env.sh; do
     if [[ -L "$AI_STACK/$f" ]]; then
       err "$f is a symlink. Refusing for security."
       exit 2
@@ -425,7 +425,7 @@ resolve_phase_script() {
 run_phase() {
   local p="$1" script
   if ! script="$(resolve_phase_script "$p")"; then
-    err "Could not resolve phase '$p' to a single script. Run 'install.sh phases' to list ids + names."
+    err "Could not resolve phase '$p' to a single script. Run 'vz-ai-stack.sh phases' to list ids + names."
     return 1
   fi
   log "==> phase $p — $(basename "$script")"
@@ -444,7 +444,7 @@ cmd_phases() {
     printf '%-7s  %s\n' "$id" "$name"
   done < <(find "$AI_STACK/installer/phases" -maxdepth 1 -name '*.sh' | sort)
   echo
-  echo "Use either form:  install.sh install <id>   |   install.sh install <name>"
+  echo "Use either form:  vz-ai-stack.sh install <id>   |   vz-ai-stack.sh install <name>"
   echo "Aliases: litellm=inference, telegram=hermes_telegram, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
 }
 
@@ -468,7 +468,7 @@ cmd_upgrade() { bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }
 cmd_start() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    err "Usage: install.sh start <service>"
+    err "Usage: vz-ai-stack.sh start <service>"
     _list_startable_services
     exit 2
   fi
@@ -487,7 +487,7 @@ cmd_start() {
 cmd_stop() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    err "Usage: install.sh stop <service>"
+    err "Usage: vz-ai-stack.sh stop <service>"
     exit 2
   fi
   local script="$AI_STACK/bin/stop-${svc}.sh"
@@ -533,10 +533,10 @@ cmd_verify() {
   bash "$AI_STACK/installer/doctor/doctor.sh" etc_hosts_ownership      || true
   echo
   if (( v_rc == 0 )); then
-    ok "Runtime verification PASSED. Safe to run: bash install.sh"
+    ok "Runtime verification PASSED. Safe to run: bash vz-ai-stack.sh"
     return 0
   else
-    err "Runtime verification FAILED. See diagnoses above; fix BEFORE bash install.sh"
+    err "Runtime verification FAILED. See diagnoses above; fix BEFORE bash vz-ai-stack.sh"
     return 1
   fi
 }
@@ -568,7 +568,7 @@ cmd_apply_restarts() {
 
 cmd_reset() {
   if [[ "${1:-}" != "--confirm" ]]; then
-    err "reset requires --confirm <tier>. See:  install.sh reset --help"
+    err "reset requires --confirm <tier>. See:  vz-ai-stack.sh reset --help"
     exit 2
   fi
   local tier="${2:-soft}"
@@ -594,11 +594,11 @@ summary_end_of_install() {
   # surface anything still pending so they know the exact catch-up command.
   local restarts="$AI_STACK/installer/state/restarts-needed.txt"
   if [[ -s "$restarts" ]]; then
-    warn "Queued restarts still pending (run 'install.sh apply-restarts' when ready):"
+    warn "Queued restarts still pending (run 'vz-ai-stack.sh apply-restarts' when ready):"
     sed 's/^/    /' "$restarts"
   fi
-  note "Status:  bash install.sh status"
-  note "Doctor:  bash install.sh doctor"
+  note "Status:  bash vz-ai-stack.sh status"
+  note "Doctor:  bash vz-ai-stack.sh doctor"
   declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
   print_inference_hint
 }

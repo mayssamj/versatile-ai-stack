@@ -16,7 +16,7 @@ _LUMEN_EMBED_MODEL="ordis/jina-embeddings-v2-base-code"
 lumen_diagnose() {
   local bin="$AI_STACK/vendor/lumen/$_LUMEN_ASSET"
   if [[ ! -x "$bin" ]]; then
-    echo "vendored binary missing: $bin (run 'bash install.sh install 16')"
+    echo "vendored binary missing: $bin (run 'bash vz-ai-stack.sh install 16')"
     return 1
   fi
   local v
@@ -43,6 +43,6 @@ lumen_diagnose() {
 
 lumen_fix() {
   warn "Re-run Phase 16 (idempotent):"
-  warn "    bash $AI_STACK/install.sh install 16"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install 16"
   return 1
 }

@@ -471,7 +471,7 @@ sequenceDiagram
 <hr>
 <section id="sec-5-5-model-agent-binding-and-availability-gating"><h2>5. Model ↔ agent binding and availability-gating</h2>
 <p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is</p>
-<p>the canonical source of truth for the binding; <code>install.sh model sync</code></p>
+<p>the canonical source of truth for the binding; <code>vz-ai-stack.sh model sync</code></p>
 <p>reconciles it into LiteLLM and re-renders each agent. The interesting</p>
 <p>wrinkle is <strong>availability-gating</strong>: if an agent is assigned an</p>
 <p>LM Studio (MLX) model but LiteLLM isn&#x27;t currently serving it (LM Studio</p>
@@ -501,7 +501,7 @@ sequenceDiagram
   MY --> Q36
   MY --> QC
 
-  Sync["install.sh model sync"]
+  Sync["vz-ai-stack.sh model sync"]
   MY --> Sync
 
   Sync --> P1["P1 register model_list (ADD-ONLY)"]

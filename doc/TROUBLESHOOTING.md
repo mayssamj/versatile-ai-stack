@@ -125,8 +125,8 @@ If a sandbox is still wedged (e.g. left over from an interrupted run), do a
 clean recreate:
 
 ```bash
-bash install.sh reset --confirm hard --yes   # deletes OpenShell sandboxes (preserves data)
-bash install.sh install all                  # watchdog recreates them
+bash vz-ai-stack.sh reset --confirm hard --yes   # deletes OpenShell sandboxes (preserves data)
+bash vz-ai-stack.sh install all                  # watchdog recreates them
 ```
 
 ---
@@ -166,7 +166,7 @@ recent logs, or a climbing `RestartCount` → the sandbox is already dead, so ac
 loses nothing — it won't false-fire on a busy sandbox), then deletes + recreates it via
 its install phase. It is throttled (≤ 1 recreate per thing per 30 min), logs to
 `installer/state/openshell-watchdog.log`, and posts a desktop notification. It skips
-while an `install.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
+while an `vz-ai-stack.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
 on-demand twin: `stack doctor openshell` surfaces a live storm and reports whether the
 watchdog is loaded.
 
@@ -218,7 +218,7 @@ box that's a real liability. So:
 If `local-lfm2-mlx` calls fail after you quit LM Studio, that's why — restart the server
 (`lms server start`) or remove the model from `litellm/config.yaml` while it's off.
 Agents **assigned** an lmstudio model (e.g. `hermes_software_engineer` → `local-qwen3-coder`)
-don't 404 when LM Studio is down — `install.sh model sync` availability-gates them back to
+don't 404 when LM Studio is down — `vz-ai-stack.sh model sync` availability-gates them back to
 `local-gemma4`. Re-run `model sync` once LM Studio is up to promote them again (see
 [models.md](models.md)).
 
@@ -234,14 +234,14 @@ Find the correct upstream, then either:
 
 ```bash
 git clone <real-url> ~/ai-stack/<svc>
-bash install.sh install <phase>   # phase detects existing checkout and proceeds
+bash vz-ai-stack.sh install <phase>   # phase detects existing checkout and proceeds
 ```
 
 Or, if you have the source elsewhere:
 
 ```bash
 cp -R /path/to/source ~/ai-stack/<svc>
-bash install.sh install <phase>
+bash vz-ai-stack.sh install <phase>
 ```
 
 ---
@@ -298,7 +298,7 @@ cat ~/ai-stack/honcho/docker-compose.override.yml
 If missing, re-run phase 03:
 
 ```bash
-bash install.sh install 03
+bash vz-ai-stack.sh install 03
 ```
 
 ---
@@ -327,7 +327,7 @@ df -h ~                  # ~/.ollama lives in your home; need ~30GB free
 ## "Permission denied" on .env from a script
 
 `.env` is mode 0600. If a script run by another user (or via sudo) tries to
-read it, permission denied. Don't run installer scripts with sudo (install.sh
+read it, permission denied. Don't run installer scripts with sudo (vz-ai-stack.sh
 refuses anyway).
 
 If `.env` got chmod'd wrong (e.g., an editor recreated it):
@@ -340,7 +340,7 @@ The doctor's `env_valid` check fixes this automatically.
 
 ---
 
-## "I want to see what the install.sh actually did"
+## "I want to see what the vz-ai-stack.sh actually did"
 
 Per-run logs are in `CHANGELOG.d/<run-id>.md`:
 
@@ -356,7 +356,7 @@ there.
 
 ## "Connection refused on http://<alias>:<port>"
 
-The single most common post-refactor problem. Run `bash install.sh verify`
+The single most common post-refactor problem. Run `bash vz-ai-stack.sh verify`
 first — Phase 00·V's 6 probes will pinpoint which layer broke. If
 that's not available, the four most likely causes, in order:
 
@@ -369,12 +369,12 @@ that's not available, the four most likely causes, in order:
    ifconfig lo0 | grep 127.0.10
    ```
    Should list every alias IP from `installer/lib/aliases.tsv`. If it's
-   missing rows, run `sudo bash install.sh prepare-sudo`. Doctor check
+   missing rows, run `sudo bash vz-ai-stack.sh prepare-sudo`. Doctor check
    19 detects this systematically. The launchd plist
    `/Library/LaunchDaemons/com.ai-stack.loopback.plist` re-binds on
    boot — confirm with `sudo launchctl list | grep ai-stack.loopback`.
 
-2. **`/etc/hosts` block missing.** Run Phase 00·N: `bash install.sh install 00n`.
+2. **`/etc/hosts` block missing.** Run Phase 00·N: `bash vz-ai-stack.sh install 00n`.
    It's idempotent (no-op if already correct) and prompts for `sudo` once.
    Confirm with `dscacheutil -q host -a name litellm` — should print
    `ip_address: 127.0.10.1`.
@@ -430,8 +430,8 @@ every HTTP service. Mac and container dial the SAME URL form
 (`http://litellm:4000`, `http://phoenix:6006`, `http://openwebui:8080`).
 If you still see the symptom, you have stale `bin/start-*.sh` files from
 before the patch — re-pull or re-run the installer to refresh them, then
-`bash install.sh reset --confirm hard` (preserves data) and
-`bash install.sh install all` to re-publish on native ports.
+`bash vz-ai-stack.sh reset --confirm hard` (preserves data) and
+`bash vz-ai-stack.sh install all` to re-publish on native ports.
 
 ---
 
@@ -482,7 +482,7 @@ common collisions, but a corporate VPN can still inject routes that win.
 Phase 00·N pre-flights this and refuses to install if a pre-existing
 `127.0.10.x` route is present. If you saw the install proceed and routes
 appeared later (VPN connected after install), disconnect the VPN, run
-`bash install.sh install 00n` to re-flush, then reconnect.
+`bash vz-ai-stack.sh install 00n` to re-flush, then reconnect.
 
 For Docker subnet collisions (rare, but VPN tunnels do span 10.x):
 
@@ -492,7 +492,7 @@ docker network inspect ai-stack --format '{{(index .IPAM.Config 0).Subnet}}'
 
 # If it conflicts with a VPN tunnel:
 docker network rm ai-stack
-AI_STACK_SUBNET=10.142.0.0/24 bash install.sh install 00n
+AI_STACK_SUBNET=10.142.0.0/24 bash vz-ai-stack.sh install 00n
 ```
 
 See [refactor-design-final.md § D22](../installer/state/refactor-design-final.md)
@@ -502,7 +502,7 @@ for the full design rationale.
 
 ## "Lock held by pid N. Re-run with LOCK_FORCE=1."
 
-Another `install.sh` or `doctor` is running. If you're sure it's hung or dead:
+Another `vz-ai-stack.sh` or `doctor` is running. If you're sure it's hung or dead:
 
 ```bash
 LOCK_FORCE=1 stack doctor
@@ -528,7 +528,7 @@ and Phase 20 prints a loud "BOT IS LOCKED" banner. Fix:
 # 2. Add it to .env (mode 0600):
 echo 'HERMES_TELEGRAM_ALLOWED_USERS=123456789' >> ~/ai-stack/.env   # your id
 # 3. Re-apply (restarts the gateway with the new allowlist):
-bash ~/ai-stack/install.sh install 20
+bash ~/ai-stack/vz-ai-stack.sh install 20
 ```
 
 Open access (anyone who finds the bot) is `HERMES_TELEGRAM_ALLOW_ALL=true` in `.env`
@@ -554,7 +554,7 @@ bash ~/ai-stack/bin/start-hermes-telegram.sh
 - **Gateway not running after a relay outage** → the gateway long-polls Telegram
   *directly* (not through the relay), so it survives relay idle-timeouts; but if the
   sandbox itself was recreated (`reset … hard` + `install`), Phase 20 re-runs and
-  restarts it. If the sandbox is down, fix that first (`install.sh install 04`).
+  restarts it. If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).
 
 ---
 

@@ -244,7 +244,7 @@ ok "wrote $BOOT_DIR/bootstrap.sh"
 
 if [[ "${SKIP_SANDBOX_ACTIONS:-0}" == "1" ]]; then
   warn "Sandbox not available; skipping mount + bootstrap. Souls + bootstrap.sh are staged on host."
-  note "After the sandbox exists, re-run 'install.sh install 04f' to finish."
+  note "After the sandbox exists, re-run 'vz-ai-stack.sh install 04f' to finish."
   # Don't stamp — re-entry must complete the sandbox-side actions.
   exit 0
 fi
@@ -332,7 +332,7 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
   exit 1
 fi
 # Scoped key is minted against the fixed SUPERSET (legacy IDs UNION the 3
-# canonical model<->agent slugs) so a later `install.sh model assign/sync` never
+# canonical model<->agent slugs) so a later `vz-ai-stack.sh model assign/sync` never
 # needs to re-mint when a profile is pointed at local-qwen3.6 / local-qwen3-coder.
 # These canonical IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM still enforces the allowlist server-side.

@@ -33,11 +33,11 @@ resolve_openshell() {
 }
 
 OSH="$(resolve_openshell)"
-[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash install.sh install 04' first." >&2; exit 1; }
+[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first." >&2; exit 1; }
 
 # pi-v1 sandbox must be Ready.
 if ! "$OSH" sandbox list 2>/dev/null | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}' | grep -q Ready; then
-  echo "pi-v1 sandbox not Ready — run 'bash install.sh install 15' first." >&2
+  echo "pi-v1 sandbox not Ready — run 'bash vz-ai-stack.sh install 15' first." >&2
   exit 1
 fi
 
@@ -53,7 +53,7 @@ if [[ -f "$AI_STACK/.env" ]]; then
   PI_LITELLM_KEY="$(get_env PI_LITELLM_KEY '')"
 fi
 if [[ -z "${PI_LITELLM_KEY:-}" ]]; then
-  echo "PI_LITELLM_KEY missing from .env — re-run 'bash install.sh install 15' to mint it." >&2
+  echo "PI_LITELLM_KEY missing from .env — re-run 'bash vz-ai-stack.sh install 15' to mint it." >&2
   exit 1
 fi
 

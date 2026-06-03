@@ -41,6 +41,6 @@ phoenix_api_key_fix() {
   warn "  2. log in (admin@localhost / your password)"
   warn "  3. Settings → API Keys → create a new key"
   warn "  4. paste into .env:  PHOENIX_API_KEY=<key>"
-  warn "  5. bash install.sh apply-restarts   # picks up the new var in litellm"
+  warn "  5. bash vz-ai-stack.sh apply-restarts   # picks up the new var in litellm"
   return 1
 }

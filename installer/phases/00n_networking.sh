@@ -88,7 +88,7 @@ if [[ -n "$SUBNET_HITS" ]]; then
   printf '%s\n' "$SUBNET_HITS" | sed 's/^/    /' >&2
   err ""
   err "Escape hatch: AI_STACK_SUBNET=10.123.0.0/24 AI_STACK_GATEWAY=10.123.0.1 \\"
-  err "              bash install.sh install 00n"
+  err "              bash vz-ai-stack.sh install 00n"
   exit 1
 fi
 ok "subnet $AI_STACK_SUBNET is available"
@@ -177,7 +177,7 @@ if (( ${#foreigns[@]} > 0 )); then
   printf '\n'
   printf '  Run:\n'
   for svc in "${foreigns[@]}"; do
-    printf '        bash install.sh adopt %s\n' "$svc"
+    printf '        bash vz-ai-stack.sh adopt %s\n' "$svc"
   done
   printf '\n'
   printf '  Doctor checks 14–17 will WARN (not FAIL) until adoption completes.\n'

@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash install.sh doctor` runs all 40 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 40 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -25,7 +25,7 @@ normal. Checks 19–22 do not degrade — they assert kernel/filesystem
 invariants that hold regardless of foreign-container state.
 
 For pre-install verification (before the first phase has run), use
-`bash install.sh verify` instead — it runs Phase 00·V's 6 probes
+`bash vz-ai-stack.sh verify` instead — it runs Phase 00·V's 6 probes
 (see [INSTALL.md § verify](INSTALL.md#install-sh-verify)).
 
 The doctor reports an `exit 1` if any check failed and was not auto-fixed.
@@ -341,7 +341,7 @@ side). 17 + 20 together cover both directions of the routing chain.
 |---|---|
 | Asserts | For every container on the `ai-stack` network, spawn a transient alpine probe and confirm `getent hosts <name>` resolves every other container's bare name. Apps talk to each other by bare name (e.g. LiteLLM → `http://phoenix-otlp:4317`); a silent failure here means OTel traces vanish without an error log. |
 | Fails when | Docker's embedded DNS regressed (rare but does happen after OrbStack updates), a managed container was started without `--network ai-stack`, or the `ai-stack` network was torn down and recreated while containers were still running. Skips gracefully when the network doesn't exist yet (legitimate pre-install state — check 14 covers the network-must-exist invariant post-install). |
-| Auto-fix | None automated — Docker manages its own DNS resolver. Suggested steps: `docker info \| grep -i dns`, `orb restart`, or `bash install.sh reset --confirm hard` to recreate the network. |
+| Auto-fix | None automated — Docker manages its own DNS resolver. Suggested steps: `docker info \| grep -i dns`, `orb restart`, or `bash vz-ai-stack.sh reset --confirm hard` to recreate the network. |
 
 ---
 
@@ -365,7 +365,7 @@ that protects against a regression.
 |---|---|
 | Asserts | (1) The `unsloth` CLI shim is resolvable (either on `$PATH` or at `~/.local/bin/unsloth`). (2) `installer/state/unsloth.pid` exists and points at a live PID. (3) Port `:8898` is bound. (4) `curl http://127.0.0.1:8898/api/health` returns a JSON body containing `"status":"healthy"`. |
 | Fails when | The official `curl|sh` installer never ran (CLI missing), the studio daemon died (pid alive but port unbound, or pid stale), or the studio is mid-startup (first launch downloads PyTorch + pre-caches a helper GGUF — can take 2–5 min). |
-| Auto-fix | Calls `bin/start-unsloth.sh` (no sudo). The script is idempotent — re-running is safe. If the CLI itself is missing, surfaces `bash install.sh install 14` as the manual fix (Phase 14 runs the official installer). |
+| Auto-fix | Calls `bin/start-unsloth.sh` (no sudo). The script is idempotent — re-running is safe. If the CLI itself is missing, surfaces `bash vz-ai-stack.sh install 14` as the manual fix (Phase 14 runs the official installer). |
 
 This check is the per-process twin of check 17 (which probes `http://unsloth:8898/` via the alias). 23 catches the daemon-dead case where the alias resolves but the daemon isn't there to answer.
 
@@ -377,7 +377,7 @@ This check is the per-process twin of check 17 (which probes `http://unsloth:889
 |---|---|
 | Asserts | The `openshell` CLI resolves AND `openshell sandbox list` shows `pi-v1` in state `Ready`. Also prints the sha256 prefix of the on-disk `openshell/policies/pi-v1.yaml` as an informational marker so you can spot policy drift between what's on disk and what the sandbox loaded. |
 | Fails when | Phase 15 hasn't run, the sandbox was deleted (`openshell sandbox delete pi-v1`), the gateway is down (cannot enumerate sandboxes), or the sandbox is in a transient state (`Provisioning`, `Failed`, etc.). |
-| Auto-fix | Surfaces `bash install.sh install 15` — Phase 15 is idempotent and re-creates the sandbox if missing, applies the policy, and re-mints `PI_LITELLM_KEY` if invalid. |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 15` — Phase 15 is idempotent and re-creates the sandbox if missing, applies the policy, and re-mints `PI_LITELLM_KEY` if invalid. |
 
 ANSI-strip note: `openshell sandbox list` emits color codes around the state column; the check pipes through `sed 's/\x1b\[[0-9;]*m//g'` before matching `Ready`. Don't change the awk pattern without preserving the strip.
 
@@ -401,7 +401,7 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 |---|---|
 | Asserts | (1) `PI_LITELLM_KEY` is present in `.env`. (2) `GET http://litellm:4000/v1/models` with the virtual key returns exactly the canonical superset `local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6` (sorted) — every scoped key is minted against this fixed superset so `model assign`/`sync` can re-point Pi without re-minting. (3) `POST /v1/chat/completions` with `model=claude-opus` returns a body containing the case-insensitive substring `"key not allowed"`. The substring match (rather than the full message) makes the check resilient to LiteLLM's wording across minor versions. |
 | Fails when | Phase 15 never minted the key (LiteLLM has no Postgres DB; `LITELLM_MASTER_KEY` rotation; .env got nuked). The allowlist itself was changed via LiteLLM's `/key/update`. The virtual key path was bypassed by changing Pi's extension to use the master key directly. |
-| Auto-fix | Surfaces `bash install.sh install 15` — Phase 15 detects an invalid key via the same `/v1/models` probe and re-mints. |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 15` — Phase 15 detects an invalid key via the same `/v1/models` probe and re-mints. |
 
 Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check WARN-skips with a pointer to check 11 + Phase 01 rather than fail-cascading.
 
@@ -413,7 +413,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | (1) The vendored Lumen binary exists at `$AI_STACK/vendor/lumen/lumen-0.0.41-darwin-arm64` and is executable. (2) The binary's `version` subcommand reports exactly `0.0.41` (catches tampering / wrong-binary swap; the SHA256 check in Phase 16 already happens at download time). (3) The `bin/lumen` wrapper script exists. (4) `ollama list` includes `ordis/jina-embeddings-v2-base-code` (the embedding backend Lumen needs to function). |
 | Fails when | Phase 16 never ran (binary missing), an upstream Lumen version is pinned and you bumped without updating the SHA256/version constants, somebody deleted `bin/lumen`, or `ollama list` doesn't show the embedding model (manual `ollama rm` or fresh Ollama install since Phase 16). |
-| Auto-fix | Surfaces `bash install.sh install 16` — Phase 16 is idempotent and re-creates everything (binary + wrapper + embed-model pull). |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 16` — Phase 16 is idempotent and re-creates everything (binary + wrapper + embed-model pull). |
 
 **What this check does NOT prove.** That any index has been built. Lumen's index lives at `~/.local/share/lumen/<hash>/` keyed by `(project_path, embed_model, binary_version)` and is user-state, not install-state — `bin/lumen index <path>` builds one on demand. The doctor doesn't care which repos you've indexed.
 
@@ -427,7 +427,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | (1) `deer-flow/config.yaml` has at least one uncommented `- name:` entry inside the `models:` block. (2) `deer-flow/docker/docker-compose.yaml` surfaces `LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` to the gateway's `environment:` block. Skipped cleanly if `deer-flow/` doesn't exist (Phase 10 not selected). |
 | Fails when | DeerFlow was seeded from the upstream `config.example.yaml` without injection — the `models:` block contains only commented examples, which YAML parses as `None`, which fails Pydantic's `list[ModelConfig]` validator inside `app/gateway/app.py:lifespan`. The 4 uvicorn workers crash on every restart, re-import LangChain + LangGraph + DeerFlow (the expensive part), validate, fail, crash again. Result: ~340% CPU continuously, even while idle, because Python is literally re-importing LangGraph in a hot loop. The compose env-passthrough catch is separate: without `LITELLM_MASTER_KEY` in the gateway container, `$LITELLM_MASTER_KEY` in `config.yaml` resolves to the empty string at startup, which LiteLLM rejects with 401 on the first request (silent if you never make one, but explicit if you do). |
-| Auto-fix | Surfaces `bash install.sh install 10` — Phase 10 is idempotent and re-applies all three patches (config.yaml, docker-compose.yaml, deer-flow/.env) on every run. |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 10` — Phase 10 is idempotent and re-applies all three patches (config.yaml, docker-compose.yaml, deer-flow/.env) on every run. |
 
 **Why `host.docker.internal:4000` and not `litellm:4000`.** The deer-flow Docker network and the ai-stack network are separate. Dual-network membership would work but adds coupling; the simpler path is to dial back to the host's LiteLLM via `host.docker.internal:host-gateway` (already wired in the upstream compose `extra_hosts`).
 
@@ -441,7 +441,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | (1) `ace/.git` exists (clone present). (2) `ace/.venv/bin/python` is executable (uv sync succeeded). (3) `bin/ace` wrapper exists + is executable. (4) `ace/.env` exists and has `OPENAI_BASE_URL=http://litellm:4000/v1` so calls route through LiteLLM (free Phoenix tracing). (5) `ACE_LITELLM_KEY` from `.env` is non-empty AND accepted by LiteLLM's `/v1/models`. Skipped cleanly when `ace/` doesn't exist (Phase 17 not selected). |
 | Fails when | Phase 17 never ran (clone missing), `uv sync` drift left the venv stale, somebody deleted `bin/ace`, `.env` was hand-edited away from the LiteLLM base URL (so ACE would silently call `api.openai.com` instead), or the virtual key was revoked from LiteLLM's DB. |
-| Auto-fix | Surfaces `bash install.sh install 17` — Phase 17 is idempotent: re-uses the clone, re-runs `uv sync` (no-op if locked), re-mints the virtual key only if the existing one is rejected. |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 17` — Phase 17 is idempotent: re-uses the clone, re-runs `uv sync` (no-op if locked), re-mints the virtual key only if the existing one is rejected. |
 
 **What this check does NOT prove.** That any eval has been run. Playbooks live under `ace/results/` and are user-state, not install-state. `bin/ace --help` lists the eval surface.
 
@@ -455,7 +455,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | The `hermes_cos` profile config has `model.provider=custom:litellm` and `providers.litellm.base_url=http://host.docker.internal:4000` (the per-profile LiteLLM routing wired by Phase 04·F), AND `HERMES_LITELLM_KEY` is accepted by LiteLLM. |
 | Fails when | Phase 04·F never ran, the profile config was reverted to a non-LiteLLM provider, `host.docker.internal:4000` is unreachable, or `HERMES_LITELLM_KEY` was revoked/rotated so LiteLLM rejects it. |
-| Auto-fix | Surfaces `bash install.sh install 04f` — Phase 04·F is idempotent: it re-mints `HERMES_LITELLM_KEY`, re-adds the `litellm_proxy` endpoint to the hermes policy, and re-sets the per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url,api_key,model}`. |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 04f` — Phase 04·F is idempotent: it re-mints `HERMES_LITELLM_KEY`, re-adds the `litellm_proxy` endpoint to the hermes policy, and re-sets the per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url,api_key,model}`. |
 
 hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `llm.openai_api_base` / `llm.openai_api_key` config was a dead no-op (and raised a `ValueError`), so Hermes silently never reached local models. The fix routes via the `custom:litellm` provider against `http://host.docker.internal:4000/v1`. Verified: a real `hermes --profile hermes_cos -m local -z` returned `PONG`.
 
@@ -467,7 +467,7 @@ hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `
 |---|---|
 | Asserts | `rlm/.venv` imports `rlm`, `rlm/run_rlm.py` + `bin/rlm` exist, `rlm/.env` sets `OPENAI_BASE_URL=http://litellm:4000/v1`, and `RLM_LITELLM_KEY` is accepted by LiteLLM. |
 | Fails when | Phase 18 never ran, the venv/wrapper is missing, `rlm/.env` doesn't route to LiteLLM, or `RLM_LITELLM_KEY` was revoked/rotated. |
-| Auto-fix | Surfaces `bash install.sh install 18` (idempotent: reinstalls `rlms`, re-mints the key, regenerates `rlm/.env` + `bin/rlm`). |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 18` (idempotent: reinstalls `rlms`, re-mints the key, regenerates `rlm/.env` + `bin/rlm`). |
 
 Skips cleanly (passes) when RLM was never installed (`rlm/.venv` absent) — it's optional experimental tooling. RLM's REPL runs model-generated code in a **Docker sandbox** by default (`bin/rlm`); `--env local` would run it on the host.
 
@@ -479,7 +479,7 @@ Skips cleanly (passes) when RLM was never installed (`rlm/.venv` absent) — it'
 |---|---|
 | Asserts | the bridge (`claw3d-bridge/bridge.py`, `:7780`) serves `/health` + `/state` with ≥1 agent, and the claw3d UI (`:4310`) responds. |
 | Fails when | the bridge or UI isn't serving, or `/state` lists no agents. |
-| Auto-fix | restarts both: `bash bin/start-claw3d-bridge.sh && bash bin/start-claw3d.sh` (or re-run `install.sh install 19`). |
+| Auto-fix | restarts both: `bash bin/start-claw3d-bridge.sh && bash bin/start-claw3d.sh` (or re-run `vz-ai-stack.sh install 19`). |
 
 Skips cleanly (passes) when claw3d was never installed (`claw3d/node_modules` absent). Does NOT exercise the agents (that needs the OpenShell relay) — only the bridge contract + UI liveness.
 
@@ -491,7 +491,7 @@ Skips cleanly (passes) when claw3d was never installed (`claw3d/node_modules` ab
 |---|---|
 | Asserts | the native hermes gateway is running INSIDE `hermes-fleet-v1` (via `hermes gateway status`) and `TELEGRAM_BOT_TOKEN` is present in the sandbox's `~/.hermes/.env`. |
 | Fails when | the gateway isn't running, the token isn't configured in the sandbox, or the gateway log shows a genuine auth error (`unauthorized`/`invalid token`/`401`). |
-| Auto-fix | restarts the gateway: `bash bin/start-hermes-telegram.sh` (or re-run `install.sh install 20`). |
+| Auto-fix | restarts the gateway: `bash bin/start-hermes-telegram.sh` (or re-run `vz-ai-stack.sh install 20`). |
 
 Skips cleanly (passes) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set — the gateway is an optional add-on. Makes **no external Telegram API call** and never prints the token. Two benign patterns are deliberately NOT treated as failures: the transient `409 conflict` after `run --replace` (Telegram holds the prior long-poll ~50s; self-heals) and the allowlist warning "*All unauthorized users will be denied*" (the secure-by-default lock, not an auth error). A passing check may still note "**running but LOCKED**" — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the allowlist.
 
@@ -517,7 +517,7 @@ These checks pass-as-skip when the tool isn't installed (the tools are opt-in, n
 |---|---|
 | Asserts | No OpenShell sandbox (`hermes-fleet-v1`, `pi-v1`) is in a live "expired-token storm" — i.e. recent container logs show no `ExpiredSignature` / reconnect-storm signature and `RestartCount` isn't climbing. Also reports whether the auto-healing watchdog (`com.ai-stack.openshell-watchdog` launchd job) is installed and loaded. |
 | Fails when | A sandbox's short-lived gateway token has expired (~8h uptime) and the in-sandbox agent is retrying its log-push gRPC with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. The signature is unambiguous: the sandbox is already dead. |
-| Auto-fix | None auto-applied here (the watchdog owns recovery). Manual: `bash bin/openshell-watchdog.sh run` (detect+recreate now), or recreate the affected phase (`install.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
+| Auto-fix | None auto-applied here (the watchdog owns recovery). Manual: `bash bin/openshell-watchdog.sh run` (detect+recreate now), or recreate the affected phase (`vz-ai-stack.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
 
 Skips cleanly (passes) when OpenShell / its sandboxes aren't present. The standing
 fix is the launchd watchdog installed by Phase 04 (`bin/openshell-watchdog.sh
@@ -534,17 +534,17 @@ the watchdog hasn't swept yet and confirms the watchdog is loaded. See
 |---|---|
 | Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); no rendered-vs-declared **DRIFT** across every agent surface (the 7 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
 | Fails when | A `models.yml` model is missing from `config.yaml`, a non-lmstudio model fails its chat_ping, an agent's rendered config drifts from the declared (availability-gated) model, or a scoped key's allowlist doesn't cover its agent's effective model. |
-| Auto-fix | `bash install.sh model sync`. |
+| Auto-fix | `bash vz-ai-stack.sh model sync`. |
 
 WARN-skips (does not fail) when LiteLLM is down or the Hermes OpenShell sandbox
 isn't Ready — both are required to verify bindings end-to-end. See
-[models.md](models.md) for the full `install.sh model` workflow.
+[models.md](models.md) for the full `vz-ai-stack.sh model` workflow.
 
 ---
 
 ## Exit codes
 
-`bash install.sh doctor` exit codes:
+`bash vz-ai-stack.sh doctor` exit codes:
 
 | Code | Meaning |
 |---|---|

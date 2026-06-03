@@ -52,7 +52,7 @@ pi_litellm_key_allowlist_diagnose() {
   local pi_key
   pi_key="$(get_env PI_LITELLM_KEY '' 2>/dev/null || echo '')"
   if [[ -z "$pi_key" ]]; then
-    echo "PI_LITELLM_KEY missing from .env — re-run 'bash install.sh install 15'"
+    echo "PI_LITELLM_KEY missing from .env — re-run 'bash vz-ai-stack.sh install 15'"
     return 1
   fi
 
@@ -104,7 +104,7 @@ except Exception as e:
 
 pi_litellm_key_allowlist_fix() {
   warn "Re-mint PI_LITELLM_KEY by re-running Phase 15:"
-  warn "    bash $AI_STACK/install.sh install 15"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install 15"
   warn "(Phase 15 detects an invalid key and re-mints automatically.)"
   return 1
 }

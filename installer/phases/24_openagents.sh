@@ -12,7 +12,7 @@
 #     - its own Workspace UI.
 #   That duplicates what this stack already does (Phase 04 OpenShell isolation,
 #   the Hermes fleet, AutoFyn, the Open WebUI / claw3d front-ends). We install
-#   it ONLY when explicitly requested (`install.sh install 24`) and we do NOT
+#   it ONLY when explicitly requested (`vz-ai-stack.sh install 24`) and we do NOT
 #   wire it into LiteLLM, the sandboxes, or any front-end. It lives entirely in
 #   its own ~/.openagents prefix and is yours to drive by hand. Treat it as an
 #   evaluation sandbox, not a load-bearing piece of the stack.
@@ -42,7 +42,7 @@
 # We do NOT install or wire any LLM stage here: OpenAgents manages its own
 # agents and we keep it OFFLINE from our LiteLLM/Phoenix plane on purpose.
 #
-# Standalone install: `bash install.sh install 24`.
+# Standalone install: `bash vz-ai-stack.sh install 24`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -81,7 +81,7 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 if [[ "$OS" != "Darwin" || "$ARCH" != "arm64" ]]; then
   warn "OpenAgents phase targets macOS arm64; this host is ${OS}/${ARCH}."
-  warn "Skipping (non-fatal). Re-run 'install.sh install 24' on a supported host."
+  warn "Skipping (non-fatal). Re-run 'vz-ai-stack.sh install 24' on a supported host."
   exit 0
 fi
 
@@ -103,7 +103,7 @@ trap 'rm -f "$INSTALLER_TMP"' EXIT
 log "Downloading the OpenAgents installer to a temp file (materialized, not piped)..."
 if ! curl -fsSL -o "$INSTALLER_TMP" "$OPENAGENTS_INSTALL_URL"; then
   warn "failed to download $OPENAGENTS_INSTALL_URL (network down or URL moved)."
-  warn "Skipping (non-fatal) — nothing was installed. Re-run 'install.sh install 24' later."
+  warn "Skipping (non-fatal) — nothing was installed. Re-run 'vz-ai-stack.sh install 24' later."
   exit 0
 fi
 # Sanity: must START with a shell shebang AND must not be HTML. (The looser
@@ -137,7 +137,7 @@ if [[ -z "$AGN" ]]; then
   warn "OpenAgents installer finished but 'agn' was not found on PATH or under"
   warn "  $OPENAGENTS_BIN_DIR"
   warn "Not stamping. Open a new shell (the installer edits your rc) and re-run"
-  warn "  'install.sh install 24' to verify."
+  warn "  'vz-ai-stack.sh install 24' to verify."
   exit 0
 fi
 

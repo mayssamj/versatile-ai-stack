@@ -14,7 +14,7 @@ claw3d_diagnose() {
   local ui="http://127.0.0.1:${CLAW3D_PORT:-4310}"
   # Not installed → skip (optional UI tooling).
   if [[ ! -d "$AI_STACK/claw3d/node_modules" ]]; then
-    echo "claw3d not installed — run 'install.sh install 19' to add it. [skip]"
+    echo "claw3d not installed — run 'vz-ai-stack.sh install 19' to add it. [skip]"
     return 0
   fi
   [[ -f "$AI_STACK/claw3d-bridge/bridge.py" ]] || { echo "claw3d-bridge/bridge.py missing — re-run 'install 19'"; return 1; }
@@ -37,7 +37,7 @@ claw3d_diagnose() {
 claw3d_fix() {
   warn "Restart the bridge + claw3d UI:"
   warn "    bash $AI_STACK/bin/start-claw3d-bridge.sh && bash $AI_STACK/bin/start-claw3d.sh"
-  warn "Or re-run the phase:  bash $AI_STACK/install.sh install 19"
+  warn "Or re-run the phase:  bash $AI_STACK/vz-ai-stack.sh install 19"
   bash "$AI_STACK/bin/start-claw3d-bridge.sh" >/dev/null 2>&1 || true
   bash "$AI_STACK/bin/start-claw3d.sh" >/dev/null 2>&1 || true
   return 1

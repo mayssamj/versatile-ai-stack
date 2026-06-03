@@ -152,7 +152,7 @@ patch = """models:
   # ai-stack: local models via LiteLLM (port 4000 on host). Two tiers —
   # basic (name: local) and reasoning (name: local-heavy) — wired to the
   # canonical model<->agent slugs from installer/models.yml. Re-render with
-  # `install.sh model sync`. `api_key: $LITELLM_MASTER_KEY` resolves from env;
+  # `vz-ai-stack.sh model sync`. `api_key: $LITELLM_MASTER_KEY` resolves from env;
   # `host.docker.internal` reaches the host LiteLLM from the deer-flow network.
   - name: local
     display_name: Basic (ai-stack default via LiteLLM)
@@ -279,5 +279,5 @@ stamp_mark "$PHASE"
 record "phase 10 complete: deerflow $(deerflow_running 2>/dev/null && echo up || echo not-up)"
 ok "Phase 10 — DeerFlow — complete"
 note "DeerFlow: nginx on http://localhost:2026 (when up)"
-note "Stop:   bash $AI_STACK/install.sh stop deerflow      (or: stack stop deerflow)"
-note "Start:  bash $AI_STACK/install.sh start deerflow     (or: stack start deerflow)"
+note "Stop:   bash $AI_STACK/vz-ai-stack.sh stop deerflow      (or: stack stop deerflow)"
+note "Start:  bash $AI_STACK/vz-ai-stack.sh start deerflow     (or: stack start deerflow)"

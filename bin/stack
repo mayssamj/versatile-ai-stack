@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# stack — daily-driver wrapper around install.sh subcommands.
+# stack — daily-driver wrapper around vz-ai-stack.sh subcommands.
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec bash "$AI_STACK/install.sh" "$@"
+exec bash "$AI_STACK/vz-ai-stack.sh" "$@"

@@ -8,11 +8,11 @@
 # 127.0.0.1:17670 with TLS + mTLS by default.
 #
 # Known issues on M-series macOS:
-#   1. The install.sh's `brew services start openshell` can fail with
+#   1. The vz-ai-stack.sh's `brew services start openshell` can fail with
 #      launchctl bootstrap error 5 if a previous service is loaded but
 #      in error state. We probe and `brew services restart` (or stop/start)
 #      to clear it.
-#   2. The official install.sh's TLS-handshake verification step itself
+#   2. The official vz-ai-stack.sh's TLS-handshake verification step itself
 #      may time out (the gateway is up, the cert dance hasn't completed).
 #      We don't rely on its exit code; we probe the port + try a CLI op.
 #   3. The CLI policy schema upstream-changed from the original install
@@ -22,7 +22,7 @@
 #
 # Best-effort: if the gateway can't come up despite our retries, we stamp
 # the phase as scaffold-complete with a clear deferred-manual note. The
-# user can re-run `bash install.sh install 04` after fixing brew/launchctl.
+# user can re-run `bash vz-ai-stack.sh install 04` after fixing brew/launchctl.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -161,17 +161,17 @@ network_policies:
 EOF
 ok "wrote network policy: $POLICY"
 
-# --- Install OpenShell via official install.sh if brew openshell is absent --
+# --- Install OpenShell via official vz-ai-stack.sh if brew openshell is absent --
 if [[ ! -x /opt/homebrew/bin/openshell ]]; then
   if command -v brew >/dev/null; then
-    log "Installing OpenShell via the official install.sh..."
-    # The install.sh may time out waiting for the TLS-handshake verification
+    log "Installing OpenShell via the official vz-ai-stack.sh..."
+    # The vz-ai-stack.sh may time out waiting for the TLS-handshake verification
     # step; that's OK — the brew formula + plist are installed regardless.
     curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh 2>/dev/null | sh 2>&1 | tail -3 || true
     if [[ -x /opt/homebrew/bin/openshell ]]; then
       ok "openshell installed via brew"
     else
-      warn "official install.sh did not install brew openshell — gateway start will fail"
+      warn "official vz-ai-stack.sh did not install brew openshell — gateway start will fail"
     fi
   else
     warn "brew not on PATH; cannot install the brew openshell formula. Skipping."
@@ -275,7 +275,7 @@ ok "Gateway listening on :$GATEWAY_PORT"
 # We register with --local (mTLS via stored certs from the brew install).
 # Plaintext http:// fails the TLS handshake; --local uses the cert tree.
 # Older installs may have stored the gateway under a different name (e.g.
-# `openshell` from the official install.sh) — accept any LOCAL-type
+# `openshell` from the official vz-ai-stack.sh) — accept any LOCAL-type
 # gateway that points at our port instead of forcing a rename.
 EXISTING_LOCAL_GW="$("$OSH" gateway list 2>/dev/null \
   | awk 'NR>1 && $3=="local" {print $1; exit}' \

@@ -1,7 +1,7 @@
 # For every managed container that has a 127.0.10.x publish, dial its alias
 # from the host and assert TCP+HTTP both succeed. Catches the Phase 01 class
 # of bug at install time AND ongoing — if a launchd reboot fails to re-bind
-# lo0 aliases, this check fires on the next `install.sh doctor` run.
+# lo0 aliases, this check fires on the next `vz-ai-stack.sh doctor` run.
 CHECKS+=(container_alias_routable)
 CHECK_TITLE[container_alias_routable]="Every managed container is reachable via its 127.0.10.x alias"
 
@@ -69,14 +69,14 @@ container_alias_routable_diagnose() {
   if (( ${#offenders[@]} > 0 )); then
     echo "containers not reachable via their 127.0.10.x alias:"
     printf '  - %s\n' "${offenders[@]}"
-    echo "(this almost always means lo0 aliases regressed; run install.sh prepare-sudo)"
+    echo "(this almost always means lo0 aliases regressed; run vz-ai-stack.sh prepare-sudo)"
     return 1
   fi
 }
 
 container_alias_routable_fix() {
   warn "Most common cause: lo0 aliases not bound after reboot."
-  warn "Run:  sudo bash $AI_STACK/install.sh prepare-sudo"
+  warn "Run:  sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo"
   warn "(idempotent; re-binds 127.0.10.x and re-installs reboot persistence)"
   return 1
 }

@@ -44,7 +44,7 @@ hosts_block_fix() {
   # mid-doctor, breaking the "no sudo after prepare-sudo" invariant.
   # Instead, surface the exact command the user should run.
   warn "Auto-fix would require sudo. Run this from a terminal:"
-  warn "    sudo bash $AI_STACK/install.sh prepare-sudo"
+  warn "    sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo"
   warn "(idempotent; re-running on a healthy block is a no-op)"
   return 1
 }

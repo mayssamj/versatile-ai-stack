@@ -26,7 +26,7 @@ pi_v1_sandbox_diagnose() {
     | sed $'s/\x1b\\[[0-9;]*m//g' \
     | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}')"
   if [[ -z "$state" ]]; then
-    echo "sandbox pi-v1 does not exist — run 'bash install.sh install 15'"
+    echo "sandbox pi-v1 does not exist — run 'bash vz-ai-stack.sh install 15'"
     return 1
   fi
   if [[ "$state" != "Ready" ]]; then
@@ -46,6 +46,6 @@ pi_v1_sandbox_diagnose() {
 
 pi_v1_sandbox_fix() {
   warn "Re-run Phase 15 to recreate the sandbox + apply current policy:"
-  warn "    bash $AI_STACK/install.sh install 15"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install 15"
   return 1
 }

@@ -16,7 +16,7 @@
 #   - partial recovery: if marker exists but version is still 1, re-run
 #     (idempotent — yq won't duplicate keys)
 #
-# Not invoked automatically yet; the orchestrator wires it into install.sh
+# Not invoked automatically yet; the orchestrator wires it into vz-ai-stack.sh
 # elsewhere. Safe to run standalone:
 #     bash installer/migrations/v1_to_v2.sh
 set -Eeuo pipefail

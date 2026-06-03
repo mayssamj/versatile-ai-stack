@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # fleet.sh — the Hermes fleet manager.
 #
-#   install.sh fleet list                          READ-ONLY: profiles in models.yml + sandbox presence
-#   install.sh fleet add <name> --role "<d>" [--model <m>] [--dry-run] [--no-sync]
-#   install.sh fleet remove <name> [--dry-run] [--keep-soul]
-#   install.sh fleet new <fleetname> [--profiles a,b,c] [--mint-key] [--allow-mlx] [--dry-run]
-#   install.sh fleet destroy <fleetname> [--dry-run]
+#   vz-ai-stack.sh fleet list                          READ-ONLY: profiles in models.yml + sandbox presence
+#   vz-ai-stack.sh fleet add <name> --role "<d>" [--model <m>] [--dry-run] [--no-sync]
+#   vz-ai-stack.sh fleet remove <name> [--dry-run] [--keep-soul]
+#   vz-ai-stack.sh fleet new <fleetname> [--profiles a,b,c] [--mint-key] [--allow-mlx] [--dry-run]
+#   vz-ai-stack.sh fleet destroy <fleetname> [--dry-run]
 #
 # TWO scopes:
 #   add/remove/list  — grow/shrink the EXISTING phase-04f sandbox `hermes-fleet-v1`
@@ -145,7 +145,7 @@ write_soul() {
 }
 
 # _unlock — release the install lock + clear the EXIT/INT/TERM trap. Called
-# BEFORE shelling out to install.sh (each sub-invocation re-acquires its own
+# BEFORE shelling out to vz-ai-stack.sh (each sub-invocation re-acquires its own
 # lock; holding it across the shell-out would self-deadlock the child -> exit 3).
 _unlock() { rm -rf "$LOCKDIR"; trap - EXIT INT TERM; }
 
@@ -173,7 +173,7 @@ cmd_fleet_add() {
     esac
   done
 
-  [[ -n "$name" ]] || { err "usage: install.sh fleet add <name> --role \"<desc>\" [--model <m>] [--dry-run] [--no-sync]"; exit 2; }
+  [[ -n "$name" ]] || { err "usage: vz-ai-stack.sh fleet add <name> --role \"<desc>\" [--model <m>] [--dry-run] [--no-sync]"; exit 2; }
   valid_name "$name" || exit 2
   [[ -n "$role" ]] || { err "fleet add: --role \"<description>\" is required"; exit 2; }
   [[ "$role" == *$'\n'* ]] && { err "fleet add: --role must be a single line"; exit 2; }
@@ -222,7 +222,7 @@ cmd_fleet_add() {
     note "planned models.yml assignments.$name: $model"
     note "planned models.yml kinds.$name:"
     printf '    { kind: hermes-profile, profile: %s, key_env: HERMES_LITELLM_KEY, desc: %s }\n' "$name" "$role"
-    note "re-render plan: rm phase_${STAMP}.done -> install.sh install ${STAMP} -> install.sh model sync"
+    note "re-render plan: rm phase_${STAMP}.done -> vz-ai-stack.sh install ${STAMP} -> vz-ai-stack.sh model sync"
     ok "dry-run complete — nothing written"
     exit 0
   fi
@@ -247,7 +247,7 @@ cmd_fleet_add() {
   _unlock
 
   if (( nosync )); then
-    note "--no-sync: sandbox-side render deferred. Apply with: install.sh install ${STAMP} && install.sh model sync"
+    note "--no-sync: sandbox-side render deferred. Apply with: vz-ai-stack.sh install ${STAMP} && vz-ai-stack.sh model sync"
     exit 0
   fi
 
@@ -255,12 +255,12 @@ cmd_fleet_add() {
   # short-circuit and the new profile would never be created in-sandbox).
   stamp_clear "$STAMP"
   log "re-rendering Hermes fleet (install ${STAMP})..."
-  bash "$AI_STACK/install.sh" install "$STAMP" </dev/null || warn "install ${STAMP} returned non-zero (see above)"
-  log "syncing model bindings (install.sh model sync)..."
-  bash "$AI_STACK/install.sh" model sync </dev/null || warn "model sync returned non-zero (see above)"
+  bash "$AI_STACK/vz-ai-stack.sh" install "$STAMP" </dev/null || warn "install ${STAMP} returned non-zero (see above)"
+  log "syncing model bindings (vz-ai-stack.sh model sync)..."
+  bash "$AI_STACK/vz-ai-stack.sh" model sync </dev/null || warn "model sync returned non-zero (see above)"
 
   if ! hermes_sandbox_ready; then
-    note "sandbox '$SANDBOX' not Ready — soul + models.yml are staged; intent recorded. Re-run 'install.sh install ${STAMP}' once the sandbox is up."
+    note "sandbox '$SANDBOX' not Ready — soul + models.yml are staged; intent recorded. Re-run 'vz-ai-stack.sh install ${STAMP}' once the sandbox is up."
   fi
   ok "fleet add '$name' complete"
 }
@@ -279,7 +279,7 @@ cmd_fleet_remove() {
     esac
   done
 
-  [[ -n "$name" ]] || { err "usage: install.sh fleet remove <name> [--dry-run] [--keep-soul]"; exit 2; }
+  [[ -n "$name" ]] || { err "usage: vz-ai-stack.sh fleet remove <name> [--dry-run] [--keep-soul]"; exit 2; }
   valid_name "$name" || exit 2
   if is_reserved "$name" remove; then exit 2; fi
 
@@ -296,7 +296,7 @@ cmd_fleet_remove() {
     note "would delete soul: $SOULS_DIR/${name}.md $([[ $keep_soul == 1 ]] && echo '(KEPT: --keep-soul)')"
     note "would remove models.yml: assignments.$name + kinds.$name"
     note "would best-effort remove in-sandbox profile dir ~/.hermes/profiles/$name (WARN-non-fatal)"
-    note "then: install.sh model sync"
+    note "then: vz-ai-stack.sh model sync"
     ok "dry-run complete — nothing written"
     exit 0
   fi
@@ -330,8 +330,8 @@ cmd_fleet_remove() {
     note "sandbox '$SANDBOX' not Ready — skipped in-sandbox profile cleanup (orphan is harmless)"
   fi
 
-  log "syncing model bindings (install.sh model sync)..."
-  bash "$AI_STACK/install.sh" model sync </dev/null || warn "model sync returned non-zero (see above)"
+  log "syncing model bindings (vz-ai-stack.sh model sync)..."
+  bash "$AI_STACK/vz-ai-stack.sh" model sync </dev/null || warn "model sync returned non-zero (see above)"
   ok "fleet remove '$name' complete"
 }
 
@@ -505,7 +505,7 @@ fleet_validate_name() {
   [[ -n "$name" ]] || { err "fleet new/destroy: <fleetname> is required"; return 2; }
   case "$name" in
     hermes-fleet|hermes-fleet-v1|pi|pi-v1)
-      err "'$name' is reserved (managed by phases 04/04f/15) — use 'install.sh install 04' / 'install.sh reset'"; return 2 ;;
+      err "'$name' is reserved (managed by phases 04/04f/15) — use 'vz-ai-stack.sh install 04' / 'vz-ai-stack.sh reset'"; return 2 ;;
   esac
   if [[ "$name" =~ ^[a-z][a-z0-9-]{0,30}$ ]]; then return 0; fi
   err "invalid fleet name '$name' — must match ^[a-z][a-z0-9-]{0,30}\$"
@@ -574,7 +574,7 @@ cmd_fleet_new() {
 
   # Gateway must be up (no install/start dance).
   [[ -n "$osh" ]] && port_listening "$GATEWAY_PORT" || {
-    err "OpenShell gateway not up on :$GATEWAY_PORT — run: install.sh install 04"
+    err "OpenShell gateway not up on :$GATEWAY_PORT — run: vz-ai-stack.sh install 04"
     exit 1
   }
 
@@ -591,7 +591,7 @@ cmd_fleet_new() {
     # non-zero (LiteLLM down / no master key / preflight) -> warn + continue.
     if bash "$AI_STACK/installer/lib/models.sh" superset >/dev/null 2>&1; then :; fi
     if ! ( set --; source "$AI_STACK/installer/lib/models.sh" >/dev/null 2>&1; remint_key "$fkey" "fleet-${name}" "fleet" ) </dev/null; then
-      warn "fleet created but unrouted (LiteLLM mint failed: down / no LITELLM_MASTER_KEY / superset preflight). Re-run: install.sh fleet new ${name} --mint-key once LiteLLM is up"
+      warn "fleet created but unrouted (LiteLLM mint failed: down / no LITELLM_MASTER_KEY / superset preflight). Re-run: vz-ai-stack.sh fleet new ${name} --mint-key once LiteLLM is up"
     fi
     HERMES_KEY="$(get_env "$fkey" '')"
   fi
@@ -599,7 +599,7 @@ cmd_fleet_new() {
 
   # CREATE the sandbox (hang-resilient).
   if ! openshell_sandbox_ensure "$osh" "$sb" base; then
-    warn "sandbox $sb did not reach Ready — reversible: re-run 'install.sh fleet new $name'"
+    warn "sandbox $sb did not reach Ready — reversible: re-run 'vz-ai-stack.sh fleet new $name'"
     exit 1
   fi
 
@@ -642,7 +642,7 @@ cmd_fleet_new() {
 
   ok "fleet '$name' ready: sandbox $sb, ${#PROFILES[@]} profile(s) -> $MODEL"
   note "connect: $osh sandbox connect $sb"
-  note "NOTE: install.sh doctor checks 30/33 only cover hermes-fleet-v1 — $sb is NOT health-checked."
+  note "NOTE: vz-ai-stack.sh doctor checks 30/33 only cover hermes-fleet-v1 — $sb is NOT health-checked."
   if [[ -n "$fkey" ]]; then
     note "minted $fkey (masked) scoped to the LiteLLM superset."
   else
@@ -690,7 +690,7 @@ cmd_fleet_destroy() {
 # ===========================================================================
 fleet_usage() {
   cat <<'EOF'
-install.sh fleet — Hermes fleet manager
+vz-ai-stack.sh fleet — Hermes fleet manager
   Grow/shrink the phase-04f fleet (sandbox hermes-fleet-v1):
     fleet list [--json]                                show profiles (models.yml + sandbox presence)
     fleet add <name> --role "<desc>" [--model <m>] [--dry-run] [--no-sync]
@@ -699,8 +699,8 @@ install.sh fleet — Hermes fleet manager
     fleet new <fleetname> [--profiles a,b,c] [--mint-key] [--allow-mlx] [--dry-run]
     fleet destroy <fleetname> [--dry-run]
 
-  NB: `install.sh install fleet|hermes` runs the PHASE (04f re-render).
-      `install.sh fleet <add|remove|list|new|destroy>` is the FLEET MANAGER (this).
+  NB: `vz-ai-stack.sh install fleet|hermes` runs the PHASE (04f re-render).
+      `vz-ai-stack.sh fleet <add|remove|list|new|destroy>` is the FLEET MANAGER (this).
 EOF
 }
 

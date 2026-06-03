@@ -70,7 +70,7 @@ hermes -p incident-manager ...                 # run a one-off command as this p
 ```
 ```yaml
 # config.yaml (this profile) — NON-AUTHORITATIVE example. The real model is set by
-# ai-stack's `install.sh model sync` from installer/models.yml (routes through LiteLLM).
+# ai-stack's `vz-ai-stack.sh model sync` from installer/models.yml (routes through LiteLLM).
 model: { provider: "custom:litellm", id: "claude-sonnet-4.6-sub-high" }
 custom_toolsets:
   incident-manager: [web]

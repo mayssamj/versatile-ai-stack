@@ -11,7 +11,7 @@
 #               (USER-GLOBAL — active in every Claude Code session on this Mac).
 # Finally widens HERMES_LITELLM_KEY + PI_LITELLM_KEY to the full models.yml model
 # set so the subscription (claude-*-sub-*) routes are reachable (mirrors what
-# `install.sh model sync` does, but inline + lock-free — phases run UNDER the
+# `vz-ai-stack.sh model sync` does, but inline + lock-free — phases run UNDER the
 # install lock, and `model sync` would re-acquire it and deadlock).
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -65,13 +65,13 @@ fi
 hdr "Phase 04·H — AI agent fleet (claude-code + pi + hermes)"
 
 # --- 1) Hermes: rebuild the fleet to the 9 roles via Phase 04f directly ------
-# Run the SCRIPT (not `install.sh install 04f`) so we don't re-acquire the lock.
+# Run the SCRIPT (not `vz-ai-stack.sh install 04f`) so we don't re-acquire the lock.
 # 04f is idempotent (skips if already on the current roster).
 log "Hermes: (re)building hermes-fleet-v1 to the 9 roles via Phase 04f..."
 if bash "$AI_STACK/installer/phases/04f_hermes_fleet.sh"; then
   ok "Hermes fleet rebuilt (or already current)"
 else
-  warn "Phase 04f returned non-zero — Hermes fleet may be incomplete (check 'install.sh install 04f')"
+  warn "Phase 04f returned non-zero — Hermes fleet may be incomplete (check 'vz-ai-stack.sh install 04f')"
 fi
 
 # --- 2) Claude Code: copy agents + skills into ~/.claude (USER-GLOBAL) --------
@@ -113,18 +113,18 @@ if sandbox_ready "$PI_SANDBOX"; then
   done
   ok "Pi: personas + skills uploaded. Switch with: bin/pi-as <role>"
 else
-  warn "$PI_SANDBOX not Ready — skipping Pi upload (run 'install.sh install 15' then re-run this phase)."
+  warn "$PI_SANDBOX not Ready — skipping Pi upload (run 'vz-ai-stack.sh install 15' then re-run this phase)."
 fi
 
 # --- 4) Widen the fleet keys to the full model set (lock-free model-sync-lite) -
 # Hermes + Pi reach LiteLLM with a scoped virtual key whose allowlist must
 # include the subscription (claude-*-sub-*) ids, else LiteLLM 403s. The canonical
-# widener is `install.sh model sync`, but it re-acquires the install lock (we hold
+# widener is `vz-ai-stack.sh model sync`, but it re-acquires the install lock (we hold
 # it). So widen in place via /key/update with the full models.yml model set.
 widen_keys() {
   local master superset k kenv
   master="$(get_env LITELLM_MASTER_KEY '')"
-  [[ -n "$master" ]] || { warn "LITELLM_MASTER_KEY absent — skip key widening (run 'install.sh model sync')"; return; }
+  [[ -n "$master" ]] || { warn "LITELLM_MASTER_KEY absent — skip key widening (run 'vz-ai-stack.sh model sync')"; return; }
   command -v yq >/dev/null 2>&1 || { warn "yq absent — skip key widening"; return; }
   # Union the legacy aliases (local/local-heavy/local-lfm2) with every models.yml
   # id — mirrors lib/models.sh::superset_members. The legacy `local` is the
@@ -139,7 +139,7 @@ widen_keys() {
          -d "{\"key\":\"$k\",\"models\":$superset}" >/dev/null 2>&1; then
       ok "widened $kenv allowlist to all models.yml models (incl. claude-*-sub-*)"
     else
-      warn "could not widen $kenv via /key/update — run 'install.sh model sync' to finalize"
+      warn "could not widen $kenv via /key/update — run 'vz-ai-stack.sh model sync' to finalize"
     fi
   done
 }
@@ -151,4 +151,4 @@ record "phase 04·H complete: 9-role agent fleet on claude-code (~/.claude, glob
 ok "Phase 04·H — AI agent fleet — complete"
 note "Claude Code:  /agents  (lists the 9 globally)            Hermes: openshell sandbox connect hermes-fleet-v1"
 note "Pi:           bin/pi-as <role>   (e.g. bin/pi-as backend-engineer)"
-note "Canonical finalize (optional): install.sh model sync   (re-renders every agent + re-widens keys)"
+note "Canonical finalize (optional): vz-ai-stack.sh model sync   (re-renders every agent + re-widens keys)"

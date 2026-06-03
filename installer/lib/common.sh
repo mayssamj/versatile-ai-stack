@@ -1,5 +1,5 @@
 # common.sh — log, color, lock, paths, per-run id, CHANGELOG entry helper.
-# Sourced by install.sh. Do not run directly.
+# Sourced by vz-ai-stack.sh. Do not run directly.
 #
 # Assumes AI_STACK and bash 5+ are already established by the caller.
 
@@ -34,7 +34,7 @@ hdr() {
 
 # --- per-run id + CHANGELOG.d ------------------------------------------------
 # Avoid CHANGELOG.md race conditions by writing per-run files.
-# install.sh history compiles them.
+# vz-ai-stack.sh history compiles them.
 RUN_ID="${RUN_ID:-$(date +%Y%m%d-%H%M%S)-$$}"
 export RUN_ID
 RUN_LOG="$AI_STACK/CHANGELOG.d/${RUN_ID}.md"
@@ -86,7 +86,7 @@ lock_acquire() {
         rm -rf "$LOCKDIR"
         continue
       fi
-      err "Another install.sh/doctor is running (pid $held). Re-run with LOCK_FORCE=1 to break."
+      err "Another vz-ai-stack.sh/doctor is running (pid $held). Re-run with LOCK_FORCE=1 to break."
       exit 3
     fi
     (( ++tries > 30 )) && {

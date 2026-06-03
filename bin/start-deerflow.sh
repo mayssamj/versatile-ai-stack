@@ -37,7 +37,7 @@ source "$AI_STACK/installer/lib/env.sh"
 
 DF_DIR="$AI_STACK/deer-flow"
 [[ -d "$DF_DIR" && -f "$DF_DIR/scripts/deploy.sh" ]] || {
-  err "DeerFlow not installed at $DF_DIR — run 'bash install.sh install 10' first."
+  err "DeerFlow not installed at $DF_DIR — run 'bash vz-ai-stack.sh install 10' first."
   exit 1
 }
 

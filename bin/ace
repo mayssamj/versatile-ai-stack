@@ -11,7 +11,7 @@
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACE_DIR="$AI_STACK/ace"
-[[ -d "$ACE_DIR/.git" ]] || { echo "ACE not installed — run 'bash install.sh install 17'" >&2; exit 1; }
+[[ -d "$ACE_DIR/.git" ]] || { echo "ACE not installed — run 'bash vz-ai-stack.sh install 17'" >&2; exit 1; }
 
 case "${1:-}" in
   --help|-h|"")

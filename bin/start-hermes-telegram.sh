@@ -63,7 +63,7 @@ if grep -viE 'allowlist|users will be denied' <<<"$gwlog" | grep -qiE 'unauthori
   warn "gateway log shows an auth error — the bot token may be revoked or malformed. Check the token in .env."
 fi
 if grep -qi 'No user allowlists configured' <<<"$gwlog"; then
-  warn "Bot is LOCKED: no allowlist → all users denied. Set HERMES_TELEGRAM_ALLOWED_USERS=<your_telegram_id> in .env + re-run 'install.sh install 20'."
+  warn "Bot is LOCKED: no allowlist → all users denied. Set HERMES_TELEGRAM_ALLOWED_USERS=<your_telegram_id> in .env + re-run 'vz-ai-stack.sh install 20'."
 fi
 pid="$(grep -oiE 'PID: *[0-9]+' <<<"$status" | grep -oE '[0-9]+' | head -1 || echo '?')"
 ok "hermes Telegram gateway running in $SANDBOX (PID $pid) — @vz_hermes_controller_bot polling api.telegram.org"

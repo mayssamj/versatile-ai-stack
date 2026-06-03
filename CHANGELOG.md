@@ -1,6 +1,6 @@
 # ai-stack-installer — change log
 
-Auto-appended by `install.sh`. Newest entries at the top.
+Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
@@ -32,7 +32,7 @@ plus a new onboarding doc (`doc/ONBOARDING.md`).
    `DEFAULT_MODEL=local`). `local-heavy` stays an explicit alias for heavy reasoning.
    (`installer/phases/04f_hermes_fleet.sh` `HERMES_MODEL="local"`.)
 3. **claw3d UI is now name-aliasable** as `http://claw3d:4310` (added to
-   `installer/lib/aliases.tsv`, `127.0.10.17`; activates after `sudo install.sh
+   `installer/lib/aliases.tsv`, `127.0.10.17`; activates after `sudo vz-ai-stack.sh
    prepare-sudo`; `localhost:4310` still works). The **claw3d-bridge (`:7780`) stays
    `127.0.0.1`-only by design** — it is auth-less and drives all 9 agents, so loopback
    is the boundary, NOT an oversight (documented inline in `aliases.tsv`). `lmstudio`
@@ -95,13 +95,13 @@ tool-calling** — the Ollama GGUF build returns "does not support tools".
 
 ## 2026-05-31 — Named phase IDs + 4 opt-in tool phases (portless/cmux/skillspector/openagents)
 
-**Named phase selectors.** `install.sh install <phase>` and `test <phase>` now accept a
+**Named phase selectors.** `vz-ai-stack.sh install <phase>` and `test <phase>` now accept a
 meaningful NAME as well as a number — phase files are `<id>_<name>.sh`, so the name is
 the filename suffix (`install phoenix` == `install 01h`, `install hermes_telegram`, …),
 plus friendly aliases (`litellm`→inference, `telegram`→hermes_telegram, `hermes`→hermes_fleet,
 `sandbox`→openshell, `unsloth`→unsloth_studio, `halo`→halo_autoreason, `ui`→uis, `docs`→documents,
 `memory`→alt_memory). New `resolve_phase_script()` tries id-prefix → exact-name → alias →
-unique-fuzzy; new `install.sh phases` (also `steps`/`list`) prints the `id → name` table.
+unique-fuzzy; new `vz-ai-stack.sh phases` (also `steps`/`list`) prints the `id → name` table.
 Auto-discovers any phase from the filename — no registry to maintain.
 
 **4 NEW opt-in extra phases** (developed + adversarially reviewed by a multi-agent workflow,
@@ -207,7 +207,7 @@ in `.env` as `HERMES_TELEGRAM_BOT_TOKEN`.
   *unauthorized* users will be denied") which contains the word but is not an auth error.
 - **`services.yml`** `hermes_telegram` (`type: sandbox-daemon` → `status` shows `n/a`
   like the other sandbox services; real liveness is check 33). `status.sh` learns
-  the `sandbox-daemon` type. install.sh phase array → `…19 20`.
+  the `sandbox-daemon` type. vz-ai-stack.sh phase array → `…19 20`.
 - **VERIFIED:** Phase 20 from clean → gateway PID stable across restarts (one poller,
   no flapping); 409 self-heals; idempotent re-run skips; `doctor hermes_telegram` ✓;
   `status` row clean. Bot is LOCKED pending the user's Telegram id (by design).
@@ -247,7 +247,7 @@ agents, not just Hermes.
   routed through the running bridge returned a real profile reply. (3D browser render +
   one-click "Connect" need a human.)
 - **NEW doctor check 32** (`32_claw3d.sh`); `services.yml` entries (`claw3d`,
-  `claw3d_bridge`); install.sh phase array → `…18 19`. **Phases 25 → 26, checks 31 → 32.**
+  `claw3d_bridge`); vz-ai-stack.sh phase array → `…18 19`. **Phases 25 → 26, checks 31 → 32.**
 - **Known follow-ups:** Pi adapter runs but `pi -p --model local` hits a model-resolution
   issue (graceful "unavailable" until the flags/extension are tuned, or switch to
   `--mode json` parsing); DeerFlow needs its `DEER_FLOW_INTERNAL_AUTH_TOKEN` wired for
@@ -276,7 +276,7 @@ and recursively calls itself — for near-infinite-context tasks.
 - **NEW doctor check 31** (`31_rlm.sh`): venv imports `rlm` + `bin/rlm` + `rlm/.env`
   routes to LiteLLM + `RLM_LITELLM_KEY` accepted. Skips cleanly if RLM absent.
   **Doctor count 30 → 31.**
-- **install.sh** phase array + usage now include `18`; **services.yml** has an `rlm`
+- **vz-ai-stack.sh** phase array + usage now include `18`; **services.yml** has an `rlm`
   entry (type cli-only, phase 18).
 - Note: LiteLLM enforces **unique key aliases**, so re-minting a phase's key alias when
   one already exists 400s. A `reset --confirm hard` wipes the honcho Postgres key store,
@@ -375,7 +375,7 @@ real local-model calls for the first time (`hermes_cos … -z` → "PONG").
    networks) and `teardown_openshell_sandboxes`. This folds the manual
    `full-reinstall.sh` workaround into the canonical command (script deleted).
 
-5. **Non-interactive reset** (`prompt.sh`, `install.sh`, `reset.sh`). `confirm()`
+5. **Non-interactive reset** (`prompt.sh`, `vz-ai-stack.sh`, `reset.sh`). `confirm()`
    now honors `AI_STACK_ASSUME_YES=1`; `reset --confirm hard --yes` sets it. This
    is real `-y` automation semantics (distinct from `NO_PROMPT`, which would
    *abort* hard since its gate defaults to N) — NOT an `echo y` bypass. nuke's
@@ -403,7 +403,7 @@ real local-model calls for the first time (`hermes_cos … -z` → "PONG").
 
 ### Folder restructure (free-rein, install re-verified)
 - All docs → `doc/` **except `README.md` + `CHANGELOG.md`** (stay at root;
-  CHANGELOG stays where `install.sh` appends). 15 files moved; all 73 inter-doc
+  CHANGELOG stays where `vz-ai-stack.sh` appends). 15 files moved; all 73 inter-doc
   links rewritten + validated.
 - Ingestion drop dirs `docs/{inbox,processed}` → **`ingestor/{inbox,processed}`**
   — eliminates the `doc/` vs `docs/` collision and groups all ingestion under the
@@ -414,7 +414,7 @@ real local-model calls for the first time (`hermes_cos … -z` → "PONG").
 
 ### Files touched
 - NEW: `installer/lib/openshell.sh`, `installer/doctor/checks/30_hermes_routing.sh`
-- Modified: `install.sh`, `installer/lib/{prompt,reset,network,bootstrap}.sh`,
+- Modified: `vz-ai-stack.sh`, `installer/lib/{prompt,reset,network,bootstrap}.sh`,
   `installer/phases/{00_host,04_openshell,04f_hermes_fleet,06_documents,10_deerflow,15_pi}.sh`,
   `installer/lib/start-deerflow.sh` (n/a), `ingestor/ingest.py`,
   `openshell/policies/pi-v1.yaml`, all docs (moved to `doc/` + link rewrite)
@@ -422,7 +422,7 @@ real local-model calls for the first time (`hermes_cos … -z` → "PONG").
 
 ## 2026-05-29 — status.sh false-alarm storm: name-domain mismatch root-caused + fixed
 
-User report: `bash install.sh status` showed 6 rows wrong — three "stopped should be running" (`docs_mcp`, `docs_ingestor`, `hermes_workspace`, `deerflow`) and three "running but ownership=absent" (`honcho`, `autofyn`, `hermes_workspace`/`deerflow` doubly-flagged). User: "give me a list of what is missing and inspect why. talk to other two agents to make sure you are root cause analyzing not guess work."
+User report: `bash vz-ai-stack.sh status` showed 6 rows wrong — three "stopped should be running" (`docs_mcp`, `docs_ingestor`, `hermes_workspace`, `deerflow`) and three "running but ownership=absent" (`honcho`, `autofyn`, `hermes_workspace`/`deerflow` doubly-flagged). User: "give me a list of what is missing and inspect why. talk to other two agents to make sure you are root cause analyzing not guess work."
 
 Dispatched 2 agents in parallel for independent root-cause analysis. Both converged on the same family of bug, evidence-backed:
 
@@ -472,13 +472,13 @@ Zero false alarms. The user's stack was never actually broken — `status.sh` wa
 ### Followup (left as known-stale)
 
 - `pi_gateway_litellm` shows `?` actual — different service type (OpenShell L7 route, not docker). Status detector for that type doesn't exist yet.
-- `installer/lib/docker.sh::container_exists` + `container_managed` are still single-container-only. Other call sites (`install.sh adopt`, `stack stop`, doctor checks) may have the same compose blindspot. Worth a follow-up sweep.
+- `installer/lib/docker.sh::container_exists` + `container_managed` are still single-container-only. Other call sites (`vz-ai-stack.sh adopt`, `stack stop`, doctor checks) may have the same compose blindspot. Worth a follow-up sweep.
 
 ---
 
-## 2026-05-29 — Phase 17 ACE + Hermes/Pi via PyPI inside sandbox venv + install.sh E2E verified
+## 2026-05-29 — Phase 17 ACE + Hermes/Pi via PyPI inside sandbox venv + vz-ai-stack.sh E2E verified
 
-User feedback: "wtf does it mean hermes doesn't work. that's the primary thing i use. please fix all these things. paperclip and deerflow both should be enabled. install.sh should work. hard reset and test it once you finished with fixes. use 3 other agents to work together as a team to review each other work every time. don't forget about mappings like litellm:4000 → litellm/ finally i want to use this as well add this to my stack: https://github.com/ace-agent/ace"
+User feedback: "wtf does it mean hermes doesn't work. that's the primary thing i use. please fix all these things. paperclip and deerflow both should be enabled. vz-ai-stack.sh should work. hard reset and test it once you finished with fixes. use 3 other agents to work together as a team to review each other work every time. don't forget about mappings like litellm:4000 → litellm/ finally i want to use this as well add this to my stack: https://github.com/ace-agent/ace"
 
 Dispatched 3 discovery agents in parallel:
 - **Agent A** — found Hermes is on PyPI as of `hermes-agent` v0.14.0 (May 2026). The `curl scripts/install.sh | bash` URL the legacy phase used is intermittently 403'd by the OpenShell egress proxy. PyPI is cleaner: single hop to `pypi.org` + `files.pythonhosted.org`, both already in the sandbox's `package_registries`.
@@ -495,7 +495,7 @@ Dispatched 3 discovery agents in parallel:
 1. **Phase 17 NEW** — `installer/phases/17_ace.sh` (170 lines). Clones `github.com/ace-agent/ace`, runs `uv sync` to build venv (~600MB deps), mints `ACE_LITELLM_KEY` virtual key scoped to `[local, local-heavy, local-lfm2]`, renders `ace/.env` with `OPENAI_BASE_URL=http://litellm:4000/v1`, writes `bin/ace` wrapper, captures `ACE_PIN` SHA. Idempotent precheck verifies all five.
 2. **`bin/ace` wrapper** with subcommands `finance <task>`, `appworld` (with safety confirmation — Reviewer C catch), and raw module passthrough. Routes every LLM call through LiteLLM.
 3. **`installer/doctor/checks/29_ace.sh` NEW** — asserts clone + venv + wrapper + `.env` routes to LiteLLM + virtual key valid against `/v1/models`. Skips cleanly when `ace/` absent.
-4. **install.sh** — `17` added to default phase array (line 325) and usage help (line 178). Auto-discovery handles run_phase + doctor.
+4. **vz-ai-stack.sh** — `17` added to default phase array (line 325) and usage help (line 178). Auto-discovery handles run_phase + doctor.
 5. **services.yml** — Python in-place edit replaced 11 stale `host_port: 80` with each block's matching `container_port` (litellm 4000, phoenix 6006, qdrant 6333, honcho 8000, falkordb 6379, falkordb-ui 3000, openwebui 8080, workspace 3000, llm-guard 8000, autofyn 3400, paperclip 3100). Plus `ace:` entry (`type: cli-only`, `enabled: true`).
 6. **Phase 04f Hermes** — rewrote install path through three iterations:
    - First: `--user --break-system-packages` → blew up because the OpenShell sandbox runs Python in a uv-managed venv at `/sandbox/.venv` where `--user` is rejected ("user site-packages are not visible in this virtualenv").
@@ -510,14 +510,14 @@ Dispatched 3 discovery agents in parallel:
 ### Verification (live)
 
 ```
-$ bash install.sh install all
+$ bash vz-ai-stack.sh install all
 […]
 ✓ Phase 04·F — Hermes fleet — complete    # 7 profiles created via PyPI hermes-agent 0.15.2
 ✓ Phase 15 — Pi (coding agent) — complete  # pi-v1 Ready, Pi installed
 ✓ Phase 17 — ACE — complete                # cloned bcb7cea, venv, virtual key, bin/ace works
 ✓ Install complete.
 
-$ bash install.sh doctor | tail -3
+$ bash vz-ai-stack.sh doctor | tail -3
   ACE installed + LiteLLM virtual key valid (Phase 17)         ✓
 Doctor done: 29 checks, 29 passed, 0 fixed, 0 remaining failed, 0 skipped.
 
@@ -541,7 +541,7 @@ $ docker ps | wc -l  # paperclip + deerflow + autofyn + everything: up
 ### Files touched this session
 
 - NEW: `installer/phases/17_ace.sh`, `installer/doctor/checks/29_ace.sh`, `bin/ace` (generated by Phase 17 at install time)
-- Modified: `installer/phases/04f_hermes_fleet.sh` (PyPI + per-file upload + bootstrap.sh body), `installer/phases/15_pi.sh` (load_env→get_env + ANSI strip), `install.sh` (phase array + usage), `services.yml` (11 host_port fixes + ace entry)
+- Modified: `installer/phases/04f_hermes_fleet.sh` (PyPI + per-file upload + bootstrap.sh body), `installer/phases/15_pi.sh` (load_env→get_env + ANSI strip), `vz-ai-stack.sh` (phase array + usage), `services.yml` (11 host_port fixes + ace entry)
 
 ---
 
@@ -596,7 +596,7 @@ NAME             CREATED              PHASE
 hermes-fleet-v1  2026-05-29 21:29:55  Ready
 pi-v1            2026-05-29 21:44:37  Ready
 
-$ bash install.sh doctor | tail -3
+$ bash vz-ai-stack.sh doctor | tail -3
   DeerFlow config.yaml has model entries + compose passes LITELLM_MASTER_KEY (Phase 10) ✓
 Doctor done: 28 checks, 28 passed, 0 fixed, 0 remaining failed, 0 skipped.
 ```
@@ -627,7 +627,7 @@ The container worked anyway because env_file populated the container's environme
 
 2. **New `bin/stop-deerflow.sh`** — idempotent wrapper around `deploy.sh down`.
 
-3. **`install.sh start|stop` subcommands** — `cmd_start <svc>` execs `bin/start-<svc>.sh`. `cmd_stop <svc>` prefers `bin/stop-<svc>.sh`, falls back to `docker stop <svc>`. Both surface a list of available services on misuse.
+3. **`vz-ai-stack.sh start|stop` subcommands** — `cmd_start <svc>` execs `bin/start-<svc>.sh`. `cmd_stop <svc>` prefers `bin/stop-<svc>.sh`, falls back to `docker stop <svc>`. Both surface a list of available services on misuse.
 
 4. **Reverse-form dispatch** — the case `*)` fallback in `main()` checks if `$2` is `start|stop|enable|disable`. If yes, it treats `$1` as the service. This makes both `stack start deerflow` AND `stack deerflow start` work. `enable`/`disable` are accepted as aliases for `start`/`stop`.
 
@@ -636,15 +636,15 @@ The container worked anyway because env_file populated the container's environme
 ### Verification (live)
 
 ```
-$ bash install.sh stop deerflow
+$ bash vz-ai-stack.sh stop deerflow
 [deer-flow containers stopped]
-$ bash install.sh deerflow start    # reverse-form
+$ bash vz-ai-stack.sh deerflow start    # reverse-form
 [no WARN lines]
 $ docker stats deer-flow-gateway --no-stream
 CPU=0.81%  MEM=550.5MiB / 11.72GiB
 $ docker exec deer-flow-gateway sh -c 'echo -n "$LITELLM_MASTER_KEY" | wc -c'
 41                                   # key resolved correctly inside container
-$ bash install.sh doctor deerflow_config | tail -1
+$ bash vz-ai-stack.sh doctor deerflow_config | tail -1
 Doctor done: 1 checks, 1 passed, 0 fixed, 0 remaining failed, 27 skipped.
 ```
 
@@ -652,7 +652,7 @@ Doctor done: 1 checks, 1 passed, 0 fixed, 0 remaining failed, 27 skipped.
 
 - `bin/start-deerflow.sh` — new, +x.
 - `bin/stop-deerflow.sh` — new, +x.
-- `install.sh` — new `cmd_start` / `cmd_stop` (+ `_list_startable_services`), wired `start|enable|stop|disable` into the dispatcher, reverse-form fallback in `*)`. Usage text refreshed.
+- `vz-ai-stack.sh` — new `cmd_start` / `cmd_stop` (+ `_list_startable_services`), wired `start|enable|stop|disable` into the dispatcher, reverse-form fallback in `*)`. Usage text refreshed.
 - `installer/phases/10_deerflow.sh` — auto-start switched from `bash scripts/deploy.sh` to `bash bin/start-deerflow.sh`, plus end-of-phase `note` lines now print `stack start deerflow` / `stack stop deerflow`.
 - `USER-GUIDE.md` §2.10 (DeerFlow), Recipe 5 (research fleet), Recipe 6 (paranoid) — switched to `stack start|stop deerflow`.
 - `USER-GUIDE.html` deerflow service tile + recipe 5 — same.
@@ -809,12 +809,12 @@ New `installer/doctor/checks/28_deerflow_config.sh`:
   top-level key).
 - Asserts `docker-compose.yaml` contains
   `LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` on the gateway.
-- Fix function points at re-running `bash install.sh install 10`.
+- Fix function points at re-running `bash vz-ai-stack.sh install 10`.
 
 ### Verification (live)
 
 ```
-$ bash ~/ai-stack/install.sh doctor | tail -3
+$ bash ~/ai-stack/vz-ai-stack.sh doctor | tail -3
   DeerFlow config.yaml has model entries + compose passes LITELLM_MASTER_KEY (Phase 10) ✓
 
 Doctor done: 28 checks, 28 passed, 0 fixed, 0 remaining failed, 0 skipped.
@@ -1111,7 +1111,7 @@ separate phase (16.1?), not bundled here.
 **Outcome**: the four deferred items from the Phase 15 ship-it commit
 (2026-05-29 morning) all land in this pass; doctor reads 26/26; the new
 USER-GUIDE.md gives a first-time-in-this-stack reader a 540-line path
-from `install.sh complete` to a working multi-service workflow.
+from `vz-ai-stack.sh complete` to a working multi-service workflow.
 
 ### Doctor checks 24/25/26 (Pi)
 
@@ -1211,7 +1211,7 @@ the planning-forum consensus). Structure:
   volume is below LoRA's useful floor).
 - **3 stretch recipes**: research fleet, paranoid mode, fine-tune-from-
   traces (with an explicit "you want ≥5K samples" guardrail).
-- **Daily cheatsheet**: 11 commands verified against `install.sh` +
+- **Daily cheatsheet**: 11 commands verified against `vz-ai-stack.sh` +
   `bin/`. The aspirational `stack profile/enable/disable/apply`
   shortcuts that I'd promised in the morning entry don't actually
   exist in the dispatcher; cheatsheet uses the real `yq` flips.
@@ -1273,7 +1273,7 @@ both env vars up on every launchctl restart. The file is chmod 600 (no
 secrets, but consistent with the `.env` invariant).
 
 Phase 04 was also made gateway-name-flexible: it now accepts any existing
-LOCAL-type gateway (e.g. `openshell` from the official install.sh) instead
+LOCAL-type gateway (e.g. `openshell` from the official vz-ai-stack.sh) instead
 of insisting on `local-mac`. Re-running the phase on the live host is a
 no-op when the gateway, sandbox, and policy are all in place.
 
@@ -1364,7 +1364,7 @@ fits comfortably alongside Gemma 4 E4B and Qwen 3.6 27B on the 24GB M4.
    `/api/health` returns `status=healthy`. Runs the official `curl|sh`
    installer (writes to `$HOME/.unsloth/studio/` and drops a CLI shim at
    `$HOME/.local/bin/unsloth`), then daemonizes via
-   `bin/start-unsloth.sh`. Standalone: `bash install.sh install 14`.
+   `bin/start-unsloth.sh`. Standalone: `bash vz-ai-stack.sh install 14`.
 2. **`bin/start-unsloth.sh`** — daemonizes `unsloth studio -p 8898 -H 0.0.0.0`.
    PID file at `installer/state/unsloth.pid`. PID-recycle-safe via `ps args`
    match for `*unsloth*studio*`. 300s wait for first launch (the studio
@@ -1524,14 +1524,14 @@ Per the user's explicit "no cloud embedding at all" directive:
 
 ### OpenShell — graceful-degrade
 
-`brew install openshell` works via the official `install.sh` now; the
+`brew install openshell` works via the official `vz-ai-stack.sh` now; the
 launchctl bootstrap error 5 is cleared via explicit `launchctl bootout
 gui/<uid>/homebrew.mxcl.openshell` before `brew services start`. The
 mTLS gateway handshake still doesn't complete reliably on the first
 install (alpha-stage upstream), so Phase 04 falls through to a
 "scaffold complete (gateway deferred)" stamp if the gateway port isn't
 listening within 60s. The sandbox + policy steps are skipped cleanly
-when the gateway isn't up; the user can re-run `bash install.sh install
+when the gateway isn't up; the user can re-run `bash vz-ai-stack.sh install
 04` after fixing brew/launchctl. The OpenShell policy was also
 rewritten to the current upstream `version: 1` schema with
 `network_policies` map + `allowed_ips` for the ai-stack subnet.
@@ -1651,12 +1651,12 @@ Both are now diagnosed at install time by pre-flight probes that fail loud
 
   Phase 00·V is **side-effect-free**. Stamp is honored only when fresh
   (< 5 min) so re-running the orchestrator doesn't skip stale probes.
-  Failure prints the exact fix command (`sudo bash install.sh prepare-sudo`
+  Failure prints the exact fix command (`sudo bash vz-ai-stack.sh prepare-sudo`
   for the common case) and exits 1 *before* a single Phase 01 container starts.
 
-### New install.sh subcommand
+### New vz-ai-stack.sh subcommand
 
-- `bash install.sh verify` — runs Phase 00·V standalone (and clears its
+- `bash vz-ai-stack.sh verify` — runs Phase 00·V standalone (and clears its
   own stamp first so it always actually probes). Use this after any
   networking change (VPN connect/disconnect, OrbStack restart, sudo
   changes) to confirm the alias chain is still intact before installing
@@ -1726,7 +1726,7 @@ review: `installer/state/preparesudo-review-{A,B,C}.md`.
 - **4 new doctor checks**: `19_lo0_aliases.sh`, `20_container_alias_routable.sh`,
   `21_container_dns_in_network.sh`, `22_etc_hosts_ownership.sh`.
 - **Modified**: `installer/lib/aliases.tsv` (host_port=container_port for
-  HTTP), every `bin/start-*.sh` (no more `:80:` literal), `install.sh`
+  HTTP), every `bin/start-*.sh` (no more `:80:` literal), `vz-ai-stack.sh`
   (new `verify` subcommand), `installer/lib/prepare-sudo.sh` (hardening).
 - **Design records preserved as history** in `installer/state/`:
   `safety-audit-1.md` (31 findings), `safety-design-2.md`,
@@ -1735,13 +1735,13 @@ review: `installer/state/preparesudo-review-{A,B,C}.md`.
 
 ### Migration path
 
-For installs that ran the 2026-05-27 entry: `bash install.sh verify` will
+For installs that ran the 2026-05-27 entry: `bash vz-ai-stack.sh verify` will
 fail loudly on every alias whose host_port was `:80`. Fix:
 
 ```bash
-bash install.sh reset --confirm hard    # tears down managed containers
-sudo bash install.sh prepare-sudo       # re-runs lo0_ensure_aliases + plist
-bash install.sh install all             # phase 00·V will probe; phase 01 onwards re-publishes on native ports
+bash vz-ai-stack.sh reset --confirm hard    # tears down managed containers
+sudo bash vz-ai-stack.sh prepare-sudo       # re-runs lo0_ensure_aliases + plist
+bash vz-ai-stack.sh install all             # phase 00·V will probe; phase 01 onwards re-publishes on native ports
 ```
 
 `reset --confirm hard` preserves `data/`; only the managed containers and
@@ -1832,14 +1832,14 @@ mirrored in [PORTS.md](doc/PORTS.md).
 
 ### Migration path for existing installs
 
-1. `bash install.sh install 00n` — creates the `ai-stack` Docker network,
+1. `bash vz-ai-stack.sh install 00n` — creates the `ai-stack` Docker network,
    appends the `/etc/hosts` block (one `sudo` prompt), runs self-verify.
    Idempotent; safe to re-run.
 2. **The 4 pre-existing foreign containers** (litellm, phoenix, falkordb,
    qdrant from prior sessions) keep working on the OLD `127.0.0.1:<port>`
    scheme until adopted. They will return connection-refused on the new
    aliases (`http://litellm`, etc.) until each is migrated.
-3. `bash install.sh adopt <svc>` per foreign container — re-creates with
+3. `bash vz-ai-stack.sh adopt <svc>` per foreign container — re-creates with
    `--network ai-stack` + `127.0.10.x:<host>:<container>` publish +
    `--add-host=ollama:host-gateway` where needed. Stateful services
    (`phoenix`, `falkordb`, `qdrant`) get a `docker cp` backup first.
@@ -1853,7 +1853,7 @@ foreign containers adopted), doctor checks 14–17 degrade FAIL to WARN
 (yellow indicator, doesn't fail exit code) so the doctor isn't shouting
 about a partial state the user is actively fixing. Phase 00·N also prints
 a banner after writing /etc/hosts listing the foreign containers and the
-exact `bash install.sh adopt <svc>` commands to run.
+exact `bash vz-ai-stack.sh adopt <svc>` commands to run.
 
 ### Notable design rejections from review
 
@@ -1873,7 +1873,7 @@ exact `bash install.sh adopt <svc>` commands to run.
 
 ## 2026-05-27 — Build complete (first full pass)
 
-**Outcome**: `bash install.sh install all` runs end-to-end and stamps 17/18
+**Outcome**: `bash vz-ai-stack.sh install all` runs end-to-end and stamps 17/18
 phases. Re-running on a healthy stack is a no-op (each phase's `precheck()`
 detects done-state and short-circuits with `✓ already complete`). The doctor
 surfaces real, actionable failures.
@@ -1899,7 +1899,7 @@ installer cannot do unattended:
 1. **Foreign containers (litellm, phoenix, falkordb, qdrant)** — started by
    the previous Claude before this installer existed. Conservative-recreate
    policy refuses to take them over without confirmation. Run
-   `bash install.sh adopt <svc>` per service to take ownership (each adoption
+   `bash vz-ai-stack.sh adopt <svc>` per service to take ownership (each adoption
    does `docker cp` for stateful backup → diff → confirm → recreate).
 
 2. **PHOENIX_API_KEY empty** — Phoenix is running with auth ON. The OTLP
@@ -1907,7 +1907,7 @@ installer cannot do unattended:
    every trace push (visible via `docker logs litellm | grep "Failed to
    export"`). Fix: open http://127.0.0.1:6006 → log in (admin@localhost /
    <PHOENIX_ADMIN_PASSWORD>) → Settings → API Keys → create a key → paste into `.env`
-   as `PHOENIX_API_KEY=…` → run `install.sh apply-restarts` to recreate
+   as `PHOENIX_API_KEY=…` → run `vz-ai-stack.sh apply-restarts` to recreate
    LiteLLM with the new env var.
 
 3. **OTLP exporter activity not seen in logs** — derivative of #2. Will
@@ -1924,7 +1924,7 @@ installer cannot do unattended:
 
 (Because phases 01·H, 03, 04·G all mutated `.env` keys that LiteLLM consumes
 at start-time. `docker restart` does NOT reload `--env-file` changes — full
-recreate is required. Run `bash install.sh apply-restarts` to drain.)
+recreate is required. Run `bash vz-ai-stack.sh apply-restarts` to drain.)
 
 ### Phases — final state
 
@@ -1951,15 +1951,15 @@ recreate is required. Run `bash install.sh apply-restarts` to drain.)
 
 ### Smoke tests passing
 
-- `install.sh test 01` — 23/23 models served, local chat completion + trace
+- `vz-ai-stack.sh test 01` — 23/23 models served, local chat completion + trace
   file appended (container view). Per-model ping: 10 PASS / 10 FAIL /
   3 SKIP — the FAILs are mostly provider deprecations (`gpt-5.4-mini`
   returns 400, openrouter-fast variants 429) which is exactly what
   Reviewer Adversarial #10 wanted surfaced without failing the phase.
-- `install.sh test 02` — Qdrant create+list+delete; FalkorDB PING +
+- `vz-ai-stack.sh test 02` — Qdrant create+list+delete; FalkorDB PING +
   GRAPH.QUERY/DELETE.
-- `install.sh test 03` — Honcho /health 200.
-- `install.sh test 05` — Open WebUI 200.
+- `vz-ai-stack.sh test 03` — Honcho /health 200.
+- `vz-ai-stack.sh test 05` — Open WebUI 200.
 
 ### Known sandbox limitation
 
@@ -1987,14 +1987,14 @@ tests read the trace file via `docker exec litellm wc -l /traces/litellm.jsonl`
 4. **Lock = `mkdir`** at `~/ai-stack/installer/state/.lock` (POSIX-atomic, no `flock` dep on macOS). PID written inside. Trap-clean on EXIT/INT/TERM. `--force` breaks a stale lock when the recorded PID is not alive. (Reviewers B + Adversarial.)
 5. **`.env` mutations** go through awk → tmpfile → `mv`. `chmod 600` before content is written. Newlines in values rejected. CRLF guard in doctor. (Reviewer B.)
 6. **Env-key hash tracking**: progress state records sha256 of each `.env` key consumed; on mismatch, the consuming service is marked "config-change", listed in a doctor report, but is NOT auto-restarted in conservative mode. (Reviewer Adversarial.)
-7. **Adoption flow** for containers started outside the installer (i.e. the four already-up containers): `install.sh adopt <svc>` does `docker cp` → diff vs declared → require `yes` confirmation → backup stateful data → `rm -f` → recreate via managed start script. Without adoption, doctor reports "foreign container — run `install.sh adopt <svc>` to take ownership." (Reviewer Adversarial #1+#2.)
+7. **Adoption flow** for containers started outside the installer (i.e. the four already-up containers): `vz-ai-stack.sh adopt <svc>` does `docker cp` → diff vs declared → require `yes` confirmation → backup stateful data → `rm -f` → recreate via managed start script. Without adoption, doctor reports "foreign container — run `vz-ai-stack.sh adopt <svc>` to take ownership." (Reviewer Adversarial #1+#2.)
 8. **Conservative recreate enforcement**: `bin/start-<svc>.sh` detects an existing container of the same name and prints `Container exists. Use --recreate (will backup data, rm -f, recreate).` Refuses silent destruction. (Reviewer Adversarial #9.)
-9. **Container labels** for every managed container: `ai-stack.managed=true`, `ai-stack.phase=NN`, `ai-stack.partial=true` (removed after smoke test passes). `install.sh gc` lists & cleans `partial=true` orphans. (Reviewer Adversarial #11.)
+9. **Container labels** for every managed container: `ai-stack.managed=true`, `ai-stack.phase=NN`, `ai-stack.partial=true` (removed after smoke test passes). `vz-ai-stack.sh gc` lists & cleans `partial=true` orphans. (Reviewer Adversarial #11.)
 10. **Reset tiers**: `reset --confirm soft` (state + bin/), `reset --confirm hard` (+ managed containers + data/ with `.bak-<ts>`), `reset --confirm nuke` (+ .env + ollama models; user must literally type `nuke ai-stack`). Each prints blast radius table. (Reviewer Adversarial #7.)
-11. **Per-model smoke for LiteLLM**: `install.sh test 01` issues `messages=[{role:user,content:"ping"}], max_tokens:1` for each declared `model_name`. Records PASS/FAIL/SKIP-NO-KEY. Failures don't fail the phase (provider deprecations are common) but doctor surfaces them. (Reviewer Adversarial #10.)
-12. **Downstream-restart queue**: when a phase mutates `.env` in a way that requires restarting an upstream-installed service (e.g., phase 03 sets `HONCHO_API_KEY`, but litellm was started in phase 01 with empty), the installer writes the affected service name to `installer/state/restarts-needed.txt`. End-of-install prints the list with `install.sh apply-restarts` to drain. Never auto-restarts in conservative mode. (Reviewer Adversarial #12.)
+11. **Per-model smoke for LiteLLM**: `vz-ai-stack.sh test 01` issues `messages=[{role:user,content:"ping"}], max_tokens:1` for each declared `model_name`. Records PASS/FAIL/SKIP-NO-KEY. Failures don't fail the phase (provider deprecations are common) but doctor surfaces them. (Reviewer Adversarial #10.)
+12. **Downstream-restart queue**: when a phase mutates `.env` in a way that requires restarting an upstream-installed service (e.g., phase 03 sets `HONCHO_API_KEY`, but litellm was started in phase 01 with empty), the installer writes the affected service name to `installer/state/restarts-needed.txt`. End-of-install prints the list with `vz-ai-stack.sh apply-restarts` to drain. Never auto-restarts in conservative mode. (Reviewer Adversarial #12.)
 13. **Callback chain mechanism**: `lib/litellm.sh` has `litellm_ensure_callback(module, file)` — file must exist + Python import must succeed before yq mutates `config.yaml`. After mutation, full recreate (not restart) so env vars are reloaded, then post-recreate verify via `docker logs litellm | grep <module>`. (Reviewer A #1.)
-14. **CHANGELOG races avoided**: per-run files in `CHANGELOG.d/<run-id>.md` rather than appending to `CHANGELOG.md`. `install.sh history` compiles. (Reviewer Adversarial.)
+14. **CHANGELOG races avoided**: per-run files in `CHANGELOG.d/<run-id>.md` rather than appending to `CHANGELOG.md`. `vz-ai-stack.sh history` compiles. (Reviewer Adversarial.)
 15. **Per-container backup before destructive action**: Phoenix → `docker cp phoenix:/mnt/data/phoenix.db data/phoenix/phoenix.db.bak-<ts>`. Falkor → `SAVE` + cp rdb. Qdrant → snapshot via REST. (Reviewer Adversarial #2.)
 16. **Honcho/embeddings**: Honcho points at LiteLLM, not OpenAI direct, so traces flow through one place and costs are accountable. (Reviewer A #6.)
 17. **No `--network host` on macOS**: bind on 127.0.0.1 explicitly; `host.docker.internal` for the host-from-container path. Per-host healthcheck step `docker run --rm alpine getent hosts host.docker.internal` runs in phase 00 to verify OrbStack's networking. (Reviewer A #3.)

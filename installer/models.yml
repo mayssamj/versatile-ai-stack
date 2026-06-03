@@ -1,8 +1,8 @@
 # /Users/mayssam.sayyadian/ai-stack/installer/models.yml
 # CANONICAL single source of truth for model<->agent binding.
-# Inspect:  install.sh model list
-# Re-render every agent + the LiteLLM model_list (idempotent):  install.sh model sync
-# Re-point one agent:  install.sh model assign <agent> <model>
+# Inspect:  vz-ai-stack.sh model list
+# Re-render every agent + the LiteLLM model_list (idempotent):  vz-ai-stack.sh model sync
+# Re-point one agent:  vz-ai-stack.sh model assign <agent> <model>
 version: 1
 models:
   local-gemma4:

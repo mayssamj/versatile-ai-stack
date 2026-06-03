@@ -14,7 +14,7 @@
 #      Linux, never on macOS)
 #   3. Daemonizes the studio via bin/start-unsloth.sh (idempotent)
 #
-# Standalone install: `bash install.sh install 14`
+# Standalone install: `bash vz-ai-stack.sh install 14`
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"

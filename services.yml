@@ -1,5 +1,5 @@
 # Declared state for the AI stack. Single source of truth.
-# Edit, then run: bash install.sh status   (or `stack status` once `bin/` is on PATH)
+# Edit, then run: bash vz-ai-stack.sh status   (or `stack status` once `bin/` is on PATH)
 #
 # After Phase 04·G's audit, the daily-driver commands are:
 #   stack apply                       reconcile actual → declared
@@ -8,7 +8,7 @@
 #   stack restart <svc>               recreate one service (backs up state)
 #
 # Conservative-recreate policy (chosen 2026-05-27): the doctor reports drift
-# on running containers but never auto-recreates them. Use `install.sh adopt
+# on running containers but never auto-recreates them. Use `vz-ai-stack.sh adopt
 # <svc>` to take ownership of a container started outside the installer.
 #
 # Schema v2 (networking refactor):
@@ -438,7 +438,7 @@ services:
     phase: "21"
     network: none
     # Global npm CLI on the host; ships a Claude Code skill (portless get/list).
-    # Node 24+ recommended (runs under 22). `install.sh install portless`.
+    # Node 24+ recommended (runs under 22). `vz-ai-stack.sh install portless`.
   cmux:
     enabled: true # Phase 22 — native macOS terminal for parallel agent sessions
     type: cli-only
@@ -446,7 +446,7 @@ services:
     phase: "22"
     network: none
     # GUI app via `brew install --cask cmux` (tap manaflow-ai/cmux). No daemon;
-    # launched by the user. `install.sh install cmux`.
+    # launched by the user. `vz-ai-stack.sh install cmux`.
   skillspector:
     enabled: true # Phase 23 — NVIDIA agent-skill / MCP security scanner (offline-first)
     type: cli-only
@@ -454,7 +454,7 @@ services:
     phase: "23"
     network: none
     # Vendored clone (gitignored) + uv venv + bin/skillspector wrapper (--no-llm
-    # default). Optional LLM stage can point at LiteLLM. `install.sh install skillspector`.
+    # default). Optional LLM stage can point at LiteLLM. `vz-ai-stack.sh install skillspector`.
   openagents:
     enabled: true # Phase 24 — OpenAgents Launcher (`agn`); opt-in, OVERLAPS the stack
     type: cli-only
@@ -462,7 +462,7 @@ services:
     phase: "24"
     network: none
     # Installs to ~/.openagents (its own portable Node); NOT wired into LiteLLM/
-    # sandboxes/UIs. `install.sh install openagents`.
+    # sandboxes/UIs. `vz-ai-stack.sh install openagents`.
   lmstudio:
     enabled: true # Phase 25 — LM Studio (MLX) as a 2nd runtime behind LiteLLM
     type: cli-only
@@ -471,7 +471,7 @@ services:
     network: none
     # Host OpenAI server on :1234 (bound 0.0.0.0 for container access). Adds
     # `local-lfm2-mlx` to LiteLLM (LFM2.5 MLX — working tool-calling, unlike the
-    # Ollama GGUF). Ollama stays the default. `install.sh install lmstudio`.
+    # Ollama GGUF). Ollama stays the default. `vz-ai-stack.sh install lmstudio`.
     consumes_env:
       - LITELLM_MASTER_KEY
 # Memory-mode profiles. `stack profile coding` enables coding-mode set

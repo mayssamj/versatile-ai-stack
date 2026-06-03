@@ -19,7 +19,7 @@
 # Requires a LIVE OpenShell relay for the Hermes/Pi chat paths (HANDOFF §2.1);
 # the bridge fails fast + shows "agent unavailable" if the relay is down.
 #
-# Standalone: `bash install.sh install 19`.
+# Standalone: `bash vz-ai-stack.sh install 19`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"

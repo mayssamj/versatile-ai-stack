@@ -26,7 +26,7 @@
 # for a host LLM server; restrict via a firewall or LM Studio's network toggle if
 # you're on an untrusted network.
 #
-# Standalone:  bash install.sh install 25   (or:  install.sh install lmstudio)
+# Standalone:  bash vz-ai-stack.sh install 25   (or:  vz-ai-stack.sh install lmstudio)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -81,7 +81,7 @@ if ! _app_present; then
   fi
 fi
 if ! _app_present; then
-  warn "LM Studio.app not present and brew install didn't land it. Install it from https://lmstudio.ai then re-run 'install.sh install lmstudio'. (non-fatal)"
+  warn "LM Studio.app not present and brew install didn't land it. Install it from https://lmstudio.ai then re-run 'vz-ai-stack.sh install lmstudio'. (non-fatal)"
   exit 0
 fi
 LMS="$(_lms)"
@@ -112,7 +112,7 @@ if ! _server_up; then
     # auto-load below) is what swap-thrash-locked the Mac 2026-06-01. The user
     # starts LM Studio deliberately when they have the RAM for it.
     note "LM Studio server not running and LMS_AUTOSTART unset — LM Studio is OPT-IN (its app idle-spins CPU; big MLX models need lots of RAM)."
-    note "To use MLX models:  $LMS server start -p ${LMS_PORT} --bind 0.0.0.0   then re-run 'install.sh install lmstudio'  (or set LMS_AUTOSTART=1 for a one-shot start)."
+    note "To use MLX models:  $LMS server start -p ${LMS_PORT} --bind 0.0.0.0   then re-run 'vz-ai-stack.sh install lmstudio'  (or set LMS_AUTOSTART=1 for a one-shot start)."
     exit 0
   fi
 fi
@@ -126,7 +126,7 @@ ok "LM Studio server up on $LMS_URL"
 _weights_present() { ls "$MLX_DIR"/*.safetensors >/dev/null 2>&1; }
 if ! _weights_present; then
   if ! command -v uv >/dev/null 2>&1 && ! command -v uvx >/dev/null 2>&1; then
-    warn "uv/uvx not on PATH — needed to fetch $MLX_REPO from HF. Run 'install.sh install 14' (ships uv), then re-run. (non-fatal)"
+    warn "uv/uvx not on PATH — needed to fetch $MLX_REPO from HF. Run 'vz-ai-stack.sh install 14' (ships uv), then re-run. (non-fatal)"
     exit 0
   fi
   log "Downloading $MLX_REPO from HF into LM Studio's models dir (~5GB)..."

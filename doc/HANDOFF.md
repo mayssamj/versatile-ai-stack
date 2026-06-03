@@ -12,12 +12,12 @@ in fifteen minutes.
 |---|---|
 | Host | Mayssam Sayyadian's MacBook Pro M4 24 GB, macOS Sequoia, OrbStack docker, Homebrew, Python 3.13, brew bash 5.x |
 | Stack root | `~/ai-stack/` (= `/Users/mayssam.sayyadian/ai-stack/`) |
-| Entry point | `bash install.sh` (and the `stack` alias = `bash install.sh`) |
+| Entry point | `bash vz-ai-stack.sh` (and the `stack` alias = `bash vz-ai-stack.sh`) |
 | Total phases | **27 core + 5 opt-in extras** = 32 phase files. Core: 00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. Opt-in (install by name, NOT in `install all`): 21 portless, 22 cmux, 23 skillspector, 24 openagents, 25 lmstudio. |
 | Default phase order (`install all`) | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20` (note: 03 before 01 — see §3.1) |
 | Total services in `services.yml` | **39** (added `rlm` Phase 18; `claw3d` + `claw3d_bridge` Phase 19; `hermes_telegram` Phase 20; the 5 opt-in extras 21–25) |
 | Total doctor checks | **40** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40) |
-| Model↔agent binding | `installer/models.yml` is the single source of truth; **3 canonical models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in). `install.sh model {list,assign,sync,superset}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
+| Model↔agent binding | `installer/models.yml` is the single source of truth; **3 canonical models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in). `vz-ai-stack.sh model {list,assign,sync,superset}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs now live under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed` (drop files into `~/ai-stack/ingestor/inbox`); there is NO top-level `docs/` dir anymore. |
 | Last verified doctor pass | 2026-05-31: a fresh `install all` reaches **40/40** (Phase 18 RLM + Phase 19 claw3d + Phase 20 Telegram + check 40 models_binding). ⚠️ A long-idle live stack can show 2 OpenShell-exec checks (25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
 | Last verified cold install | 2026-05-31 — `reset --confirm hard --yes` → `install all` → `doctor` 40/40 green, end-to-end (Phases 19 claw3d + 20 Telegram verified; check 33 skips→passes when no `HERMES_TELEGRAM_BOT_TOKEN`. See CHANGELOG 2026-05-31) |
@@ -78,7 +78,7 @@ in fifteen minutes.
 - **RLM** (Phase 18, NEW 2026-05-31) — Recursive Language Models (`rlms` pip lib, `bin/rlm` wrapper + `rlm/run_rlm.py` runner). Model recursively calls itself over long context via a REPL that runs in a DOCKER SANDBOX (`python:3.11-slim`, not the host). Routes via LiteLLM + `RLM_LITELLM_KEY`, works on local models. It's the substrate HALO is built on.
 - **Blaxel CLI** (Phase 12) — installed only.
 
-### `stack` CLI subcommands (`install.sh`)
+### `stack` CLI subcommands (`vz-ai-stack.sh`)
 - `install [phase|all]` — run a phase or all phases
 - `prepare-sudo` — sudo'd /etc/hosts + lo0 + launchd plist setup (idempotent)
 - `verify` — runtime probes (lo0, /etc/hosts, host-gateway, end-to-end routing). Cheap, < 10s.
@@ -107,9 +107,9 @@ brew services restart openshell
 # This puts BOTH sandboxes into "Error" phase. You must delete+recreate:
 openshell sandbox delete pi-v1 2>/dev/null
 openshell sandbox delete hermes-fleet-v1 2>/dev/null
-bash ~/ai-stack/install.sh install 04   # recreates hermes-fleet-v1
-bash ~/ai-stack/install.sh install 04f  # reinstalls Hermes in it
-bash ~/ai-stack/install.sh install 15   # recreates pi-v1 + reinstalls Pi
+bash ~/ai-stack/vz-ai-stack.sh install 04   # recreates hermes-fleet-v1
+bash ~/ai-stack/vz-ai-stack.sh install 04f  # reinstalls Hermes in it
+bash ~/ai-stack/vz-ai-stack.sh install 15   # recreates pi-v1 + reinstalls Pi
 ```
 
 **Why this hasn't been fixed in-code:** the relay timeout is upstream OpenShell. A doctor auto-fix that does this dance behind a y/n prompt would be the right move (~50 LOC), but not landed yet.
@@ -124,7 +124,7 @@ bash ~/ai-stack/install.sh install 15   # recreates pi-v1 + reinstalls Pi
 ```bash
 docker network create openshell-docker
 openshell sandbox delete hermes-fleet-v1 2>/dev/null  # clear errored record
-bash install.sh install 04                            # will succeed now
+bash vz-ai-stack.sh install 04                            # will succeed now
 ```
 
 ### 2.4 DeerFlow CPU thrash (Pydantic crash loop)
@@ -149,12 +149,12 @@ bash install.sh install 04                            # will succeed now
 
 Read **CHANGELOG.md top to bottom** for full reasoning. Summary of major changes:
 
-### 3.1 install.sh cold-path phase ordering (2026-05-30)
+### 3.1 vz-ai-stack.sh cold-path phase ordering (2026-05-30)
 **Problem:** `install all` from cold (post hard reset) failed at Phase 01 because LiteLLM's Prisma migration hangs without Postgres, which doesn't exist until Phase 03.
 
 **Fix:** Phase array reordered to `… 02 03 01 01h …`. Phase 03 (Honcho/Postgres) runs before Phase 01 (LiteLLM). Also: `bin/start-litellm.sh` now does a TCP check on `:5432` and fails-loud BEFORE starting LiteLLM (saves the 60s hang).
 
-**File:** `install.sh:325` (default phase array), `install.sh:178` (usage), `bin/start-litellm.sh:55-72` (Postgres precheck).
+**File:** `vz-ai-stack.sh:325` (default phase array), `vz-ai-stack.sh:178` (usage), `bin/start-litellm.sh:55-72` (Postgres precheck).
 
 ### 3.2 Phase 17 ACE (NEW 2026-05-29)
 - `installer/phases/17_ace.sh` — clones `github.com/ace-agent/ace`, runs `uv sync` (~600MB), mints `ACE_LITELLM_KEY` virtual key, writes `ace/.env` with `OPENAI_BASE_URL=http://litellm:4000/v1`, generates `bin/ace` wrapper with `appworld` safety guard.
@@ -176,7 +176,7 @@ Read **CHANGELOG.md top to bottom** for full reasoning. Summary of major changes
 - `docs_ingestor.type` corrected from `python-bg` (was wrong — it's a one-shot CLI) to `cli-only`.
 
 ### 3.5 stack start/stop subcommands (2026-05-29)
-- `install.sh` gained `cmd_start` / `cmd_stop` that dispatch to `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (falls back to `docker stop` if no script).
+- `vz-ai-stack.sh` gained `cmd_start` / `cmd_stop` that dispatch to `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (falls back to `docker stop` if no script).
 - Reverse-form `stack <svc> start` works via case-fallback in main dispatcher.
 - `enable`/`disable` accepted as aliases for `start`/`stop`.
 - `bin/start-deerflow.sh` / `bin/stop-deerflow.sh` wrap deerflow's `scripts/deploy.sh` and export `LITELLM_MASTER_KEY` for compose substitution.
@@ -204,7 +204,7 @@ Read **CHANGELOG.md top to bottom** for full reasoning. Summary of major changes
 ## 4. Architecture (short — full in ARCHITECTURE.md)
 
 ```
-install.sh                      ← entry; bash 5+ gate; dispatches subcommands
+vz-ai-stack.sh                      ← entry; bash 5+ gate; dispatches subcommands
   │
   ├── installer/lib/*.sh        ← helpers (sourced, not run directly)
   │   ├── common.sh             ← log/ok/warn/err, lock_acquire, stamp_*
@@ -246,8 +246,8 @@ Doctor check 25 detects relay timeout but only surfaces the manual recovery danc
 ### 5.5 `pi_gateway_litellm` status detector
 `stack status` shows `?` for this row — OpenShell L7 inference route, no `python-bg`/`compose`/`docker`-style detector. Add a new service type or special-case.
 
-### 5.6 install.sh adopt for compose services
-`installer/lib/docker.sh::container_exists` is single-container-only. `install.sh adopt`, `stack stop`, and several doctor checks may not work cleanly on compose services. Cross-cutting cleanup follow-up.
+### 5.6 vz-ai-stack.sh adopt for compose services
+`installer/lib/docker.sh::container_exists` is single-container-only. `vz-ai-stack.sh adopt`, `stack stop`, and several doctor checks may not work cleanly on compose services. Cross-cutting cleanup follow-up.
 
 ### 5.7 Phoenix per-key tagging propagation
 Unverified whether LiteLLM `tags` field propagates into Phoenix project name. Needs manual UI eyeball before promoting to a doctor check.
@@ -269,7 +269,7 @@ Phase 17 captures `ACE_PIN` SHA in `.env`. Should also be in a separate `install
 8. **`-e` flag after `-p`/`-v` in docker run** leaks env flags to the litellm CLI. All start scripts use canonical order.
 9. **OrbStack `*:80` wildcard listener.** Every `--publish 127.0.10.X:80:Y` collapses into single host-side `*:80`; HTTP services on port 80 routed to whichever container was registered first. **Fix permanent:** every HTTP service publishes on its native container port.
 10. **macOS does NOT auto-route `127.0.0.0/8`.** Only `127.0.0.1` is on `lo0` by default; `/etc/hosts` resolves but kernel routing drops packets to `127.0.10.X` unless explicitly bound via `ifconfig lo0 alias`. `prepare-sudo` binds; launchd plist re-binds on boot. Doctor check 19 enforces.
-11. **Cold install ordering: Phase 03 BEFORE Phase 01** (2026-05-30). LiteLLM needs Postgres from Honcho. Reordered in `install.sh:325`.
+11. **Cold install ordering: Phase 03 BEFORE Phase 01** (2026-05-30). LiteLLM needs Postgres from Honcho. Reordered in `vz-ai-stack.sh:325`.
 12. **`openshell-docker` network needed before Phase 04** (2026-05-30). Phase 04 now creates it defensively.
 13. **OpenShell sandbox uses `/sandbox/.venv` uv venv internally.** Don't use `--user` or `--break-system-packages` for `pip install` inside — both fail in a venv. Plain `pip install` works.
 
@@ -279,28 +279,28 @@ Phase 17 captures `ACE_PIN` SHA in `.env`. Should also be in a separate `install
 
 ```bash
 # 1. One-time sudo prep (writes /etc/hosts ai-stack block + lo0 aliases + launchd plist)
-sudo bash ~/ai-stack/install.sh prepare-sudo
+sudo bash ~/ai-stack/vz-ai-stack.sh prepare-sudo
 
 # 2. Hard reset if there's prior state (add --yes / -y for non-interactive)
-bash ~/ai-stack/install.sh reset --confirm hard --yes
+bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 
 # 3. Install everything (30–60 min depending on docker pulls)
-bash ~/ai-stack/install.sh install all
+bash ~/ai-stack/vz-ai-stack.sh install all
 
 # 4. Verify (40/40 expected)
-bash ~/ai-stack/install.sh doctor
+bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
 This canonical flow is VERIFIED end-to-end (40/40 doctor, 2026-05-31). OpenShell sandbox-create hangs are now auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash
-pkill -9 -f 'install.sh|openshell sandbox create'
+pkill -9 -f 'vz-ai-stack.sh|openshell sandbox create'
 rm -f ~/ai-stack/installer/state/.lock
 brew services restart openshell ; sleep 5
 openshell sandbox delete hermes-fleet-v1 2>/dev/null
 openshell sandbox delete pi-v1 2>/dev/null
-bash ~/ai-stack/install.sh install all   # resumes from where it left off
+bash ~/ai-stack/vz-ai-stack.sh install all   # resumes from where it left off
 ```
 
 **Most likely Phase 04f failure:** if PyPI is 403'd through the OpenShell egress proxy (per past Phase 04f notes — has happened intermittently), you'd need to pre-stage `hermes-agent` as a tarball like Phase 15 does for Pi. Not happened yet on Mayssam's host but documented as risk.
@@ -356,7 +356,7 @@ If you keep these as constraints, you'll write the right code.
 
 | File | Purpose |
 |---|---|
-| `install.sh` | Entry point, phase dispatcher, lock + bash5 gate |
+| `vz-ai-stack.sh` | Entry point, phase dispatcher, lock + bash5 gate |
 | `services.yml` | Single source of truth: 39 services with type/enabled/path/port/project/process_pattern/etc. (schema `version: 2`) |
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |

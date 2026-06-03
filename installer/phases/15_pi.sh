@@ -21,7 +21,7 @@
 # Mayssam's call after the 2026-05-29 2-reviewer forum. See
 # CHANGELOG.md 2026-05-29 entries.
 #
-# Standalone install: `bash install.sh install 15`
+# Standalone install: `bash vz-ai-stack.sh install 15`
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -77,7 +77,7 @@ fi
 hdr "Phase 15 — Pi (coding agent) in $SANDBOX sandbox"
 
 OSH="$(resolve_openshell)"
-[[ -n "$OSH" ]] || { err "openshell CLI not found — run 'bash install.sh install 04' first."; exit 1; }
+[[ -n "$OSH" ]] || { err "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first."; exit 1; }
 [[ -f "$POLICY" ]] || { err "missing policy file: $POLICY"; exit 1; }
 [[ -f "$PI_EXT_SRC" ]] || { err "missing Pi extension source: $PI_EXT_SRC"; exit 1; }
 
@@ -99,7 +99,7 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
 fi
 
 # Scoped key minted against the fixed SUPERSET (legacy IDs UNION the 3 canonical
-# model<->agent slugs) so `install.sh model assign/sync` can point Pi at
+# model<->agent slugs) so `vz-ai-stack.sh model assign/sync` can point Pi at
 # local-qwen3-coder (its declared default) without ever re-minting. The canonical
 # IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM enforces the allowlist server-side (cloud => 403).
@@ -187,7 +187,7 @@ ok "sandbox $SANDBOX: Ready"
 # MISSING. Bumping the Pi version in pi/package.json alone will NOT
 # regenerate the tar — you must:
 #   rm -f $AI_STACK/pi/pi-bootstrap.tar.gz pi/package-lock.json
-#   bash install.sh install 15
+#   bash vz-ai-stack.sh install 15
 # We don't auto-rebuild on package.json change because npm install + tar
 # is ~30s and most re-runs are unrelated config changes.
 PI_BOOTSTRAP_TAR="$PI_DIR/pi-bootstrap.tar.gz"

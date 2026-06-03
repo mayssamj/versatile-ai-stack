@@ -13,7 +13,7 @@ HALO_BIN=""
 for cand in "$HOME/.local/bin/halo" "${XDG_BIN_HOME:-$HOME/.local/bin}/halo"; do
   [[ -x "$cand" ]] && { HALO_BIN="$cand"; break; }
 done
-[[ -n "$HALO_BIN" ]] || { echo "halo-engine not installed — run 'bash install.sh install 11'" >&2; exit 1; }
+[[ -n "$HALO_BIN" ]] || { echo "halo-engine not installed — run 'bash vz-ai-stack.sh install 11'" >&2; exit 1; }
 export OPENAI_BASE_URL="http://litellm:4000/v1"
 export OPENAI_API_KEY="$(get_env HALO_LITELLM_KEY '' 2>/dev/null)"
 # HALO is built on the openai-agents SDK, which by default exports run traces to

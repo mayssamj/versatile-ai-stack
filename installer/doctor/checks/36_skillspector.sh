@@ -14,7 +14,7 @@ skillspector_diagnose() {
   local ss_cli="$ss_dir/.venv/bin/skillspector"
   # Not installed yet → skip (don't fail a stack that never ran Phase 23).
   if [[ ! -x "$ss_dir/.venv/bin/python" ]]; then
-    echo "SkillSpector not installed (skillspector/.venv absent) — run 'install.sh install 23' to add it. [skip]"
+    echo "SkillSpector not installed (skillspector/.venv absent) — run 'vz-ai-stack.sh install 23' to add it. [skip]"
     return 0
   fi
   if [[ ! -x "$ss_cli" ]]; then
@@ -36,6 +36,6 @@ skillspector_diagnose() {
 
 skillspector_fix() {
   warn "Re-run Phase 23 to (re)clone + (re)install SkillSpector + write bin/skillspector:"
-  warn "    bash $AI_STACK/install.sh install 23"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install 23"
   return 1
 }

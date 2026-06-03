@@ -14,13 +14,13 @@ lmstudio_diagnose() {
   # EXPECTED default state, not a fault — treat it as advisory (green) and only go
   # RED for a genuine misconfiguration: server IS up but LiteLLM isn't wired to it.
   if [[ ! -d "/Applications/LM Studio.app" ]]; then
-    echo "  (LM Studio not installed — opt-in; run 'install.sh install lmstudio' to add MLX behind LiteLLM)"
+    echo "  (LM Studio not installed — opt-in; run 'vz-ai-stack.sh install lmstudio' to add MLX behind LiteLLM)"
     return 0
   fi
   local lms=""
   [[ -x "$HOME/.lmstudio/bin/lms" ]] && lms="$HOME/.lmstudio/bin/lms"
   if [[ -z "$lms" ]]; then
-    echo "  (LM Studio.app present but lms CLI not bootstrapped — opt-in; open the app once or re-run 'install.sh install lmstudio')"
+    echo "  (LM Studio.app present but lms CLI not bootstrapped — opt-in; open the app once or re-run 'vz-ai-stack.sh install lmstudio')"
     return 0
   fi
   if ! curl -s -o /dev/null --max-time 4 "http://127.0.0.1:1234/v1/models" 2>/dev/null; then
@@ -30,7 +30,7 @@ lmstudio_diagnose() {
   # Server is UP — from here a wiring gap IS a real failure (the phase ran but
   # didn't finish wiring LiteLLM, so the running server is unusable by the stack).
   if ! grep -q 'model_name: local-lfm2-mlx\b' "$AI_STACK/litellm/config.yaml" 2>/dev/null; then
-    echo "server up on :1234 but local-lfm2-mlx NOT wired into litellm/config.yaml — re-run 'install.sh install lmstudio'"
+    echo "server up on :1234 but local-lfm2-mlx NOT wired into litellm/config.yaml — re-run 'vz-ai-stack.sh install lmstudio'"
     return 1
   fi
   local n
@@ -48,7 +48,7 @@ lmstudio_diagnose() {
       grep -qF "model_name: ${s}" "$cfg" 2>/dev/null || missing+=("$s")
     done < <(yq -r '.models | to_entries | .[] | select(.value.runtime == "lmstudio") | .key' "$yml" 2>/dev/null)
     if (( ${#missing[@]} > 0 )); then
-      echo "server up on :1234 but models.yml lmstudio slug(s) NOT in config.yaml: ${missing[*]} — run 'install.sh model sync'"
+      echo "server up on :1234 but models.yml lmstudio slug(s) NOT in config.yaml: ${missing[*]} — run 'vz-ai-stack.sh model sync'"
       return 1
     fi
   fi
@@ -73,6 +73,6 @@ lmstudio_diagnose() {
 
 lmstudio_fix() {
   warn "Re-run the LM Studio phase (idempotent: starts the server, ensures the MLX model, re-wires LiteLLM):"
-  warn "    bash $AI_STACK/install.sh install lmstudio"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install lmstudio"
   return 1
 }

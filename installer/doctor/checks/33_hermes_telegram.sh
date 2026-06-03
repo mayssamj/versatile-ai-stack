@@ -29,7 +29,7 @@ hermes_telegram_diagnose() {
   local state
   state="$("$osh" sandbox get hermes-fleet-v1 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*Phase:/ {print $2; exit}')"
   if [[ "$state" != "Ready" ]]; then
-    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'install.sh install 04'"
+    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'vz-ai-stack.sh install 04'"
     return 1
   fi
 
@@ -37,7 +37,7 @@ hermes_telegram_diagnose() {
   local status
   status="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 25 -- hermes gateway status 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
   if ! grep -qi 'running' <<<"$status"; then
-    echo "gateway not running in sandbox — start: bash $AI_STACK/bin/start-hermes-telegram.sh (or 'install.sh install 20')"
+    echo "gateway not running in sandbox — start: bash $AI_STACK/bin/start-hermes-telegram.sh (or 'vz-ai-stack.sh install 20')"
     return 1
   fi
 
@@ -47,7 +47,7 @@ hermes_telegram_diagnose() {
     bash -c 'grep -q "^TELEGRAM_BOT_TOKEN=." "$HOME/.hermes/.env" 2>/dev/null && echo YES || echo NO' \
     2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
   if [[ "$has" == "NO" ]]; then
-    echo "gateway up but TELEGRAM_BOT_TOKEN not in sandbox ~/.hermes/.env — re-run 'install.sh install 20'"
+    echo "gateway up but TELEGRAM_BOT_TOKEN not in sandbox ~/.hermes/.env — re-run 'vz-ai-stack.sh install 20'"
     return 1
   fi
 
@@ -90,7 +90,7 @@ hermes_telegram_diagnose() {
 hermes_telegram_fix() {
   warn "Restart the Telegram gateway:"
   warn "    bash $AI_STACK/bin/start-hermes-telegram.sh"
-  warn "Or re-run the phase:  bash $AI_STACK/install.sh install 20"
+  warn "Or re-run the phase:  bash $AI_STACK/vz-ai-stack.sh install 20"
   bash "$AI_STACK/bin/start-hermes-telegram.sh" >/dev/null 2>&1 || true
   return 1
 }

@@ -13,7 +13,7 @@ done
 
 # Or, in ai-stack, do all of this automatically (rebuilds hermes-fleet-v1 to these 9 roles,
 # wires models from installer/models.yml, installs the team-protocol + discipline skills):
-#   install.sh install agent_fleet
+#   vz-ai-stack.sh install agent_fleet
 
 # for each profile: write its SOUL.md (from the Hermes tab), set its toolset in config.yaml,
 # add MCP servers, then install its skills:

@@ -16,12 +16,12 @@ _portless_node_major() {
 portless_diagnose() {
   local rec=24
   if ! command -v portless >/dev/null 2>&1; then
-    echo "portless not installed — run 'install.sh install portless' to add it. [skip]"
+    echo "portless not installed — run 'vz-ai-stack.sh install portless' to add it. [skip]"
     return 0
   fi
   # Installed: a non-runnable binary is the only real failure.
   if ! portless --version >/dev/null 2>&1; then
-    echo "portless on PATH but '--version' failed — the install looks broken. Re-run 'install.sh install portless'."
+    echo "portless on PATH but '--version' failed — the install looks broken. Re-run 'vz-ai-stack.sh install portless'."
     return 1
   fi
   local maj ver
@@ -37,6 +37,6 @@ portless_diagnose() {
 
 portless_fix() {
   warn "Install or repair portless via its phase:"
-  warn "    bash $AI_STACK/install.sh install portless"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install portless"
   return 1
 }

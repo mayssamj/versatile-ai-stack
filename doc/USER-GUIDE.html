@@ -292,7 +292,7 @@
 
 <section id="overview" class="hero">
   <h1>Your AI stack, made operational.</h1>
-  <p>39 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>install.sh</code> done to a working multi-service workflow.</p>
+  <p>39 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>vz-ai-stack.sh</code> done to a working multi-service workflow.</p>
   <div class="stat-row">
     <div class="stat"><span class="n">39</span><span class="l">Services</span></div>
     <div class="stat"><span class="n">40</span><span class="l">Doctor checks</span></div>
@@ -304,7 +304,7 @@
 
 <section id="onboard">
   <h2>5 steps to fluency <span class="small">do these in order on your first day</span></h2>
-  <p class="lede">If you've cloned this repo and run <code>install.sh</code>, you're ready. Each step is 2-5 minutes.</p>
+  <p class="lede">If you've cloned this repo and run <code>vz-ai-stack.sh</code>, you're ready. Each step is 2-5 minutes.</p>
   <div class="onboard-steps">
     <div class="step">
       <span class="n">Step 1</span>
@@ -407,7 +407,7 @@
 
 <section id="cheatsheet">
   <h2>Daily cheatsheet</h2>
-  <p class="lede">Verified against <code>install.sh</code> and <code>bin/</code> on 2026-05-29. Commands flagged <span class="pill">⚠ N/A</span> don't actually exist; use the alternative shown.</p>
+  <p class="lede">Verified against <code>vz-ai-stack.sh</code> and <code>bin/</code> on 2026-05-29. Commands flagged <span class="pill">⚠ N/A</span> don't actually exist; use the alternative shown.</p>
   <div id="cheatsheetList"></div>
 </section>
 
@@ -417,9 +417,9 @@
 
   <h4>Standard triage order</h4>
   <ol>
-    <li><strong>Run doctor.</strong> <code>bash ~/ai-stack/install.sh doctor</code></li>
+    <li><strong>Run doctor.</strong> <code>bash ~/ai-stack/vz-ai-stack.sh doctor</code></li>
     <li><strong>Read the matching DOCTOR.md section</strong> for whichever check failed.</li>
-    <li><strong>Tail the relevant logs.</strong> <code>install.sh logs &lt;svc&gt; -f</code></li>
+    <li><strong>Tail the relevant logs.</strong> <code>vz-ai-stack.sh logs &lt;svc&gt; -f</code></li>
     <li><strong>Grep CHANGELOG.md</strong> for the service or symptom — known gotchas are documented.</li>
     <li><strong>Look at TROUBLESHOOTING.md</strong> for less-common issues.</li>
   </ol>
@@ -432,11 +432,11 @@
       <tr><td><code>curl http://litellm:4000</code> → 401</td><td>26</td><td><code>source .env</code>; verify <code>LITELLM_MASTER_KEY</code></td></tr>
       <tr><td>Phoenix has no traces</td><td>6, 9, 13</td><td>LiteLLM env: <code>PHOENIX_API_KEY</code>, <code>PHOENIX_COLLECTOR_HTTP_ENDPOINT</code></td></tr>
       <tr><td>Ollama 403 from inside container</td><td>Phase 00 plist</td><td><code>OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=*</code>, then <code>brew services restart ollama</code></td></tr>
-      <tr><td><code>bin/pi</code>: "PI_LITELLM_KEY missing"</td><td>26</td><td><code>bash install.sh install 15</code> (re-mints)</td></tr>
+      <tr><td><code>bin/pi</code>: "PI_LITELLM_KEY missing"</td><td>26</td><td><code>bash vz-ai-stack.sh install 15</code> (re-mints)</td></tr>
       <tr><td>Pi can reach forbidden destination</td><td>25</td><td><code>openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait</code></td></tr>
       <tr><td><code>openshell sandbox list</code> → empty</td><td>24</td><td><code>install 04</code> then <code>install 15</code></td></tr>
       <tr><td><code>docs-mcp</code> returns nothing</td><td>Phase 06</td><td><code>bin/start-docs_mcp.sh</code>; verify <code>curl docs-mcp:8765/health</code></td></tr>
-      <tr><td>Fan is on, idle CPU high</td><td>DeerFlow config crash-loop most likely</td><td><code>bash install.sh doctor</code> check 28; re-run <code>bash install.sh install 10</code> to re-patch <code>config.yaml</code>. After fix, idle is ~1% CPU / ~520 MB.</td></tr>
+      <tr><td>Fan is on, idle CPU high</td><td>DeerFlow config crash-loop most likely</td><td><code>bash vz-ai-stack.sh doctor</code> check 28; re-run <code>bash vz-ai-stack.sh install 10</code> to re-patch <code>config.yaml</code>. After fix, idle is ~1% CPU / ~520 MB.</td></tr>
     </tbody>
   </table>
 </section>
@@ -550,10 +550,10 @@ const services = [
 
   {id:'hermes_fleet', layer:'agent', layerLabel:'Agent runtime', name:'hermes-fleet', port:'(sandbox)', phase:'04·F', tagline:'7 specialist agent profiles',
    what:'cos, software_engineer, researcher, creator, reviewer, data_analyst, ops. Each a soul (system prompt + tools + a model bound in models.yml). All share the HERMES_LITELLM_KEY virtual key. Bindings: cos/researcher/data_analyst → local-qwen3.6; software_engineer/reviewer → local-qwen3-coder; creator/ops → local-gemma4. The five big-MLX-bound profiles are availability-gated to local-gemma4 when LM Studio is down. Booted on demand inside hermes-fleet-v1.',
-   when:'Multi-step tasks benefit from specialist personas. Quick chats use Open WebUI; multi-turn tool-using tasks dispatch a Hermes profile. Re-point a profile with `install.sh model assign <profile> <model>` then `model sync`.',
+   when:'Multi-step tasks benefit from specialist personas. Quick chats use Open WebUI; multi-turn tool-using tasks dispatch a Hermes profile. Re-point a profile with `vz-ai-stack.sh model assign <profile> <model>` then `model sync`.',
    tryThis:[
      {desc:'See the soul files.', cmd:'ls ~/ai-stack/openshell/fleet-souls/'},
-     {desc:'See each profile\'s bound model (declared vs served).', cmd:'bash ~/ai-stack/install.sh model list'},
+     {desc:'See each profile\'s bound model (declared vs served).', cmd:'bash ~/ai-stack/vz-ai-stack.sh model list'},
      {desc:'Run hermes_software_engineer.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_software_engineer "refactor /workspace/main.py for memoization"\''},
      {desc:'Long research task.', cmd:'openshell sandbox exec -n hermes-fleet-v1 -- \\\n  /bin/sh -c \'hermes hermes_researcher "summarize top themes in /workspace/papers/*.pdf"\''}
    ],
@@ -692,7 +692,7 @@ const services = [
      {desc:'Start (warning-free).', cmd:'stack start deerflow    # also: stack deerflow start, or bash bin/start-deerflow.sh'},
      {desc:'Open frontend.', cmd:'open "http://localhost:${PORT:-2026}"'},
      {desc:'Stop when done.', cmd:'stack stop deerflow     # also: stack deerflow stop'},
-     {desc:'Verify config is patched.', cmd:'bash ~/ai-stack/install.sh doctor deerflow_config'}
+     {desc:'Verify config is patched.', cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor deerflow_config'}
    ],
    combine:['litellm','honcho']},
 
@@ -936,23 +936,23 @@ const recipes = [
 // ============ Data: cheatsheet ============
 const cheatsheet = [
   {section:'Health + state', items:[
-    {cmd:'bash ~/ai-stack/install.sh doctor', desc:'40 health checks + auto-fix offers'},
-    {cmd:'bash ~/ai-stack/install.sh status', desc:'declared vs actual table'},
-    {cmd:'bash ~/ai-stack/install.sh verify', desc:'phase 00·V pre-install runtime probes'},
-    {cmd:'OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/install.sh doctor', desc:'+9 negative network probes for pi-v1'}
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'40 health checks + auto-fix offers'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh status', desc:'declared vs actual table'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh verify', desc:'phase 00·V pre-install runtime probes'},
+    {cmd:'OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'+9 negative network probes for pi-v1'}
   ]},
   {section:'Models (declarative model↔agent binding — see USER-GUIDE.md §2.16)', items:[
-    {cmd:'bash ~/ai-stack/install.sh model list', desc:'catalog + live declared-vs-served matrix (shows availability-gating)'},
-    {cmd:'bash ~/ai-stack/install.sh model assign <agent> <model>', desc:'re-point one agent (yq -i models.yml + sync that agent)'},
-    {cmd:'bash ~/ai-stack/install.sh model sync', desc:'reconcile everything from models.yml (opt-in; NOT run by install all). --dry-run / --no-restart available'},
-    {cmd:'bash ~/ai-stack/install.sh model superset', desc:'canonical scoped-key allowlist superset every virtual key is minted against'}
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh model list', desc:'catalog + live declared-vs-served matrix (shows availability-gating)'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh model assign <agent> <model>', desc:'re-point one agent (yq -i models.yml + sync that agent)'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh model sync', desc:'reconcile everything from models.yml (opt-in; NOT run by install all). --dry-run / --no-restart available'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh model superset', desc:'canonical scoped-key allowlist superset every virtual key is minted against'}
   ]},
   {section:'Install / re-run', items:[
-    {cmd:'bash ~/ai-stack/install.sh install 15', desc:'idempotent phase install'},
-    {cmd:'bash ~/ai-stack/install.sh test 01', desc:'smoke-test phase 01'}
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh install 15', desc:'idempotent phase install'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh test 01', desc:'smoke-test phase 01'}
   ]},
   {section:'Logs', items:[
-    {cmd:'bash ~/ai-stack/install.sh logs litellm -f', desc:'managed service log tail'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh logs litellm -f', desc:'managed service log tail'},
     {cmd:'docker logs -f phoenix', desc:'raw container'},
     {cmd:'tail -f ~/ai-stack/installer/state/unsloth.log', desc:'host bg process'}
   ]},
@@ -990,22 +990,22 @@ const cheatsheet = [
     {cmd:'cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py', desc:'sweep inbox → Qdrant'}
   ]},
   {section:'Ops', items:[
-    {cmd:'sudo bash ~/ai-stack/install.sh prepare-sudo', desc:'one-time host config (idempotent)'},
-    {cmd:'bash ~/ai-stack/install.sh adopt litellm', desc:'take over a foreign container'},
-    {cmd:'bash ~/ai-stack/install.sh apply-restarts', desc:'drain restart queue'},
-    {cmd:'bash ~/ai-stack/install.sh history', desc:'consolidated CHANGELOG view'},
-    {cmd:'bash ~/ai-stack/install.sh gc', desc:'clean partial container orphans'}
+    {cmd:'sudo bash ~/ai-stack/vz-ai-stack.sh prepare-sudo', desc:'one-time host config (idempotent)'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh adopt litellm', desc:'take over a foreign container'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh apply-restarts', desc:'drain restart queue'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh history', desc:'consolidated CHANGELOG view'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh gc', desc:'clean partial container orphans'}
   ]},
   {section:'Resets (destructive)', items:[
-    {cmd:'bash ~/ai-stack/install.sh reset --confirm soft', desc:'state + bin/ (keeps .env)'},
-    {cmd:'bash ~/ai-stack/install.sh reset --confirm hard', desc:'+ managed containers + data + OpenShell sandboxes + all compose projects (deerflow/autofyn/hermes-workspace) and their volumes (incl honcho_redis-data). Preserves ollama+models, docker images, .env, /etc/hosts block.'},
-    {cmd:'bash ~/ai-stack/install.sh reset --confirm hard --yes', desc:'non-interactive hard reset (-y / AI_STACK_ASSUME_YES). Pair with install all to rebuild.'},
-    {cmd:'bash ~/ai-stack/install.sh reset --confirm nuke', desc:'everything (re-download all)'}
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh reset --confirm soft', desc:'state + bin/ (keeps .env)'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard', desc:'+ managed containers + data + OpenShell sandboxes + all compose projects (deerflow/autofyn/hermes-workspace) and their volumes (incl honcho_redis-data). Preserves ollama+models, docker images, .env, /etc/hosts block.'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes', desc:'non-interactive hard reset (-y / AI_STACK_ASSUME_YES). Pair with install all to rebuild.'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh reset --confirm nuke', desc:'everything (re-download all)'}
   ]},
   {section:'⚠ Not implemented — use the workaround', items:[
     {cmd:'stack profile <name>', desc:'manual yq + bin/start scripts (see USER-GUIDE.md §4)'},
     {cmd:'stack enable/disable <svc>', desc:'yq -i ".services.<svc>.enabled = true/false" services.yml'},
-    {cmd:'stack apply', desc:'re-run install.sh install <phase> for the changed phase'},
+    {cmd:'stack apply', desc:'re-run vz-ai-stack.sh install <phase> for the changed phase'},
     {cmd:'stack restart <svc>', desc:'bash bin/start-<svc>.sh --recreate'}
   ]}
 ];

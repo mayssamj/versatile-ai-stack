@@ -6,7 +6,7 @@ Daily commands and common recipes. For initial install, see [INSTALL.md](INSTALL
 
 ## The `stack` command
 
-After install, `~/ai-stack/bin/stack` is a thin wrapper around `install.sh`
+After install, `~/ai-stack/bin/stack` is a thin wrapper around `vz-ai-stack.sh`
 subcommands. Add `~/ai-stack/bin` to your `$PATH` (the installer prints the
 exact line to add):
 
@@ -15,7 +15,7 @@ echo 'export PATH="$HOME/ai-stack/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/install.sh <cmd>`.
+Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/vz-ai-stack.sh <cmd>`.
 
 ---
 
@@ -41,8 +41,8 @@ stack reset --confirm soft|hard|nuke    # tiered destructive reset
 ### Phases by name or number
 
 `install` and `test` accept a **phase name OR number**. Phase files are
-`<id>_<name>.sh`, so the name is the filename suffix — `install.sh install phoenix`
-is the same as `install 01h`. `install.sh phases` prints the full `id → name` table.
+`<id>_<name>.sh`, so the name is the filename suffix — `vz-ai-stack.sh install phoenix`
+is the same as `install 01h`. `vz-ai-stack.sh phases` prints the full `id → name` table.
 
 ```bash
 stack install phoenix          # == install 01h
@@ -93,7 +93,7 @@ Use any model from `~/ai-stack/services.yml` (or `curl /v1/models | jq`).
 Verified models: `local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`,
 `claude-sonnet`, `claude-opus`, `openai-gpt-5.5`, `openrouter-claude-opus-4.7`,
 `google-gemini-3.1-pro`, plus more (the legacy `local` / `local-heavy` /
-`local-lfm2` slugs still resolve). Run `install.sh model list` for the live
+`local-lfm2` slugs still resolve). Run `vz-ai-stack.sh model list` for the live
 per-agent matrix.
 
 ### Watch traces stream
@@ -147,7 +147,7 @@ docker network inspect ai-stack --format '{{range .Containers}}{{.Name}} {{end}}
 ```
 
 If an `http://<alias>:<port>` curl returns "connection refused" or hangs,
-run `bash install.sh verify` — Phase 00·V's probes pinpoint which layer
+run `bash vz-ai-stack.sh verify` — Phase 00·V's probes pinpoint which layer
 broke (lo0 binding, /etc/hosts, DNS, host-gateway, end-to-end). See
 [TROUBLESHOOTING.md § Connection refused](TROUBLESHOOTING.md) for the
 manual diagnosis sequence.
@@ -242,7 +242,7 @@ OSH=/opt/homebrew/bin/openshell
 # Start / restart (idempotent — ends with exactly one gateway on the latest config):
 bash ~/ai-stack/bin/start-hermes-telegram.sh
 # or, to also (re)apply token + allowlist from .env:
-bash ~/ai-stack/install.sh install 20
+bash ~/ai-stack/vz-ai-stack.sh install 20
 
 # Status / logs / stop:
 $OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status
@@ -268,7 +268,7 @@ the real liveness probe is `doctor` check 33. See
 ## Which model each agent uses (declarative, per-agent)
 
 Each agent's LLM is **declared per-agent** in `installer/models.yml` (the single source
-of truth) and rendered into every agent's config by `install.sh model {list,assign,sync,superset}`.
+of truth) and rendered into every agent's config by `vz-ai-stack.sh model {list,assign,sync,superset}`.
 See [models.md](models.md) for the full reference. Three local models:
 
 | model | runtime | role |
@@ -283,13 +283,13 @@ and `pi` → `local-qwen3-coder`; reasoning-heavy `hermes_cos` + `hermes_researc
 `ace` + `rlm` → `local-gemma4`. An lmstudio-assigned agent **auto-falls-back to
 `local-gemma4`** when LM Studio (:1234) is down or the model isn't served, so a plain
 `install all` works with no LM Studio. To activate the big MLX models: start LM Studio +
-load the model (or `install.sh install lmstudio`), then `install.sh model sync`.
+load the model (or `vz-ai-stack.sh install lmstudio`), then `vz-ai-stack.sh model sync`.
 
 ```bash
-install.sh model list                 # read-only catalog + live per-agent matrix
-install.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
-install.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
-install.sh model superset             # print the canonical scoped-key allowlist
+vz-ai-stack.sh model list                 # read-only catalog + live per-agent matrix
+vz-ai-stack.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
+vz-ai-stack.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
+vz-ai-stack.sh model superset             # print the canonical scoped-key allowlist
 ```
 
 The two big MLX models (~17 GB each) **cannot be resident together** on a 24 GB box;
@@ -359,7 +359,7 @@ it does the recreate path, not `docker restart`.
 
 ---
 
-## Upgrading services (`install.sh upgrade`)
+## Upgrading services (`vz-ai-stack.sh upgrade`)
 
 A generic, **type-dispatched** upgrade verb — it reads each service's `type`
 from `services.yml` and does the right thing: docker → `pull` + recreate,
@@ -497,13 +497,13 @@ itself uses `__check` to minimize collision risk.)
 
 5. Add a doctor check in `installer/doctor/checks/`.
 
-6. Re-run: `bash install.sh install <phase>`.
+6. Re-run: `bash vz-ai-stack.sh install <phase>`.
 
 ---
 
 ## Common questions
 
-**Q: Will `install.sh install all` mess with my running containers?**
+**Q: Will `vz-ai-stack.sh install all` mess with my running containers?**
 A: No, not in conservative mode (the default). It detects foreign containers,
 flags them in `status`, and tells you to `adopt` when you're ready. It will
 start NEW containers for services that aren't running.

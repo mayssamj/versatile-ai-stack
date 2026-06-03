@@ -46,7 +46,7 @@ per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
   `disable-model-invocation: true` where the platform supports it.
 
 ## Install (via ai-stack)
-- **Hermes** — `install.sh install agent_fleet` rebuilds the `hermes-fleet-v1` fleet to these 9 roles
+- **Hermes** — `vz-ai-stack.sh install agent_fleet` rebuilds the `hermes-fleet-v1` fleet to these 9 roles
   (one credential-isolated profile per role; models from `installer/models.yml`, routed through LiteLLM).
 - **Pi** — phase-1 personas uploaded into the `pi-v1` sandbox; switch with `bin/pi-as <role>`.
 - **Claude Code** — the 9 agents + 6 skills are copied into `~/.claude/{agents,skills}/` (global).

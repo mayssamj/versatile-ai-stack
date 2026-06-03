@@ -183,17 +183,17 @@ cd ~/ai-stack
 #    Writes the /etc/hosts block, binds the 127.0.10.x loopback aliases to lo0,
 #    installs a launchd plist so they persist across reboots, and flushes DNS.
 #    Idempotent — safe to re-run.
-sudo bash install.sh prepare-sudo
+sudo bash vz-ai-stack.sh prepare-sudo
 
 # 2. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
 #    Installs all 27 core phases top-to-bottom; resumes if interrupted.
-bash install.sh install all
+bash vz-ai-stack.sh install all
 
 # 3. Verify everything is healthy. Expect 40/40.
-bash install.sh doctor
+bash vz-ai-stack.sh doctor
 ```
 
-> Tip: a cheap `bash install.sh verify` (< 10 sec) probes the alias chain end-to-end
+> Tip: a cheap `bash vz-ai-stack.sh verify` (< 10 sec) probes the alias chain end-to-end
 > and is worth running *before* the full install.
 
 ### Open the UIs
@@ -417,17 +417,17 @@ subcommands are:
 
 ```bash
 # Install/re-run one phase by NAME or number (run `phases` to list id→name)
-bash ~/ai-stack/install.sh install phoenix     # == install 01h
-bash ~/ai-stack/install.sh phases
+bash ~/ai-stack/vz-ai-stack.sh install phoenix     # == install 01h
+bash ~/ai-stack/vz-ai-stack.sh phases
 
 # See declared vs actual state
-bash ~/ai-stack/install.sh status
+bash ~/ai-stack/vz-ai-stack.sh status
 
 # Take ownership of a container started outside the installer
-bash ~/ai-stack/install.sh adopt <service>
+bash ~/ai-stack/vz-ai-stack.sh adopt <service>
 
 # Apply queued restarts (e.g. after .env changes)
-bash ~/ai-stack/install.sh apply-restarts
+bash ~/ai-stack/vz-ai-stack.sh apply-restarts
 ```
 
 Add this to your shell rc for the short `stack` alias:
@@ -485,7 +485,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   matrix, 3 sequence diagrams for the most-important request flows,
   startup-order graph, and a failure-mode-cascade table for triage.
 - **[models.md](doc/models.md)** — declarative model ↔ agent binding. `models.yml`
-  as the single source of truth, the three local models, `install.sh model
+  as the single source of truth, the three local models, `vz-ai-stack.sh model
   {list,assign,sync,superset}`, availability-gating, and the scoped-key superset.
 
 ### Operate
@@ -538,7 +538,7 @@ the guard rails.
 
 ```
 ~/ai-stack/
-├── install.sh              # entry point — bash-5+ gate + subcommand dispatcher
+├── vz-ai-stack.sh              # entry point — bash-5+ gate + subcommand dispatcher
 ├── services.yml            # single source of truth (39 services, 4 profiles)
 ├── .env                    # secrets + config (0600)
 ├── README.md ← you are here
@@ -567,16 +567,16 @@ the guard rails.
 ## Status
 
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
-snapshot; run `bash install.sh doctor` for live state. Top-line:
+snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
 - **27 core install phases (+5 opt-in extras: portless · cmux · skillspector · openagents · lmstudio) · 39 services · 40 doctor checks.**
-- Phases install by **name or number** (`install phoenix` == `install 01h`); `install.sh phases` lists id→name.
+- Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
   the 5 opt-in extras' checks (34–38) pass-as-skip when not installed, and check 39
   (`openshell_storm`) reports the watchdog status.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
-  of truth) and rendered by `install.sh model {list,assign,sync,superset}`. Three local
+  of truth) and rendered by `vz-ai-stack.sh model {list,assign,sync,superset}`. Three local
   models: `local-gemma4` (Ollama gemma4:e4b — the default for any unassigned agent),
   `local-qwen3.6` (LM Studio MLX, heavy reasoning), `local-qwen3-coder` (LM Studio MLX,
   coding). lmstudio-assigned agents auto-fall-back to `local-gemma4` when LM Studio (:1234)

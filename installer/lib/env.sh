@@ -1,5 +1,5 @@
 # env.sh — safe .env reads + writes.
-# Sourced by install.sh after common.sh.
+# Sourced by vz-ai-stack.sh after common.sh.
 #
 # Design notes (Reviewer B #6, Reviewer Adversarial #4):
 #   - WRITES: awk → tmpfile → mv. 0600 chmod BEFORE content is written.

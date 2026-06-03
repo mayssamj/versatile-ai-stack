@@ -24,7 +24,7 @@ claude --model opus
   (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`).
 
 ## In ai-stack (automated, GLOBAL install)
-`install.sh install agent_fleet` copies all 9 agents → `~/.claude/agents/` and the 6 shared skills →
+`vz-ai-stack.sh install agent_fleet` copies all 9 agents → `~/.claude/agents/` and the 6 shared skills →
 `~/.claude/skills/<name>/SKILL.md` (USER-global — active in every Claude Code session on this machine). It is
 idempotent and will NOT clobber a file you've edited (it writes `<name>.md.ai-stack-new` beside it and warns).
 Claude Code runs on your native `claude login` subscription, so agents keep `model: opus`/`sonnet` aliases —

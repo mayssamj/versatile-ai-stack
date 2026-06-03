@@ -9,7 +9,7 @@
 #
 # This check runs the FAST positive probes by default (3 destinations × 2s
 # timeout = ~6s). The full denied-set sweep (~9 destinations × 2s = ~18s)
-# only runs when OPENSHELL_DOCTOR_SLOW=1 or `bash install.sh doctor --all`.
+# only runs when OPENSHELL_DOCTOR_SLOW=1 or `bash vz-ai-stack.sh doctor --all`.
 #
 # What this check does NOT prove:
 #   - Honcho peer-level isolation between Pi and Hermes (Honcho v3 has no

@@ -23,7 +23,7 @@ cmux_diagnose() {
     return 0
   fi
   if ! _cmux_present; then
-    echo "cmux not installed — run 'install.sh install 22' to add it. [skip]"
+    echo "cmux not installed — run 'vz-ai-stack.sh install 22' to add it. [skip]"
     return 0
   fi
   echo "  (installed — launch with 'open -a cmux'; update via 'brew upgrade --cask cmux')"
@@ -32,7 +32,7 @@ cmux_diagnose() {
 
 cmux_fix() {
   warn "Install / repair cmux:"
-  warn "    bash $AI_STACK/install.sh install 22"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install 22"
   warn "Or manually:  brew tap manaflow-ai/cmux && brew install --cask cmux"
   return 1
 }

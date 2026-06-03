@@ -6,7 +6,7 @@
 #   nuke:  + .env (backed up) + ollama models + /etc/hosts block removed.
 #          User must type 'nuke ai-stack' literally.
 #
-# Non-interactive: `install.sh reset --confirm hard --yes` exports
+# Non-interactive: `vz-ai-stack.sh reset --confirm hard --yes` exports
 # AI_STACK_ASSUME_YES=1 so the soft/hard y/n gate auto-accepts (see prompt.sh).
 # The nuke typed gate is NOT a confirm() and stays manual regardless of --yes.
 #

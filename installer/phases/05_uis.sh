@@ -32,7 +32,7 @@ hdr "Phase 05 — Host UIs"
 # --- Open WebUI ---
 if container_running openwebui; then
   if container_managed openwebui; then ok "openwebui already running (managed)"
-  else warn "openwebui is FOREIGN; run 'install.sh adopt openwebui'"
+  else warn "openwebui is FOREIGN; run 'vz-ai-stack.sh adopt openwebui'"
   fi
 else
   bash "$AI_STACK/bin/start-openwebui.sh"

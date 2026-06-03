@@ -10,7 +10,7 @@ service-by-service tour see [STACK-GUIDE.md](STACK-GUIDE.md); for recipes see
 
 ## 1. The `stack` command (everything goes through it)
 
-`bin/stack` is a thin wrapper around `install.sh`. Put `bin/` on your PATH once:
+`bin/stack` is a thin wrapper around `vz-ai-stack.sh`. Put `bin/` on your PATH once:
 
 ```bash
 echo 'export PATH="$HOME/ai-stack/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
@@ -78,7 +78,7 @@ host-gateway / routing). See [TROUBLESHOOTING.md § Connection refused](TROUBLES
 ## 3. The agents you can talk to
 
 All agents call local models through LiteLLM. Which model each agent uses is
-**declared per-agent** in `installer/models.yml` and rendered by `install.sh model
+**declared per-agent** in `installer/models.yml` and rendered by `vz-ai-stack.sh model
 sync` (see [models.md](models.md)). Unassigned agents default to `local-gemma4`
 (gemma4:e4b, fast on the 24 GB box); the coder profiles + Pi use `local-qwen3-coder`
 and the reasoning-heavy profiles + DeerFlow use `local-qwen3.6` (both LM Studio MLX,
@@ -176,5 +176,5 @@ Full write-ups: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
   sandboxed Pi, Phoenix evals).
 - **What each tool is** → [COMPONENTS.md](COMPONENTS.md) (index) / [STACK-GUIDE.md](STACK-GUIDE.md) (tour).
 - **Day-to-day commands** → [OPERATIONS.md](OPERATIONS.md).
-- **Which model each agent uses** → [models.md](models.md) (`install.sh model` binding).
+- **Which model each agent uses** → [models.md](models.md) (`vz-ai-stack.sh model` binding).
 - **Something's broken** → [DOCTOR.md](DOCTOR.md) then [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

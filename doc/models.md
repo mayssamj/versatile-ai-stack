@@ -1,7 +1,7 @@
-# Model <-> agent binding (`install.sh model`)
+# Model <-> agent binding (`vz-ai-stack.sh model`)
 
 `installer/models.yml` is the **single source of truth** for which LLM each
-agent uses. `install.sh model {list,assign,sync,discover,add,superset}` renders
+agent uses. `vz-ai-stack.sh model {list,assign,sync,discover,add,superset}` renders
 every agent's config and the LiteLLM `model_list` from it.
 
 > Diagrams for everything below live in
@@ -13,7 +13,7 @@ every agent's config and the LiteLLM `model_list` from it.
 
 One file — `installer/models.yml` — declares **both** every agent's model
 binding **and** the canonical entries of the LiteLLM `model_list`. Nothing else
-hand-edits an agent's model; `install.sh model {list,assign,sync,discover,add,superset}`
+hand-edits an agent's model; `vz-ai-stack.sh model {list,assign,sync,discover,add,superset}`
 renders it all from this file.
 
 ### The three canonical model IDs
@@ -119,7 +119,7 @@ the start command for each.
   - These models are declared in **`installer/models.yml`** with `runtime:
     meridian` (+ an `effort:` field) — `model sync` renders them into
     `litellm/config.yaml`, joins them to the scoped-key superset, and makes them
-    **assignable** (`install.sh model assign pi claude-opus-4.8-sub-xhigh`).
+    **assignable** (`vz-ai-stack.sh model assign pi claude-opus-4.8-sub-xhigh`).
     They availability-gate to `default` (local-gemma4) when Meridian is down.
   - **Current assignments:** `pi` (coding) and `deerflow` (research) →
     `claude-opus-4.8-sub-max`. The Hermes fleet stays on local models (7 parallel
@@ -128,17 +128,17 @@ the start command for each.
 ## Workflow
 
 ```sh
-install.sh model list                 # READ-ONLY catalog + live agent matrix
-install.sh model list --json          # machine-readable
-install.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
-install.sh model sync                 # render EVERY agent + the LiteLLM model_list
-install.sh model sync pi              # render just one agent
-install.sh model sync --dry-run       # print the plan + a config.yaml diff, write nothing
-install.sh model sync --no-restart    # don't restart LiteLLM even if config changed
-install.sh model discover             # READ-ONLY LM Studio library catalog (server may be down)
-install.sh model add <slug> [as <name>]        # declare an LM Studio library model, then sync
-install.sh model superset             # print the DERIVED scoped-key allowlist
-install.sh model superset --json      # machine-readable
+vz-ai-stack.sh model list                 # READ-ONLY catalog + live agent matrix
+vz-ai-stack.sh model list --json          # machine-readable
+vz-ai-stack.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
+vz-ai-stack.sh model sync                 # render EVERY agent + the LiteLLM model_list
+vz-ai-stack.sh model sync pi              # render just one agent
+vz-ai-stack.sh model sync --dry-run       # print the plan + a config.yaml diff, write nothing
+vz-ai-stack.sh model sync --no-restart    # don't restart LiteLLM even if config changed
+vz-ai-stack.sh model discover             # READ-ONLY LM Studio library catalog (server may be down)
+vz-ai-stack.sh model add <slug> [as <name>]        # declare an LM Studio library model, then sync
+vz-ai-stack.sh model superset             # print the DERIVED scoped-key allowlist
+vz-ai-stack.sh model superset --json      # machine-readable
 ```
 
 `model sync` is **opt-in** — it is *not* run by `install all` (like `install
@@ -263,7 +263,7 @@ any key is minted (superset-before-mint).
 The superset is **not** a hardcoded list — it is **DERIVED** (the sorted-unique
 union of the legacy names `{local, local-heavy, local-lfm2}` **plus every model
 key in `models.yml`**), computed by `superset_members()` and printed by
-`install.sh model superset`. So a `model add`-ed slug is automatically covered
+`vz-ai-stack.sh model superset`. So a `model add`-ed slug is automatically covered
 — **do not hand-edit any array**. The hardcoded `LEGACY_SUPERSET` (the 6-name
 array in `installer/lib/models.sh`) is **only** the fallback used when
 `models.yml` is absent/unparseable.
@@ -296,10 +296,10 @@ gateway can't serve.
 2. Scoped keys cover it automatically — the superset is **derived** from
    `models.yml` (see "Scoped keys: the DERIVED superset" above), so there is
    **no array to edit**. For an LM Studio library model, prefer
-   `install.sh model add <slug>` (or `model assign`), which extends the derived
+   `vz-ai-stack.sh model add <slug>` (or `model assign`), which extends the derived
    superset for you. The `LEGACY_SUPERSET` array in `installer/lib/models.sh` is
    only the fallback used when `models.yml` is missing.
-3. `install.sh model sync` (registers it in `config.yaml`, restarts LiteLLM
+3. `vz-ai-stack.sh model sync` (registers it in `config.yaml`, restarts LiteLLM
    once, widens keys, renders any agent assigned to it).
 
 ### Add a NEW agent
@@ -315,7 +315,7 @@ gateway can't serve.
 2. If the agent needs a brand-new render shape, add a `case` arm to the
    `render_agent` dispatch in `installer/lib/models.sh` (keep it a simple case —
    not a plugin framework).
-3. `install.sh model sync my_agent`.
+3. `vz-ai-stack.sh model sync my_agent`.
 
 ## Per-agent memory (Honcho)
 

@@ -7,7 +7,7 @@ see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack
 FalkorDB, LFM2, etc.).
 
 - **27 core install phases** (+5 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`), **39 services** (`services.yml`), **40 doctor checks**.
-- Phases accept a **name or number**: `install.sh install phoenix` == `install 01h`. Run `install.sh phases` for the table.
+- Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
 
@@ -77,14 +77,14 @@ FalkorDB, LFM2, etc.).
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
 ## Opt-in experimental extras (Phases 21–25 — NOT in `install all`)
-Install individually by name: `install.sh install <name>`. Doctor checks 34–38 pass-as-skip when not installed.
+Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 pass-as-skip when not installed.
 | Component | What it is | Install |
 |---|---|---|
-| **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `install.sh install portless` |
-| **cmux** | Native macOS terminal for many parallel agent sessions (per-tab git/PR/port + `cmux notify` hooks) | `install.sh install cmux` |
-| **SkillSpector** | NVIDIA scanner that vets agent skills/MCP for prompt-injection/tool-poisoning *before* install (offline by default) | `install.sh install skillspector` → `bin/skillspector scan <path>` |
-| **OpenAgents Launcher** | "Ollama for AI agents" (`agn`); ⚠️ overlaps the stack — NOT wired into LiteLLM/sandboxes; installs to `~/.openagents` | `install.sh install openagents` |
-| **LM Studio (MLX)** | 2nd local runtime behind LiteLLM (`:1234`) — Apple MLX engine. Now the home of the two big MLX models `local-qwen3.6` + `local-qwen3-coder` (~17 GB each, JIT-loaded one-at-a-time with idle TTL) and `local-lfm2-mlx` (LFM2.5 with *working tool-calling* the Ollama GGUF can't do). Ollama stays default; lmstudio-assigned agents fall back to `local-gemma4` when this is down. ⚠️ The desktop app idle-spins ~0.8–1 core even stopped — run only when needed and **quit it when done** (`lms server stop` + Cmd-Q); headless alt: `mlx_lm.server` | `install.sh install lmstudio` |
+| **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `vz-ai-stack.sh install portless` |
+| **cmux** | Native macOS terminal for many parallel agent sessions (per-tab git/PR/port + `cmux notify` hooks) | `vz-ai-stack.sh install cmux` |
+| **SkillSpector** | NVIDIA scanner that vets agent skills/MCP for prompt-injection/tool-poisoning *before* install (offline by default) | `vz-ai-stack.sh install skillspector` → `bin/skillspector scan <path>` |
+| **OpenAgents Launcher** | "Ollama for AI agents" (`agn`); ⚠️ overlaps the stack — NOT wired into LiteLLM/sandboxes; installs to `~/.openagents` | `vz-ai-stack.sh install openagents` |
+| **LM Studio (MLX)** | 2nd local runtime behind LiteLLM (`:1234`) — Apple MLX engine. Now the home of the two big MLX models `local-qwen3.6` + `local-qwen3-coder` (~17 GB each, JIT-loaded one-at-a-time with idle TTL) and `local-lfm2-mlx` (LFM2.5 with *working tool-calling* the Ollama GGUF can't do). Ollama stays default; lmstudio-assigned agents fall back to `local-gemma4` when this is down. ⚠️ The desktop app idle-spins ~0.8–1 core even stopped — run only when needed and **quit it when done** (`lms server stop` + Cmd-Q); headless alt: `mlx_lm.server` | `vz-ai-stack.sh install lmstudio` |
 
 ## Platform
 | Component | What it is |
@@ -94,7 +94,7 @@ Install individually by name: `install.sh install <name>`. Doctor checks 34–38
 
 ---
 
-## The `stack` CLI (`bin/stack` = `install.sh`)
+## The `stack` CLI (`bin/stack` = `vz-ai-stack.sh`)
 `install [phase\|all]` · `reset --confirm soft\|hard\|nuke [--yes]` · `verify` · `status` ·
 `doctor [filter]` · `start/stop <svc>` · `adopt <svc>` · `apply-restarts` · `logs <svc>` ·
 `prepare-sudo`. Per-service launchers live in `bin/start-<svc>.sh`; daily-driver wrappers

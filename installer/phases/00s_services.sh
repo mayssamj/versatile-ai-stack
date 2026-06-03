@@ -50,12 +50,12 @@ if ! yq -e '.services' "$AI_STACK/services.yml" >/dev/null 2>&1; then
 fi
 
 # Drop a `stack` symlink/dispatcher in bin/. It's a thin wrapper around
-# install.sh subcommands so `stack status` and `bash install.sh status` both work.
+# vz-ai-stack.sh subcommands so `stack status` and `bash vz-ai-stack.sh status` both work.
 cat > "$AI_STACK/bin/stack" <<'EOF'
 #!/usr/bin/env bash
-# stack — daily-driver wrapper around install.sh subcommands.
+# stack — daily-driver wrapper around vz-ai-stack.sh subcommands.
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec bash "$AI_STACK/install.sh" "$@"
+exec bash "$AI_STACK/vz-ai-stack.sh" "$@"
 EOF
 chmod +x "$AI_STACK/bin/stack"
 ok "wrote $AI_STACK/bin/stack"

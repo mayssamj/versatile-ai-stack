@@ -4,9 +4,9 @@
 #   installer/models.yml is the CANONICAL source of truth. This lib renders every
 #   agent's config + the LiteLLM model_list from it.
 #
-#     install.sh model list  [--json]            READ-ONLY catalog + live matrix
-#     install.sh model assign <agent> <model>    re-point one agent (yq -i + sync-one)
-#     install.sh model sync   [<agent>]          crash-safe 6-phase reconcile
+#     vz-ai-stack.sh model list  [--json]            READ-ONLY catalog + live matrix
+#     vz-ai-stack.sh model assign <agent> <model>    re-point one agent (yq -i + sync-one)
+#     vz-ai-stack.sh model sync   [<agent>]          crash-safe 6-phase reconcile
 #
 # Design (per the adversarial critique — these are load-bearing):
 #   1. FRESH-INSTALL SAFE — never auto-run by `install all`; phases keep their
@@ -83,7 +83,7 @@ seed_if_missing() {
   [[ -f "$MODELS_YML" ]] && return 0
   warn "installer/models.yml absent — seeding the canonical template"
   cat > "$MODELS_YML" <<'YAML'
-# Seeded by install.sh model (models.yml was missing). Edit + re-run `model sync`.
+# Seeded by vz-ai-stack.sh model (models.yml was missing). Edit + re-run `model sync`.
 version: 1
 models:
   local-gemma4:
@@ -541,7 +541,7 @@ PYEOF
     ok "deerflow: two-tier models rewritten (basic=$default, reasoning=$reasoning)"
     if [[ "${MODELS_NO_RESTART:-0}" != "1" && "${DRY_RUN:-0}" != "1" ]]; then
       log "restarting deerflow (config changed)..."
-      bash "$AI_STACK/install.sh" start deerflow >/dev/null 2>&1 || warn "deerflow restart returned non-zero (non-fatal)"
+      bash "$AI_STACK/vz-ai-stack.sh" start deerflow >/dev/null 2>&1 || warn "deerflow restart returned non-zero (non-fatal)"
     fi
   else
     ok "deerflow: two-tier models already current (basic=$default, reasoning=$reasoning)"
@@ -758,7 +758,7 @@ cmd_assign() {
   done
   validate || exit $?
   if [[ -z "$agent" || -z "$model" ]]; then
-    err "usage: install.sh model assign <agent> <model> [--dry-run] [--no-sync]"
+    err "usage: vz-ai-stack.sh model assign <agent> <model> [--dry-run] [--no-sync]"
     exit 2
   fi
   if ! agent_exists "$agent"; then
@@ -780,7 +780,7 @@ cmd_assign() {
     || { err "yq -i set assignment failed"; exit 1; }
   ok "assignments.$agent: $before -> $model"
   if (( nosync )); then
-    note "--no-sync: not reconciling. Run 'install.sh model sync $agent' to apply."
+    note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync $agent' to apply."
     exit 0
   fi
   cmd_sync "$agent"
@@ -796,7 +796,7 @@ cmd_assign() {
 cmd_discover() {
   local lib; lib="$(lms_library_json || true)"
   if [[ -z "$lib" ]]; then
-    note "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: install.sh model discover"
+    note "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: vz-ai-stack.sh model discover"
     return 0
   fi
 
@@ -887,14 +887,14 @@ cmd_add() {
   validate || exit $?
 
   if [[ -z "$slug" ]]; then
-    err "usage: install.sh model add <lms-slug> [as <name>] [--dry-run] [--no-sync]"
+    err "usage: vz-ai-stack.sh model add <lms-slug> [as <name>] [--dry-run] [--no-sync]"
     exit 2
   fi
 
   # Library + slug check FIRST (no auto-start, no blind add).
   local lib; lib="$(lms_library_json || true)"
   if [[ -z "$lib" ]]; then
-    err "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: install.sh model add"
+    err "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: vz-ai-stack.sh model add"
     exit 2
   fi
   if ! lms_lib_has_slug "$slug"; then
@@ -1022,7 +1022,7 @@ for m in (d if isinstance(d,list) else []):
 
   # Sync unless told not to.
   if (( nosync )); then
-    note "declared only; run install.sh model sync to register it into LiteLLM + widen scoped keys"
+    note "declared only; run vz-ai-stack.sh model sync to register it into LiteLLM + widen scoped keys"
   else
     cmd_sync
   fi
@@ -1112,7 +1112,7 @@ cmd_sync() {
   ok "model sync complete${only:+ ($only)}"
   if [[ -f "$PENDING_FILE" ]] && [[ -s "$PENDING_FILE" ]]; then
     warn "some agents are availability-gated to $(default_model) (LM Studio down or slug not served)."
-    note "Start LM Studio + load the model, then re-run 'install.sh model sync' to promote them."
+    note "Start LM Studio + load the model, then re-run 'vz-ai-stack.sh model sync' to promote them."
   fi
   return 0
 }
@@ -1127,7 +1127,7 @@ _verify() {
     eff="$(resolve_effective "$ag")"
     rendered="$(rendered_model "$ag" 2>/dev/null || echo '')"
     if [[ -n "$rendered" && "$rendered" != "$eff" ]]; then
-      warn "verify: $ag rendered '$rendered' != expected '$eff' — re-run 'install.sh model sync $ag'"
+      warn "verify: $ag rendered '$rendered' != expected '$eff' — re-run 'vz-ai-stack.sh model sync $ag'"
       problems=$((problems+1))
     fi
     keyenv="$(agent_keyenv "$ag")"
@@ -1205,7 +1205,7 @@ main() {
     superset) cmd_superset "$@" ;;
     -h|--help|help)
       cat <<'EOF'
-install.sh model — declarative model<->agent binding (installer/models.yml)
+vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml)
   model list [--json]              READ-ONLY catalog + live agent matrix
   model assign <agent> <model> [--dry-run] [--no-sync]
   model discover                   READ-ONLY LM Studio library (LLMs + embeddings); loads nothing

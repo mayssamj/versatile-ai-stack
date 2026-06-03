@@ -27,7 +27,7 @@ AI_STACK="${AI_STACK:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 STATE="$AI_STACK/installer/state"
 LOG="$STATE/openshell-watchdog.log"
 LOCK="$STATE/openshell-watchdog.lock"
-INSTALL_LOCK="$STATE/.lock"               # install.sh's lock dir
+INSTALL_LOCK="$STATE/.lock"               # vz-ai-stack.sh's lock dir
 THROTTLE_FILE="$STATE/openshell-watchdog.last"
 THROTTLE_SECS="${AI_STACK_WATCHDOG_THROTTLE:-1800}"   # don't recreate the same thing more than once / 30min
 CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshold (%)
@@ -118,14 +118,14 @@ recreate_sandbox() {  # recreate_sandbox <name>
   if [[ "$RECREATE" != "1" ]]; then log "  RECREATE disabled — deleted only (stops the storm); recreate later via install"; return 0; fi
   case "$name" in
     hermes-fleet-v1)
-      bash "$AI_STACK/install.sh" install 04  >>"$LOG" 2>&1 || log "  install 04 failed"
-      bash "$AI_STACK/install.sh" install 04f >>"$LOG" 2>&1 || log "  install 04f failed"
+      bash "$AI_STACK/vz-ai-stack.sh" install 04  >>"$LOG" 2>&1 || log "  install 04 failed"
+      bash "$AI_STACK/vz-ai-stack.sh" install 04f >>"$LOG" 2>&1 || log "  install 04f failed"
       # Restart the Telegram gateway only if a token is configured.
       grep -q '^HERMES_TELEGRAM_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null \
-        && { bash "$AI_STACK/install.sh" install 20 >>"$LOG" 2>&1 || log "  install 20 failed"; }
+        && { bash "$AI_STACK/vz-ai-stack.sh" install 20 >>"$LOG" 2>&1 || log "  install 20 failed"; }
       ;;
     pi-v1)
-      bash "$AI_STACK/install.sh" install 15 >>"$LOG" 2>&1 || log "  install 15 failed"
+      bash "$AI_STACK/vz-ai-stack.sh" install 15 >>"$LOG" 2>&1 || log "  install 15 failed"
       ;;
   esac
   log "  recreate of $name done"

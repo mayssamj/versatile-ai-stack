@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# upgrade.sh — `install.sh upgrade <service|all> [--dry-run]`.
+# upgrade.sh — `vz-ai-stack.sh upgrade <service|all> [--dry-run]`.
 #
 # Generic, type-dispatched upgrade verb. For each enabled service it pulls/
 # rebuilds the new artifact, recreates via the canonical path, then re-verifies
@@ -8,7 +8,7 @@
 # match zero checks → vacuous green; litellm over-matches a Pi check).
 #
 # Hard rules (this file owns the install lock, so it must never deadlock):
-#   - NEVER shell back to `install.sh install <phase>` (re-acquires the lock →
+#   - NEVER shell back to `vz-ai-stack.sh install <phase>` (re-acquires the lock →
 #     exit 3). Docker recreate goes through the lock-free
 #     `bin/start-<svc>.sh --recreate`; phase re-asserts run the phase SCRIPT
 #     directly via `bash installer/phases/<id>_*.sh` (no lock_acquire in any).
@@ -16,7 +16,7 @@
 #     LM Studio is a manual note, docker is `docker pull` (image only) + recreate.
 #   - Registers NO doctor checks → the 40/40 invariant is untouched.
 #
-# This runs as its OWN process (install.sh dispatches `bash upgrade.sh "$@"`),
+# This runs as its OWN process (vz-ai-stack.sh dispatches `bash upgrade.sh "$@"`),
 # so the lock's EXIT/INT/TERM trap (common.sh) cleanly removes LOCKDIR on exit.
 
 set -Eeuo pipefail
@@ -27,7 +27,7 @@ export AI_STACK
 LIB="$AI_STACK/installer/lib"
 
 # Source only side-effect-free libs. NEVER status.sh (prints the table at top
-# level) or install.sh (runs main() on source).
+# level) or vz-ai-stack.sh (runs main() on source).
 source "$LIB/common.sh"
 source "$LIB/env.sh"
 source "$LIB/docker.sh"
@@ -49,11 +49,11 @@ CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
 # --- usage -------------------------------------------------------------------
 upgrade_usage() {
   cat <<'EOF'
-install.sh upgrade <service|all> [--dry-run]   upgrade a service (or all enabled)
-install.sh upgrade --check [service|all]       READ-ONLY: show which have an update available
-install.sh upgrade --outdated [--dry-run]      upgrade ONLY the services found outdated
-install.sh upgrade --check --all               include non-checkable (manual) services too
-install.sh upgrade --check --json              machine-readable availability report
+vz-ai-stack.sh upgrade <service|all> [--dry-run]   upgrade a service (or all enabled)
+vz-ai-stack.sh upgrade --check [service|all]       READ-ONLY: show which have an update available
+vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY the services found outdated
+vz-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
+vz-ai-stack.sh upgrade --check --json              machine-readable availability report
 
   Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
   brew→brew upgrade, openshell→in-sandbox update + phase re-assert.
@@ -66,9 +66,9 @@ install.sh upgrade --check --json              machine-readable availability rep
   Set AI_STACK_ASSUME_YES=1 to auto-accept the version-pinned re-pull prompt.
 
   Typical flow:
-    install.sh upgrade --check        # see what's available
-    install.sh upgrade --outdated     # upgrade everything that's behind
-    install.sh upgrade openwebui      # or upgrade selectively from the list
+    vz-ai-stack.sh upgrade --check        # see what's available
+    vz-ai-stack.sh upgrade --outdated     # upgrade everything that's behind
+    vz-ai-stack.sh upgrade openwebui      # or upgrade selectively from the list
 EOF
 }
 
@@ -264,8 +264,8 @@ print_check_report() {
   fi
   if (( ${#outdated[@]} )); then
     ok "${#outdated[@]} update(s) available: ${outdated[*]}"
-    note "Upgrade all of them:   install.sh upgrade --outdated"
-    note "Or selectively:        install.sh upgrade <service>   (e.g. install.sh upgrade ${outdated[0]})"
+    note "Upgrade all of them:   vz-ai-stack.sh upgrade --outdated"
+    note "Or selectively:        vz-ai-stack.sh upgrade <service>   (e.g. vz-ai-stack.sh upgrade ${outdated[0]})"
   else
     ok "Everything that can be auto-checked is up to date."
   fi
@@ -503,7 +503,7 @@ up_manual_note() {
   phase="$(svc_phase "$svc")"
   STRATEGY=manual
   if [[ "$phase" != "-" ]]; then
-    note "$svc: no separately-upgradable artifact; re-run 'install.sh install $phase' to re-assert config"
+    note "$svc: no separately-upgradable artifact; re-run 'vz-ai-stack.sh install $phase' to re-assert config"
   else
     note "$svc: no separately-upgradable artifact and no resolvable phase; verify manually"
   fi

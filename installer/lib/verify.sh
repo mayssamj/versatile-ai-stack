@@ -101,7 +101,7 @@ verify_alias_routable() {
   # Sanity: is the IP even bound to lo0?
   if ! ifconfig lo0 2>/dev/null | awk '/inet / {print $2}' | grep -qxF "$ip"; then
     printf 'verify_alias_routable: %s is not bound to lo0\n' "$ip" >&2
-    printf '  fix: sudo bash %s/install.sh prepare-sudo\n' "$AI_STACK" >&2
+    printf '  fix: sudo bash %s/vz-ai-stack.sh prepare-sudo\n' "$AI_STACK" >&2
     return 1
   fi
 
@@ -286,7 +286,7 @@ verify_docker_port_publish_actually_routes() {
     if [[ "$code" == "000" ]]; then
       printf '  diagnosis: docker accepted the publish but packets do not route to %s.\n' "$ip" >&2
       printf '             On macOS this almost always means 127.0.10.x is NOT on lo0.\n' >&2
-      printf '  fix: sudo ifconfig lo0 alias %s up   (or: sudo bash %s/install.sh prepare-sudo)\n' "$ip" "$AI_STACK" >&2
+      printf '  fix: sudo ifconfig lo0 alias %s up   (or: sudo bash %s/vz-ai-stack.sh prepare-sudo)\n' "$ip" "$AI_STACK" >&2
     fi
     rc=1
   fi
@@ -378,7 +378,7 @@ verify_etc_hosts_correctly_owned() {
 # --- verify_sweep_aliases ---------------------------------------------------
 # Convenience: run verify_alias_routable for every enabled alias in
 # aliases.tsv. Returns 0 if all pass, non-zero with a summary if any fail.
-# Used by Phase 00·V and `install.sh verify`.
+# Used by Phase 00·V and `vz-ai-stack.sh verify`.
 verify_sweep_aliases() {
   # network.sh exposes aliases_load + ALIAS_IP/ALIASES_LIST.
   if ! declare -p ALIASES_LIST >/dev/null 2>&1; then

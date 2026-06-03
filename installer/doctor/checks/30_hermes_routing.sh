@@ -28,7 +28,7 @@ hermes_routing_diagnose() {
   state="$("$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
     | awk 'NR>1 && $1=="hermes-fleet-v1" {print $NF; exit}')"
   if [[ "$state" != "Ready" ]]; then
-    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'install.sh install 04'"
+    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'vz-ai-stack.sh install 04'"
     return 1
   fi
   # Inspect the rendered profile config WITHOUT printing it (it holds the key).
@@ -75,6 +75,6 @@ hermes_routing_diagnose() {
 
 hermes_routing_fix() {
   warn "Re-run Phase 04f to (re)mint the Hermes key + configure profile routing:"
-  warn "    bash $AI_STACK/install.sh install 04f"
+  warn "    bash $AI_STACK/vz-ai-stack.sh install 04f"
   return 1
 }

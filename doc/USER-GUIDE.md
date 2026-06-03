@@ -2,7 +2,7 @@
 
 A practical, comprehensive tour of every component in `~/ai-stack` for the
 **first-time-in-this-stack** reader. This is the doc you read after
-`install.sh` finishes — it tells you what each tool does, when to reach
+`vz-ai-stack.sh` finishes — it tells you what each tool does, when to reach
 for it, and the literal command to type.
 
 **Audience.** Senior engineer who has installed the stack but hasn't used
@@ -17,7 +17,7 @@ a Claude session asked to operate the stack.
 - §2 **Service catalog** — every component with an example you can copy-paste
 - §3 Multi-service recipes — canonical workflows
 - §4 Profile guide — which services come up for `fleet`, `coding`, `research`, `paranoid`
-- §5 Daily cheatsheet (verified against `bin/` and `install.sh`)
+- §5 Daily cheatsheet (verified against `bin/` and `vz-ai-stack.sh`)
 - §6 Triage — when something breaks
 
 **Conventions in this doc:**
@@ -31,10 +31,10 @@ a Claude session asked to operate the stack.
 
 ```bash
 # 1. Confirm the stack is healthy. Target: 40/40 ✓
-bash ~/ai-stack/install.sh doctor
+bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
-bash ~/ai-stack/install.sh status
+bash ~/ai-stack/vz-ai-stack.sh status
 
 # 3. Pull current secrets into your shell (don't echo).
 source ~/ai-stack/.env
@@ -66,7 +66,7 @@ You'll see one trace in Phoenix containing:
 
 That single trace proves the alias chain works (Open WebUI dialed `litellm:4000`, LiteLLM dialed `ollama:11434` via host-gateway), the proxy enforces auth (LiteLLM master key), and Phoenix's OTLP exporter is wired. If any of those four is broken, you wouldn't see the trace.
 
-**Next time you're here:** swap to model "local-qwen3.6" (Qwen 3.6 27B, LM Studio MLX — start LM Studio + `install.sh model sync` first, or it falls back to `local-gemma4`). Same trace, different latency profile (~10-20s, much smarter responses).
+**Next time you're here:** swap to model "local-qwen3.6" (Qwen 3.6 27B, LM Studio MLX — start LM Studio + `vz-ai-stack.sh model sync` first, or it falls back to `local-gemma4`). Same trace, different latency profile (~10-20s, much smarter responses).
 
 ---
 
@@ -155,7 +155,7 @@ curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
 LiteLLM exposes the same model name no matter what's behind it. The **three
 canonical local models** are declared per-agent in `installer/models.yml`
 (the single source of truth for model↔agent binding) and rendered by
-`install.sh model {list,assign,sync,superset}` — see [models.md](models.md) and
+`vz-ai-stack.sh model {list,assign,sync,superset}` — see [models.md](models.md) and
 §2.16 below. The canonical three, plus the cloud routes:
 
 | Name                | Backend                                       | Size   | When to use                                  |
@@ -183,10 +183,10 @@ backward compatibility, but they are NOT among the canonical three in
 `models.yml`. `local-heavy` (Ollama `qwen3.6:27b`) is **no longer auto-pulled**
 and 404s until you `ollama pull` it; `local-lfm2-mlx` (LiquidAI LFM2.5 MLX) is
 added only when you install the opt-in Phase 25 (LM Studio). For new work, prefer
-the canonical names — they're what `install.sh model assign/sync` manages.
+the canonical names — they're what `vz-ai-stack.sh model assign/sync` manages.
 
 **Try this (comparison).** (`local-qwen3.6` requires LM Studio running with the
-model loaded — start it + `install.sh model sync`, or it falls back to `local-gemma4`.)
+model loaded — start it + `vz-ai-stack.sh model sync`, or it falls back to `local-gemma4`.)
 
 ```bash
 source ~/ai-stack/.env
@@ -211,14 +211,14 @@ from it (deep dive: [models.md](models.md)).
 
 | Command | What it does |
 |---------|--------------|
-| `install.sh model list` | live agent matrix (ASSIGNED / LITELLM / SERVED / KEY-OK / DRIFT / EFFECTIVE) |
-| `install.sh model list --json` | machine-readable matrix |
-| `install.sh model assign <agent> <model>` | re-point one agent, then sync it |
-| `install.sh model sync [agent]` | reconcile everything (or one agent) |
-| `install.sh model sync --dry-run` | preview the plan + config diff, write nothing |
-| `install.sh model discover` | READ-ONLY LM Studio library catalog (server may be down) |
-| `install.sh model add <slug> [as <name>]` | declare an LM Studio library model, then sync |
-| `install.sh model superset` | print the derived scoped-key allowlist |
+| `vz-ai-stack.sh model list` | live agent matrix (ASSIGNED / LITELLM / SERVED / KEY-OK / DRIFT / EFFECTIVE) |
+| `vz-ai-stack.sh model list --json` | machine-readable matrix |
+| `vz-ai-stack.sh model assign <agent> <model>` | re-point one agent, then sync it |
+| `vz-ai-stack.sh model sync [agent]` | reconcile everything (or one agent) |
+| `vz-ai-stack.sh model sync --dry-run` | preview the plan + config diff, write nothing |
+| `vz-ai-stack.sh model discover` | READ-ONLY LM Studio library catalog (server may be down) |
+| `vz-ai-stack.sh model add <slug> [as <name>]` | declare an LM Studio library model, then sync |
+| `vz-ai-stack.sh model superset` | print the derived scoped-key allowlist |
 
 #### When LM Studio is off
 
@@ -226,7 +226,7 @@ LM Studio-bound agents (`local-qwen3.6` / `local-qwen3-coder`)
 **availability-gate to `local-gemma4`** and are recorded as *pending* in the
 installer state file. To promote them: start LM Studio
 (`lms server start -p 1234 --bind 0.0.0.0`), load the model, then re-run
-`install.sh model sync`. See
+`vz-ai-stack.sh model sync`. See
 [models.md → Per-agent selection pipeline](models.md#per-agent-selection-pipeline).
 
 #### Chatting / coding on your Claude subscription (no API key)
@@ -248,7 +248,7 @@ bash ~/ai-stack/bin/start-litellm.sh --recreate # reload config so the *-sub-* m
 
 Open `http://openwebui:8080`, refresh — the default model is
 **`claude-opus-4.8-sub-max`**. No Open WebUI Function/pipe, no API key. Manage
-with `start-meridian.sh status|restart|uninstall`; `install.sh doctor` check 41
+with `start-meridian.sh status|restart|uninstall`; `vz-ai-stack.sh doctor` check 41
 reports health. The subscription models run **claude-opus-4-8** /
 **claude-sonnet-4-6** — verified end-to-end via the LiteLLM trace. (Meridian's
 `/v1/models` catalog lists ≤4.7 but **passes through** any model id to its
@@ -520,7 +520,7 @@ openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c 'whoami; uname -srm'
 
 **The roster (and the model each is bound to).** Each profile's default model
 is declared in `installer/models.yml` under `assignments:` and rendered into the
-soul file by `install.sh model sync`. All seven authenticate to LiteLLM with the
+soul file by `vz-ai-stack.sh model sync`. All seven authenticate to LiteLLM with the
 shared `HERMES_LITELLM_KEY` virtual key (allowlisted to the canonical model
 superset). The bindings as shipped:
 
@@ -536,11 +536,11 @@ superset). The bindings as shipped:
 
 **Availability-gating.** The five profiles bound to a big MLX model
 (`local-qwen3.6` / `local-qwen3-coder`) only get that model when LM Studio is
-running and serving it. If it isn't, `install.sh model sync` renders the profile
+running and serving it. If it isn't, `vz-ai-stack.sh model sync` renders the profile
 against the default (`local-gemma4`) and warns — so the fleet still works, just
 on the lighter model. Bring the big models up with §2.16's recipe, then re-run
-`install.sh model sync`. To re-point any profile permanently, use
-`install.sh model assign <profile> <model>` (§2.16).
+`vz-ai-stack.sh model sync`. To re-point any profile permanently, use
+`vz-ai-stack.sh model assign <profile> <model>` (§2.16).
 
 **When.** Whenever the workload is multi-step and benefits from a specialist persona. Quick one-off chat? Use `local-gemma4` via Open WebUI. Multi-turn task with tool calls? Dispatch a Hermes profile.
 
@@ -953,7 +953,7 @@ bash ~/ai-stack/bin/pi-kill
 
 # 6. Tear down the entire sandbox (rare — destroys state).
 openshell sandbox delete pi-v1
-# Re-create with: bash ~/ai-stack/install.sh install 15
+# Re-create with: bash ~/ai-stack/vz-ai-stack.sh install 15
 ```
 
 **Phoenix trace pattern.** Pi's chat calls land in Phoenix because LiteLLM's `arize_phoenix` callback fires regardless of which virtual key authenticated. Filter by `model=local-qwen3-coder` (or `model=local-gemma4` when availability-gated) + timestamp window to find Pi's session. No per-key Phoenix project isolation (deferred, see CHANGELOG 2026-05-29).
@@ -976,11 +976,11 @@ The historical failure mode (still useful to know): `deer-flow/config.yaml` ship
 
 **What Phase 10 patches:**
 
-- `deer-flow/config.yaml`: rendered by `install.sh model sync` from `models.yml` (DeerFlow is assigned `local-qwen3.6`, availability-gated back to `local-gemma4` when LM Studio is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
+- `deer-flow/config.yaml`: rendered by `vz-ai-stack.sh model sync` from `models.yml` (DeerFlow is assigned `local-qwen3.6`, availability-gated back to `local-gemma4` when LM Studio is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
 - `deer-flow/docker/docker-compose.yaml`: adds `- LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` to the gateway's `environment:` block so the substitution resolves inside the container.
 - `deer-flow/.env`: mirrors `LITELLM_MASTER_KEY` from `~/ai-stack/.env` (mode 0600) so `scripts/deploy.sh`'s `env_file:` lookup picks it up.
 
-All three are guarded by marker comments — re-running Phase 10 is a no-op. `bash install.sh doctor` check 28 verifies the patches are still in place.
+All three are guarded by marker comments — re-running Phase 10 is a no-op. `bash vz-ai-stack.sh doctor` check 28 verifies the patches are still in place.
 
 **Stop / start (post-install).** Phase 10 already brought it up. To free the ~520 MB later, or to restart after a stop:
 
@@ -1183,7 +1183,7 @@ bl delete echo
 
 ```bash
 # 1. Confirm install (doctor check 27 covers Lumen; check 28 covers DeerFlow).
-bash ~/ai-stack/install.sh doctor lumen
+bash ~/ai-stack/vz-ai-stack.sh doctor lumen
 
 # 2. List built indexes (no `lumen index list` subcommand — indexes are
 #    hash-named directories under ~/.local/share/lumen/).
@@ -1300,7 +1300,7 @@ EOF
 
 ```bash
 # 1. Confirm install (doctor check 31 covers RLM).
-bash ~/ai-stack/install.sh doctor
+bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. Run the wrapper (routes via LiteLLM + RLM_LITELLM_KEY; REPL runs in
 #    a python:3.11-slim docker sandbox).
@@ -1318,11 +1318,11 @@ python ~/ai-stack/rlm/run_rlm.py --help
 
 ### §2.16 Model management — assign declaratively, enable the big MLX models
 
-#### `install.sh model` (declarative model↔agent binding)
+#### `vz-ai-stack.sh model` (declarative model↔agent binding)
 
 **What.** `installer/models.yml` is the single source of truth for which model
 each agent runs. You never hand-edit soul files or scoped-key allowlists — you
-edit the binding and let `install.sh model sync` reconcile everything. The
+edit the binding and let `vz-ai-stack.sh model sync` reconcile everything. The
 canonical three (`local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`) and the
 per-agent `assignments:` live there; see [models.md](models.md) for the full
 contract.
@@ -1337,34 +1337,34 @@ their assigned model instead of the gated `local-gemma4` fallback.
 ```bash
 # 1. READ-ONLY catalog + live matrix. Shows what's DECLARED in models.yml vs
 #    what LiteLLM ACTUALLY serves right now (so you can see availability-gating).
-bash ~/ai-stack/install.sh model list
-bash ~/ai-stack/install.sh model list --json | jq '.assignments'
+bash ~/ai-stack/vz-ai-stack.sh model list
+bash ~/ai-stack/vz-ai-stack.sh model list --json | jq '.assignments'
 
 # 2. Re-point ONE agent. This edits models.yml (yq -i) and syncs just that agent.
 #    Example: give the researcher a cloud model for a hard week.
-bash ~/ai-stack/install.sh model assign hermes_researcher claude-sonnet
+bash ~/ai-stack/vz-ai-stack.sh model assign hermes_researcher claude-sonnet
 #    …and put it back to the local heavy model later:
-bash ~/ai-stack/install.sh model assign hermes_researcher local-qwen3.6
+bash ~/ai-stack/vz-ai-stack.sh model assign hermes_researcher local-qwen3.6
 
 # 3. RECONCILE everything from models.yml. Crash-safe 6-phase pass:
 #    validate → register model_list (ADD-ONLY) → restart LiteLLM ONCE if the
 #    model list changed → widen scoped-key allowlists to the superset →
 #    render every agent's soul/config. Opt-in: `install all` does NOT run this.
-bash ~/ai-stack/install.sh model sync
+bash ~/ai-stack/vz-ai-stack.sh model sync
 
 #    Preview without touching anything, or skip the LiteLLM restart:
-bash ~/ai-stack/install.sh model sync --dry-run
-bash ~/ai-stack/install.sh model sync --no-restart
+bash ~/ai-stack/vz-ai-stack.sh model sync --dry-run
+bash ~/ai-stack/vz-ai-stack.sh model sync --no-restart
 
 #    Sync just one agent:
-bash ~/ai-stack/install.sh model sync hermes_software_engineer
+bash ~/ai-stack/vz-ai-stack.sh model sync hermes_software_engineer
 
 # 4. Print the canonical scoped-key allowlist superset. Every scoped virtual key
 #    (HERMES_LITELLM_KEY, PI_LITELLM_KEY, ACE_LITELLM_KEY, RLM_LITELLM_KEY) is
 #    minted against this DERIVED sorted-unique superset (union of legacy names +
 #    every models.yml key), so `model assign`/`add` never needs a key re-mint.
-bash ~/ai-stack/install.sh model superset
-bash ~/ai-stack/install.sh model superset --json
+bash ~/ai-stack/vz-ai-stack.sh model superset
+bash ~/ai-stack/vz-ai-stack.sh model superset --json
 ```
 
 **Availability-gating, restated.** If an agent is assigned an `lmstudio` model
@@ -1396,7 +1396,7 @@ profiles, Pi's default `local-qwen3-coder`, or DeerFlow's `local-qwen3.6`.
 # 1. Install the opt-in LM Studio phase (NOT part of `install all`).
 #    Adds the host OpenAI server on :1234 + the local-lfm2-mlx legacy slug;
 #    Ollama stays the default runtime.
-bash ~/ai-stack/install.sh install lmstudio        # or: install 25
+bash ~/ai-stack/vz-ai-stack.sh install lmstudio        # or: install 25
 
 # 2. In the LM Studio app: load the model you want served.
 #      - Qwen 3.6 27B MLX           → serves as local-qwen3.6
@@ -1407,13 +1407,13 @@ curl -s http://localhost:1234/v1/models | jq '.data[].id'
 
 # 3. Reconcile so LiteLLM registers the now-servable model and the
 #    big-MLX-bound agents stop falling back to local-gemma4.
-bash ~/ai-stack/install.sh model sync
+bash ~/ai-stack/vz-ai-stack.sh model sync
 
 # 4. Verify LiteLLM now serves it and the binding took.
 source ~/ai-stack/.env
 curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   http://litellm:4000/v1/models | jq '.data[].id' | grep qwen
-bash ~/ai-stack/install.sh model list              # assigned == effective now
+bash ~/ai-stack/vz-ai-stack.sh model list              # assigned == effective now
 ```
 
 **Quitting cleanly.** LM Studio idle-spins ~0.8 of a CPU core, so quit it when
@@ -1421,7 +1421,7 @@ you're done with the big models — the gated agents drop back to `local-gemma4`
 automatically. (`mlx_lm.server` is a lighter alternative if you only need the
 server, not the app.)
 
-**Combine with.** `install.sh model` (§2.16 above — `model sync` is the step
+**Combine with.** `vz-ai-stack.sh model` (§2.16 above — `model sync` is the step
 that makes the newly-loaded model take effect), `hermes_fleet` / `pi` /
 `deerflow` (the agents that benefit), `ollama` (still the default runtime for
 `local-gemma4` + embeddings).
@@ -1955,7 +1955,7 @@ Per-repo indexing keeps signal high — Lumen ranks results by cosine similarity
 
 Profiles are intent-aware presets: one command (would-be — see ⚠ below) flips multiple services so the stack matches the workload.
 
-**⚠ Not implemented:** `stack profile <name>`, `stack enable <svc>`, `stack disable <svc>`, `stack apply` do NOT exist in `install.sh`. The dispatcher implements only: `install | test | status | doctor | verify | adopt | apply-restarts | logs | history | gc | reset | prepare-sudo`. To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
+**⚠ Not implemented:** `stack profile <name>`, `stack enable <svc>`, `stack disable <svc>`, `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements only: `install | test | status | doctor | verify | adopt | apply-restarts | logs | history | gc | reset | prepare-sudo`. To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
 
 ### `fleet` — multi-agent everyday
 
@@ -1999,29 +1999,29 @@ done
 
 ## §5. Daily cheatsheet
 
-Verified against `install.sh` and `bin/` as of 2026-05-29. Aspirational shortcuts that don't exist are flagged.
+Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shortcuts that don't exist are flagged.
 
 ```bash
 # Health + state
-bash ~/ai-stack/install.sh doctor                 # 40 health checks + auto-fix offers
-bash ~/ai-stack/install.sh status                 # declared vs actual table
-bash ~/ai-stack/install.sh verify                 # phase 00·V pre-install runtime probes
+bash ~/ai-stack/vz-ai-stack.sh doctor                 # 40 health checks + auto-fix offers
+bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
+bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
 
 # Models (declarative model↔agent binding — see §2.16)
-bash ~/ai-stack/install.sh model list             # catalog + live declared-vs-served matrix
-bash ~/ai-stack/install.sh model assign <agent> <model>   # re-point one agent (yq -i + sync)
-bash ~/ai-stack/install.sh model sync             # reconcile everything from models.yml (opt-in)
-bash ~/ai-stack/install.sh model superset         # canonical scoped-key allowlist superset
+bash ~/ai-stack/vz-ai-stack.sh model list             # catalog + live declared-vs-served matrix
+bash ~/ai-stack/vz-ai-stack.sh model assign <agent> <model>   # re-point one agent (yq -i + sync)
+bash ~/ai-stack/vz-ai-stack.sh model sync             # reconcile everything from models.yml (opt-in)
+bash ~/ai-stack/vz-ai-stack.sh model superset         # canonical scoped-key allowlist superset
 
 # Slow-mode doctor (includes 9 negative network probes for pi-v1)
-OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/install.sh doctor
+OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # Install / re-run one phase
-bash ~/ai-stack/install.sh install 15             # idempotent; safe to re-run
-bash ~/ai-stack/install.sh test 01                # smoke-test phase 01 only
+bash ~/ai-stack/vz-ai-stack.sh install 15             # idempotent; safe to re-run
+bash ~/ai-stack/vz-ai-stack.sh test 01                # smoke-test phase 01 only
 
 # Logs
-bash ~/ai-stack/install.sh logs litellm -f
+bash ~/ai-stack/vz-ai-stack.sh logs litellm -f
 docker logs -f phoenix
 tail -f ~/ai-stack/installer/state/unsloth.log
 
@@ -2065,31 +2065,31 @@ cp ~/Downloads/X.pdf ~/ai-stack/ingestor/inbox/
 cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py
 
 # Sudo (one-time host config; idempotent)
-sudo bash ~/ai-stack/install.sh prepare-sudo
+sudo bash ~/ai-stack/vz-ai-stack.sh prepare-sudo
 
 # Container adoption (when something's running outside our control)
-bash ~/ai-stack/install.sh adopt litellm
+bash ~/ai-stack/vz-ai-stack.sh adopt litellm
 
 # Apply queued restarts (e.g., after .env change)
-bash ~/ai-stack/install.sh apply-restarts
+bash ~/ai-stack/vz-ai-stack.sh apply-restarts
 
 # Historical CHANGELOG view (consolidated)
-bash ~/ai-stack/install.sh history
+bash ~/ai-stack/vz-ai-stack.sh history
 
 # Cleanup partial container orphans
-bash ~/ai-stack/install.sh gc
+bash ~/ai-stack/vz-ai-stack.sh gc
 
 # Resets (destructive; require --confirm)
-bash ~/ai-stack/install.sh reset --confirm soft   # state + bin/  (keeps .env)
-bash ~/ai-stack/install.sh reset --confirm hard   # + managed containers + data + OpenShell
+bash ~/ai-stack/vz-ai-stack.sh reset --confirm soft   # state + bin/  (keeps .env)
+bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard   # + managed containers + data + OpenShell
                                                   #   sandboxes + all compose projects
                                                   #   (deerflow/autofyn/hermes-workspace) and
                                                   #   their volumes (incl honcho_redis-data).
                                                   #   Preserves: ollama+models, docker images,
                                                   #   .env, /etc/hosts block.
-bash ~/ai-stack/install.sh reset --confirm nuke   # everything (re-download all)
+bash ~/ai-stack/vz-ai-stack.sh reset --confirm nuke   # everything (re-download all)
 # Add --yes (or -y, or AI_STACK_ASSUME_YES=1) to skip the interactive prompt:
-bash ~/ai-stack/install.sh reset --confirm hard --yes
+bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 ```
 
 **⚠ These DO NOT exist** (use the workarounds shown):
@@ -2099,7 +2099,7 @@ bash ~/ai-stack/install.sh reset --confirm hard --yes
 | `stack profile <name>` | Manual yq + bin/start scripts (see §4)            |
 | `stack enable <svc>`   | `yq -i '.services.<svc>.enabled = true' services.yml` + `bin/start-<svc>.sh` |
 | `stack disable <svc>`  | `yq -i '.services.<svc>.enabled = false' services.yml` + `docker stop <c>` |
-| `stack apply`          | Re-run `install.sh install <phase>` for the changed phase     |
+| `stack apply`          | Re-run `vz-ai-stack.sh install <phase>` for the changed phase     |
 | `stack restart <svc>`  | `bash bin/start-<svc>.sh --recreate`                          |
 
 ---
@@ -2108,13 +2108,13 @@ bash ~/ai-stack/install.sh reset --confirm hard --yes
 
 **Doctor first.** Always.
 ```bash
-bash ~/ai-stack/install.sh doctor
+bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 The check number in the failure line maps 1:1 to a section in [DOCTOR.md](DOCTOR.md). Read that section first — it tells you what auto-fix will try and what to do if it doesn't work.
 
 **Then logs.**
 ```bash
-bash ~/ai-stack/install.sh logs <svc> -f       # for managed containers
+bash ~/ai-stack/vz-ai-stack.sh logs <svc> -f       # for managed containers
 tail -f ~/ai-stack/installer/state/<svc>.log   # for host bg processes
 docker logs <container>                         # raw container logs
 ```
@@ -2136,9 +2136,9 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 | Phoenix has no traces | Doctor 6, 9, 13 | LiteLLM env: `PHOENIX_API_KEY`, `PHOENIX_COLLECTOR_HTTP_ENDPOINT` |
 | Ollama 403 from inside container | Phase 00 plist | Reset Ollama: `OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=*` then `brew services restart ollama` |
 | Open WebUI shows "model not found" | LiteLLM config | `curl http://litellm:4000/v1/models`; restart Open WebUI |
-| `bin/pi` says "PI_LITELLM_KEY missing" | Doctor 26 | Re-run `bash install.sh install 15` (re-mints) |
+| `bin/pi` says "PI_LITELLM_KEY missing" | Doctor 26 | Re-run `bash vz-ai-stack.sh install 15` (re-mints) |
 | Pi can reach forbidden destination | Doctor 25 | `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` |
-| `openshell sandbox list` → empty | Doctor 24 | `bash install.sh install 04` then `install 15` |
+| `openshell sandbox list` → empty | Doctor 24 | `bash vz-ai-stack.sh install 04` then `install 15` |
 | Sandbox network policy not enforcing | Doctor 25 (slow mode) | `OPENSHELL_DOCTOR_SLOW=1 stack doctor` |
 | docs-mcp returns nothing | Phase 06 | `bash bin/start-docs_mcp.sh`; verify `curl docs-mcp:8765/health` |
 | Fan is on, idle CPU high | DeerFlow probably | See §2.10 — disable DeerFlow when not researching |

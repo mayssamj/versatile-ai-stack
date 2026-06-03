@@ -139,7 +139,7 @@ alias_resolution_diagnose() {
       # return 0 so doctor counts this as PASS.
       printf '  (foreign containers detected: %s — degrading to WARN)\n' "${foreigns[*]}"
       printf '%s\n' "${fails[@]}"
-      printf '  Adopt them with: install.sh adopt <svc>\n'
+      printf '  Adopt them with: vz-ai-stack.sh adopt <svc>\n'
       return 0
     fi
     printf '%s\n' "${fails[@]}"
@@ -151,6 +151,6 @@ alias_resolution_fix() {
   warn "If aliases don't resolve, check that:"
   warn "  1. /etc/hosts has the managed block (doctor check 15)"
   warn "  2. The owning container is up and joined to ai-stack (check 16)"
-  warn "  3. For foreign containers, run: install.sh adopt <svc>"
+  warn "  3. For foreign containers, run: vz-ai-stack.sh adopt <svc>"
   return 1
 }

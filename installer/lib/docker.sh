@@ -1,5 +1,5 @@
 # docker.sh — managed docker run helpers.
-# Sourced by install.sh after common.sh + env.sh.
+# Sourced by vz-ai-stack.sh after common.sh + env.sh.
 #
 # Every managed container is launched with three discipline rules:
 #   1. Flag order is FIXED: --network/--add-host, then --env-file, then -e...,
@@ -15,7 +15,7 @@
 #        ai-stack.managed=true       (this installer owns it)
 #        ai-stack.phase=<NN>         (which phase installed it)
 #        ai-stack.partial=true       (cleared after smoke test passes)
-#      install.sh gc cleans partial=true orphans.
+#      vz-ai-stack.sh gc cleans partial=true orphans.
 
 [[ -z "${AI_STACK:-}" ]] && { echo "docker.sh: AI_STACK unset" >&2; exit 2; }
 

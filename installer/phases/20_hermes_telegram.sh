@@ -20,7 +20,7 @@
 # HERMES_TELEGRAM_ALLOWED_USERS=<your_id> in .env and re-run this phase. This is
 # deliberate: the bot can drive 7 agent profiles, so it must not be open by accident.
 #
-# Standalone:  bash install.sh install 20
+# Standalone:  bash vz-ai-stack.sh install 20
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -107,7 +107,7 @@ OSH="$(resolve_openshell)"; [[ -n "$OSH" ]] || { err "openshell not on PATH — 
 TGT="$(get_env HERMES_TELEGRAM_BOT_TOKEN '')"
 if [[ -z "$TGT" ]]; then
   err "HERMES_TELEGRAM_BOT_TOKEN missing from .env."
-  err "Add it (from @BotFather for @vz_hermes_controller_bot) then re-run 'install.sh install 20'."
+  err "Add it (from @BotFather for @vz_hermes_controller_bot) then re-run 'vz-ai-stack.sh install 20'."
   exit 1
 fi
 # Sanity-check shape WITHOUT printing the value: Telegram tokens are <id>:<secret>.
@@ -118,12 +118,12 @@ fi
 
 # --- 2. Sandbox must be Ready (relay up) ----------------------------------
 STATE="$("$OSH" sandbox get "$SANDBOX" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*Phase:/ {print $2; exit}')"
-[[ "$STATE" == "Ready" ]] || { err "sandbox $SANDBOX not Ready (state='${STATE:-absent}') — run 'install.sh install 04' (OpenShell relay down? 'brew services restart openshell')"; exit 1; }
+[[ "$STATE" == "Ready" ]] || { err "sandbox $SANDBOX not Ready (state='${STATE:-absent}') — run 'vz-ai-stack.sh install 04' (OpenShell relay down? 'brew services restart openshell')"; exit 1; }
 
 # Confirm Phase 04 wired the Telegram egress policy (else long-poll is blocked).
 if ! "$OSH" sandbox get "$SANDBOX" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | grep -qi 'telegram'; then
   warn "no 'telegram' network_policy on $SANDBOX — api.telegram.org egress may be blocked."
-  warn "Re-run 'install.sh install 04' to apply the policy, then re-run this phase."
+  warn "Re-run 'vz-ai-stack.sh install 04' to apply the policy, then re-run this phase."
 fi
 
 # --- 3. Push the token into the sandbox's ~/.hermes/.env (stdin, not argv) -
@@ -189,7 +189,7 @@ if [[ "$LOCKED" == "1" ]]; then
   warn " The gateway is connected to Telegram, but won't respond until you:"
   warn "   1. DM @userinfobot on Telegram to get your numeric user id"
   warn "   2. Add to .env:   HERMES_TELEGRAM_ALLOWED_USERS=<your_id>"
-  warn "   3. Re-run:        bash install.sh install 20"
+  warn "   3. Re-run:        bash vz-ai-stack.sh install 20"
   warn " (Or set HERMES_TELEGRAM_ALLOW_ALL=true for open access — not advised.)"
   warn "════════════════════════════════════════════════════════════════════"
 else

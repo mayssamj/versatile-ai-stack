@@ -26,8 +26,8 @@ BIND_HOST="${CLAW3D_HOST:-127.0.0.1}"
 CHECK_HOST=127.0.0.1
 PORT="${CLAW3D_PORT:-4310}"
 
-[[ -d "$CLAW_DIR" && -f "$CLAW_DIR/server/index.js" ]] || { err "claw3d not installed at $CLAW_DIR — run 'install.sh install 19'"; exit 1; }
-[[ -d "$CLAW_DIR/node_modules" ]] || { err "claw3d node_modules missing — run 'install.sh install 19' (npm install)"; exit 1; }
+[[ -d "$CLAW_DIR" && -f "$CLAW_DIR/server/index.js" ]] || { err "claw3d not installed at $CLAW_DIR — run 'vz-ai-stack.sh install 19'"; exit 1; }
+[[ -d "$CLAW_DIR/node_modules" ]] || { err "claw3d node_modules missing — run 'vz-ai-stack.sh install 19' (npm install)"; exit 1; }
 command -v node >/dev/null || { err "node not on PATH — run phase 00"; exit 1; }
 
 pid_is_ours() {
