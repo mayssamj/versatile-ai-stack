@@ -13,14 +13,22 @@
 #      (ExpiredSignature / reconnect-storm in recent logs, or a climbing
 #      RestartCount). That signature means the sandbox is already DEAD, so acting
 #      on it loses nothing — it won't false-fire on a legitimately busy sandbox.
-#   2. On detection: delete the dead sandbox (stops the CPU storm at once) and
-#      recreate it via its install phases (fresh token). Throttled + logged +
-#      a desktop notification. Skips if an install is already running.
+#   2. On detection (DEFAULT = WARN-ONLY, data-safe): log + desktop-notify + write
+#      a RED marker (surfaced by doctor check 43). It does NOT delete the sandbox —
+#      deletion is destructive (loses in-sandbox runtime state), so recreation is a
+#      deliberate human action: `vz-ai-stack.sh install <phases>`.
 #   3. GENERIC net: any MANAGED container pegged >CPU_WARN over two samples gets
-#      logged as a runaway (sandboxes self-heal; others are surfaced for `doctor`).
+#      logged as a runaway (surfaced for `doctor`).
 #
-# Detect-only mode: set AI_STACK_WATCHDOG_RECREATE=0 (logs + deletes the dead
-# sandbox to stop the burn, but does not recreate).
+# WHY warn-only (2026-06-03): the previous version auto-deleted then rebuilt, but the
+# rebuild ran under launchd's PATH (no OrbStack docker) and ALWAYS failed — destroying
+# BOTH sandboxes and logging a false "done". Now destruction never happens on its own.
+#
+# Opt-in AI_STACK_WATCHDOG_RECREATE=1: auto-recreate, but only after verifying the
+# rebuild can run (docker+openshell reachable); recreates, verifies Ready, and fails
+# LOUD (RED marker + notify) — never a silent destroy-without-rebuild.
+# Opt-in AI_STACK_WATCHDOG_HALT=1: `docker stop` the storming container (non-destructive,
+# sandbox record preserved) to cut the CPU burn while you decide.
 set -Eeuo pipefail
 
 AI_STACK="${AI_STACK:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -31,7 +39,16 @@ INSTALL_LOCK="$STATE/.lock"               # vz-ai-stack.sh's lock dir
 THROTTLE_FILE="$STATE/openshell-watchdog.last"
 THROTTLE_SECS="${AI_STACK_WATCHDOG_THROTTLE:-1800}"   # don't recreate the same thing more than once / 30min
 CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshold (%)
-RECREATE="${AI_STACK_WATCHDOG_RECREATE:-1}"
+# SAFETY (2026-06-03 — after the watchdog destroyed both sandboxes without rebuild):
+# DEFAULT IS WARN-ONLY. The watchdog NEVER auto-deletes a sandbox by default —
+# deletion is destructive (loses any in-sandbox runtime state). On a storm it logs
+# + desktop-notifies + writes a RED marker that `doctor` surfaces; YOU recreate when
+# ready. Opt into auto-recreate (delete+rebuild, capability-checked + Ready-verified
+# + fails LOUD) with AI_STACK_WATCHDOG_RECREATE=1. Opt into a non-destructive CPU-burn
+# halt (docker stop, sandbox preserved) with AI_STACK_WATCHDOG_HALT=1.
+RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
+HALT="${AI_STACK_WATCHDOG_HALT:-0}"
+FAILMARK="$STATE/openshell-watchdog.alert"            # RED marker → doctor check 43
 SANDBOXES=(hermes-fleet-v1 pi-v1)
 
 mkdir -p "$STATE"
@@ -63,7 +80,7 @@ case "${1:-run}" in
   <key>RunAtLoad</key><false/>
   <key>EnvironmentVariables</key><dict>
     <key>AI_STACK</key><string>$AI_STACK</string>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>${DOCKER:+$(dirname "$DOCKER"):}${OPENSHELL:+$(dirname "$OPENSHELL"):}/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key><string>$STATE/openshell-watchdog.launchd.log</string>
   <key>StandardErrorPath</key><string>$STATE/openshell-watchdog.launchd.log</string>
@@ -110,26 +127,84 @@ _is_storming() {
   return 1
 }
 
-recreate_sandbox() {  # recreate_sandbox <name>
-  local name="$1"
-  log "RECREATING $name (delete + reinstall for a fresh token)"
-  notify "$name token expired — auto-recreating"
-  "$OPENSHELL" sandbox delete "$name" >>"$LOG" 2>&1 || log "  (delete returned non-zero — continuing)"
-  if [[ "$RECREATE" != "1" ]]; then log "  RECREATE disabled — deleted only (stops the storm); recreate later via install"; return 0; fi
+# _child_path — prepend the RESOLVED tool dirs so a shelled `vz-ai-stack.sh install`
+# finds docker/openshell/brew even under launchd's minimal PATH. (DEFECT-2: the
+# child installer's preflight does `command -v docker`; OrbStack's docker lives at
+# ~/.orbstack/bin and was NOT on the plist PATH, so every rebuild aborted.)
+_child_path() {
+  local d=""
+  [[ -n "$DOCKER"    ]] && d="$(dirname "$DOCKER"):"
+  [[ -n "$OPENSHELL" ]] && d="$d$(dirname "$OPENSHELL"):"
+  [[ -n "$BREW"      ]] && d="$d$(dirname "$BREW"):"
+  printf '%s%s' "$d" "$PATH"
+}
+
+# _phase_install <cpath> <phase...> — run the recreate phases with a docker-capable
+# PATH; return non-zero if ANY phase fails (DEFECT-3: no more false "done").
+_phase_install() {
+  local cpath="$1"; shift; local p rc=0
+  for p in "$@"; do
+    PATH="$cpath" bash "$AI_STACK/vz-ai-stack.sh" install "$p" >>"$LOG" 2>&1 || { rc=1; log "  install $p FAILED (rc=$?)"; }
+  done
+  return $rc
+}
+
+# _verify_ready <name> — poll until the sandbox reports Ready (or give up).
+_verify_ready() {
+  local name="$1" i
+  for i in 1 2 3 4 5 6; do
+    "$OPENSHELL" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
+      | awk -v n="$name" 'NR>1 && $1==n && $NF=="Ready"{ok=1} END{exit !ok}' && return 0
+    sleep 5
+  done
+  return 1
+}
+
+handle_storm() {  # handle_storm <name> <cid>
+  local name="$1" cid="$2" phases
   case "$name" in
     hermes-fleet-v1)
-      bash "$AI_STACK/vz-ai-stack.sh" install 04  >>"$LOG" 2>&1 || log "  install 04 failed"
-      bash "$AI_STACK/vz-ai-stack.sh" install 04f >>"$LOG" 2>&1 || log "  install 04f failed"
-      # Restart the Telegram gateway only if a token is configured.
-      grep -q '^HERMES_TELEGRAM_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null \
-        && { bash "$AI_STACK/vz-ai-stack.sh" install 20 >>"$LOG" 2>&1 || log "  install 20 failed"; }
-      ;;
-    pi-v1)
-      bash "$AI_STACK/vz-ai-stack.sh" install 15 >>"$LOG" 2>&1 || log "  install 15 failed"
-      ;;
+      phases="04 04f"
+      grep -q '^HERMES_TELEGRAM_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null && phases="$phases 20" ;;
+    pi-v1) phases="15" ;;
+    *)     phases="" ;;
   esac
-  log "  recreate of $name done"
-  notify "$name recreated ✓"
+
+  # DEFAULT: WARN ONLY — never auto-destroy (would lose in-sandbox state).
+  if [[ "$RECREATE" != "1" ]]; then
+    log "ALERT: $name has an expired-token storm (cid ${cid:0:12}). NOT auto-deleting (would discard in-sandbox state)."
+    log "  Heal when ready (recreate mints a fresh token but DISCARDS in-sandbox runtime data):  bash $AI_STACK/vz-ai-stack.sh install $phases"
+    if [[ "$HALT" == "1" ]]; then
+      "$DOCKER" stop "$cid" >>"$LOG" 2>&1 && log "  halted the container to stop the CPU burn (sandbox record preserved; recreate to use it)" || log "  (docker stop failed)"
+    fi
+    printf '%s expired-token storm at %s — auto-recreate is OFF (data-safe). Heal: vz-ai-stack.sh install %s\n' \
+      "$name" "$(date '+%F %T')" "$phases" > "$FAILMARK"
+    notify "$name token storm — recreate manually (auto-recreate OFF)"
+    return 0
+  fi
+
+  # OPT-IN auto-recreate: verify we CAN rebuild BEFORE deleting (DEFECT-1), recreate,
+  # VERIFY Ready, fail LOUD on any failure (DEFECT-3).
+  local cpath; cpath="$(_child_path)"
+  if ! PATH="$cpath" command -v docker >/dev/null 2>&1 || [[ -z "$OPENSHELL" ]]; then
+    log "REFUSING to recreate $name: rebuild prerequisites missing (docker on PATH / openshell). Sandbox LEFT INTACT — never delete without a viable rebuild."
+    printf '%s storm; auto-recreate ABORTED (no docker/openshell for rebuild) — sandbox left intact %s\n' "$name" "$(date '+%F %T')" > "$FAILMARK"
+    notify "⚠ $name storm — recreate aborted (rebuild prereqs missing); left intact"
+    return 0
+  fi
+  log "RECREATING $name (opt-in; capability-checked; delete+rebuild for a fresh token)"
+  notify "$name token expired — auto-recreating"
+  "$OPENSHELL" sandbox delete "$name" >>"$LOG" 2>&1 || log "  (delete returned non-zero — continuing)"
+  local rc=0; _phase_install "$cpath" $phases || rc=1
+  if (( rc == 0 )) && _verify_ready "$name"; then
+    log "  recreate of $name SUCCEEDED + verified Ready"
+    rm -f "$FAILMARK"
+    notify "$name recreated ✓"
+  else
+    log "  RECREATE of $name FAILED (install rc=$rc / not Ready) — sandbox is NOT healthy. Manual: bash $AI_STACK/vz-ai-stack.sh install $phases"
+    printf '%s auto-recreate FAILED (rc=%s) at %s — sandbox missing/unhealthy; manual repair needed\n' "$name" "$rc" "$(date '+%F %T')" > "$FAILMARK"
+    notify "⚠ $name recreate FAILED — needs manual repair (see doctor)"
+  fi
 }
 
 acted=0
@@ -142,7 +217,7 @@ for name in "${SANDBOXES[@]}"; do
     else
       log "DETECTED expired-token storm on $name (cid ${cid:0:12})"
       _mark "$name"
-      recreate_sandbox "$name"
+      handle_storm "$name" "$cid"
       acted=1
     fi
   fi
