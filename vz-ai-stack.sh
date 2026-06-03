@@ -186,6 +186,8 @@ ai-stack-installer — usage:
     vz-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
     vz-ai-stack.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
                                         (or all enabled), type-dispatched
+    vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]   serve doc/TUTORIAL.html
+                                        + safe 'Try it live' proxy (ephemeral local-only key)
     vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
@@ -459,6 +461,8 @@ cmd_gc()      { bash "$AI_STACK/installer/lib/gc.sh"; }
 cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
 cmd_upgrade() { bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }
+# Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
+cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 
 # cmd_start <svc> — invoke bin/start-<svc>.sh (the canonical per-service
 # launcher). All managed services have one. For docker-compose services
@@ -623,6 +627,7 @@ main() {
     gc)                cmd_gc ;;
     migrate-v2)        cmd_migrate_v2 ;;
     upgrade)           cmd_upgrade "$@" ;;
+    tutorial-serve)    cmd_tutorial_serve "$@" ;;
     reset)             cmd_reset "$@" ;;
     start|enable)      cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;
