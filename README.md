@@ -1,4 +1,4 @@
-# ai-stack
+# vz-ai-stack
 
 **Your own private AI cloud — 39 services, one Mac, zero bytes leaving the building.**
 
