@@ -309,7 +309,7 @@
     <div class="step">
       <span class="n">Step 1</span>
       <h3>Confirm health</h3>
-      <p>Run doctor. Target: 40/40 ✓.</p>
+      <p>Run doctor. Target: 43/43 ✓.</p>
       <a class="link" href="#cheatsheet">Cheatsheet →</a>
     </div>
     <div class="step">
@@ -755,7 +755,7 @@ const services = [
   // Code search (Phase 16)
   {id:'lumen', layer:'code-search', layerLabel:'Code search', name:'lumen', port:'(stdio MCP)', phase:'16', tagline:'Local code semantic search for AI agents',
    what:'Ory\'s Lumen — single Go binary vendored at ~/ai-stack/vendor/lumen/. Two modes: (1) `lumen search` from your shell for one-shot queries, (2) `lumen stdio` as an MCP server that AutoFyn / Open WebUI / Claude Code / Codex / Cursor spawn as a subprocess. No HTTP — confirmed in source. Embeddings via Ollama (`ordis/jina-embeddings-v2-base-code`, 768-dim). Index lives at ~/.local/share/lumen/<hash>/ keyed by (repo, embed_model, binary_version).',
-   when:'When an agent needs to navigate a codebase by meaning, not grep. AutoFyn asking "where does this config get parsed?", Hermes_software_engineer answering "find every place X gets wired into Y." Ory\'s claim: "50% fewer tokens" for code-navigation tasks. Pair with docs-mcp (prose RAG) — Lumen is code, docs-mcp is prose.',
+   when:'When an agent needs to navigate a codebase by meaning, not grep. AutoFyn asking "where does this config get parsed?", hermes_backend_engineer answering "find every place X gets wired into Y." Ory\'s claim: "50% fewer tokens" for code-navigation tasks. Pair with docs-mcp (prose RAG) — Lumen is code, docs-mcp is prose.',
    tryThis:[
      {desc:'List built indexes (no `index list` subcommand exists).', cmd:'ls ~/.local/share/lumen/'},
      {desc:'One-shot CLI semantic search against the default ai-stack index.', cmd:'~/ai-stack/bin/lumen search \'openshell policy applied to sandbox\' \\\n  --path ~/ai-stack --n-results 3 --summary'},
@@ -936,7 +936,7 @@ const recipes = [
 // ============ Data: cheatsheet ============
 const cheatsheet = [
   {section:'Health + state', items:[
-    {cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'40 health checks + auto-fix offers'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'43 health checks + auto-fix offers'},
     {cmd:'bash ~/ai-stack/vz-ai-stack.sh status', desc:'declared vs actual table'},
     {cmd:'bash ~/ai-stack/vz-ai-stack.sh verify', desc:'phase 00·V pre-install runtime probes'},
     {cmd:'OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'+9 negative network probes for pi-v1'}

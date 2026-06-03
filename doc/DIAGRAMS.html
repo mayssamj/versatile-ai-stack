@@ -787,7 +787,7 @@ sequenceDiagram
 <p>   nothing on your network can reach them. They hold service state but no</p>
 <p>   personal data. Inter-container traffic stays on the <code>ai-stack</code> bridge.</p>
 <p>3. <strong>Sandboxes</strong> — untrusted. There are two: <code>hermes-fleet-v1</code> (the</p>
-<p>   7-profile Hermes fleet plus the Telegram gateway) and <code>pi-v1</code> (the Pi</p>
+<p>   9-role Hermes fleet plus the Telegram gateway) and <code>pi-v1</code> (the Pi</p>
 <p>   coding agent). Both are network deny-by-default with a tight egress</p>
 <p>   allowlist; filesystem locked to <code>/sandbox/</code> and <code>/tmp/</code>. The fleet</p>
 <p>   reaches LiteLLM through the <code>hermes-gw</code> L7 proxy (which injects</p>
