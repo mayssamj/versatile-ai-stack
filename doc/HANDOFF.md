@@ -6,21 +6,21 @@ in fifteen minutes.
 
 ---
 
-## 0. Snapshot — state as of 2026-05-31
+## 0. Snapshot — state as of 2026-06-03
 
 | Property | Value |
 |---|---|
-| Host | Mayssam Sayyadian's MacBook Pro M4 24 GB, macOS Sequoia, OrbStack docker, Homebrew, Python 3.13, brew bash 5.x |
+| Host | Mayssam Sayyadian's MacBook Pro M4 24 GB, macOS Sequoia, OrbStack docker, Homebrew, Python 3.13+, brew bash 5.x |
 | Stack root | `~/ai-stack/` (= `/Users/mayssam.sayyadian/ai-stack/`) |
-| Entry point | `bash vz-ai-stack.sh` (and the `stack` alias = `bash vz-ai-stack.sh`) |
-| Total phases | **27 core + 5 opt-in extras** = 32 phase files. Core: 00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. Opt-in (install by name, NOT in `install all`): 21 portless, 22 cmux, 23 skillspector, 24 openagents, 25 lmstudio. |
-| Default phase order (`install all`) | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20` (note: 03 before 01 — see §3.1) |
-| Total services in `services.yml` | **39** (added `rlm` Phase 18; `claw3d` + `claw3d_bridge` Phase 19; `hermes_telegram` Phase 20; the 5 opt-in extras 21–25) |
-| Total doctor checks | **40** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40) |
-| Model↔agent binding | `installer/models.yml` is the single source of truth; **3 canonical models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in). `vz-ai-stack.sh model {list,assign,sync,superset}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
-| Docs + ingestion layout | All docs now live under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed` (drop files into `~/ai-stack/ingestor/inbox`); there is NO top-level `docs/` dir anymore. |
-| Last verified doctor pass | 2026-05-31: a fresh `install all` reaches **40/40** (Phase 18 RLM + Phase 19 claw3d + Phase 20 Telegram + check 40 models_binding). ⚠️ A long-idle live stack can show 2 OpenShell-exec checks (25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
-| Last verified cold install | 2026-05-31 — `reset --confirm hard --yes` → `install all` → `doctor` 40/40 green, end-to-end (Phases 19 claw3d + 20 Telegram verified; check 33 skips→passes when no `HERMES_TELEGRAM_BOT_TOKEN`. See CHANGELOG 2026-05-31) |
+| Entry point | **`bash vz-ai-stack.sh`** (renamed from `install.sh` on 2026-06-02 — project-wide sweep, commit `a796e2e`). The `bin/stack` wrapper takes the same args (`stack status`, `stack doctor`, …). |
+| Total phases | **28 core + 5 opt-in extras** = 33 phase files. Core (in `install all`): 00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, **04h**, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. **04h `agent_fleet`** (NEW 2026-06-02) installs the cross-platform agent fleet (runs LAST). Opt-in (install by name, NOT in `install all`): 21 portless, 22 cmux, 23 skillspector, 24 openagents, 25 lmstudio. |
+| Default phase order (`install all`) | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h` (note: 03 before 01 — see §3.1; 04h LAST — it uploads to pi-v1 (15) + widens the PI/HERMES keys) |
+| Total services in `services.yml` | **39** |
+| Total doctor checks | **42** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**) |
+| Model↔agent binding | `installer/models.yml` is the single source of truth. **3 local models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in) **+ the Claude SUBSCRIPTION effort-ladder** via the Meridian host daemon: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` + `claude-sonnet-4.6-sub-{low,medium,high,max}` (runtime `meridian`, availability-gated to `local-gemma4` when Meridian is down). The 9-role Hermes fleet + Pi are assigned subscription models. `vz-ai-stack.sh model {list,assign,sync,superset,discover,add}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
+| Docs + ingestion layout | All docs under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed`. NEW: `doc/TUTORIAL.md` + `doc/TUTORIAL.html` (hands-on tutorial). |
+| Last verified doctor pass | **2026-06-03: `doctor` = 42/42** on the live stack. ⚠️ A long-idle live stack can show OpenShell-exec checks (24/25 pi-v1, 30 hermes) failing — that's the §2.1 relay idle-timeout, NOT a regression; a reset clears it. |
+| Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 42/42** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
 1. **Autonomous execution.** Diagnose → fix in code → update installer → sweep docs → verify → THEN report. Don't hand back a recipe.
@@ -34,10 +34,12 @@ in fifteen minutes.
 9. **OrbStack `*:80` collision is permanent.** Don't try port-free aliases (`http://litellm/`) — it was investigated 2026-05-28 and reverted. Stay on `http://litellm:4000`.
 
 **Memory pointers** (auto-loaded in this user's Claude sessions, see `~/.claude/projects/-Users-mayssam-sayyadian-ai-stack/memory/MEMORY.md`):
-- `feedback-autonomous-execution.md`
-- `feedback-background-tasks.md`
-- `project_pi_phase15.md`
-- `project_doctor_count.md` (now **40** checks — update if you add checks)
+- `feedback_autonomous_execution.md`, `feedback_background_tasks.md`, `feedback_upgrade_fleet_prefs.md`
+- `project_doctor_count.md` (now **42** checks — update if you add checks)
+- `project_model_strategy.md` (3 local + Claude subscription via Meridian; the `-sub-*` effort ladder)
+- `project_agent_fleet.md` (the 9-role team across Hermes/Pi/Claude Code; phase 04h)
+- `project_tutorial.md` (doc/TUTORIAL.md+.html + the `tutorial-serve` ephemeral-key proxy)
+- `project_pi_phase15.md`, `project_cpu_gotchas.md`, `project_ollama_memory.md`
 
 ---
 
@@ -56,7 +58,7 @@ in fifteen minutes.
 ### Agent runtimes
 - **OpenShell** (brew service, gateway `:17670`) — sandbox host. Two sandboxes:
   - **hermes-fleet-v1** — the 9-role Hermes engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager), running a spec→deploy pipeline under the shared team-protocol skill; all nine route to a Claude subscription via Meridian (gated to local-gemma4 when Meridian is down). Installed via PyPI `hermes-agent` v0.15.2 inside `/sandbox/.venv` (uv-managed venv inside the sandbox).
-  - **pi-v1** — Pi (`@earendil-works/pi-coding-agent`) installed from pre-staged tarball at `pi/pi-bootstrap.tar.gz` to bypass scoped-npm-URL proxy issue. Auth via `PI_LITELLM_KEY` virtual key scoped to the fixed canonical superset (`local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6`). Pi's assigned model is `local-qwen3-coder` (per `models.yml`); the superset lets `model assign`/`sync` re-point it without re-minting the key.
+  - **pi-v1** — Pi (`@earendil-works/pi-coding-agent`). Auth via `PI_LITELLM_KEY` virtual key. Pi is now assigned a **Claude subscription** model in `models.yml` (`claude-opus-4.8-sub-max`), availability-gated by Phase 15 to `local-gemma4` when Meridian (and LM Studio) are down. **Phase 04h widens `PI_LITELLM_KEY`** to the full superset (legacy + all models.yml ids incl. `claude-*-sub-*`) so the subscription models are reachable. The 9 fleet personas are uploaded to `/sandbox/agents/<role>/SYSTEM.md`; switch with `bin/pi-as <role>`. (Plain `bin/pi` for a generic session.)
 
 ### UIs
 - **Open WebUI** (`http://openwebui:8080`) — chat UI in front of LiteLLM.
@@ -83,8 +85,11 @@ in fifteen minutes.
 - `prepare-sudo` — sudo'd /etc/hosts + lo0 + launchd plist setup (idempotent)
 - `verify` — runtime probes (lo0, /etc/hosts, host-gateway, end-to-end routing). Cheap, < 10s.
 - `status` — declared vs actual + ownership table
-- `model list|assign|sync|superset` — declarative model↔agent binding (see [models.md](models.md)); `sync` is opt-in
-- `doctor [<filter>]` — 40 checks, per-check auto-fix
+- `model list|assign|sync|superset|discover|add` — declarative model↔agent binding (see [models.md](models.md)); `sync` is opt-in
+- `fleet list|add|remove|new|destroy` — manage the Hermes fleet (add/remove a profile in hermes-fleet-v1; `new`/`destroy` a separate fleet sandbox)
+- `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
+- `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
+- `doctor [<filter>]` — 42 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -143,11 +148,33 @@ bash vz-ai-stack.sh install 04                            # will succeed now
 ### 2.7 status.sh used to mislabel compose services as `absent`
 **Fixed 2026-05-29** via `ownership_compose()` + `project:` / `process_pattern:` overrides in services.yml. If you see it again, check that the `services.<name>.project:` field matches the actual compose project name (kebab-case).
 
+### 2.8 Fleet / Claude-subscription routing (NEW — most likely 2026-06 debugging area)
+The 9-role fleet + Pi route to the Meridian Claude subscription. The common failure modes + fixes:
+- **403 / "key not allowed to access model"** for a `claude-*-sub-*` model → the scoped key (`HERMES_LITELLM_KEY` / `PI_LITELLM_KEY`) wasn't widened. **Fix:** `vz-ai-stack.sh model sync` (re-widens) or re-run `vz-ai-stack.sh install agent_fleet` (04h widens inline).
+- **Fleet answers on `local-gemma4` instead of the subscription model** → Meridian daemon (`:3456`) is down, so availability-gating fell back **by design**. **Fix:** `bash bin/start-meridian.sh status` / `restart`; `claude login` if OAuth expired. Doctor check **41 `meridian`** surfaces this.
+- **All `claude-*-sub-*` entries show `effort: high` in `litellm/config.yaml`** → a register-without-effort flattened the ladder (was a Phase 01 bug, fixed `3328206`). **Fix:** `vz-ai-stack.sh model sync` → `bash bin/start-litellm.sh --recreate`. Doctor check 41 has an effort-drift guard.
+- **In-sandbox Hermes profiles ≠ the 9-role roster (stale / 16-profile "Frankenfleet")** → an interrupted 04f. Doctor check **30** catches it. **Fix:** re-run `vz-ai-stack.sh install 04f` (it prunes non-roster profiles), or hard-reset the sandbox.
+- **`tutorial-serve` live demos dead** → the page is opened via `file://` (no proxy) — run `vz-ai-stack.sh tutorial-serve` and open the printed URL; or LiteLLM is down (`bin/start-litellm.sh`).
+
 ---
 
-## 3. Recent session deltas (2026-05-29 → 2026-05-30)
+## 3. Recent session deltas
 
-Read **CHANGELOG.md top to bottom** for full reasoning. Summary of major changes:
+Read **CHANGELOG.md top to bottom** for full reasoning. Newest first:
+
+### 3.0 — 2026-06-01 → 06-03 (rename, agent fleet, subscription wiring, tutorial)
+
+A debugger should know these touched a lot of surface area:
+
+- **`install.sh` → `vz-ai-stack.sh` rename** (`a796e2e`, `667af6b`). Project-wide sweep (797 refs, 124 files): the entrypoint, all `bin/*`, installer code, all docs. `bin/stack` wraps it. **Third-party `install.sh` URLs were preserved** (pi.dev, unsloth, OpenShell, blaxel, hermes `scripts/install.sh`). If you find a stale `install.sh`, it's either third-party (leave it) or a miss (fix it). Memory + `~/.claude/` global agent copies may still say `install.sh` until re-synced.
+- **9-role agent fleet across 3 platforms** (`b867c34`). The Hermes fleet was REPLACED (old 7 `hermes_cos/...` → 9 `hermes_{manager,techlead,frontend_engineer,backend_engineer,ml_engineer,qa_test_engineer,reviewing_engineer,sre_engineer,incident_manager}`). Same roster on Pi (`bin/pi-as <role>`) + Claude Code (`~/.claude/agents`, GLOBAL). Source of truth: `agent-profiles/{hermes,pi,claude-code}/`. Keystone shared skill `team-protocol`. Installed by **phase `04h_agent_fleet.sh`** (`vz-ai-stack.sh install agent_fleet`). 04f is now fully data-driven (souls sourced from `agent-profiles/`, prunes stale in-sandbox profiles so a 7→9 swap can't leave a Frankenfleet). claw3d-bridge `bridge.py` registry migrated to the 9 roles.
+- **All-subscription model wiring + cold-path fixes** (`6971198`, `3328206`, `9f8992b`). Hermes+Pi route to the Meridian Claude subscription. Two real bugs fixed: (1) `resolve_profile_model` only gated `lmstudio` → on a cold `install all` with Meridian down it pinned the fleet to unreachable `claude-*-sub-*` slugs; now gates `meridian` too (04f + fleet.sh + 15_pi.sh). (2) Phase 01's register loop dropped the per-model `effort`, flattening the subscription effort ladder to `high` on every install; now passes effort. NEW doctor checks: **41 `meridian`** (incl. an effort-ladder-drift guard) + **42 `agent_fleet`** (verifies the cross-platform fleet landed; opt-in green-skip). Check 30 got a Frankenfleet guard.
+- **`upgrade` verb + `model discover|add`** (`f5f642b`, `3fd8516`). `vz-ai-stack.sh upgrade --check` = read-only registry-digest "what's outdated?" scan; `--outdated` upgrades only those.
+- **Hands-on tutorial** (`c4b695f`, `7b145a5`, `e535b86`). `doc/TUTORIAL.md` (7-act/30-lesson from-scratch journey) + `doc/TUTORIAL.html` (4 live demos) + `vz-ai-stack.sh tutorial-serve` (`installer/lib/tutorial-serve.sh` + `tutorial_proxy.py`): mints an ephemeral, local-only, budget-capped, short-TTL LiteLLM key injected SERVER-SIDE (no token in the browser), serves the page + an allowlisted `/api/{health,models,chat}` proxy, auto-revokes on exit. **Gotcha:** the launcher must NOT `exec` the python proxy or the bash EXIT-trap revoke is orphaned. Also fixed deprecated fleet docs across 17 files.
+
+### 3.1–3.10 — 2026-05-29 → 2026-05-30 (earlier)
+
+Summary of major changes:
 
 ### 3.1 vz-ai-stack.sh cold-path phase ordering (2026-05-30)
 **Problem:** `install all` from cold (post hard reset) failed at Phase 01 because LiteLLM's Prisma migration hangs without Postgres, which doesn't exist until Phase 03.
@@ -287,11 +314,11 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/vz-ai-stack.sh install all
 
-# 4. Verify (40/40 expected)
+# 4. Verify (42/42 expected)
 bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
-This canonical flow is VERIFIED end-to-end (40/40 doctor, 2026-05-31). OpenShell sandbox-create hangs are now auto-recovered in-code (§2.2), so step 3 should no longer stall there.
+This canonical flow is VERIFIED end-to-end (42/42 doctor; cold `reset --hard → install all → doctor` on 2026-06-02). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash
@@ -334,7 +361,7 @@ bash ~/ai-stack/vz-ai-stack.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 40 checks, each with auto-fix offer.
+2. `stack doctor` — 42 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -361,7 +388,7 @@ If you keep these as constraints, you'll write the right code.
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (40 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (42 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |
@@ -375,7 +402,11 @@ If you keep these as constraints, you'll write the right code.
 | `doc/ARCHITECTURE.md` | Deep design notes |
 | `doc/TROUBLESHOOTING.md` | Diagnose-from-scratch recipes |
 | `doc/PORTS.md`, `doc/DEPENDENCIES.md`, `doc/STACK-GUIDE.md`, `doc/DIAGRAMS.md`, `doc/DIAGRAMS.html` | Reference |
-| `doc/USER-GUIDE.md`, `doc/USER-GUIDE.html` | End-user onboarding (every service + 12 recipes) |
+| `doc/USER-GUIDE.md`, `doc/USER-GUIDE.html` | End-user onboarding (every service + recipes) |
+| `doc/TUTORIAL.md`, `doc/TUTORIAL.html` | Hands-on from-scratch tutorial (7 acts, 30 lessons) + interactive page |
+| `agent-profiles/{hermes,pi,claude-code}/` | **Source of truth for the 9-role fleet** — SOUL.md / SYSTEM.md / `.claude` subagents + the `team-protocol` skill. Phase 04f (Hermes) + 04h (Pi+Claude) install from here. |
+| `installer/lib/tutorial-serve.sh` + `tutorial_proxy.py` | `tutorial-serve` live-demo: mints an ephemeral local-only LiteLLM key, serves TUTORIAL.html + an allowlisted `/api` proxy (key injected server-side), auto-revokes. |
+| `installer/phases/04h_agent_fleet.sh` | Installs the fleet to Claude Code (`~/.claude`, global) + Pi (`pi-v1`), re-runs 04f, widens the PI/HERMES keys. |
 | `README.md` | Top-level entrypoint + Mayssam's constitution (stays at repo root) |
 
 > **Layout note (2026-05-30):** All docs now live under `doc/` (this file is `doc/HANDOFF.md`) EXCEPT `README.md` + `CHANGELOG.md`, which stay at repo root.
