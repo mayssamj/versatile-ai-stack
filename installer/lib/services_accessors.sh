@@ -55,6 +55,14 @@ svc_sandbox() { yq -r ".services.$1.sandbox // \"-\"" "$SERVICES_YML"; }
 # Health URL if declared, else "-".
 svc_health() { yq -r ".services.$1.health // \"-\"" "$SERVICES_YML"; }
 
+# Declared network mode (host, ai-stack, none, …). Default "-".
+svc_network() { yq -r ".services.$1.network // \"-\"" "$SERVICES_YML"; }
+
+# Env KEY NAMES this service reads (services.yml `consumes_env:`), one per line.
+# NAMES ONLY — never values. Empty when none declared. errexit/pipefail-safe:
+# `[]?` yields nothing (not an error) when the field is absent.
+svc_consumes_env() { yq -r ".services.$1.consumes_env[]?" "$SERVICES_YML" 2>/dev/null; }
+
 # One-line human description (services.yml `desc:`). A cached short copy of
 # EXPLORE.html's per-service `what` — used by `status --describe`. Falls back to
 # a pointer at the explorer when a service has no desc yet. errexit-safe (ends

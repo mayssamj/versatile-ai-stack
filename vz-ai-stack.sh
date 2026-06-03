@@ -163,6 +163,10 @@ ai-stack-installer — usage:
     vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
     vz-ai-stack.sh test <phase>             run smoke tests for one phase (id or name)
     vz-ai-stack.sh status                   tabular service status
+    vz-ai-stack.sh help <service>           what it is · how it's configured · how to use
+    vz-ai-stack.sh help services            list services that have help prose
+    vz-ai-stack.sh help regen [<svc>]       refresh help prose from the live codebase
+                                        ([--apply] writes; [--check] CI staleness; [--model <m>])
     vz-ai-stack.sh model list [--json]      show the model<->agent binding matrix (models.yml)
     vz-ai-stack.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
     vz-ai-stack.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
@@ -454,6 +458,7 @@ cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "
 cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
+cmd_help()    { bash "$AI_STACK/installer/lib/help.sh" "$@"; }
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
@@ -631,7 +636,8 @@ main() {
     reset)             cmd_reset "$@" ;;
     start|enable)      cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;
-    -h|--help|help)    usage ;;
+    -h|--help)         usage ;;
+    help)              cmd_help "$@" ;;   # help · help services · help <svc> · help regen
     *)
       # Reverse-form: `stack <svc> <action>` (e.g. `stack deerflow start`).
       # Translates `stack <svc> start` → cmd_start <svc>, similarly for
