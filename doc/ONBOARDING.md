@@ -20,7 +20,7 @@ Then the four you'll use daily:
 
 ```bash
 stack status        # declared vs actual — what's enabled, what's running, what drifted
-stack doctor        # 40 health checks + per-check auto-fix offers (your first move when something's off)
+stack doctor        # 43 health checks + per-check auto-fix offers (your first move when something's off)
 stack phases        # list every phase as  id → name
 stack logs <svc>    # docker logs wrapper, e.g.  stack logs litellm -f
 stack model list    # which LLM each agent is bound to (models.yml) — assign/sync/superset too
@@ -145,17 +145,20 @@ bin/skillspector scan <path>   # after installing skillspector: offline security
 
 Three things keep the stack from cooking a 24 GB M-series machine:
 
-1. **OpenShell CPU-storm watchdog (automatic).** After ~8 h a sandbox's gateway token
+1. **OpenShell CPU-storm watchdog (warn-only by default).** After ~8 h a sandbox's gateway token
    expires and the agent reconnect-storms at ~36% CPU. **Only recreating the sandbox
    mints a fresh token — a gateway restart does not.** Phase 04 installs a launchd
-   watchdog (`bin/openshell-watchdog.sh`, every 600 s) that detects this and
-   recreates the dead sandbox for you.
+   watchdog (`bin/openshell-watchdog.sh`, every 600 s) that detects this, **halts the
+   container to stop the CPU burn, and raises an alert** (surfaced by `doctor` check 43)
+   — it does **not** delete/recreate the sandbox by default, since recreation discards
+   in-sandbox state. You recreate when ready; opt into auto-recreate with
+   `AI_STACK_WATCHDOG_RECREATE=1`.
    ```bash
    bash bin/openshell-watchdog.sh status      # is it loaded? last run / exit
-   bash bin/openshell-watchdog.sh run         # run one detect+recreate cycle now
+   bash bin/openshell-watchdog.sh run         # run one detect cycle now (recreate only if RECREATE=1)
    bash bin/openshell-watchdog.sh uninstall   # remove the launchd timer
    ```
-   The on-demand twin is `stack doctor openshell` (check 39).
+   The on-demand twin is `stack doctor openshell` (check 39); a pending alert shows in check 43.
 
 2. **Cap OrbStack.** On a ~34-container stack OrbStack's VM helper is a CPU floor.
    **OrbStack → Settings → Resources → ~6–8 cores / 12–14 GB.** (Corporate EDR/MDM

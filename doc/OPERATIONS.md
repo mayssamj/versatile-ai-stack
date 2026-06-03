@@ -27,8 +27,10 @@ stack phases                            # list every phase as id → name (also:
 stack install <phase|all>               # install one phase by NAME or number (or everything)
 stack verify                            # Phase 00·V — 6 runtime probes; no install
 stack status                            # declared vs actual table
+stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
-stack doctor                            # 40 health checks + auto-fix offers
+stack fleet list|add|remove|new|destroy # Hermes 9-role fleet manager (see models.md / STACK-GUIDE)
+stack doctor                            # 43 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container
@@ -60,6 +62,23 @@ or unknown selector errors and points you at `stack phases`.
 The **5 opt-in extras** (Phases 21–25: `portless`, `cmux`, `skillspector`,
 `openagents`, `lmstudio`) are NOT part of `install all` — add them individually by
 name. Their doctor checks (34–38) pass-as-skip until installed.
+
+### Per-service help (`stack help`)
+
+`stack help <service>` prints three things for any service: **what it is**, **how
+it's configured** (computed live from `services.yml` + aliases + the rendered
+config — not hand-maintained), and **how to use it**. Prose lives in the `help:`
+blocks in `services.yml`; the "how it's configured" section is derived at runtime.
+
+```bash
+stack help                       # overview + pointer to `help services`
+stack help services              # list services that have help prose
+stack help litellm               # what / how-configured / usage for one service
+stack help regen [<svc>]         # refresh help prose from the live codebase via the
+                                 #   stack's own LiteLLM gateway (drafts to a staging
+                                 #   file + diff). --apply writes it back; --check is a
+                                 #   CI staleness gate; --model <m> picks the drafting model.
+```
 
 `stack verify` is the cheapest health probe in the toolbox — it does not
 install or restart anything; it just confirms the alias chain
@@ -303,25 +322,31 @@ kept lazy (`OLLAMA_KEEP_ALIVE=0`, models unload right after each request). The l
 
 ---
 
-## OpenShell CPU-storm watchdog (auto-healing)
+## OpenShell CPU-storm watchdog (warn-only by default)
 
 A sandbox's gateway token expires after ~8 h, and the in-sandbox agent then retries
 log-push with no backoff → a ~36%-CPU-per-sandbox `ExpiredSignature` storm. **Only
 recreating the sandbox mints a fresh token (a gateway restart does not).** Phase 04
 installs a launchd watchdog (`com.ai-stack.openshell-watchdog`, every 600 s) that
-detects the storm and delete+recreates the dead sandbox automatically.
+detects the storm. By **default it is warn-only and data-safe**: it halts the
+container to stop the CPU burn and writes an alert (surfaced by `doctor` check 43)
+— it does **not** delete/recreate the sandbox, because recreation discards in-sandbox
+state. You recreate when ready (`vz-ai-stack.sh install 04 04f 15 20 04h`), then clear
+the alert (`rm installer/state/openshell-watchdog.alert`). Opt into automatic
+delete+recreate (capability-checked, Ready-verified, fails loud) with
+`AI_STACK_WATCHDOG_RECREATE=1`.
 
 ```bash
 WD=~/ai-stack/bin/openshell-watchdog.sh
 $WD status        # is the launchd job loaded? last run / exit
-$WD run           # run one detect+recreate cycle now
+$WD run           # run one detect cycle now (warn-only; halts the burn, raises an alert)
 $WD uninstall     # remove the launchd timer
 $WD install       # (re)install it
-AI_STACK_WATCHDOG_RECREATE=0 $WD run   # detect-only: stop the burn, don't recreate
+AI_STACK_WATCHDOG_RECREATE=1 $WD run   # opt-in: also delete+recreate the dead sandbox
 ```
 
 Logs: `installer/state/openshell-watchdog.log`. The on-demand twin is `stack doctor
-openshell` (check 39). Full failure write-up in
+openshell` (check 39); a pending alert surfaces in check 43. Full failure write-up in
 [TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md).
 
 ---

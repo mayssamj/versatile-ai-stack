@@ -748,7 +748,7 @@ Trust tiers:
    nothing on your network can reach them. They hold service state but no
    personal data. Inter-container traffic stays on the `ai-stack` bridge.
 3. **Sandboxes** — untrusted. There are two: `hermes-fleet-v1` (the
-   7-profile Hermes fleet plus the Telegram gateway) and `pi-v1` (the Pi
+   9-role Hermes fleet plus the Telegram gateway) and `pi-v1` (the Pi
    coding agent). Both are network deny-by-default with a tight egress
    allowlist; filesystem locked to `/sandbox/` and `/tmp/`. The fleet
    reaches LiteLLM through the `hermes-gw` L7 proxy (which injects

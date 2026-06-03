@@ -200,7 +200,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (42 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded.
+- `doctor` targets **all green (43 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -1274,7 +1274,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (42 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (43 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
@@ -1296,9 +1296,9 @@ vz-ai-stack.sh gc
 
 **Expected.** `doctor` ends with `Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.` — many checks **auto-fix** and re-verify rather than just complaining. `upgrade --check` prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; sandbox/CLI/npm/pip rows are hidden unless `--all`). `history` prints a chronological record of every install decision.
 
-**Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below.
+**Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, and the watchdog alert 43). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; **check 43 (`watchdog_alert`)** surfaces any pending alert the watchdog left behind.
 
-**The watchdog.** `bin/openshell-watchdog.sh` runs every few minutes via launchd and auto-heals the **token-expiry storm**: after ~8h, a sandbox's gateway token expires and the in-sandbox agent retries its log-push with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. A gateway *restart does not* refresh the token; only **recreating** the sandbox mints a fresh one. The watchdog detects the unambiguous signature (`ExpiredSignature` / reconnect-storm in recent logs, or a climbing RestartCount — meaning the sandbox is already dead), deletes the dead sandbox to stop the CPU burn at once, recreates it via its install phases, and posts a desktop notification. Detect-only: `AI_STACK_WATCHDOG_RECREATE=0`.
+**The watchdog.** `bin/openshell-watchdog.sh` runs every few minutes via launchd and guards against the **token-expiry storm**: after ~8h, a sandbox's gateway token expires and the in-sandbox agent retries its log-push with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. A gateway *restart does not* refresh the token; only **recreating** the sandbox mints a fresh one. The watchdog detects the unambiguous signature (`ExpiredSignature` / reconnect-storm in recent logs, or a climbing RestartCount — meaning the sandbox is already dead). **By default it is warn-only and data-safe:** it halts the container to stop the CPU burn at once, writes an alert (surfaced by check 43), and posts a desktop notification — it does **not** delete or recreate the sandbox, because recreation discards in-sandbox state. You recreate when ready. Opt into automatic delete+recreate (capability-checked, Ready-verified, fails loud) with `AI_STACK_WATCHDOG_RECREATE=1`.
 
 **reset tiers (destructive — read the blast radius).** `installer/lib/reset.sh` is tiered:
 

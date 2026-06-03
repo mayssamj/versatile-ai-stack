@@ -274,11 +274,14 @@ CLI — the sandbox CREATE hang is now auto-recovered in code). The sandbox
 EXEC relay idle-timeout remains a separate upstream issue and is still manual.
 
 Phase 04 also installs a **second, distinct** watchdog —
-`bin/openshell-watchdog.sh` (launchd, every 600 s) — that auto-heals the
+`bin/openshell-watchdog.sh` (launchd, every 600 s) — for the
 *expired-token CPU storm*: after ~8 h a sandbox's gateway token expires and the
 agent reconnect-storms at ~36% CPU; only recreating the sandbox mints a fresh
-token, which the watchdog does automatically. Check its status with
-`bash bin/openshell-watchdog.sh status`; see
+token. By default the watchdog is **warn-only** — it halts the container to stop
+the burn and raises an alert (surfaced by `doctor` check 43) but does **not**
+delete/recreate the sandbox (recreation discards in-sandbox state); you recreate
+when ready, or opt into auto-recreate with `AI_STACK_WATCHDOG_RECREATE=1`. Check its
+status with `bash bin/openshell-watchdog.sh status`; see
 [TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md).
 
 If a gateway/sandbox step still needs hand-holding, the manual steps live in
@@ -376,7 +379,7 @@ Then run the full doctor:
 bash vz-ai-stack.sh doctor
 ```
 
-Expected: 40/40 checks pass after the post-install steps above and a
+Expected: 43/43 checks pass after the post-install steps above and a
 successful `sudo bash vz-ai-stack.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more
@@ -391,8 +394,10 @@ Checks 34–38 cover the 5 opt-in extras (Phases 21–25: portless, cmux,
 skillspector, openagents, lmstudio) and **pass-as-skip when the tool isn't
 installed**, so the doctor stays green on a default `install all`. Check 39
 (`openshell_storm`) verifies no OpenShell sandbox is in an expired-token CPU
-storm and reports that the auto-healing watchdog (installed by Phase 04) is
-loaded — it skips cleanly when OpenShell isn't present.
+storm and reports that the (warn-only-by-default) watchdog installed by Phase 04
+is loaded — it skips cleanly when OpenShell isn't present. Checks 40–43 cover the
+model↔agent binding (40), the opt-in Meridian/Claude-subscription wiring (41), the
+9-role agent fleet (42), and any pending watchdog alert (43).
 
 ---
 

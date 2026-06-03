@@ -19,8 +19,9 @@ in fifteen minutes.
 | Total doctor checks | **42** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**) |
 | Model↔agent binding | `installer/models.yml` is the single source of truth. **3 local models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in) **+ the Claude SUBSCRIPTION effort-ladder** via the Meridian host daemon: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` + `claude-sonnet-4.6-sub-{low,medium,high,max}` (runtime `meridian`, availability-gated to `local-gemma4` when Meridian is down). The 9-role Hermes fleet + Pi are assigned subscription models. `vz-ai-stack.sh model {list,assign,sync,superset,discover,add}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed`. NEW: `doc/TUTORIAL.md` + `doc/TUTORIAL.html` (hands-on tutorial). |
-| Last verified doctor pass | **2026-06-03: `doctor` = 43/43** on the live stack (after the watchdog fix below). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) |
+| Last verified doctor pass | **2026-06-03: `doctor` = 43/43** on the live stack (after the watchdog fix below). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) The new `help` command (below) is **doctor-independent** — still 43 checks; `help --check` is its own CI lint, not wired into doctor. |
 | Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 43/43** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. |
+| NEW since last handoff | **`help` command** (`vz-ai-stack.sh help <svc> / help services / help regen`) — see §1 CLI list + §3.0. Branch `worktree-service-help` (commits `831262b`+`178044a`) is **being merged into main now**; a **doc-cohesion audit** was just run across `doc/*.md` (other agents editing those docs in parallel — this handoff edit touches only `doc/HANDOFF.md`). |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
 1. **Autonomous execution.** Diagnose → fix in code → update installer → sweep docs → verify → THEN report. Don't hand back a recipe.
@@ -89,6 +90,7 @@ in fifteen minutes.
 - `fleet list|add|remove|new|destroy` — manage the Hermes fleet (add/remove a profile in hermes-fleet-v1; `new`/`destroy` a separate fleet sandbox)
 - `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
 - `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
+- `help <service>` / `help services` / `help regen [<svc>] [--apply] [--check] [--model <m>] [--force]` — per-service help (NEW 2026-06-03). `help <svc>` prints **what it is** (authored prose) · **how it's configured** (computed LIVE from services.yml/aliases/env-key names — never `.env` _values_) · **how to use**. Prose lives in `services.yml` `help:` blocks (**38 seeded** from doc/EXPLORE.html's verified prose). `help regen` drafts/refreshes prose via the stack's own LiteLLM (default model `local-gemma4`, override `--model` or `HELP_REGEN_MODEL`), writes a STAGED overlay + unified diff; `--apply` merges it back (atomic `yq -i`). `--check` is a CI lint (NOT a doctor check). Lib: `installer/lib/help.sh`.
 - `doctor [<filter>]` — 43 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
@@ -165,10 +167,11 @@ The 9-role fleet + Pi route to the Meridian Claude subscription. The common fail
 
 Read **CHANGELOG.md top to bottom** for full reasoning. Newest first:
 
-### 3.0 — 2026-06-01 → 06-03 (rename, agent fleet, subscription wiring, tutorial)
+### 3.0 — 2026-06-01 → 06-03 (help command, rename, agent fleet, subscription wiring, tutorial)
 
 A debugger should know these touched a lot of surface area:
 
+- **Per-service `help` command** (`831262b`, `178044a`; design spec `c0fe83c`/`b769731`) — NEWEST addition, on branch `worktree-service-help` (merging into main now). `vz-ai-stack.sh help <svc>` prints three sections: **what it is** (authored prose), **how it's configured** (computed live from `services.yml` / `aliases.tsv` / env-key _names_ — **never `.env` values**), **how to use**. `help services` lists services with prose; `help regen [<svc>] [--apply] [--check] [--model <m>]` drafts/refreshes prose via the stack's own LiteLLM (default `local-gemma4`), staging to `installer/state/help-staged-<key>.yaml` + a unified diff, only writing back on `--apply` (atomic `yq -i`). Prose authored in `services.yml` `help:` blocks — **38 seeded** from doc/EXPLORE.html's verified prose. Lib: `installer/lib/help.sh`. **Doctor is untouched (still 43 checks)** — `help --check` is a standalone CI lint, NOT yet wired into doctor (candidate next step). A **doc-cohesion audit across `doc/*.md`** was run alongside this.
 - **`install.sh` → `vz-ai-stack.sh` rename** (`a796e2e`, `667af6b`). Project-wide sweep (797 refs, 124 files): the entrypoint, all `bin/*`, installer code, all docs. `bin/stack` wraps it. **Third-party `install.sh` URLs were preserved** (pi.dev, unsloth, OpenShell, blaxel, hermes `scripts/install.sh`). If you find a stale `install.sh`, it's either third-party (leave it) or a miss (fix it). Memory + `~/.claude/` global agent copies may still say `install.sh` until re-synced.
 - **9-role agent fleet across 3 platforms** (`b867c34`). The Hermes fleet was REPLACED (old 7 `hermes_cos/...` → 9 `hermes_{manager,techlead,frontend_engineer,backend_engineer,ml_engineer,qa_test_engineer,reviewing_engineer,sre_engineer,incident_manager}`). Same roster on Pi (`bin/pi-as <role>`) + Claude Code (`~/.claude/agents`, GLOBAL). Source of truth: `agent-profiles/{hermes,pi,claude-code}/`. Keystone shared skill `team-protocol`. Installed by **phase `04h_agent_fleet.sh`** (`vz-ai-stack.sh install agent_fleet`). 04f is now fully data-driven (souls sourced from `agent-profiles/`, prunes stale in-sandbox profiles so a 7→9 swap can't leave a Frankenfleet). claw3d-bridge `bridge.py` registry migrated to the 9 roles.
 - **All-subscription model wiring + cold-path fixes** (`6971198`, `3328206`, `9f8992b`). Hermes+Pi route to the Meridian Claude subscription. Two real bugs fixed: (1) `resolve_profile_model` only gated `lmstudio` → on a cold `install all` with Meridian down it pinned the fleet to unreachable `claude-*-sub-*` slugs; now gates `meridian` too (04f + fleet.sh + 15_pi.sh). (2) Phase 01's register loop dropped the per-model `effort`, flattening the subscription effort ladder to `high` on every install; now passes effort. NEW doctor checks: **41 `meridian`** (incl. an effort-ladder-drift guard) + **42 `agent_fleet`** (verifies the cross-platform fleet landed; opt-in green-skip). Check 30 got a Frankenfleet guard.
@@ -284,6 +287,9 @@ Unverified whether LiteLLM `tags` field propagates into Phoenix project name. Ne
 
 ### 5.8 ACE pin file format
 Phase 17 captures `ACE_PIN` SHA in `.env`. Should also be in a separate `installer/state/ace.pin` for visibility. Cosmetic.
+
+### 5.9 `help --check` not wired into doctor (NEW 2026-06-03)
+`vz-ai-stack.sh help --check` is a standalone CI lint (verifies every enabled service has a `help:` block + the blocks parse). It is **not** a doctor check yet. Wiring it in as check #44 (or folding it into an existing services-coverage check) is the obvious next step — deliberately deferred so the help feature could ship doctor-neutral. 1 service of 39 still lacks authored prose (38 seeded of 39); `help regen <svc> --apply` fills it.
 
 ---
 
@@ -409,6 +415,7 @@ If you keep these as constraints, you'll write the right code.
 | `doc/TUTORIAL.md`, `doc/TUTORIAL.html` | Hands-on from-scratch tutorial (7 acts, 30 lessons) + interactive page |
 | `agent-profiles/{hermes,pi,claude-code}/` | **Source of truth for the 9-role fleet** — SOUL.md / SYSTEM.md / `.claude` subagents + the `team-protocol` skill. Phase 04f (Hermes) + 04h (Pi+Claude) install from here. |
 | `installer/lib/tutorial-serve.sh` + `tutorial_proxy.py` | `tutorial-serve` live-demo: mints an ephemeral local-only LiteLLM key, serves TUTORIAL.html + an allowlisted `/api` proxy (key injected server-side), auto-revokes. |
+| `installer/lib/help.sh` | Backs `vz-ai-stack.sh help`. Renders authored `help:` prose + LIVE-computed config (services.yml/aliases/env-key NAMES; never `.env` values). `help regen` drafts via LiteLLM (default `local-gemma4`), stages to `installer/state/help-staged-<key>.yaml` + diff, applies on `--apply`. Prose source-of-truth = `services.yml` `help:` blocks (38 seeded). |
 | `installer/phases/04h_agent_fleet.sh` | Installs the fleet to Claude Code (`~/.claude`, global) + Pi (`pi-v1`), re-runs 04f, widens the PI/HERMES keys. |
 | `README.md` | Top-level entrypoint + Mayssam's constitution (stays at repo root) |
 

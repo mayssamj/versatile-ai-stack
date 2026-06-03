@@ -129,8 +129,11 @@ the start command for each.
     **assignable** (`vz-ai-stack.sh model assign pi claude-opus-4.8-sub-xhigh`).
     They availability-gate to `default` (local-gemma4) when Meridian is down.
   - **Current assignments:** `pi` (coding) and `deerflow` (research) →
-    `claude-opus-4.8-sub-max`. The Hermes fleet stays on local models (7 parallel
-    profiles would serialize on one subscription). ACE/RLM stay local.
+    `claude-opus-4.8-sub-max`. The 9-role Hermes fleet runs on the subscription too
+    — the three senior roles (`hermes_manager`, `hermes_techlead`, `hermes_ml_engineer`)
+    on `claude-opus-4.8-sub-high`, the other six on `claude-sonnet-4.6-sub-high` (see
+    the assignment table above). All availability-gate to `default` (local-gemma4)
+    when Meridian is down. ACE/RLM stay local.
 
 ## Workflow
 

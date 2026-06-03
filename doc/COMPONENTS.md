@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **27 core install phases** (+5 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`), **39 services** (`services.yml`), **40 doctor checks**.
+- **27 core install phases** (+5 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`), **39 services** (`services.yml`), **43 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).

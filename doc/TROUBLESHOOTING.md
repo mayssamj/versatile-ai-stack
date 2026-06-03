@@ -145,30 +145,37 @@ docker logs --tail 50 hermes-fleet-v1 2>&1 | grep -i ExpiredSignature
 ```
 
 **The fix is to RECREATE the sandbox — a gateway restart does NOT refresh the token;
-only recreation mints a fresh one** (empirically verified). This is now **auto-healed**
-by a launchd watchdog installed by Phase 04:
+only recreation mints a fresh one** (empirically verified). A launchd watchdog
+installed by Phase 04 watches for this, but is **warn-only by default and data-safe**:
+it halts the burn and raises an alert; recreation (which discards in-sandbox state)
+stays a deliberate action unless you opt in.
 
 ```bash
 WD=~/ai-stack/bin/openshell-watchdog.sh
 
 $WD status                 # is the launchd job loaded? last run / exit?
-$WD run                    # run one detect+recreate cycle now (manual sweep)
+$WD run                    # run one detect cycle now (warn-only: halts the burn, raises an alert)
 $WD install                # (re)install the launchd timer (every 600s)
 $WD uninstall              # remove the launchd timer
 
-# Detect-only (delete the dead sandbox to stop the burn, but don't recreate):
-AI_STACK_WATCHDOG_RECREATE=0 $WD run
+# Opt-in: also delete + recreate the dead sandbox (capability-checked, Ready-verified):
+AI_STACK_WATCHDOG_RECREATE=1 $WD run
 ```
 
 What the watchdog does on each run (every 600 s by default): for each sandbox it
 detects the storm by its unambiguous signature (ExpiredSignature / reconnect-storm in
 recent logs, or a climbing `RestartCount` → the sandbox is already dead, so acting
-loses nothing — it won't false-fire on a busy sandbox), then deletes + recreates it via
-its install phase. It is throttled (≤ 1 recreate per thing per 30 min), logs to
-`installer/state/openshell-watchdog.log`, and posts a desktop notification. It skips
-while an `vz-ai-stack.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
-on-demand twin: `stack doctor openshell` surfaces a live storm and reports whether the
-watchdog is loaded.
+loses nothing — it won't false-fire on a busy sandbox). **By default** it then halts the
+container to stop the CPU burn, writes an alert to
+`installer/state/openshell-watchdog.alert` (surfaced by doctor check 43), and posts a
+desktop notification — it leaves the sandbox for **you** to recreate (`vz-ai-stack.sh
+install 04 04f 15 20 04h`), since recreation discards in-sandbox state. With
+`AI_STACK_WATCHDOG_RECREATE=1` it instead verifies the rebuild can run, then deletes +
+recreates (throttled ≤ 1 recreate per thing per 30 min) and fails loud if the rebuild
+doesn't come back Ready. It logs to `installer/state/openshell-watchdog.log` and skips
+while a `vz-ai-stack.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
+on-demand twin (`stack doctor openshell` surfaces a live storm and whether the watchdog
+is loaded); **check 43 (`watchdog_alert`)** surfaces a pending alert the watchdog left.
 
 ---
 

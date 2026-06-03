@@ -2,7 +2,7 @@
 
 **Your own private AI cloud — 39 services, one Mac, zero bytes leaving the building.**
 
-![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 39](https://img.shields.io/badge/services-39-blue) ![doctor: 40 checks](https://img.shields.io/badge/doctor-40%2F40-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
+![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 39](https://img.shields.io/badge/services-39-blue) ![doctor: 43 checks](https://img.shields.io/badge/doctor-43%2F43-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
 
 ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: local models, a fleet of agents, memory, RAG, and full call-by-call observability — all wired behind a single local endpoint. One installer brings up all 39 services, validates them end-to-end, and heals itself. Nothing phones home; cloud is opt-in only when you add your own keys.
 
@@ -12,10 +12,10 @@ ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: l
 
 - **One local endpoint for everything** — point any app or agent at `http://litellm:4000/v1` and get model routing, scoped keys, and tracing for free.
 - **Watch every thought your agents have** — every LLM call lands in Phoenix at `http://phoenix:6006`: prompts, responses, latency, and cost, all in one UI.
-- **A whole team in a box** — the Hermes 7-profile fleet, a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
+- **A whole team in a box** — the Hermes 9-role engineering fleet (manager, techlead, frontend/backend/ML engineers, QA, reviewer, SRE, incident manager), a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
 - **Truly local-first** — models, memory, traces, and documents all stay on your machine; it works fully offline and only touches the cloud if you hand it keys.
 - **Three local models, sensible defaults** — `gemma4` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
-- **One installer, self-healing and reversible** — brings up all 39 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 40/40 doctor checks.
+- **One installer, self-healing and reversible** — brings up all 39 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 43/43 doctor checks.
 - **See it before you run it** — [`doc/EXPLORE.html`](doc/EXPLORE.html) is a single self-contained page (just double-click, works offline) with a searchable card and copy-paste demo for every service.
 
 ---
@@ -191,7 +191,7 @@ sudo bash vz-ai-stack.sh prepare-sudo
 #    Installs all 27 core phases top-to-bottom; resumes if interrupted.
 bash vz-ai-stack.sh install all
 
-# 3. Verify everything is healthy. Expect 40/40.
+# 3. Verify everything is healthy. Expect 43/43.
 bash vz-ai-stack.sh doctor
 ```
 
@@ -551,7 +551,7 @@ the guard rails.
 ├── installer/
 │   ├── lib/                # common, env, docker, validate, prompt, litellm, status, adopt, gc, history, reset, openshell
 │   ├── phases/             # one file per phase (00 .. 25)
-│   ├── doctor/checks/      # one file per failure mode (40 checks)
+│   ├── doctor/checks/      # one file per failure mode (43 checks)
 │   ├── smoke/              # per-phase end-to-end smoke tests
 │   └── state/              # stamp files, restart queue, lock dir
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -571,7 +571,7 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
-- **27 core install phases (+5 opt-in extras: portless · cmux · skillspector · openagents · lmstudio) · 39 services · 40 doctor checks.**
+- **27 core install phases (+5 opt-in extras: portless · cmux · skillspector · openagents · lmstudio) · 39 services · 43 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
@@ -586,5 +586,7 @@ snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
   (`local-heavy` is a legacy Ollama alias — no longer auto-pulled.)
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.
-  A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is now
-  auto-healed by `bin/openshell-watchdog.sh` (launchd, every 600s); see TROUBLESHOOTING.
+  A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is caught by
+  `bin/openshell-watchdog.sh` (launchd, every 600s): by default it's warn-only — halts
+  the burn and raises an alert (doctor check 43); opt into auto-recreate with
+  `AI_STACK_WATCHDOG_RECREATE=1`. See TROUBLESHOOTING.

@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 40/40 ✓
+# 1. Confirm the stack is healthy. Target: 43/43 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
@@ -1188,7 +1188,7 @@ bl delete echo
 > **lumen** searches code by structure and intent (via `ordis/jina-embeddings-v2-base-code`).
 > Prose → docs-mcp. Source files → lumen.
 
-**When.** Whenever an agent needs to navigate a codebase by meaning, not grep. AutoFyn asking "where does this config option get parsed?", Pi asking "where is the OpenShell policy applied?", Hermes_software_engineer answering "find every place X gets wired into Y." Per Lumen's pitch: "Reduce Claude Code, Codex, OpenCode wall clock and token use by 50%" because the agent gets pre-filtered candidates instead of scanning the whole repo.
+**When.** Whenever an agent needs to navigate a codebase by meaning, not grep. AutoFyn asking "where does this config option get parsed?", Pi asking "where is the OpenShell policy applied?", `hermes_backend_engineer` answering "find every place X gets wired into Y." Per Lumen's pitch: "Reduce Claude Code, Codex, OpenCode wall clock and token use by 50%" because the agent gets pre-filtered candidates instead of scanning the whole repo.
 
 **Try this.**
 
@@ -1946,7 +1946,7 @@ open http://autofyn:3400
 - **Baseline trace**: multiple `tool_calls` for `Grep` and `Read` against the file system; cumulative prompt tokens grow each turn.
 - **Lumen trace**: one `tool_calls` for `semantic_search` early; output snippets injected into the next turn's prompt; total prompt-tokens lower. The `semantic_search` tool itself is NOT an LLM call so it doesn't appear as a Phoenix span — but the agent's LLM call that invoked it lists `semantic_search` in its `tool_calls` attribute.
 
-**Combine with.** Recipe 2 (memory-aware coding with AutoFyn — pair Lumen with the Honcho-backed peer namespace), Recipe 8 (sandboxed Hermes profile — Hermes_software_engineer can register Lumen the same way), Recipe 10 (Paperclip orchestration — each Paperclip worker gets the same Lumen tool registration).
+**Combine with.** Recipe 2 (memory-aware coding with AutoFyn — pair Lumen with the Honcho-backed peer namespace), Recipe 8 (sandboxed Hermes profile — `hermes_backend_engineer` can register Lumen the same way), Recipe 10 (Paperclip orchestration — each Paperclip worker gets the same Lumen tool registration).
 
 **Reach further (multi-repo).** Lumen indexes per-repo. To make a work repo searchable:
 
@@ -1967,7 +1967,7 @@ Per-repo indexing keeps signal high — Lumen ranks results by cosine similarity
 
 Profiles are intent-aware presets: one command (would-be — see ⚠ below) flips multiple services so the stack matches the workload.
 
-**⚠ Not implemented:** `stack profile <name>`, `stack enable <svc>`, `stack disable <svc>`, `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements only: `install | test | status | doctor | verify | adopt | apply-restarts | logs | history | gc | reset | prepare-sudo`. To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
+**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | upgrade | reset | start (enable) | stop (disable) | prepare-sudo`. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
 
 ### `fleet` — multi-agent everyday
 
@@ -2015,9 +2015,15 @@ Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shor
 
 ```bash
 # Health + state
-bash ~/ai-stack/vz-ai-stack.sh doctor                 # 40 health checks + auto-fix offers
+bash ~/ai-stack/vz-ai-stack.sh doctor                 # 43 health checks + auto-fix offers
 bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
 bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
+
+# Per-service help (what / how-it's-configured / usage)
+bash ~/ai-stack/vz-ai-stack.sh help services          # list services that have help prose
+bash ~/ai-stack/vz-ai-stack.sh help <service>         # what it is + live config + how to use
+bash ~/ai-stack/vz-ai-stack.sh help regen [<svc>]     # refresh prose from the live codebase
+                                                      #   (--apply writes · --check CI gate · --model <m>)
 
 # Models (declarative model↔agent binding — see §2.16)
 bash ~/ai-stack/vz-ai-stack.sh model list             # catalog + live declared-vs-served matrix
@@ -2109,8 +2115,6 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 | You'd type | But it doesn't dispatch. Use:                                 |
 |------------|---------------------------------------------------------------|
 | `stack profile <name>` | Manual yq + bin/start scripts (see §4)            |
-| `stack enable <svc>`   | `yq -i '.services.<svc>.enabled = true' services.yml` + `bin/start-<svc>.sh` |
-| `stack disable <svc>`  | `yq -i '.services.<svc>.enabled = false' services.yml` + `docker stop <c>` |
 | `stack apply`          | Re-run `vz-ai-stack.sh install <phase>` for the changed phase     |
 | `stack restart <svc>`  | `bash bin/start-<svc>.sh --recreate`                          |
 
@@ -2166,7 +2170,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 40/40 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 43/43 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 

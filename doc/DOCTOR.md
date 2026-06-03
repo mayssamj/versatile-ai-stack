@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 40 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 43 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 40
+stack doctor                    # all 43
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -76,7 +76,10 @@ installer/doctor/checks/
 ├── 37_openagents.sh                       (opt-in Phase 24; pass-as-skip)
 ├── 38_lmstudio.sh                         (opt-in Phase 25; pass-as-skip)
 ├── 39_openshell_storm.sh                  (expired-token CPU storm + watchdog status)
-└── 40_models_binding.sh                   (models.yml <-> config.yaml <-> agent render + scoped keys)
+├── 40_models_binding.sh                   (models.yml <-> config.yaml <-> agent render + scoped keys)
+├── 41_meridian.sh                         (Claude subscription behind LiteLLM; opt-in, Phase via start-meridian.sh)
+├── 42_agent_fleet.sh                      (9-role fleet across claude-code + pi personas; opt-in Phase 04h)
+└── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -515,14 +518,16 @@ These checks pass-as-skip when the tool isn't installed (the tools are opt-in, n
 
 | | |
 |---|---|
-| Asserts | No OpenShell sandbox (`hermes-fleet-v1`, `pi-v1`) is in a live "expired-token storm" — i.e. recent container logs show no `ExpiredSignature` / reconnect-storm signature and `RestartCount` isn't climbing. Also reports whether the auto-healing watchdog (`com.ai-stack.openshell-watchdog` launchd job) is installed and loaded. |
+| Asserts | No OpenShell sandbox (`hermes-fleet-v1`, `pi-v1`) is in a live "expired-token storm" — i.e. recent container logs show no `ExpiredSignature` / reconnect-storm signature and `RestartCount` isn't climbing. Also reports whether the (warn-only-by-default) watchdog (`com.ai-stack.openshell-watchdog` launchd job) is installed and loaded. |
 | Fails when | A sandbox's short-lived gateway token has expired (~8h uptime) and the in-sandbox agent is retrying its log-push gRPC with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. The signature is unambiguous: the sandbox is already dead. |
-| Auto-fix | None auto-applied here (the watchdog owns recovery). Manual: `bash bin/openshell-watchdog.sh run` (detect+recreate now), or recreate the affected phase (`vz-ai-stack.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
+| Auto-fix | None auto-applied here. The watchdog is **WARN-ONLY by default** (it halts the CPU burn and raises an alert; it does NOT delete/recreate the sandbox — that would discard in-sandbox state). Manual: `bash bin/openshell-watchdog.sh run` (detect now; recreates only if you opt in with `AI_STACK_WATCHDOG_RECREATE=1`), or recreate the affected phase (`vz-ai-stack.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
 
 Skips cleanly (passes) when OpenShell / its sandboxes aren't present. The standing
-fix is the launchd watchdog installed by Phase 04 (`bin/openshell-watchdog.sh
-install`, runs every 600s) — this check is the on-demand twin that surfaces a storm
-the watchdog hasn't swept yet and confirms the watchdog is loaded. See
+backstop is the launchd watchdog installed by Phase 04 (`bin/openshell-watchdog.sh
+install`, runs every 600s) — by default **warn-only**: it halts the CPU burn and
+writes an alert (surfaced by check 43) rather than destroying the sandbox. This
+check is the on-demand twin that surfaces a storm the watchdog hasn't swept yet and
+confirms the watchdog is loaded. See
 [TROUBLESHOOTING.md § OpenShell CPU storm](TROUBLESHOOTING.md) for the watchdog's
 `status` / `uninstall` subcommands and the detect-only mode.
 
@@ -539,6 +544,43 @@ the watchdog hasn't swept yet and confirms the watchdog is loaded. See
 WARN-skips (does not fail) when LiteLLM is down or the Hermes OpenShell sandbox
 isn't Ready — both are required to verify bindings end-to-end. See
 [models.md](models.md) for the full `vz-ai-stack.sh model` workflow.
+
+---
+
+## 41 · Meridian — Claude subscription behind LiteLLM (opt-in)
+
+| | |
+|---|---|
+| Asserts | When Meridian is enabled (`bin/start-meridian.sh`), its launchd job is loaded, the local endpoint (`127.0.0.1:3456/v1/models`) is healthy, the `*-sub` models (`claude-opus-4.8-sub-*`, `claude-sonnet-4.6-sub-*`) are served through LiteLLM, and each model's `extra_body.effort` in `config.yaml` matches the declared effort in `models.yml` (the `…-sub-{low,medium,high,xhigh,max}` ladder isn't flattened). Lets Open WebUI (and anything behind LiteLLM) chat/code on your `claude login` OAuth with **no API key**. |
+| Fails when | The launchd job is loaded but the endpoint is unhealthy, or the endpoint is healthy but the `*-sub` models aren't served / their effort drifts. |
+| Advisory-green | Meridian not installed, or installed but the daemon wasn't enabled (no launchd job, port closed) — it's opt-in. Never prints a token. |
+
+Mirrors the LM Studio check's philosophy: green unless something you clearly opted
+into is genuinely broken. See [models.md](models.md) and [USER-GUIDE.md](USER-GUIDE.md)
+for the Meridian setup.
+
+---
+
+## 42 · Agent fleet present (claude-code + pi personas, Phase 04h)
+
+| | |
+|---|---|
+| Asserts | When Phase 04h has run, the full **9-role** software-engineering team (`manager`, `techlead`, `frontend_engineer`, `backend_engineer`, `ml_engineer`, `qa_test_engineer`, `reviewing_engineer`, `sre_engineer`, `incident_manager`) plus its shared skills landed on both surfaces it targets: `claude-code` (`~/.claude/agents` + `~/.claude/skills`, user-global) and `pi-v1` (`/sandbox/agents/<role>/SYSTEM.md`). Also flags un-applied updates (`*.ai-stack-new` sidecars 04h writes rather than clobbering a user-edited file). Hermes's side of the same team is covered by check 30. |
+| Fails when | A role file or skill is missing on a surface where the fleet was installed, or `*.ai-stack-new` sidecars are pending review. |
+| Green-skip | No install marker on either surface (04h is not part of a minimal install). |
+
+---
+
+## 43 · OpenShell watchdog has no pending storm/recreate alert
+
+| | |
+|---|---|
+| Asserts | The watchdog (`bin/openshell-watchdog.sh`) has not left a pending alert at `installer/state/openshell-watchdog.alert`. The watchdog writes this marker when it detects an expired-token storm (default = **warn-only**, sandbox NOT deleted) or when an opt-in auto-recreate failed. |
+| Fails when | A storm alert is present (a sandbox hit the expired-token storm and the watchdog halted the burn but left the sandbox for you to recreate when ready), or an opt-in `AI_STACK_WATCHDOG_RECREATE=1` recreate failed. |
+| Auto-fix | None auto-applied — recreation discards in-sandbox state, so it stays a deliberate human action. Heal the flagged sandbox(es) (`vz-ai-stack.sh install 04 04f 15 20 04h`), then `rm installer/state/openshell-watchdog.alert` (or it clears on a verified auto-recreate). |
+
+This check is the loud, visible backstop ensuring a watchdog event can never be
+silent again.
 
 ---
 
