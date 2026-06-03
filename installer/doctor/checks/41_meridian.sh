@@ -27,9 +27,36 @@ _mer_healthy() {
   curl -s -m 5 -o /dev/null -w '%{http_code}' \
     "http://127.0.0.1:$(_mer_port)/v1/models" -H "Authorization: Bearer x" 2>/dev/null | grep -q '^200$'
 }
+# _mer_effort_drift — echo each meridian model whose config.yaml extra_body.effort
+# != its models.yml effort. Catches the regression where a register-without-effort
+# flattens the subscription effort ladder (…-sub-{low,medium,high,xhigh,max}) to one
+# value. Config-vs-config (no daemon needed); empty output = consistent.
+_mer_effort_drift() {
+  local myml="$AI_STACK/installer/models.yml" cfg="$AI_STACK/litellm/config.yaml" m want got
+  [[ -f "$myml" && -f "$cfg" ]] || return 0
+  command -v yq >/dev/null 2>&1 || return 0
+  while IFS= read -r m; do
+    [[ -z "$m" ]] && continue
+    [[ "$(yq -r ".models.\"$m\".runtime" "$myml" 2>/dev/null)" == "meridian" ]] || continue
+    want="$(yq -r ".models.\"$m\".effort" "$myml" 2>/dev/null)"
+    got="$(MN="$m" yq -r '.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.extra_body.effort // ""' "$cfg" 2>/dev/null)"
+    [[ -n "$got" && "$got" != "null" && "$got" != "$want" ]] && echo "$m (models.yml=$want, config.yaml=$got)"
+  done < <(yq -r '.models | keys | .[]' "$myml" 2>/dev/null)
+}
 
 meridian_diagnose() {
   local cfg="$AI_STACK/litellm/config.yaml" port; port="$(_mer_port)"
+
+  # Effort-ladder integrity (config vs models.yml) — runs regardless of daemon
+  # state, because a flattened ladder is a real config regression either way.
+  local drift; drift="$(_mer_effort_drift)"
+  if [[ -n "$drift" ]]; then
+    echo "litellm/config.yaml meridian effort does NOT match installer/models.yml (effort ladder flattened):"
+    echo "$drift" | sed 's/^/    /'
+    echo "  cause: a register-without-effort (e.g. Phase 01 loop) defaulted extra_body.effort to 'high'."
+    echo "  fix:   bash $AI_STACK/install.sh model sync   then   bash $AI_STACK/bin/start-litellm.sh --recreate"
+    return 1
+  fi
 
   if [[ -z "$(_mer_bin)" ]]; then
     echo "  (Meridian not installed — opt-in; to chat/code on your Claude subscription from Open WebUI:"

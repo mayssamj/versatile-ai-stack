@@ -123,8 +123,13 @@ if [[ -f "$MODELS_YML" ]]; then
     _rt="$(yq -r ".models.\"$_mn\".runtime" "$MODELS_YML" 2>/dev/null)"
     _sv="$(yq -r ".models.\"$_mn\".served"  "$MODELS_YML" 2>/dev/null)"
     [[ -z "$_sv" || "$_sv" == "null" ]] && continue
-    if [[ "$(lms_register_model "$_mn" "$_sv" "$_rt")" == "CHANGED" ]]; then
-      ok "registered $_mn ($_rt/$_sv) in litellm/config.yaml"
+    # Pass the per-model effort for meridian models — WITHOUT this, lms_register_model
+    # defaults effort to `high` and flattens the subscription effort ladder
+    # (claude-*-sub-{low,medium,high,xhigh,max}) on every install. Mirrors
+    # lib/models.sh::register_model_list.
+    _ef=""; [[ "$_rt" == "meridian" ]] && _ef="$(yq -r ".models.\"$_mn\".effort // \"\"" "$MODELS_YML" 2>/dev/null)"
+    if [[ "$(lms_register_model "$_mn" "$_sv" "$_rt" "$_ef")" == "CHANGED" ]]; then
+      ok "registered $_mn ($_rt/$_sv${_ef:+, effort=$_ef}) in litellm/config.yaml"
     fi
   done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
 else

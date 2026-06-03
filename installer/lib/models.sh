@@ -1155,12 +1155,13 @@ _dry_run() {
   local tmp; tmp="$(mktemp -d)"
   cp "$CONFIG" "$tmp/before.yaml"
   cp "$CONFIG" "$tmp/after.yaml"
-  local m rt sv
+  local m rt sv ef
   ( LMS_CONFIG="$tmp/after.yaml"
     while IFS= read -r m; do
       [[ -z "$m" ]] && continue
       rt="$(model_runtime "$m")"; sv="$(model_served "$m")"
-      lms_register_model "$m" "$sv" "$rt" >/dev/null 2>&1 || true
+      ef=""; [[ "$rt" == "meridian" ]] && ef="$(model_effort "$m")"
+      lms_register_model "$m" "$sv" "$rt" "$ef" >/dev/null 2>&1 || true
     done < <(my_q '.models | keys | .[]')
   )
   if diff -u "$tmp/before.yaml" "$tmp/after.yaml" >"$tmp/diff.txt" 2>/dev/null; then
