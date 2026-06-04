@@ -19,8 +19,8 @@ in fifteen minutes.
 | Total doctor checks | **44** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**, `watchdog_alert` #43, **`mempalace` #44**) |
 | Model↔agent binding | `installer/models.yml` is the single source of truth. **3 local models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in) **+ the Claude SUBSCRIPTION effort-ladder** via the Meridian host daemon: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` + `claude-sonnet-4.6-sub-{low,medium,high,max}` (runtime `meridian`, availability-gated to `local-gemma4` when Meridian is down). The 9-role Hermes fleet + Pi are assigned subscription models. `vz-ai-stack.sh model {list,assign,sync,superset,discover,add}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed`. NEW: `doc/TUTORIAL.md` + `doc/TUTORIAL.html` (hands-on tutorial). |
-| Last verified doctor pass | **2026-06-04: `doctor` = 44/44** on the live stack (44th check = `mempalace`; green-skips when MemPalace isn't installed). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) The `help` command (below) is **doctor-independent**; `help --check` is its own CI lint, not wired into doctor. |
-| Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 43/43** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. (MemPalace check #44 is opt-in and green-skips, so `install all` now passes 44/44.) |
+| Last verified doctor pass | **2026-06-04: `doctor` = 45/45** on the live stack (44th check = `mempalace`, green-skips when not installed; **45th = `tutorial`**, always-on — validates `doc/TUTORIAL.html` is self-contained, link-clean & in sync with the `.md`). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) The `help` command (below) is **doctor-independent**; `help --check` is its own CI lint, not wired into doctor. |
+| Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 43/43** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. (MemPalace check #44 is opt-in and green-skips, so `install all` now passes 45/45.) |
 | NEW since last handoff | **`help` command** (`vz-ai-stack.sh help <svc> / help services / help regen`) — see §1 CLI list + §3.0. The `help` work is **merged to main** (`831262b`); a **doc-cohesion audit** + `.html` sync followed (`de70eff`, `5644e0b`). |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
@@ -92,7 +92,7 @@ in fifteen minutes.
 - `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
 - `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
 - `help <service>` / `help services` / `help regen [<svc>] [--apply] [--check] [--model <m>] [--force]` — per-service help (NEW 2026-06-03). `help <svc>` prints **what it is** (authored prose) · **how it's configured** (computed LIVE from services.yml/aliases/env-key names — never `.env` _values_) · **how to use**. Prose lives in `services.yml` `help:` blocks (**38 seeded** from doc/EXPLORE.html's verified prose). `help regen` drafts/refreshes prose via the stack's own LiteLLM (default model `local-gemma4`, override `--model` or `HELP_REGEN_MODEL`), writes a STAGED overlay + unified diff; `--apply` merges it back (atomic `yq -i`). `--check` is a CI lint (NOT a doctor check). Lib: `installer/lib/help.sh`.
-- `doctor [<filter>]` — 44 checks, per-check auto-fix
+- `doctor [<filter>]` — 45 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -324,11 +324,11 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/vz-ai-stack.sh install all
 
-# 4. Verify (44/44 expected — MemPalace check #44 green-skips, it's opt-in)
+# 4. Verify (45/45 expected — MemPalace check #44 green-skips, it's opt-in)
 bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
-This canonical flow is VERIFIED end-to-end (44/44 doctor; cold `reset --hard → install all → doctor`). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
+This canonical flow is VERIFIED end-to-end (45/45 doctor; cold `reset --hard → install all → doctor`). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash
@@ -371,7 +371,7 @@ bash ~/ai-stack/vz-ai-stack.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 44 checks, each with auto-fix offer.
+2. `stack doctor` — 45 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -398,7 +398,7 @@ If you keep these as constraints, you'll write the right code.
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (44 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (45 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |

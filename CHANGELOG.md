@@ -4,6 +4,29 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-04 — fix: self-contained tutorial + NEW doctor check 45 `tutorial`
+
+The HTML tutorial (`doc/TUTORIAL.html`) — a new user's first interface — was broken:
+clicking any **Act** linked to `TUTORIAL.md#…`, which the `tutorial-serve` loopback
+proxy 404'd, and the "list models" demo hid every cloud/subscription/LM-Studio model.
+Both fixed and verified end-to-end in a real browser (Playwright) + 3 QA subagents.
+
+- **Self-contained page:** the 7 acts are now embedded as in-page `<section id="act-…">`
+  (nav/cards link to `#act-…`). Generated from `doc/TUTORIAL.md` by the new
+  `installer/lib/build_tutorial_html.py` (single-source md→html; `--check` = drift guard).
+- **Live demo:** the ephemeral key now allowlists **all wired chat models** (local +
+  LM Studio + Claude-subscription + cloud; embeddings excluded), `$0.50` budget cap +
+  TTL as the spend guard. Chat budget raised + reasoning fallback so the thinking
+  default model never returns an empty answer.
+- **Proxy hardening:** serves `doc/`/image/css statically (secrets — `.env`, keys,
+  `*.py`/`*.yaml`, `.git`, `..` — all 404), redirects `/`→`/doc/TUTORIAL.html`, rejects
+  `%00`/bad `Content-Length`, reads the key from a 0600 file (not env → off `ps`).
+- **NEW doctor check 45 `tutorial`** (always-on): asserts 7 in-page acts, zero external
+  `TUTORIAL.md#…` nav links, all in-page anchors resolve, no duplicate ids, and the HTML
+  is in sync with the `.md`. Auto-fix regenerates. Doctor is now **45 checks**.
+
+---
+
 ## 2026-06-04 — NEW Phase 26 `mempalace` — local-first conversation memory (stack-native, Phase A)
 
 Adds **MemPalace** (github.com/MemPalace/mempalace, MIT) as an opt-in phase that
