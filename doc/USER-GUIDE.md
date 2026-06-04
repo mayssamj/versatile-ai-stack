@@ -6,7 +6,7 @@ A practical, comprehensive tour of every component in `~/ai-stack` for the
 for it, and the literal command to type.
 
 **Audience.** Senior engineer who has installed the stack but hasn't used
-this specific combination of 39 services. Not a programming novice — no
+this specific combination of 40 services. Not a programming novice — no
 "what is an LLM" explanations. The reader is assumed to be Mayssam
 returning after a break, a Veza teammate trying it for the first time, or
 a Claude session asked to operate the stack.
@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 43/43 ✓
+# 1. Confirm the stack is healthy. Target: 44/44 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
@@ -475,6 +475,59 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/my-experiment/search?que
 **Combine with.** `autofyn`, `paperclip`, `pi`, Hermes profiles — all consume Honcho. Recipe 2 (memory-aware coding).
 
 **Soft-isolation note.** Honcho v3 has no per-API-key peer enforcement. A compromised caller can query ANY peer ID. Peer boundaries are write-side conventions, not authorization. Doctor check 25 documents this.
+
+---
+
+#### `mempalace` (opt-in Phase 26, CLI + MCP, no port)
+
+**What.** Local-first **verbatim** conversation memory for Claude Code sessions —
+it remembers your past sessions word-for-word (not LLM-summarized like Honcho) and
+lets a new session "wake up" with that context. CLI + MCP, no daemon, no port.
+Embeddings run **LOCAL on-device** via CoreML (default `all-MiniLM-L6-v2`, 384-dim;
+`embeddinggemma` multilingual is opt-in). There are **NO cloud embeddings**. An
+optional refiner LLM can route through LiteLLM (`MEMPALACE_LITELLM_KEY`) → Phoenix.
+It is **opt-in** — NOT part of `install all`; add it with `vz-ai-stack.sh install 26`.
+Install is **PyPI-only** (the `mempalace.tech` domain is a malware squat — never
+install from it). Storage is local on-device ChromaDB (a Qdrant backend adapter is
+staged at `mempalace/backend-qdrant/` but not live — MemPalace 3.3.5 hardcodes
+ChromaBackend).
+
+**When.** When you want Claude Code (or any session) to recall what you actually
+said and did in prior sessions, verbatim — debugging context, decisions, the exact
+commands you ran. Reach for Honcho instead when you want derived/summarized
+cross-agent facts; MemPalace is the verbatim-transcript complement.
+
+**Try this.**
+
+```bash
+# 1. Install the opt-in phase once (NOT in `install all`). First run downloads
+#    the ~80MB on-device embedding model — retry if it times out.
+bash ~/ai-stack/vz-ai-stack.sh install 26
+
+# 2. Prime a fresh session with prior context.
+bash ~/ai-stack/bin/mempalace wake-up
+
+# 3. Search your verbatim memory.
+bash ~/ai-stack/bin/mempalace search "why did we switch off qdrant-client"
+
+# 4. Backfill from existing transcripts (large/slow — extracts general memories).
+bash ~/ai-stack/bin/mempalace mine ~/ai-stack --mode convos --extract general
+
+# 5. Status (palace contents, model, backend).
+bash ~/ai-stack/bin/mempalace status
+
+# 6. (Opt-in) auto-save hooks — reversible, backup-first. Disable live with
+#    MEMPALACE_HOOKS_AUTO_SAVE=false.
+bash ~/ai-stack/bin/mempalace-hooks install --apply
+```
+
+**Phoenix trace pattern.** Embeddings are on-device and do NOT trace. Only the
+optional refiner LLM (when `MEMPALACE_LITELLM_KEY` is set) routes through LiteLLM →
+the `ai-stack` Phoenix project.
+
+**Combine with.** `honcho` (derived/summarized memory vs. MemPalace's verbatim),
+`litellm` (optional refiner). Doctor check 44 verifies the install (green-skip when
+not installed). Gotchas in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
@@ -2015,7 +2068,7 @@ Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shor
 
 ```bash
 # Health + state
-bash ~/ai-stack/vz-ai-stack.sh doctor                 # 43 health checks + auto-fix offers
+bash ~/ai-stack/vz-ai-stack.sh doctor                 # 44 health checks + auto-fix offers
 bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
 bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
 
@@ -2170,7 +2223,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 43/43 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 44/44 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 

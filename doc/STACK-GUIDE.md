@@ -29,6 +29,7 @@ flowchart TB
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
+    MP[mempalace CLI/MCP]
   end
   subgraph DOCS[Documents and RAG]
     DC[Docling]
@@ -1214,6 +1215,82 @@ like any other HTTP service. Deferred.
 
 **Sources:**
 - https://github.com/ory/lumen
+
+---
+
+### MemPalace (Phase 26, opt-in)
+
+**What is it?** MemPalace is a **local-first, verbatim conversation memory**
+for Claude Code sessions — a CLI + MCP server (29 tools) + Python library
+(PyPI `mempalace`, MIT). There is **no daemon and no network port**; like
+Lumen, it's a host-side tool, not a container. Its mental model is a memory
+palace: people and projects become *wings*, topics become *rooms*, and
+content lands in *drawers*, all sitting on a temporal entity-relationship
+knowledge graph in SQLite.
+
+**Why is it here?** The stack already has memory layers, but each fills a
+different niche — and none captured raw recall:
+
+- **Honcho** (Phase 03) — derived/summarized cross-agent *facts* about you
+  (Postgres + Redis). Great for "what does the fleet know about Mayssam?"
+- **Qdrant** (Phase 02) — document vector RAG over your prose corpus.
+- **Lumen** (Phase 16) — code semantic search.
+- **FalkorDB** — graph memory (reserved).
+
+MemPalace fills the gap they all leave: **verbatim conversation/session
+recall** — the actual back-and-forth of a Claude Code session, searchable
+later — which previously only `.remember/` plus hand-curated memory covered,
+and only manually.
+
+**What does it do for us?**
+- **On-device embeddings.** Embeddings are **local ONNX, run on-device via
+  CoreML** (the M4 Neural Engine). The default model is `all-MiniLM-L6-v2`
+  (384-dim, English); `embeddinggemma` (multilingual) is opt-in. **No cloud,
+  and these do NOT go through LiteLLM** — they are not a model binding.
+- **Optional LLM refinement.** The only LiteLLM touchpoint is the *optional*
+  entity-refiner (`mempalace mine --extract general`), which routes through
+  LiteLLM via the virtual key `MEMPALACE_LITELLM_KEY` (openai-compat
+  provider) and therefore shows up as a trace in Phoenix. Skip it and
+  MemPalace never calls LiteLLM at all.
+- **Storage.** The live backend is local **ChromaDB** (on-device). A Qdrant
+  backend adapter is **staged** at `mempalace/backend-qdrant/` (an RFC-001
+  `BaseBackend`, conformance-tested against live Qdrant) but **not live yet**:
+  MemPalace 3.3.5 hardcodes `ChromaBackend` in `palace.py` and doesn't consume
+  the backend registry / `MEMPALACE_BACKEND` at runtime. Treat Qdrant
+  consolidation as *staged, pending upstream registry wiring*.
+
+**How do I use it?**
+
+```sh
+bin/mempalace wake-up                # rebuild working context from recent sessions
+bin/mempalace search "<query>"       # verbatim recall across stored conversations
+bin/mempalace mine                   # extract entities/relationships into the graph
+bin/mempalace mine --extract general # opt-in LLM refiner (routes via LiteLLM → Phoenix)
+bin/mempalace-hooks install          # opt-in Claude Code hooks for auto-save
+```
+
+`bin/mempalace-hooks` wires the opt-in auto-save path so sessions are captured
+without manual `mine`/`save` calls; it's off until you install it.
+
+**Where does it fit?**
+
+```mermaid
+flowchart LR
+  CC[Claude Code session] -. opt-in hooks .-> MP[mempalace CLI/MCP]
+  MP -- embed on-device --> ANE[CoreML / ANE: all-MiniLM-L6-v2]
+  MP -- store --> CH[(ChromaDB + SQLite graph, local)]
+  MP -. optional --extract general .-> LL[litellm :4000]
+  LL -.async.-> PX[phoenix :6006]
+  MP -. staged, not live .-> QD[qdrant :6333]
+```
+
+**Gotcha:** Phase 26 is **opt-in** (install by name: `vz-ai-stack.sh install
+mempalace`). Because embeddings are on-device and the refiner is optional,
+MemPalace works fully offline with zero LiteLLM dependency unless you ask for
+`--extract general`.
+
+**Sources:**
+- https://pypi.org/project/mempalace/
 
 ---
 

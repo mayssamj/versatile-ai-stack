@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **27 core install phases** (+5 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`), **39 services** (`services.yml`), **43 doctor checks**.
+- **27 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **44 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -67,6 +67,7 @@ FalkorDB, LFM2, etc.).
 | **RLM** | Recursive Language Models — recursive long-context inference; REPL in a Docker sandbox | `bin/rlm` |
 | **HALO** | Trace-analysis engine (`halo-engine`); reasons over OTel traces ⚠️ *experimental on local models* | `bin/halo` |
 | **Lumen** | Code semantic-search MCP server | `bin/lumen` |
+| **MemPalace** | Verbatim CONVERSATION memory for Claude Code sessions (CLI + stdio MCP; opt-in Phase 26). Local-first ChromaDB + on-device ONNX/CoreML embeddings (all-MiniLM-L6-v2, no cloud, not via LiteLLM); the optional entity-refiner LLM routes through LiteLLM (`MEMPALACE_LITELLM_KEY` → visible in Phoenix). Complements Honcho (derived facts) / Qdrant (doc RAG) / Lumen (code) — its niche is verbatim session recall | `bin/mempalace` |
 | **Unsloth Studio** | Local model fine-tuning UI | `http://unsloth:8898` |
 | **Paperclip** | Screenshot / computer-use agent | `http://paperclip:3100` |
 | **Blaxel CLI** | Cloud agent-platform CLI (cloud-only; installed on demand) | `bl` / `blaxel` |
@@ -76,8 +77,8 @@ FalkorDB, LFM2, etc.).
 | **paperclip↔honcho plugin** | Wires Paperclip into Honcho memory | — |
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
-## Opt-in experimental extras (Phases 21–25 — NOT in `install all`)
-Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 pass-as-skip when not installed.
+## Opt-in experimental extras (Phases 21–26 — NOT in `install all`)
+Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 44 pass-as-skip when not installed.
 | Component | What it is | Install |
 |---|---|---|
 | **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `vz-ai-stack.sh install portless` |
@@ -85,6 +86,7 @@ Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34�
 | **SkillSpector** | NVIDIA scanner that vets agent skills/MCP for prompt-injection/tool-poisoning *before* install (offline by default) | `vz-ai-stack.sh install skillspector` → `bin/skillspector scan <path>` |
 | **OpenAgents Launcher** | "Ollama for AI agents" (`agn`); ⚠️ overlaps the stack — NOT wired into LiteLLM/sandboxes; installs to `~/.openagents` | `vz-ai-stack.sh install openagents` |
 | **LM Studio (MLX)** | 2nd local runtime behind LiteLLM (`:1234`) — Apple MLX engine. Now the home of the two big MLX models `local-qwen3.6` + `local-qwen3-coder` (~17 GB each, JIT-loaded one-at-a-time with idle TTL) and `local-lfm2-mlx` (LFM2.5 with *working tool-calling* the Ollama GGUF can't do). Ollama stays default; lmstudio-assigned agents fall back to `local-gemma4` when this is down. ⚠️ The desktop app idle-spins ~0.8–1 core even stopped — run only when needed and **quit it when done** (`lms server stop` + Cmd-Q); headless alt: `mlx_lm.server` | `vz-ai-stack.sh install lmstudio` |
+| **MemPalace** | Verbatim Claude Code session memory (CLI + stdio MCP, no daemon/port). PyPI-only (`uv tool install mempalace`); runs on local on-device ChromaDB with ONNX/CoreML embeddings (no cloud). Stop/PreCompact auto-save hooks are opt-in/reversible via `bin/mempalace-hooks` (NOT wired by install). Doctor check 44 green-skips when not installed | `vz-ai-stack.sh install mempalace` (alias for `install 26`) |
 
 ## Platform
 | Component | What it is |
@@ -98,4 +100,4 @@ Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34�
 `install [phase\|all]` · `reset --confirm soft\|hard\|nuke [--yes]` · `verify` · `status` ·
 `doctor [filter]` · `start/stop <svc>` · `adopt <svc>` · `apply-restarts` · `logs <svc>` ·
 `prepare-sudo`. Per-service launchers live in `bin/start-<svc>.sh`; daily-driver wrappers
-are `bin/{pi,ace,rlm,halo,lumen}`.
+are `bin/{pi,ace,rlm,halo,lumen,mempalace}` (mempalace is opt-in — Phase 26).

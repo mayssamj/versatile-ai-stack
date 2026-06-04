@@ -30,7 +30,7 @@ stack status                            # declared vs actual table
 stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
 stack fleet list|add|remove|new|destroy # Hermes 9-role fleet manager (see models.md / STACK-GUIDE)
-stack doctor                            # 43 health checks + auto-fix offers
+stack doctor                            # 44 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container
@@ -59,9 +59,9 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
-The **5 opt-in extras** (Phases 21–25: `portless`, `cmux`, `skillspector`,
-`openagents`, `lmstudio`) are NOT part of `install all` — add them individually by
-name. Their doctor checks (34–38) pass-as-skip until installed.
+The **6 opt-in extras** (Phases 21–26: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`, `mempalace`) are NOT part of `install all` — add them
+individually by name. Their doctor checks (34–38, 44) pass-as-skip until installed.
 
 ### Per-service help (`stack help`)
 
@@ -366,6 +366,38 @@ stack install lmstudio              # add it (Phase 25)
 
 Lighter headless alternative: `pip install mlx-lm` → `mlx_lm.server`. See
 [TROUBLESHOOTING.md § LM Studio CPU](TROUBLESHOOTING.md).
+
+---
+
+## MemPalace verbatim memory (opt-in, Phase 26)
+
+MemPalace (Phase 26) is **opt-in** (NOT in `install all`) local-first **verbatim**
+conversation memory for Claude Code — CLI + MCP, no daemon, no host port. Embeddings
+run **on-device** (CoreML, default `all-MiniLM-L6-v2` 384-dim; `embeddinggemma`
+opt-in); there are no cloud embeddings. Storage is on-device ChromaDB. An optional
+refiner LLM routes via LiteLLM (`MEMPALACE_LITELLM_KEY`). Install is **PyPI-only**
+(`mempalace.tech` is a malware squat — never install from it).
+
+```bash
+stack install 26                              # add it (Phase 26; first mine downloads a ~80MB
+                                              #   on-device model once — retry if it times out)
+
+# Day-to-day (the bin/mempalace wrapper):
+bash ~/ai-stack/bin/mempalace wake-up         # prime a fresh session with prior context
+bash ~/ai-stack/bin/mempalace search "<q>"    # search verbatim memory
+bash ~/ai-stack/bin/mempalace mine <dir> --mode convos --extract general   # backfill (large/slow)
+bash ~/ai-stack/bin/mempalace status          # palace contents, model, backend
+
+# Opt-in auto-save hooks (reversible, backup-first):
+bash ~/ai-stack/bin/mempalace-hooks install --apply
+MEMPALACE_HOOKS_AUTO_SAVE=false …             # disable auto-save live without uninstalling
+```
+
+`stack status` shows `mempalace` only when installed; the liveness/install probe is
+`doctor` check 44 (green-skip when not installed). See
+[TROUBLESHOOTING.md § MemPalace](TROUBLESHOOTING.md) for the known gotchas (first-mine
+model download, embeddinggemma fallback, the qdrant-client/chromadb conflict, "No
+palace found", and the GUI-spawned-PATH fix).
 
 ---
 

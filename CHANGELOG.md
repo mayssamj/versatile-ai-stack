@@ -4,6 +4,72 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-04 — NEW Phase 26 `mempalace` — local-first conversation memory (stack-native, Phase A)
+
+Adds **MemPalace** (github.com/MemPalace/mempalace, MIT) as an opt-in phase that
+closes the one real gap in the stack's memory taxonomy: **automatic, verbatim,
+semantically-searchable recall over past Claude Code sessions** (today only the
+manual `.remember/` buffer + curated auto-memory cover this). It complements —
+does not replace — Honcho (derived/summarized cross-agent facts), Qdrant
+(documents) and Lumen (code).
+
+Two-phase adoption, both landed here:
+- **Phase A** — install + wrapper + opt-in hooks + doctor check, live on ChromaDB.
+- **Phase B** — a `mempalace-qdrant` backend adapter (`mempalace/backend-qdrant/`),
+  RFC-001 `BaseBackend`/`BaseCollection`, **verified against live Qdrant** by its
+  conformance test. **Staged, not live:** MemPalace 3.3.5 hardcodes
+  `ChromaBackend()` in `palace.py`/`repair.py`/`dedup.py`/`migrate.py`/`cli.py` and
+  does NOT consume the entry-point registry / `MEMPALACE_BACKEND` at runtime
+  (upstream `base.py`: "registry … land in follow-up PRs"). So MemPalace stays on
+  its local on-device ChromaDB (itself no-cloud) until upstream wires the registry;
+  the adapter is ready for that moment. (Also: `qdrant-client` must NOT be
+  co-installed into the mempalace uv-tool env — its protobuf/grpc pins break
+  chromadb's import; the adapter is tested in an isolated venv.)
+
+How it honors the constitution:
+- **No cloud embeddings.** Embeddings are local ONNX (default `all-MiniLM-L6-v2`,
+  384-dim — small/fast/English; `embeddinggemma` multilingual is opt-in), run
+  **on-device via CoreML** (the M4 Neural Engine) — nothing leaves the box.
+  We deliberately do NOT route embeddings through LiteLLM (extra hop, loses ANE).
+- **LiteLLM-routed LLM.** The *optional* entity-refinement / `--extract general`
+  calls go through LiteLLM via the openai-compat provider + a scoped virtual key
+  (`MEMPALACE_LITELLM_KEY`), so they appear in Phoenix project `ai-stack`.
+- **PyPI-only install** (`uv tool install mempalace`) — the `mempalace.tech`
+  domain is a known malware squat (upstream SECURITY note).
+- **Harness wiring stays opt-in.** Wiring the Stop/PreCompact auto-save hooks
+  changes live Claude Code behavior, so `install 26` does NOT touch settings.
+  Opt in reversibly with `bin/mempalace-hooks install --apply` (backup-first);
+  disable live with `MEMPALACE_HOOKS_AUTO_SAVE=false`.
+
+Artifacts:
+- `installer/phases/26_mempalace.sh` (alias `mempalace`; opt-in, NOT in `install all`).
+- `bin/mempalace` wrapper (injects on-device-embedding + LiteLLM env; key read
+  from `.env` at runtime, never embedded).
+- `bin/mempalace-hook-{save,precompact}` launchers (fix PATH + env for
+  GUI/launchd-spawned Claude Code) + `bin/mempalace-hooks` opt-in installer.
+- `mempalace/hooks/` — upstream Stop/PreCompact scripts **vendored verbatim**
+  (provenance + SHA in `mempalace/VENDORED.md`) so `uv tool upgrade` can't drift
+  what Claude Code executes.
+- `services.yml` `mempalace:` entry (`type: cli-only`, authored `help:` block).
+- **NEW doctor check 44 `mempalace`** (conditional green-skip when not installed;
+  verifies tool + wrapper + launchers + palace config + key valid against
+  `/v1/models`). Doctor is now **44 checks**.
+
+Install: `bash vz-ai-stack.sh install 26` then `bin/mempalace wake-up`.
+Backfill history (large/slow, run when ready):
+`bin/mempalace mine ~/.claude/projects --mode convos --extract general`.
+
+Verified end-to-end on the live box: `install 26` → doctor check 44 ✓; `mine` →
+on-device MiniLM/CoreML embed → ChromaDB → `search`/`wake-up` return correct
+hits; the Qdrant adapter's conformance test passes against live `qdrant:6333`.
+
+Docs: all `doc/*.md` + README swept for cohesion (40 services · 44 checks · 34
+phases). The generated `doc/*.html` (EXPLORE/USER-GUIDE/DIAGRAMS/TUTORIAL) are
+**pending regeneration from the updated `.md`** via their generators
+(`build_tutorial_html.py`, the stack-explorer-page workflow) — done as a
+post-merge step since those generators live on `main`, not this branch. Per
+convention the `.html` are never hand-edited.
+
 ## 2026-05-31 — OpenShell CPU-storm watchdog + light-model default + claw3d alias + LM Studio CPU reframe
 
 Four hardening/usability changes from operating the stack on the 24 GB M4 box,

@@ -379,7 +379,7 @@ Then run the full doctor:
 bash vz-ai-stack.sh doctor
 ```
 
-Expected: 43/43 checks pass after the post-install steps above and a
+Expected: 44/44 checks pass after the post-install steps above and a
 successful `sudo bash vz-ai-stack.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more
@@ -390,14 +390,17 @@ routing, 31 RLM install, 32 claw3d office + bridge, 33 Hermes Telegram gateway)
 require Phases 14, 15, 16, 10, 17, 04f, 18, 19, 20. Check 33 skips cleanly
 (counts as a pass) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set.
 
-Checks 34–38 cover the 5 opt-in extras (Phases 21–25: portless, cmux,
+Checks 34–38 cover five of the six opt-in extras (Phases 21–25: portless, cmux,
 skillspector, openagents, lmstudio) and **pass-as-skip when the tool isn't
 installed**, so the doctor stays green on a default `install all`. Check 39
 (`openshell_storm`) verifies no OpenShell sandbox is in an expired-token CPU
 storm and reports that the (warn-only-by-default) watchdog installed by Phase 04
 is loaded — it skips cleanly when OpenShell isn't present. Checks 40–43 cover the
 model↔agent binding (40), the opt-in Meridian/Claude-subscription wiring (41), the
-9-role agent fleet (42), and any pending watchdog alert (43).
+9-role agent fleet (42), and any pending watchdog alert (43). Check 44
+(`mempalace`) covers the sixth opt-in extra (Phase 26: verbatim Claude Code
+session memory) — it verifies the tool + wrapper + launchers + palace config +
+LiteLLM key and **green-skips when MemPalace isn't installed**.
 
 ---
 

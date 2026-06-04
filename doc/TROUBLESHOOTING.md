@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the 40 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
+For the 44 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---
@@ -563,6 +563,60 @@ bash ~/ai-stack/bin/start-hermes-telegram.sh
   *directly* (not through the relay), so it survives relay idle-timeouts; but if the
   sandbox itself was recreated (`reset … hard` + `install`), Phase 20 re-runs and
   restarts it. If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).
+
+---
+
+## MemPalace verbatim memory (opt-in, Phase 26)
+
+MemPalace is opt-in local-first **verbatim** conversation memory (CLI + MCP, no
+daemon, no port). Embeddings run **on-device** (CoreML); storage is on-device
+ChromaDB. Install is **PyPI-only** — `mempalace.tech` is a **malware squat**, never
+install from it. Doctor check 44 green-skips when it isn't installed. The recurring
+gotchas:
+
+- **First `mine` fails with `httpx.ReadTimeout` (downloading the ONNX model).** The
+  first run downloads the ~80MB on-device embedding model once. If the download
+  times out, **just re-run** the same `bin/mempalace mine …` command — it resumes
+  and the model is cached after the first success.
+  ```bash
+  bash ~/ai-stack/bin/mempalace mine ~/ai-stack --mode convos --extract general
+  # httpx.ReadTimeout → re-run the exact same command; it's a one-time model fetch.
+  ```
+
+- **`embeddinggemma` silently falls back to minilm.** The opt-in multilingual
+  `embeddinggemma` embedding function can **silently fall back** to `all-MiniLM-L6-v2`
+  if its model can't be fetched — which is exactly why minilm (384-dim) is the
+  default. If you expected multilingual quality and aren't getting it, confirm the
+  embeddinggemma model actually downloaded before assuming it's active
+  (`bin/mempalace status` shows the active model).
+
+- **`import chromadb` breaks after touching qdrant-client.** **NEVER co-install
+  `qdrant-client` into the mempalace uv-tool env** — its protobuf/grpc pins break
+  `import chromadb`, which is why MemPalace runs on ChromaDB. The staged Qdrant
+  backend adapter (`mempalace/backend-qdrant/`) is deliberately **tested in an
+  isolated venv**, not the tool env. If `import chromadb` is throwing protobuf
+  errors, you (or a tool) co-installed qdrant-client — recreate the tool env via
+  `bash ~/ai-stack/vz-ai-stack.sh install 26`.
+
+- **"No palace found".** Expected until you've populated memory. Run a `mine` (or
+  let the auto-save hooks capture a session) first:
+  ```bash
+  bash ~/ai-stack/bin/mempalace mine ~/ai-stack --mode convos --extract general
+  bash ~/ai-stack/bin/mempalace status     # should now show a palace
+  ```
+
+- **GUI / launchd-spawned Claude Code can't find `mempalace`.** A Claude Code
+  launched from the macOS GUI (or by launchd) may not have `~/.local/bin` on `PATH`,
+  so the bare `mempalace` / hook commands aren't found. The `bin/mempalace-hook-*`
+  launchers fix this by setting PATH explicitly — point the hooks at those launchers
+  (`bin/mempalace-hooks install --apply` wires them) rather than calling `mempalace`
+  directly. Disable auto-save live without uninstalling via
+  `MEMPALACE_HOOKS_AUTO_SAVE=false`.
+
+The optional refiner LLM routes through LiteLLM (`MEMPALACE_LITELLM_KEY` → Phoenix);
+if refiner calls fail, check that key the same way as any other scoped LiteLLM key
+(`GET http://litellm:4000/v1/models` with it). Embeddings are on-device and never
+touch LiteLLM.
 
 ---
 

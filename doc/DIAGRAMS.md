@@ -61,6 +61,7 @@ flowchart LR
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
+    MP["mempalace (CLI, opt-in)"]
   end
 
   subgraph Docs[Documents]
@@ -100,6 +101,9 @@ flowchart LR
   DC --> LI
   LI --> Docs
 
+  CLI --> MP
+  MP -.optional refiner.-> LL
+
   Agents -.optional.-> LG
 ```
 
@@ -111,6 +115,10 @@ Key things to notice:
 - Phoenix only receives; it never sits in the request path.
 - Honcho and Qdrant are the long-term state. Everything else is
   ephemeral.
+- MemPalace (Phase 26, opt-in) is **CLI-only** verbatim conversation
+  memory: its embeddings are computed **on-device** (local ONNX), so it
+  touches LiteLLM *only* for the optional refiner LLM — and not at all
+  otherwise.
 
 ---
 
@@ -149,6 +157,7 @@ flowchart TB
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
+    MP["mempalace (CLI, opt-in)"]
   end
 
   subgraph L5[Document layer]
@@ -781,6 +790,7 @@ flowchart LR
     HF["Hermes profiles (sandbox)"]
     Traces["traces/*.jsonl"]
     Docs["ingestor/*"]
+    MP["mempalace (CLI, on-device embeddings)"]
   end
 
   subgraph Cloud[Optional — leaves your machine]
@@ -822,6 +832,11 @@ The rules:
   run via LiteLLM, so if Honcho calls a cloud model, the message
   content is sent to that model — but the derived facts stay in your
   Postgres.
+- **MemPalace** (Phase 26, opt-in) verbatim conversation memory is
+  local-by-design: its embeddings are computed **on-device** (local
+  ONNX), and its store (local ChromaDB) never leaves the machine. The
+  only thing that can leave is the *optional* refiner LLM — and only via
+  LiteLLM, only if you enable it and point it at a cloud model.
 - **Traces** are written to `traces/` on disk and into Phoenix's local
   SQLite. Neither sink is internet-connected.
 - **Blaxel** is the only piece that is cloud-by-design. The CLI is

@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# Phase 26 — MemPalace (local-first conversation memory).
+#
+# MemPalace (github.com/MemPalace/mempalace, MIT) stores conversation history
+# VERBATIM (no lossy summarization) and retrieves it via local semantic search.
+# Memory is organized spatially: people/projects = "wings", topics = "rooms",
+# raw content = "drawers", plus a temporal entity-relationship knowledge graph
+# (SQLite). It exposes a CLI, a Python library, an MCP server (29 tools), and
+# Claude Code auto-save hooks.
+#
+# Why it earns its own phase (vs. the existing memory layers):
+#   - Honcho (Phase 03) DERIVES/summarizes cross-agent facts (lossy by design,
+#     server-backed). MemPalace stores conversations VERBATIM and is local-first.
+#   - Qdrant (Phase 02) indexes DOCUMENTS; Lumen (Phase 16) indexes CODE.
+#     MemPalace's sweet spot is CONVERSATION memory — specifically closing the
+#     gap that today only `.remember/` + the curated auto-memory cover: there is
+#     no automatic, verbatim, semantically-searchable recall over past Claude
+#     Code sessions. MemPalace's Stop/PreCompact hooks provide exactly that.
+#
+# How this phase honors the stack constitution:
+#   - NO CLOUD EMBEDDINGS: embeddings are local ONNX (embedding-gemma-300m),
+#     run on-device via CoreML (Apple Neural Engine on the M4). Nothing leaves
+#     the machine. We do NOT route embeddings through LiteLLM — that would add
+#     a hop and lose ANE acceleration for zero compliance gain.
+#   - LiteLLM-routed LLM: the OPTIONAL entity-refinement / `--extract general`
+#     LLM calls go through LiteLLM (openai-compat provider) via a scoped virtual
+#     key, so they appear in Phoenix project ai-stack for free.
+#   - INSTALL is PyPI-only (avoid the known malware-squatting domain
+#     mempalace.tech — see SECURITY note upstream). uv tool install pins to the
+#     PyPI artifact.
+#   - The Claude Code HOOK WIRING is NOT done here (it changes live harness
+#     behavior). It is an explicit, reversible opt-in: `bin/mempalace-hooks`.
+#
+# What this phase does (idempotent):
+#   1. `uv tool install --upgrade mempalace` (PyPI).
+#   2. Mint a LiteLLM virtual key (MEMPALACE_LITELLM_KEY) scoped to local models
+#      (mirrors Phase 15/17 pattern).
+#   3. Resolve the bound LLM model (availability-gated; default local-gemma4).
+#   4. Write bin/mempalace wrapper: exports the LiteLLM + on-device-embedding env
+#      (key read from .env at runtime — never embedded) then execs the tool.
+#   5. Bootstrap the palace: `mempalace init <AI_STACK> --yes --no-llm` (offline,
+#      heuristics-only, fast) if ~/.mempalace/config.json is absent.
+#   6. Generate bin/mempalace-hook-{save,precompact} launchers (PATH + env fix)
+#      used by the opt-in `bin/mempalace-hooks` wiring.
+#   7. Smoke: `bin/mempalace --help` exits 0. (We do NOT auto-backfill the full
+#      ~/.claude/projects history — that can be large/long; it is a printed
+#      opt-in note so we never leave a long-running task behind.)
+#
+# Standalone install: `bash vz-ai-stack.sh install 26`  (alias: mempalace)
+set -Eeuo pipefail
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$AI_STACK/installer/lib/common.sh"
+source "$AI_STACK/installer/lib/env.sh"
+
+PHASE=26
+MP_WRAPPER="$AI_STACK/bin/mempalace"
+MP_HOOK_SAVE="$AI_STACK/bin/mempalace-hook-save"
+MP_HOOK_PRECOMPACT="$AI_STACK/bin/mempalace-hook-precompact"
+MP_VENDORED_HOOKS="$AI_STACK/mempalace/hooks"
+MP_CONFIG_DIR="$HOME/.mempalace"
+MP_CONFIG_FILE="$MP_CONFIG_DIR/config.json"
+# On-device embeddings. Default = minilm (all-MiniLM-L6-v2, 384-dim, English,
+# ~80MB ONNX) — small, fast, and verified working on this box. embeddinggemma
+# (multilingual, ~300MB) is opt-in via MEMPALACE_EMBEDDING_MODEL=embeddinggemma
+# but its EF can silently fall back to minilm if its model can't be fetched, so
+# we don't default to it. First mine downloads the model once (retry if the
+# download times out — it is resumable on re-run).
+MP_EMBED_MODEL="${MEMPALACE_EMBEDDING_MODEL:-minilm}"
+MP_EMBED_DEVICE="${MEMPALACE_EMBEDDING_DEVICE:-coreml}"   # Apple Neural Engine on M4
+
+# Resolve the uv-installed mempalace binary (uv tool install → ~/.local/bin).
+mp_bin() { command -v mempalace 2>/dev/null || echo "$HOME/.local/bin/mempalace"; }
+
+precheck() {
+  [[ -x "$(mp_bin)" ]] || command -v mempalace >/dev/null 2>&1 || return 1
+  [[ -x "$MP_WRAPPER" ]] || return 1
+  [[ -x "$MP_HOOK_SAVE" && -x "$MP_HOOK_PRECOMPACT" ]] || return 1
+  [[ -f "$MP_CONFIG_FILE" ]] || return 1
+  local key; key="$(get_env MEMPALACE_LITELLM_KEY '')"
+  [[ -n "$key" ]] || return 1
+  curl -sf --max-time 5 -H "Authorization: Bearer $key" \
+    http://litellm:4000/v1/models >/dev/null 2>&1 || return 1
+  return 0
+}
+
+if precheck 2>/dev/null && stamp_check "$PHASE"; then
+  ok "Phase 26 — MemPalace — already installed (use 'vz-ai-stack.sh install 26' to re-run)"
+  exit 0
+fi
+
+hdr "Phase 26 — MemPalace (local-first conversation memory)"
+
+# --- Preconditions ---
+command -v uv >/dev/null 2>&1 || {
+  err "uv not on PATH. uv is installed by Phase 14 (Unsloth). Run:"
+  err "  bash $AI_STACK/vz-ai-stack.sh install 14"
+  exit 1
+}
+[[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
+
+LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
+[[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
+
+if ! curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 \
+   && ! curl -sf --max-time 3 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+        http://litellm:4000/v1/models >/dev/null 2>&1; then
+  err "LiteLLM not reachable at http://litellm:4000 — run 'stack start litellm'."
+  exit 1
+fi
+
+[[ -d "$MP_VENDORED_HOOKS" ]] || { err "vendored hooks missing at $MP_VENDORED_HOOKS — repo incomplete."; exit 1; }
+
+# --- 1. Install MemPalace from PyPI (NOT mempalace.tech — malware squat) ---
+log "Installing mempalace via uv tool (PyPI)..."
+uv tool install --upgrade mempalace 2>&1 | tail -5 || { err "uv tool install mempalace failed"; exit 1; }
+MP_BIN="$(mp_bin)"
+[[ -x "$MP_BIN" ]] || command -v mempalace >/dev/null 2>&1 || { err "mempalace not on PATH after install (expected ~/.local/bin/mempalace)"; exit 1; }
+MP_BIN="$(mp_bin)"
+ok "mempalace installed: $("$MP_BIN" --version 2>/dev/null | head -1 || echo '(version unknown)')"
+
+# --- 2. Mint LiteLLM virtual key (mirrors Phase 17) ---
+MP_KEY_CURRENT="$(get_env MEMPALACE_LITELLM_KEY '')"
+if [[ -z "$MP_KEY_CURRENT" ]] \
+   || ! curl -sf --max-time 5 -H "Authorization: Bearer $MP_KEY_CURRENT" \
+        http://litellm:4000/v1/models >/dev/null 2>&1; then
+  log "Minting LiteLLM virtual key for MemPalace (local models superset)..."
+  MP_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+    -H 'Content-Type: application/json' \
+    -X POST http://litellm:4000/key/generate \
+    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"],"key_alias":"mempalace-memory","metadata":{"owner":"mempalace","purpose":"phase26"}}' \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
+  [[ -n "$MP_KEY_NEW" ]] || { err "Failed to mint MEMPALACE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
+  set_env MEMPALACE_LITELLM_KEY "$MP_KEY_NEW"
+  ok "MEMPALACE_LITELLM_KEY minted + saved to .env (mode 0600)"
+else
+  ok "MEMPALACE_LITELLM_KEY already present + valid"
+fi
+
+# --- 3. Resolve bound model (availability-gated; default local-gemma4) ---
+# MemPalace's LLM is OPTIONAL (entity refinement / --extract general). Default
+# to local-gemma4 (Ollama, always servable). If models.yml binds an lmstudio
+# slug that isn't up, fall back to the declared default so a cold install never
+# pins MemPalace to an unreachable model.
+MP_MODEL="local-gemma4"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _mm="$(yq -r '.assignments.mempalace // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  if [[ -n "$_mm" && "$_mm" != "null" ]]; then
+    _mrt="$(yq -r ".models.\"$_mm\".runtime" "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    if [[ "$_mrt" == "lmstudio" ]] \
+       && ! { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
+              && grep -qF "model_name: ${_mm}" "$AI_STACK/litellm/config.yaml" 2>/dev/null; }; then
+      MP_MODEL="$(yq -r '.default' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    else
+      MP_MODEL="$_mm"
+    fi
+  fi
+fi
+ok "MemPalace LLM model (entity refinement) = $MP_MODEL (embeddings stay on-device: $MP_EMBED_MODEL/$MP_EMBED_DEVICE)"
+
+# --- 4. bin/mempalace wrapper (injects LiteLLM + embedding env) ---
+cat > "$MP_WRAPPER" <<WRAPEOF
+#!/usr/bin/env bash
+# bin/mempalace — stack wrapper around the uv-installed mempalace.
+# Generated by installer/phases/26_mempalace.sh — re-run 'install 26' to refresh.
+#
+# Injects:
+#   * On-device embeddings (no cloud, no LiteLLM hop): MEMPALACE_EMBEDDING_*.
+#   * LiteLLM routing for the OPTIONAL entity-refinement LLM: the openai-compat
+#     provider env (OPENAI_*) + closet_llm env (LLM_*). Key is read from .env at
+#     RUNTIME (never baked into this file).
+set -Eeuo pipefail
+AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+_mp_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
+MP_BIN="\$(command -v mempalace 2>/dev/null || echo "\$HOME/.local/bin/mempalace")"
+[[ -x "\$MP_BIN" ]] || { echo "mempalace not installed — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
+
+_key="\$(_mp_get_env MEMPALACE_LITELLM_KEY)"
+export MEMPALACE_EMBEDDING_MODEL="\${MEMPALACE_EMBEDDING_MODEL:-$MP_EMBED_MODEL}"
+export MEMPALACE_EMBEDDING_DEVICE="\${MEMPALACE_EMBEDDING_DEVICE:-$MP_EMBED_DEVICE}"
+# LiteLLM-routed LLM (openai-compat + closet_llm env contracts):
+export OPENAI_BASE_URL="\${OPENAI_BASE_URL:-http://litellm:4000/v1}"
+export OPENAI_API_KEY="\${OPENAI_API_KEY:-\$_key}"
+export LLM_ENDPOINT="\${LLM_ENDPOINT:-http://litellm:4000/v1}"
+export LLM_KEY="\${LLM_KEY:-\$_key}"
+export LLM_MODEL="\${LLM_MODEL:-$MP_MODEL}"
+exec "\$MP_BIN" "\$@"
+WRAPEOF
+chmod +x "$MP_WRAPPER"
+ok "wrote $MP_WRAPPER"
+
+# --- 5. Bootstrap the palace (offline, heuristics-only) ---
+# Init against a NEUTRAL seed dir, never the repo: `mempalace init <dir>` drops
+# mempalace.yaml + entities.json into <dir> and edits its .gitignore, so pointing
+# it at $AI_STACK would pollute the working tree. The real corpus is mined later
+# (`mine ~/.claude/projects` / the hooks); init here just creates ~/.mempalace.
+MP_SEED_DIR="$MP_CONFIG_DIR/stack-seed"
+if [[ ! -f "$MP_CONFIG_FILE" ]]; then
+  log "Bootstrapping palace (mempalace init, offline heuristics-only)..."
+  mkdir -p "$MP_SEED_DIR"
+  [[ -f "$MP_SEED_DIR/README.md" ]] || cat > "$MP_SEED_DIR/README.md" <<'SEEDEOF'
+# MemPalace seed
+
+Neutral directory used by `vz-ai-stack.sh install 26` to bootstrap the palace
+config (~/.mempalace) without treating the ai-stack repo as a mined corpus.
+The real memory comes from `bin/mempalace mine ~/.claude/projects --mode convos`
+and the opt-in Stop/PreCompact hooks. Safe to leave empty.
+SEEDEOF
+  # --no-llm keeps init offline + non-interactive; </dev/null declines the
+  # post-init "mine now?" prompt. Entity refinement at mine time uses the
+  # LiteLLM env from the wrapper. The palace store lives at ~/.mempalace/palace.
+  "$MP_WRAPPER" init "$MP_SEED_DIR" --yes --no-llm </dev/null 2>&1 | tail -8 \
+    || warn "mempalace init reported issues — inspect; palace may still be usable"
+fi
+if [[ -f "$MP_CONFIG_FILE" ]]; then
+  chmod 0700 "$MP_CONFIG_DIR" 2>/dev/null || true
+  chmod 0600 "$MP_CONFIG_FILE" 2>/dev/null || true
+  ok "palace config present: $MP_CONFIG_FILE"
+else
+  warn "palace config not created at $MP_CONFIG_FILE — 'bin/mempalace init <dir> --yes' to bootstrap"
+fi
+
+# --- 6. Hook launchers (PATH + env fix for GUI/launchd-spawned Claude Code) ---
+# The vendored upstream hooks call bare `mempalace mine`; GUI-launched Claude
+# Code may not have ~/.local/bin on PATH. These launchers fix PATH + inject the
+# same env as bin/mempalace, then exec the vendored script. Wired into Claude
+# Code only via the opt-in `bin/mempalace-hooks` (never automatically).
+for _pair in "save:$MP_HOOK_SAVE" "precompact:$MP_HOOK_PRECOMPACT"; do
+  _action="${_pair%%:*}"; _path="${_pair##*:}"
+  cat > "$_path" <<LAUNCHEOF
+#!/usr/bin/env bash
+# bin/mempalace-hook-$_action — env/PATH shim for the vendored upstream
+# mempal_${_action}_hook.sh. Generated by Phase 26. Wired via bin/mempalace-hooks.
+set -Eeuo pipefail
+AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+_mp_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
+export PATH="\$HOME/.local/bin:\$PATH"
+_key="\$(_mp_get_env MEMPALACE_LITELLM_KEY)"
+export MEMPALACE_EMBEDDING_MODEL="\${MEMPALACE_EMBEDDING_MODEL:-$MP_EMBED_MODEL}"
+export MEMPALACE_EMBEDDING_DEVICE="\${MEMPALACE_EMBEDDING_DEVICE:-$MP_EMBED_DEVICE}"
+export OPENAI_BASE_URL="http://litellm:4000/v1"
+export OPENAI_API_KEY="\$_key"
+export LLM_ENDPOINT="http://litellm:4000/v1"
+export LLM_KEY="\$_key"
+export LLM_MODEL="$MP_MODEL"
+exec "\$AI_STACK/mempalace/hooks/mempal_${_action}_hook.sh" "\$@"
+LAUNCHEOF
+  chmod +x "$_path"
+  ok "wrote $_path"
+done
+
+# --- 7. Smoke test ---
+if ! "$MP_WRAPPER" --help >/dev/null 2>&1; then
+  err "bin/mempalace --help failed — wrapper broken; phase will not stamp."
+  exit 1
+fi
+ok "bin/mempalace --help: smoke-test passed"
+
+stamp_mark "$PHASE"
+record "phase 26 complete: MemPalace installed + virtual key + wrapper + palace + hook launchers"
+ok "Phase 26 — MemPalace — complete"
+note "Search:   bin/mempalace search 'what did we decide about the watchdog'"
+note "Wake-up:  bin/mempalace wake-up           # ~600-900 token session primer"
+note "Status:   bin/mempalace status"
+note "Backfill your Claude Code history (LARGE/SLOW — run when ready, foreground):"
+note "          bin/mempalace mine ~/.claude/projects --mode convos --extract general"
+note "Auto-save (OPT-IN — edits Claude Code settings, reversible):"
+note "          bin/mempalace-hooks install        # prints the settings block"
+note "          bin/mempalace-hooks install --apply  # applies it (backup first)"

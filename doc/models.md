@@ -24,12 +24,12 @@ renders it all from this file.
 | `local-qwen3.6`     | lmstudio   | `qwen/qwen3.6-27b`                 | `big: true`, `ttl: 1800`  | ~17.5GB MLX. Cannot coexist with `local-qwen3-coder` on 24GB. |
 | `local-qwen3-coder` | lmstudio   | `qwen3-coder-30b-a3b-instruct-mlx` | `big: true`, `ttl: 1800`  | ~17.2GB MLX. Cannot coexist with `local-qwen3.6` on 24GB. |
 
-### The 13 agents (assignments + kinds)
+### The 14 agents (assignments + kinds)
 
-`models.yml` binds **13 agents** — the 9 Hermes profiles (a full
-software-engineering team) plus `pi`, `deerflow`, `ace`, and `rlm` — each via
-an `assignments:` line (the model) and a `kinds:` entry (the renderer +
-scoped-key env). Any agent with no assignment falls back to the `default`
+`models.yml` binds **14 agents** — the 9 Hermes profiles (a full
+software-engineering team) plus `pi`, `deerflow`, `ace`, `rlm`, and `mempalace`
+— each via an `assignments:` line (the model) and a `kinds:` entry (the renderer
++ scoped-key env). Any agent with no assignment falls back to the `default`
 (`local-gemma4`). The nine Hermes profiles all route to a **Claude
 subscription via Meridian** and are availability-gated to `local-gemma4` when
 Meridian is down. The same 9-role team is also realized as **Pi personas**
@@ -51,6 +51,18 @@ sharing the `team-protocol` skill.
 | `deerflow`                 | `claude-opus-4.8-sub-max` | deerflow | *(none — master key)* |
 | `ace`                      | `local-gemma4`      | ace            | `ACE_LITELLM_KEY` |
 | `rlm`                      | `local-gemma4`      | rlm            | `RLM_LITELLM_KEY` |
+| `mempalace`                | `local-gemma4`      | mempalace      | `MEMPALACE_LITELLM_KEY` |
+
+**MemPalace is a partial binding.** `mempalace` (Phase 26, opt-in) is a
+host-side CLI/MCP memory tool, not a chat agent. Its `MEMPALACE_LITELLM_KEY`
+(scoped to local models) is used **only** for the *optional* entity-refiner
+(`mempalace mine --extract general`); that path defaults to `local-gemma4` and
+is availability-gated like everything else (gates to the default when the
+assigned slug isn't servable). MemPalace's **embeddings are NOT a model
+binding** — they are **on-device ONNX** (`all-MiniLM-L6-v2` by default, run via
+CoreML on the M4 ANE; `embeddinggemma` multilingual opt-in), so they never
+touch `models.yml`, LiteLLM, or Ollama. Skip the refiner and MemPalace makes no
+LiteLLM call at all.
 
 The legacy slugs (`local`, `local-heavy`, `local-lfm2`, `local-lfm2-mlx`) are
 **never deleted** — the canonical IDs are added alongside them (add-only). New
@@ -200,7 +212,9 @@ Each agent's live model is resolved in four stages:
 
 The renderer dispatches by `kind`: `render_hermes` (OpenShell `config set`),
 `render_pi` (`PI_DEFAULT_MODEL`), `render_deerflow`, `render_ace`
-(allowlist-only), `render_rlm`. **DeerFlow is special**: it writes **two tiers**
+(allowlist-only), `render_rlm`, `render_mempalace` (writes the refiner's model
+for the optional `--extract general` path; embeddings are on-device ONNX and
+out of band). **DeerFlow is special**: it writes **two tiers**
 — `basic` is **always** `local-gemma4` (the default), `reasoning` takes the
 gated effective model — and it uses the **master key** (no scoped allowlist), so
 the scoped-key widening (P3 below) does not apply to it.
@@ -265,7 +279,7 @@ See [DIAGRAMS.md §5c](DIAGRAMS.md#5c-model-discovery--add--sync-lifecycle-lm-st
 
 ## Scoped keys: the DERIVED superset
 
-Every scoped virtual key (Hermes, Pi, ACE, RLM) is minted against the
+Every scoped virtual key (Hermes, Pi, ACE, RLM, MemPalace) is minted against the
 **superset** so `assign`/`add`/`sync` can re-point an agent **without ever
 re-minting** a key. The canonical IDs are registered in `config.yaml` *before*
 any key is minted (superset-before-mint).

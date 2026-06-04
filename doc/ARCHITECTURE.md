@@ -58,6 +58,8 @@ a trace "for free."
 │    Honcho :8000 (cross-agent mem; │   │    (alias phoenix-otlp)           │
 │      its Postgres also backs the  │   │    project "ai-stack" — every     │
 │      LiteLLM key store)           │   │    LLM call lands here for free   │
+│    MemPalace (verbatim convo mem; │   │                                   │
+│      host CLI/MCP, no port; opt-in)│   │                                   │
 └───────────────────────────────────┘   └───────────────────────────────────┘
 ```
 
@@ -110,13 +112,41 @@ server on `:1234`, reached via `host.docker.internal`, opt-in Phase 25).
 
 ### Data / memory layer
 
+The stack runs four distinct memory layers, each with a different shape and
+niche:
+
 - **Qdrant** `:6333` — vector store (RAG corpus; the Documents ingestor at
-  Phase 06 sweeps `ingestor/inbox` → Qdrant).
-- **FalkorDB** `:6379` (+ UI `:3000`) — graph/redis memory.
-- **Honcho** `:8000` — self-hosted cross-agent memory; its compose Postgres
-  *also* backs the LiteLLM key store, which is why Phase 03 (Honcho) runs
-  before Phase 01 (LiteLLM): LiteLLM's Prisma migration needs Postgres at
-  startup.
+  Phase 06 sweeps `ingestor/inbox` → Qdrant). Document vector RAG.
+- **FalkorDB** `:6379` (+ UI `:3000`) — graph/redis memory (reserved for future
+  graph-memory work; no current callers).
+- **Honcho** `:8000` — self-hosted cross-agent memory: *derived/summarized*
+  facts about peers (Postgres + Redis), shared across the whole fleet. Its
+  compose Postgres *also* backs the LiteLLM key store, which is why Phase 03
+  (Honcho) runs before Phase 01 (LiteLLM): LiteLLM's Prisma migration needs
+  Postgres at startup.
+- **MemPalace** (Phase 26, opt-in) — **local-first, verbatim conversation
+  memory** for Claude Code sessions: a CLI + MCP server (29 tools) + Python
+  library (PyPI `mempalace`, MIT). **No daemon, no network port** — it is a
+  host-side tool, not a container. Its spatial model maps people/projects to
+  *wings*, topics to *rooms*, and content to *drawers*, over a temporal
+  entity-relationship knowledge graph in SQLite. Embeddings are **local ONNX,
+  on-device via CoreML** (M4 ANE) — default `all-MiniLM-L6-v2` (384-dim,
+  English), `embeddinggemma` multilingual opt-in; **no cloud, and NOT via
+  LiteLLM**. The only LiteLLM dependency is the *optional* entity-refiner
+  (`--extract general`), which routes through LiteLLM via virtual key
+  `MEMPALACE_LITELLM_KEY` (openai-compat provider) and is traced in Phoenix.
+  Storage backend is local **ChromaDB** (on-device); a Qdrant backend adapter
+  is **staged** at `mempalace/backend-qdrant/` (RFC-001 `BaseBackend`,
+  conformance-tested against live Qdrant) but **not live** — MemPalace 3.3.5
+  hardcodes `ChromaBackend` in `palace.py` and does not consume the backend
+  registry / `MEMPALACE_BACKEND` at runtime yet, so Qdrant consolidation is
+  *staged, pending upstream registry wiring*.
+
+These four layers cover complementary niches: Honcho is derived/summarized
+cross-agent facts, Qdrant is document vector RAG, FalkorDB is graph (reserved),
+and MemPalace is verbatim conversation/session recall — the gap that `.remember/`
++ curated memory previously only filled manually. (Code semantic search is a
+fifth lens, served by Lumen at Phase 16 — local-only, no LiteLLM dependency.)
 
 ### Observability layer
 
@@ -313,7 +343,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (40 today)
+│   │   └── checks/                  — one file per failure mode (44 today)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh
@@ -412,8 +442,8 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-27 phase scripts (`installer/phases/00_host.sh` through `20_hermes_telegram.sh`),
-each:
+34 phase scripts (`installer/phases/00_host.sh` through `26_mempalace.sh`; 6 of
+them — 21–26 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.

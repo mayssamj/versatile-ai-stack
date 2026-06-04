@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mempalace-qdrant"
+version = "0.1.0"
+description = "Qdrant storage backend for MemPalace (RFC-001 BaseBackend). Staged/forward-compatible until upstream wires the registry."
+requires-python = ">=3.9"
+dependencies = [
+  "qdrant-client>=1.10",
+]
+
+# Discovered by MemPalace's backend registry the moment palace.py consumes
+# resolve_backend_for_palace (pending upstream). Until then this is inert but
+# importable + testable in isolation.
+[project.entry-points."mempalace.backends"]
+qdrant = "mempalace_qdrant:QdrantBackend"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mempalace_qdrant"]

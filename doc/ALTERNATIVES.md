@@ -360,6 +360,30 @@ summarizer model before any action model sees it.
 
 ---
 
+## Verbatim conversation memory
+
+### MemPalace (Phase 26, opt-in)
+**Slot:** Local-first **verbatim** recall of past Claude Code sessions —
+CLI + MCP (29 tools) + Python lib. A spatial model
+(wings/rooms/drawers) over a temporal SQLite knowledge graph; embeddings
+are computed **on-device** (local ONNX/CoreML, default `all-MiniLM-L6-v2`),
+so nothing leaves the machine. Distinct from the other memory slots: it keeps
+the *actual transcript* searchable, not derived facts.
+
+| Alternative | Differentiator |
+|---|---|
+| **Honcho** | The stack default. Derives *facts/insights* from chats (per-peer representation); MemPalace keeps the raw conversation verbatim. Complementary, not a swap. |
+| **Qdrant + docs_ingestor** | Document RAG over your files; MemPalace is session-recall over your *conversations*. Different corpus. |
+| **Lumen** | Semantic *code* search; MemPalace is conversation search. Different corpus again. |
+| **remnic / byterover** | The dormant Phase 09 local-first memory options (markdown / codebase context tree). MemPalace is conversation-transcript memory with on-device embeddings. |
+| **Storage backend** | Ships on local ChromaDB; a **Qdrant backend adapter is staged** (`mempalace/backend-qdrant/`, RFC-001, conformance-tested vs live Qdrant) but not yet runtime-wired (3.3.5 hardcodes ChromaBackend). |
+
+> **Security:** install MemPalace only from PyPI (`mempalace`) or
+> github.com/MemPalace/mempalace — the domain `mempalace.tech` is a known
+> malware squat.
+
+---
+
 ## Multi-agent research / super-agent harness
 
 ### DeerFlow (ByteDance)

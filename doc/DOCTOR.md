@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 43 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 44 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 43
+stack doctor                    # all 44
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -79,7 +79,8 @@ installer/doctor/checks/
 ├── 40_models_binding.sh                   (models.yml <-> config.yaml <-> agent render + scoped keys)
 ├── 41_meridian.sh                         (Claude subscription behind LiteLLM; opt-in, Phase via start-meridian.sh)
 ├── 42_agent_fleet.sh                      (9-role fleet across claude-code + pi personas; opt-in Phase 04h)
-└── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
+├── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
+└── 44_mempalace.sh                         (opt-in Phase 26; conditional green-skip when not installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -581,6 +582,24 @@ for the Meridian setup.
 
 This check is the loud, visible backstop ensuring a watchdog event can never be
 silent again.
+
+---
+
+## 44 · MemPalace verbatim-memory CLI + MCP installed (opt-in, Phase 26)
+
+| | |
+|---|---|
+| Asserts | When Phase 26 has run, the `mempalace` tool is installed (PyPI uv-tool env), the `bin/mempalace` wrapper + the `bin/mempalace-hook-*` launchers exist, the palace config is present, and — if `MEMPALACE_LITELLM_KEY` is set (the optional refiner LLM) — that key is accepted by LiteLLM's `/v1/models`. Embeddings are on-device (CoreML); there is nothing to probe for them. |
+| Fails when | Phase 26 ran but the tool/wrapper/hook-launchers/palace config are missing, or `MEMPALACE_LITELLM_KEY` is set but rejected by LiteLLM. |
+| Green-skip | MemPalace not installed — it's opt-in, not part of `install all`, so the check passes-as-skip and the doctor stays green. |
+| Auto-fix | Surfaces `bash vz-ai-stack.sh install 26` — Phase 26 is idempotent (re-uses the uv-tool env, re-writes the wrapper + hook launchers, re-validates the refiner key). |
+
+**Backend note.** MemPalace runs on local on-device **ChromaDB** (MemPalace 3.3.5
+hardcodes `ChromaBackend`). A Qdrant backend adapter is staged at
+`mempalace/backend-qdrant/` but is NOT live — it's tested in an isolated venv
+because `qdrant-client`'s protobuf/grpc pins break `import chromadb` if co-installed
+into the mempalace tool env (so the doctor never adds it). See
+[TROUBLESHOOTING.md § MemPalace](TROUBLESHOOTING.md) for the install gotchas.
 
 ---
 

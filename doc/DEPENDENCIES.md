@@ -58,6 +58,7 @@ graph TD
   paperclip_honcho[paperclip_honcho_plugin]:::cli
   deerflow[deerflow]:::compose
   halo[halo (CLI)]:::cli
+  mempalace[mempalace (CLI/MCP, no port)]:::cli
 
   %% --- hard edges (solid) ---
   litellm --> ollama
@@ -92,6 +93,7 @@ graph TD
   hermes_fleet -. doc retrieval .-> docs_mcp
   deerflow -. uses LLM .-> litellm
   autofyn -. uses LLM _unverified_ .-> litellm
+  mempalace -. optional entity-refiner (--extract general) .-> litellm
 ```
 
 **Reading the graph:**
@@ -99,6 +101,7 @@ graph TD
 - `phoenix` is a soft dep — LiteLLM keeps serving if Phoenix is down (the OTLP callback fails-soft; the call still completes).
 - `halo` (the `halo-engine` CLI, exposing `bin/halo`) routes its own LLM calls through LiteLLM (local default); it does not read `traces/litellm.jsonl`.
 - `falkordb` has no current callers in this stack (reserved for future graph-memory work).
+- `mempalace` (Phase 26, opt-in CLI/MCP, no port) is local-first: its embeddings run on-device (local ONNX via CoreML, no dependency) and its only soft edge is the *optional* entity-refiner (`--extract general`), which routes through LiteLLM under `MEMPALACE_LITELLM_KEY`. Skip the refiner and MemPalace has no runtime deps at all.
 - The cloud-provider edges are dotted because each call only uses one provider, chosen by `model:` in the request.
 
 ---
@@ -107,7 +110,7 @@ graph TD
 
 Three distinct planes meet at well-defined bridge points:
 
-1. **macOS host** — Mac shell, browser, host-side Python (docs_ingestor, docs_mcp, halo, paperclip, rlm), and the brew-managed `ollama` service. Reaches `ai-stack` services by alias via the `/etc/hosts` block that Phase 00·N writes (`127.0.10.x` loopback range).
+1. **macOS host** — Mac shell, browser, host-side Python (docs_ingestor, docs_mcp, halo, paperclip, rlm, lumen, mempalace), and the brew-managed `ollama` service. Reaches `ai-stack` services by alias via the `/etc/hosts` block that Phase 00·N writes (`127.0.10.x` loopback range).
 2. **`ai-stack` Docker bridge** (`10.99.0.0/24`) — every managed container joins via `--network ai-stack`. Docker's embedded DNS resolves bare container names to in-network IPs.
 3. **`honcho_default` Docker network** — compose-internal for the Honcho stack. `honcho-api-1` and `honcho-deriver-1` are multi-network: they're on both `honcho_default` (to reach their database and redis) and `ai-stack` (to reach LiteLLM and to be reached by other services).
 4. **OpenShell sandbox** (`hermes-fleet-v1`) — not joined to `ai-stack`; its egress is policy-controlled.
@@ -256,6 +259,7 @@ URL forms below are now uniform across **vantage points**:
 | `unsloth` (studio)    | Mac (host:0.0.0.0) | `http://ollama:11434` (host-gateway) — used for inference after fine-tuned models are exported to GGUF | n/a (doesn't talk through LiteLLM)                              |                                               |                                                  |                            |                              | `https://huggingface.co` (model + dataset pulls), pypi (Python deps) |
 | `pi` (sandboxed)      | openshell sandbox `pi-v1` | n/a (no direct ollama)        | `http://host.docker.internal:4000/v1` / `Bearer PI_LITELLM_KEY` (virtual key; allowlist=local-model superset [local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6]; Pi's assigned model is local-qwen3-coder — see models.md) | n/a                                          | `http://host.docker.internal:8000` / `pi` peer namespace (soft isolation; Honcho v3 has no per-key peer enforcement) |                            | `http://host.docker.internal:8765` / n/a | n/a (policy denies)                              |
 | `lumen` (Phase 16)    | Mac (stdio subprocess of each MCP client) | `http://localhost:11434` (default) — uses `ordis/jina-embeddings-v2-base-code` for embeddings | n/a (no LiteLLM dependency — Lumen is local-only) | n/a | n/a | n/a | n/a | n/a (no cloud egress)                            |
+| `mempalace` (Phase 26)| Mac (CLI / MCP stdio subprocess; no port) | n/a (embeddings are on-device ONNX via CoreML — not Ollama, not LiteLLM) | `http://litellm:4000/v1` / `Bearer MEMPALACE_LITELLM_KEY` — **only** for the optional entity-refiner (`--extract general`); scoped to local models | n/a (refiner call traced in Phoenix via LiteLLM) | n/a | n/a (Qdrant backend adapter staged, not live) | n/a | n/a (no cloud egress)                            |
 
 ### Cloud-provider egress
 

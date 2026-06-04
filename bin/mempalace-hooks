@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# bin/mempalace-hooks — opt-in, reversible wiring of MemPalace auto-save into
+# Claude Code. Wiring these hooks CHANGES live harness behavior (the Stop hook
+# blocks ~every 15 human messages to save; PreCompact saves before compaction),
+# so per the stack constitution we never apply it during `install` — you run
+# this explicitly.
+#
+# Usage:
+#   bin/mempalace-hooks print               # show the settings block (default)
+#   bin/mempalace-hooks install             # = print (no write) — review first
+#   bin/mempalace-hooks install --apply     # merge into settings (backup first)
+#   bin/mempalace-hooks uninstall [--apply] # remove our entries (backup first)
+#   bin/mempalace-hooks status              # are we wired? + tail hook.log
+#
+#   --global   target ~/.claude/settings.json (default: <repo>/.claude/settings.local.json)
+#
+# Idempotent: install matches on the launcher path, so re-applying won't double-wire.
+set -Eeuo pipefail
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SAVE_LAUNCHER="$AI_STACK/bin/mempalace-hook-save"
+PRECOMPACT_LAUNCHER="$AI_STACK/bin/mempalace-hook-precompact"
+
+cmd="${1:-print}"; shift || true
+APPLY=0; GLOBAL=0
+for a in "$@"; do
+  case "$a" in
+    --apply) APPLY=1 ;;
+    --global) GLOBAL=1 ;;
+    *) echo "unknown flag: $a" >&2; exit 2 ;;
+  esac
+done
+
+if (( GLOBAL )); then
+  SETTINGS="$HOME/.claude/settings.json"
+else
+  SETTINGS="$AI_STACK/.claude/settings.local.json"
+fi
+
+[[ -x "$SAVE_LAUNCHER" && -x "$PRECOMPACT_LAUNCHER" ]] || {
+  echo "hook launchers missing — run 'bash vz-ai-stack.sh install 26' first." >&2
+  exit 1
+}
+
+block_json() {
+  cat <<JSON
+{
+  "hooks": {
+    "Stop": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$SAVE_LAUNCHER", "timeout": 30 }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "$PRECOMPACT_LAUNCHER", "timeout": 30 }] }]
+  }
+}
+JSON
+}
+
+case "$cmd" in
+  print|install)
+    echo "Target settings file: $SETTINGS"
+    echo "Hook block to merge (Stop + PreCompact):"
+    echo "----------------------------------------"
+    block_json
+    echo "----------------------------------------"
+    if [[ "$cmd" == "install" && "$APPLY" != "1" ]]; then
+      echo
+      echo "Dry-run only. Re-run with --apply to merge (a timestamped backup is written first)."
+      exit 0
+    fi
+    [[ "$cmd" == "print" ]] && exit 0
+    # --- apply: merge via python3 (backup first; idempotent on launcher path) ---
+    mkdir -p "$(dirname "$SETTINGS")"
+    [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
+    cp -p "$SETTINGS" "$SETTINGS.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    SAVE_LAUNCHER="$SAVE_LAUNCHER" PRECOMPACT_LAUNCHER="$PRECOMPACT_LAUNCHER" \
+    python3 - "$SETTINGS" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+save = os.environ["SAVE_LAUNCHER"]; precompact = os.environ["PRECOMPACT_LAUNCHER"]
+try:
+    with open(path) as f: cfg = json.load(f)
+except Exception:
+    cfg = {}
+hooks = cfg.setdefault("hooks", {})
+
+def already(entries, cmd):
+    for e in entries or []:
+        for h in e.get("hooks", []):
+            if h.get("command") == cmd:
+                return True
+    return False
+
+stop = hooks.setdefault("Stop", [])
+if not already(stop, save):
+    stop.append({"matcher": "*", "hooks": [{"type": "command", "command": save, "timeout": 30}]})
+pre = hooks.setdefault("PreCompact", [])
+if not already(pre, precompact):
+    pre.append({"hooks": [{"type": "command", "command": precompact, "timeout": 30}]})
+
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+print(f"merged MemPalace Stop + PreCompact hooks into {path}")
+PYEOF
+    echo "Done. Restart Claude Code (or start a new session) for the hooks to take effect."
+    echo "Disable without uninstalling: export MEMPALACE_HOOKS_AUTO_SAVE=false"
+    ;;
+
+  uninstall)
+    [[ -f "$SETTINGS" ]] || { echo "no settings file at $SETTINGS — nothing to do."; exit 0; }
+    if [[ "$APPLY" != "1" ]]; then
+      echo "Would remove MemPalace hook entries from: $SETTINGS"
+      echo "Re-run with --apply to remove (a timestamped backup is written first)."
+      exit 0
+    fi
+    cp -p "$SETTINGS" "$SETTINGS.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    SAVE_LAUNCHER="$SAVE_LAUNCHER" PRECOMPACT_LAUNCHER="$PRECOMPACT_LAUNCHER" \
+    python3 - "$SETTINGS" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+ours = {os.environ["SAVE_LAUNCHER"], os.environ["PRECOMPACT_LAUNCHER"]}
+with open(path) as f: cfg = json.load(f)
+hooks = cfg.get("hooks", {})
+for event in ("Stop", "PreCompact"):
+    kept = []
+    for e in hooks.get(event, []):
+        e["hooks"] = [h for h in e.get("hooks", []) if h.get("command") not in ours]
+        if e["hooks"]:
+            kept.append(e)
+    if kept:
+        hooks[event] = kept
+    else:
+        hooks.pop(event, None)
+if not hooks:
+    cfg.pop("hooks", None)
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2); f.write("\n")
+print(f"removed MemPalace hook entries from {path}")
+PYEOF
+    echo "Done."
+    ;;
+
+  status)
+    echo "Settings file: $SETTINGS"
+    if [[ -f "$SETTINGS" ]] && grep -q "mempalace-hook-" "$SETTINGS" 2>/dev/null; then
+      echo "Wired: YES (MemPalace Stop/PreCompact hooks present)"
+    else
+      echo "Wired: no (run 'bin/mempalace-hooks install --apply' to opt in)"
+    fi
+    log="$HOME/.mempalace/hook_state/hook.log"
+    if [[ -f "$log" ]]; then
+      echo "--- last 10 lines of $log ---"
+      tail -10 "$log"
+    else
+      echo "No hook activity yet ($log absent)."
+    fi
+    ;;
+
+  *)
+    echo "usage: bin/mempalace-hooks {print|install [--apply]|uninstall [--apply]|status} [--global]" >&2
+    exit 2
+    ;;
+esac

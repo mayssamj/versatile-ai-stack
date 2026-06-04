@@ -20,7 +20,7 @@ Then the four you'll use daily:
 
 ```bash
 stack status        # declared vs actual — what's enabled, what's running, what drifted
-stack doctor        # 43 health checks + per-check auto-fix offers (your first move when something's off)
+stack doctor        # 44 health checks + per-check auto-fix offers (your first move when something's off)
 stack phases        # list every phase as  id → name
 stack logs <svc>    # docker logs wrapper, e.g.  stack logs litellm -f
 stack model list    # which LLM each agent is bound to (models.yml) — assign/sync/superset too
@@ -45,7 +45,7 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 `hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
 `halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. Run
 `stack phases` if you're not sure of a name. `install all` runs the 27 core phases
-(the 5 opt-in extras are excluded — see §5).
+(the 6 opt-in extras are excluded — see §5).
 
 ---
 
@@ -124,9 +124,9 @@ view at start): `docker exec litellm tail -f /traces/litellm.jsonl`.
 
 ---
 
-## 5. Opt-in extras (Phases 21–25) — add only what you want
+## 5. Opt-in extras (Phases 21–26) — add only what you want
 
-These are **not** in `install all`. Add by name; each one's doctor check (34–38)
+These are **not** in `install all`. Add by name; each one's doctor check (34–38, 44)
 passes-as-skip until you install it.
 
 ```bash
@@ -135,6 +135,7 @@ stack install cmux           # 22 — native macOS terminal for parallel agent s
 stack install skillspector   # 23 — scan an agent skill/MCP before trusting it (offline)
 stack install openagents     # 24 — OpenAgents Launcher (agn); overlaps the stack, edits shell rc
 stack install lmstudio       # 25 — LM Studio MLX runtime behind LiteLLM (CPU caveat → §6)
+stack install mempalace      # 26 — verbatim Claude Code session memory (CLI + MCP, local-only, no port)
 
 bin/skillspector scan <path>   # after installing skillspector: offline security scan
 ```

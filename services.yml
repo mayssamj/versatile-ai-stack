@@ -603,6 +603,30 @@ services:
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
         "reviewed": true
+  mempalace:
+    enabled: true # Phase 26 — local-first conversation memory (CLI/MCP; no daemon)
+    type: cli-only
+    desc: "Local-first verbatim conversation memory + temporal KG; Claude Code session recall"
+    phase: "26"
+    network: none
+    # Embeddings run ON-DEVICE (CoreML ONNX embedding-gemma-300m) — never cloud,
+    # never through LiteLLM. The OPTIONAL entity-refinement LLM routes via the
+    # MEMPALACE_LITELLM_KEY virtual key (minted by Phase 26) so those calls show
+    # up in Phoenix project ai-stack. Invoke via bin/mempalace (injects env).
+    help:
+      "what": A local-first conversation-memory tool (PyPI mempalace, run via bin/mempalace) that stores chat history VERBATIM and retrieves it with on-device semantic search, organized spatially (people/projects=wings, topics=rooms, content=drawers) plus a temporal entity-relationship knowledge graph (SQLite). Exposes a CLI, a Python library, an MCP server (29 tools), and opt-in Claude Code auto-save hooks.
+      "why": Reach for it to give Claude Code (and other agents) automatic, searchable, lossless recall over PAST sessions — the gap that `.remember/` + the curated auto-memory only cover manually. Unlike Honcho (which derives/summarizes cross-agent facts) it keeps the verbatim transcript; unlike Qdrant (documents) / Lumen (code) its sweet spot is conversation memory. Embeddings stay on-device (honors the no-cloud-embeddings rule); only the optional refiner LLM touches LiteLLM.
+      "usage":
+        - bin/mempalace wake-up                      # ~600-900 token session primer
+        - bin/mempalace search 'what did we decide about the watchdog'
+        - bin/mempalace mine ~/.claude/projects --mode convos --extract general   # backfill (LARGE/SLOW)
+        - bin/mempalace status
+        - bin/mempalace-hooks install --apply        # opt-in auto-save (reversible; edits Claude Code settings)
+      "config_notes": 'Install from PyPI ONLY (the mempalace.tech domain is a known malware squat — upstream SECURITY note). Embeddings: MEMPALACE_EMBEDDING_MODEL — default minilm (all-MiniLM-L6-v2, 384-dim, English, ~80MB, verified working); embeddinggemma (multilingual, ~300MB) is opt-in but its EF can silently fall back to minilm if its model can''t be fetched. MEMPALACE_EMBEDDING_DEVICE=coreml (M4 ANE). First mine downloads the model once — retry if it times out. Switching model on an existing palace needs `bin/mempalace repair rebuild-index`. The optional LLM goes through LiteLLM via the openai-compat provider — bin/mempalace injects OPENAI_BASE_URL/LLM_ENDPOINT=http://litellm:4000/v1 + the key from .env (litellm:4000 is classed "external" by MemPalace''s local-IP heuristic, hence --accept-external-llm on any direct `mempalace init --llm-provider openai-compat`). The Stop/PreCompact HOOK WIRING is NOT applied by `install 26`; opt in with `bin/mempalace-hooks install --apply` (backup-first, reversible) and disable live with MEMPALACE_HOOKS_AUTO_SAVE=false. A staged Qdrant backend lives in mempalace/backend-qdrant/ (not live — MemPalace 3.3.5 hardcodes ChromaBackend; see its README).'
+      "_gen":
+        "at": "2026-06-04T00:00:00Z"
+        "source": phase26-authored
+        "reviewed": true
   deerflow:
     enabled: true # user chose ON
     type: docker-compose
