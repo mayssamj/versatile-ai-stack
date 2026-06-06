@@ -154,6 +154,8 @@ ai-stack-installer — usage:
                                           vz-ai-stack.sh install 01h
                                           vz-ai-stack.sh install phoenix
                                           vz-ai-stack.sh install hermes_telegram  (alias: telegram)
+    vz-ai-stack.sh install [all] --dry-run  preview ONLY: host-deps status + the ordered
+                                          phases (done vs would-run). Changes nothing. (alias --plan)
     vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
     vz-ai-stack.sh test <phase>             run smoke tests for one phase (id or name)
     vz-ai-stack.sh deps [--check]           show the host dependency map; install/start
@@ -338,8 +340,31 @@ cmd_prepare_sudo() {
   note "       open -a OrbStack"
 }
 
+# Canonical phase order for `install all`. Single source for both the real
+# install loop and the --dry-run plan, so they can never drift.
+install_all_phase_order() {
+  echo "00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h"
+}
+
 cmd_install() {
-  local target="${1:-all}"
+  local dry=0 target="" a
+  for a in "$@"; do
+    case "$a" in
+      --dry-run|--plan|-n) dry=1 ;;
+      --) ;;
+      -*) err "unknown install flag: $a (try --dry-run)"; exit 2 ;;
+      *) if [[ -z "$target" ]]; then target="$a"; else err "unexpected extra argument: $a"; exit 2; fi ;;
+    esac
+  done
+  target="${target:-all}"
+
+  # --dry-run / --plan: preview ONLY — makes no changes, installs nothing, never
+  # calls preflight (which would bootstrap deps) or takes the lock.
+  if (( dry )); then
+    install_plan "$target"
+    return $?
+  fi
+
   preflight
   lock_acquire
 
@@ -365,7 +390,7 @@ cmd_install() {
     # - 04g (security layer) AFTER 04f.
     # - 04h (agent fleet across claude-code/pi/hermes) runs LAST: it uploads into
     #   pi-v1 (Phase 15) and widens PI_LITELLM_KEY (minted by 15) + HERMES key.
-    local phases=(00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h)
+    local phases=( $(install_all_phase_order) )
     for p in "${phases[@]}"; do
       run_phase "$p" || {
         err "Phase $p failed. After fixing, resume with:  bash $0 install $p"
@@ -381,6 +406,50 @@ cmd_install() {
   else
     run_phase "$target"
   fi
+}
+
+# phase_name_for <id> — the human name suffix of phase file <id>_*.sh (or empty).
+phase_name_for() {
+  local id="$1" f b
+  for f in "$AI_STACK"/installer/phases/"$id"_*.sh; do
+    [[ -e "$f" ]] || return 0
+    b="$(basename "$f" .sh)"; echo "${b#*_}"; return 0
+  done
+}
+
+# install_plan <target> — read-only preview of `install <target>`: the host-deps
+# status + each phase's done/pending state (from its stamp file). Changes NOTHING,
+# installs nothing, starts nothing. This is the `--dry-run` / `--plan` path.
+install_plan() {
+  local target="$1"
+  hdr "install $target — DRY RUN (preview only; nothing is installed, started, or changed)"
+
+  note "Host dependencies (read-only check):"
+  deps_report --check || true   # informational; a missing dep does NOT abort a plan
+  echo
+
+  local -a phases
+  if [[ "$target" == "all" ]]; then
+    phases=( $(install_all_phase_order) )
+  else
+    local script b
+    script="$(resolve_phase_script "$target")" || { err "no phase matches '$target'"; return 2; }
+    b="$(basename "$script" .sh)"; phases=( "${b%%_*}" )
+  fi
+
+  note "Phases that 'install $target' would run, in order (✓ already complete · • would run):"
+  local p done=0 todo=0
+  for p in "${phases[@]}"; do
+    if stamp_check "$p" 2>/dev/null; then
+      printf '  ✓ %-4s %s\n' "$p" "$(phase_name_for "$p")"; done=$((done+1))
+    else
+      printf '  • %-4s %s\n' "$p" "$(phase_name_for "$p")"; todo=$((todo+1))
+    fi
+  done
+  echo
+  [[ "$target" == "all" ]] && note "(Opt-in extras 21–26 — portless · cmux · skillspector · openagents · lmstudio · mempalace — are NOT in 'install all'; install them by name.)"
+  ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
+  return 0
 }
 
 # Resolve a phase selector to its script path. A selector may be a NUMERIC id
@@ -642,7 +711,7 @@ main() {
   local cmd="${1:-install}"
   shift || true
   case "$cmd" in
-    install|"")        cmd_install "${1:-all}" ;;
+    install|"")        cmd_install "$@" ;;   # forward ALL args (target + flags like --dry-run)
     prepare-sudo)      cmd_prepare_sudo ;;
     test)              cmd_test "$1" ;;
     phases|steps|list) cmd_phases ;;
