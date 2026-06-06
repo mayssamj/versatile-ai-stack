@@ -71,42 +71,63 @@ if ! nc -z 127.0.0.1 5432 2>/dev/null \
 fi
 ok "Postgres reachable on :5432 — LiteLLM can connect to its key store"
 
-# Ensure the 'litellm' DATABASE exists AND that the role LiteLLM connects as
-# (`postgres`, per DATABASE_URL below) OWNS it and can use its `public` schema.
-# Honcho's Postgres provides the SERVER on :5432 + the 'postgres' DB only; nothing
-# creates 'litellm'. A bare CREATE DATABASE is NOT enough on PG15+/wolfi-based
-# images: the locked-down `public` schema denies the login role CREATE unless it
-# owns the DB, so Prisma's `migrate deploy` fails with "P1010: User `postgres` was
-# denied access on the database `litellm.public`" and LiteLLM never serves
-# /v1/models (container Up, :5432 reachable, key OK — but timing out). So we (1)
-# create the DB if missing, then (2) idempotently grant `postgres` ownership +
-# public-schema rights — which also REPAIRS a DB created by an earlier (create-
-# only) version. Best-effort: if the pg container can't be reached by name we warn
-# and let LiteLLM try (no regression vs. prior behaviour).
+# Single source of truth for the LiteLLM key-store DB identity. The grant logic
+# below AND the container's DATABASE_URL (built further down from these vars) both
+# derive from PG_USER/PG_PASS/PG_DB, so the role we grant to can never silently
+# diverge from the role LiteLLM actually connects as. PG_USER must be a LOGIN role
+# on the honcho Postgres.
+PG_USER="postgres"; PG_PASS="postgres"; PG_DB="litellm"
+DATABASE_URL="postgresql://${PG_USER}:${PG_PASS}@host.docker.internal:5432/${PG_DB}"
+
+# Ensure the '$PG_DB' DATABASE exists AND that '$PG_USER' (the role LiteLLM
+# connects as) OWNS it and can CREATE in its `public` schema. Honcho's Postgres
+# provides the SERVER on :5432 + the 'postgres' DB only; nothing creates '$PG_DB'.
+# A bare CREATE DATABASE is NOT enough on PG15+/wolfi-based images: the locked-down
+# `public` schema denies the login role CREATE unless it owns the DB, so Prisma's
+# `migrate deploy` fails with "P1010: User `postgres` was denied access on the
+# database `litellm.public`" and LiteLLM never serves /v1/models (container Up,
+# :5432 reachable, key OK — but timing out). So we (1) create the DB if missing,
+# (2) idempotently grant ownership + public-schema rights — which also REPAIRS a
+# DB left by an earlier create-only version — then (3) PROVE the connecting role
+# can actually CREATE in public before reporting success. Best-effort: if the pg
+# container can't be reached by name we warn and let LiteLLM try (no regression).
 PG_CTR="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -m1 -iE 'honcho.*(database|postgres|db)' || true)"
 [[ -z "$PG_CTR" ]] && PG_CTR="honcho-database-1"
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$PG_CTR"; then
-  if ! docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
-    log "Postgres database 'litellm' missing — creating it (LiteLLM Prisma key store)..."
-    docker exec "$PG_CTR" psql -U postgres -c "CREATE DATABASE litellm" >/dev/null 2>&1 \
-      || warn "Could not create 'litellm' DB via '$PG_CTR' (will still attempt grants below)."
+  if ! docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$PG_DB'" 2>/dev/null | grep -q 1; then
+    log "Postgres database '$PG_DB' missing — creating it (LiteLLM Prisma key store)..."
+    docker exec "$PG_CTR" psql -U postgres -c "CREATE DATABASE $PG_DB" >/dev/null 2>&1 \
+      || warn "Could not create '$PG_DB' DB via '$PG_CTR' (will still attempt grants below)."
   fi
-  # Idempotent ownership + public-schema grant for the DATABASE_URL role (postgres).
+  # Idempotent ownership + public-schema grant for the DATABASE_URL role.
   # No-op when already satisfied; fixes the P1010 'denied on public' case on a DB
   # that exists but isn't owned/usable by the connecting role. Each guarded so a
-  # benign failure never aborts the start.
-  docker exec "$PG_CTR" psql -U postgres -c "ALTER DATABASE litellm OWNER TO postgres;"               >/dev/null 2>&1 || true
-  docker exec "$PG_CTR" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE litellm TO postgres;"   >/dev/null 2>&1 || true
-  docker exec "$PG_CTR" psql -U postgres -d litellm -c "GRANT ALL ON SCHEMA public TO postgres;"      >/dev/null 2>&1 || true
-  if docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
-    ok "Postgres database 'litellm' present + 'postgres' granted owner/public access"
+  # benign failure never aborts the start — we do NOT trust these exit codes (a
+  # non-superuser ALTER OWNER can fail silently), we PROVE the end state below.
+  docker exec "$PG_CTR" psql -U postgres -c "ALTER DATABASE $PG_DB OWNER TO $PG_USER;"               >/dev/null 2>&1 || true
+  docker exec "$PG_CTR" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE $PG_DB TO $PG_USER;"   >/dev/null 2>&1 || true
+  docker exec "$PG_CTR" psql -U postgres -d "$PG_DB" -c "GRANT ALL ON SCHEMA public TO $PG_USER;"    >/dev/null 2>&1 || true
+  # PROVE it: can $PG_USER actually CREATE in $PG_DB.public? That is the exact
+  # privilege Prisma needs and the exact one P1010 denies. The probe runs inside a
+  # transaction that ROLLs BACK, so it verifies the grant without leaving any
+  # artifact (a TEMP table would land in pg_temp, NOT public, and wouldn't test it).
+  if docker exec "$PG_CTR" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 \
+       -qtAc "BEGIN; CREATE TABLE _litellm_grant_probe (x int); ROLLBACK;" >/dev/null 2>&1; then
+    ok "Postgres '$PG_DB' DB present + '$PG_USER' verified able to CREATE in public (Prisma-ready)"
+  elif docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$PG_DB'" 2>/dev/null | grep -q 1; then
+    warn "Postgres '$PG_DB' DB exists but '$PG_USER' still CANNOT create in its public schema —"
+    warn "Prisma will likely fail with P1010. Run these as a Postgres superuser, then retry:"
+    warn "    docker exec $PG_CTR psql -U postgres -c 'ALTER DATABASE $PG_DB OWNER TO $PG_USER'"
+    warn "    docker exec $PG_CTR psql -U postgres -c 'GRANT ALL PRIVILEGES ON DATABASE $PG_DB TO $PG_USER'"
+    warn "    docker exec $PG_CTR psql -U postgres -d $PG_DB -c 'GRANT ALL ON SCHEMA public TO $PG_USER'"
   else
-    warn "Could not ensure 'litellm' DB via '$PG_CTR'. Create + grant manually, then retry:"
-    warn "    docker exec $PG_CTR psql -U postgres -c 'CREATE DATABASE litellm'"
-    warn "    docker exec $PG_CTR psql -U postgres -d litellm -c 'GRANT ALL ON SCHEMA public TO postgres'"
+    warn "Could not ensure '$PG_DB' DB via '$PG_CTR'. Create + grant manually, then retry:"
+    warn "    docker exec $PG_CTR psql -U postgres -c 'CREATE DATABASE $PG_DB'"
+    warn "    docker exec $PG_CTR psql -U postgres -c 'ALTER DATABASE $PG_DB OWNER TO $PG_USER'"
+    warn "    docker exec $PG_CTR psql -U postgres -d $PG_DB -c 'GRANT ALL ON SCHEMA public TO $PG_USER'"
   fi
 else
-  warn "Postgres container not found by name ('$PG_CTR') — skipping 'litellm' DB ensure (LiteLLM will attempt a Prisma migrate on boot)."
+  warn "Postgres container not found by name ('$PG_CTR') — skipping '$PG_DB' DB ensure (LiteLLM will attempt a Prisma migrate on boot)."
 fi
 
 # Guard: refuse silent recreate.
@@ -156,7 +177,7 @@ docker run -d \
   -e GUARDRAILS_AUDIT_FILE=/traces/guardrails.jsonl \
   -e PYTHONPATH=/app/config \
   -e LITELLM_LOG=INFO \
-  -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/litellm" \
+  -e DATABASE_URL="$DATABASE_URL" \
   -e STORE_MODEL_IN_DB=False \
   -p "${ALIAS_IP[litellm]}":"${ALIAS_HOST_PORT[litellm]}":"${ALIAS_CONTAINER_PORT[litellm]}" \
   -p 127.0.0.1:"${ALIAS_HOST_PORT[litellm]}":"${ALIAS_CONTAINER_PORT[litellm]}" \
