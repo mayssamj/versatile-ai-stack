@@ -39,19 +39,19 @@ models:
 default: local-gemma4
 assignments:
   # AI software-engineering team (9 roles). manager/techlead/ml -> Opus, rest -> Sonnet.
-  hermes_manager: claude-opus-4.8-sub-high
-  hermes_techlead: claude-opus-4.8-sub-high
-  hermes_ml_engineer: claude-opus-4.8-sub-high
-  hermes_frontend_engineer: claude-sonnet-4.6-sub-high
-  hermes_backend_engineer: claude-sonnet-4.6-sub-high
-  hermes_qa_test_engineer: claude-sonnet-4.6-sub-high
-  hermes_reviewing_engineer: claude-sonnet-4.6-sub-high
-  hermes_sre_engineer: claude-sonnet-4.6-sub-high
-  hermes_incident_manager: claude-sonnet-4.6-sub-high
+  hermes_manager: claude-opus-4.8-sub-xhigh
+  hermes_techlead: claude-opus-4.8-sub-max
+  hermes_ml_engineer: claude-opus-4.8-sub-max
+  hermes_frontend_engineer: claude-opus-4.8-sub-max
+  hermes_backend_engineer: claude-opus-4.8-sub-max
+  hermes_qa_test_engineer: claude-opus-4.8-sub-xhigh
+  hermes_reviewing_engineer: claude-opus-4.8-sub-max
+  hermes_sre_engineer: claude-opus-4.8-sub-xhigh
+  hermes_incident_manager: claude-opus-4.8-sub-xhigh
   pi: claude-opus-4.8-sub-max
-  deerflow: claude-opus-4.8-sub-high
-  ace: local-gemma4
-  rlm: local-gemma4
+  deerflow: claude-opus-4.8-sub-max
+  ace: claude-opus-4.8-sub-xhigh
+  rlm: claude-opus-4.8-sub-xhigh
 kinds:
   hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; writes no code"}
   hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}

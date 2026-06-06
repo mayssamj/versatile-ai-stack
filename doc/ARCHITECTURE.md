@@ -202,10 +202,11 @@ actually serves.
 | `local-qwen3.6` | lmstudio | `qwen/qwen3.6-27b` | ~17.5 GB MLX. Cannot coexist with `local-qwen3-coder` on 24 GB. |
 | `local-qwen3-coder` | lmstudio | `qwen3-coder-30b-a3b-instruct-mlx` | ~17.2 GB MLX. Cannot coexist with `local-qwen3.6` on 24 GB. |
 
-`default: local-gemma4`. (Phase 25 separately adds an opt-in, add-only legacy
-slug `local-lfm2-mlx`; `local-heavy` / `local-lfm2` remain add-only legacy
-entries in `litellm/config.yaml` that 404 until pulled. None of these three
-are in the canonical roster.)
+`default: local-gemma4`. (Phase 25 can optionally add the `local-lfm2-mlx` slug,
+but ONLY when opted in via `LMS_LOAD_LFM2=1` — by default `install lmstudio` is
+assignment-driven and wires only models.yml-assigned MLX slugs. `local-heavy` /
+`local-lfm2` remain add-only legacy entries in `litellm/config.yaml` that 404 until
+pulled. None of these three are in the canonical roster.)
 
 ### Availability-gating — fallback to `local-gemma4`
 
@@ -231,8 +232,9 @@ minted against a **DERIVED**, sorted-unique **superset** of model names
 `{local, local-heavy, local-lfm2}` plus every model key in `models.yml`, **not**
 a hardcoded list; the `LEGACY_SUPERSET` array in `installer/lib/models.sh` is
 only the fallback when `models.yml` is absent). Because each key already allows
-the whole superset, `model assign <agent> <model>` can re-point an agent without
-ever re-minting its key. `model sync` is the crash-safe, opt-in reconcile
+the whole superset, `model assign <agent> <model>` (or `model assign all <model>` to
+blanket-assign every agent) can re-point agents without ever re-minting their keys.
+`model sync` is the crash-safe, opt-in reconcile
 (register model_list ADD-ONLY → restart litellm once if changed → widen
 scoped-key allowlists to the superset → render agents); it is *not* run by
 `install all`. Doctor check 40 (`40_models_binding.sh`) validates the binding

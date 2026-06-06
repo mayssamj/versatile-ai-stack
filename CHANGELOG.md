@@ -4,6 +4,31 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-06 — feat/fix batch: brew start/stop, `model assign all`, assignment-driven LM Studio, docs/ consolidation
+
+Five user-requested changes (2 adversarial reviews + debate; review fixes applied):
+- **`start`/`stop` now manage brew services** (ollama, openshell). `stop ollama` previously
+  errored ("no stop script and no running container") because ollama is a brew service with
+  no `bin/stop-*.sh`. `_is_brew_service` is allowlisted to {ollama,openshell} (ANSI-stripped)
+  so the CLI never becomes a generic `brew services` wrapper. Stopping ollama warns about the
+  fallback blast radius + that `deps`/`doctor` may restart it; openshell warns it only cycles
+  the gateway (sandboxes are separate).
+- **`model assign all <model>`** — blanket-assign EVERY agent (all `.kinds`) to one model, then
+  `model sync`. Prints a before→after table, backs up `models.yml` to `.bak` (rollback), and
+  applies all keys in ONE atomic `yq -i` (no half-written file). `all` is now a reserved agent
+  name (rejected by `validate()`).
+- **Phase 25 (LM Studio) is ASSIGNMENT-DRIVEN** — by default it loads ONLY MLX models actually
+  assigned to an agent in `models.yml`; it no longer auto-downloads/loads the LFM2.5 demo. That
+  demo is opt-in via `LMS_LOAD_LFM2=1`. (LiteLLM is restarted only when config.yaml actually
+  CHANGED.) Docs swept: EXPLORE.html, services.yml, COMPONENTS.md, models.md, USER-GUIDE.md.
+- **`docs/` consolidated into `doc/`** — moved the one stray spec to `doc/specs/`, removed the
+  duplicate top-level `docs/` tree; fixed the dangling `docs/superpowers/...` ref in help.sh.
+- claw3d comment ×7→×9 (fleet roster).
+
+Verified: `stop`/`start ollama` cycle via brew; `model assign all --dry-run` lists all 13 agents
++ before→after with no write; `_is_brew_service` rejects netdata/podman/litellm; `model sync`
+applied the live agent reassignments (all consistent + key-covered).
+
 ## 2026-06-06 — fix: OpenShell 04f failure — correct the relay self-heal (version skew + log-signature; supersedes earlier same-day attempt)
 
 Re-running the ACTUAL failing command (`install all`, not just the phases individually)

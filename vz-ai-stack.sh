@@ -169,6 +169,7 @@ ai-stack-installer — usage:
                                         ([--apply] writes; [--check] CI staleness; [--model <m>])
     vz-ai-stack.sh model list [--json]      show the model<->agent binding matrix (models.yml)
     vz-ai-stack.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
+    vz-ai-stack.sh model assign all <m>     blanket-assign EVERY agent to <m> (before→after + models.yml.bak), then sync
     vz-ai-stack.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
                                         (opt-in; NOT run by 'install all'. --dry-run / --no-restart)
     vz-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
@@ -195,8 +196,8 @@ ai-stack-installer — usage:
     vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
-    vz-ai-stack.sh start <service>          start a service via bin/start-<service>.sh
-    vz-ai-stack.sh stop <service>           stop a service (bin/stop-<service>.sh or docker stop)
+    vz-ai-stack.sh start <service>          start a service (bin/start-<service>.sh, else brew services for ollama/openshell)
+    vz-ai-stack.sh stop <service>           stop a service (bin/stop-<service>.sh, docker stop, else brew services for ollama/openshell)
     vz-ai-stack.sh <service> start          shortcut for: vz-ai-stack.sh start <service>
     vz-ai-stack.sh <service> stop           shortcut for: vz-ai-stack.sh stop <service>
                                         (enable/disable are accepted as aliases for start/stop)
@@ -586,6 +587,18 @@ cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 # like deerflow, the wrapper sources required secrets (e.g.
 # LITELLM_MASTER_KEY) before invoking the compose entrypoint so compose's
 # ${VAR} substitution resolves cleanly without warnings.
+# _is_brew_service <name> — true if <name> is one of the stack's brew-managed
+# services (ollama, openshell) AND it's actually registered with brew. Restricted
+# to a known allowlist so `start/stop` never becomes a generic `brew services`
+# wrapper (e.g. netdata/podman). ANSI codes are stripped — Homebrew colorizes the
+# service-name column on a TTY, which would break a raw `$1==s` match.
+_is_brew_service() {
+  case "$1" in ollama|openshell) ;; *) return 1 ;; esac
+  command -v brew >/dev/null 2>&1 || return 1
+  brew services list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
+    | awk -v s="$1" 'NR>1 && $1==s {f=1} END{exit !f}'
+}
+
 cmd_start() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
@@ -594,12 +607,18 @@ cmd_start() {
     exit 2
   fi
   local script="$AI_STACK/bin/start-${svc}.sh"
-  if [[ ! -x "$script" ]]; then
-    err "No start script: $script"
-    _list_startable_services
-    exit 1
+  if [[ -x "$script" ]]; then
+    exec bash "$script" "${@:2}"
   fi
-  exec bash "$script" "${@:2}"
+  # No start script — a brew-managed service (ollama/openshell)? Use brew services.
+  if _is_brew_service "$svc"; then
+    [[ "$svc" == openshell ]] && warn "Note: this starts only the OpenShell GATEWAY daemon. Sandboxes (hermes-fleet-v1/pi-v1) are separate — recreate them with 'vz-ai-stack.sh install 04 04f 15' if needed."
+    log "No bin/start-${svc}.sh — '$svc' is a brew service; using 'brew services start $svc'"
+    exec brew services start "$svc"
+  fi
+  err "No start script: $script"
+  _list_startable_services
+  exit 1
 }
 
 # cmd_stop <svc> — prefer bin/stop-<svc>.sh; fall back to `docker stop <svc>`
@@ -619,7 +638,18 @@ cmd_stop() {
     log "No bin/stop-${svc}.sh — using 'docker stop $svc'"
     exec docker stop "$svc"
   fi
-  err "No stop script and no running container named '$svc'."
+  # Brew-managed service (ollama/openshell)? Stop it via brew services.
+  if _is_brew_service "$svc"; then
+    if [[ "$svc" == ollama ]]; then
+      warn "Ollama is the DEFAULT local inference + every agent's availability-gating fallback (local-gemma4)."
+      warn "Stopping it breaks any agent on the fallback. Note: 'vz-ai-stack.sh deps' and an interactive 'doctor' fix may restart it."
+    elif [[ "$svc" == openshell ]]; then
+      warn "Note: this stops only the OpenShell GATEWAY daemon; sandbox containers keep running but lose their gateway (orphaned). The watchdog/relay expect the gateway up."
+    fi
+    log "No bin/stop-${svc}.sh — '$svc' is a brew service; using 'brew services stop $svc'"
+    exec brew services stop "$svc"
+  fi
+  err "No stop script, no running container, and no brew service named '$svc'."
   exit 1
 }
 

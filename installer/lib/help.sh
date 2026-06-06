@@ -6,7 +6,7 @@
 #   vz-ai-stack.sh help <service|alias>      WHAT · HOW IT'S CONFIGURED · HOW TO USE
 #   vz-ai-stack.sh help regen [<svc>] [--apply] [--check] [--model <m>] [--force]
 #
-# Design (see docs/superpowers/specs/2026-06-03-service-help-design.md):
+# Design (see doc/specs/2026-06-03-service-help-design.md):
 #   - PROSE (what/why/usage/config_notes) is authored in services.yml `help:` blocks.
 #   - The "HOW IT'S CONFIGURED" section is COMPUTED live from services.yml + aliases
 #     (never stored) so it can't drift. The render path makes NO network call and

@@ -55,8 +55,20 @@ precheck() {
   _app_present || return 1
   [[ -n "$(_lms)" ]] || return 1
   _server_up || return 1
-  # The LiteLLM provider must already be wired AND accepted by LiteLLM.
-  grep -q "model_name: ${LITELLM_SLUG}\b" "$CONFIG" 2>/dev/null || return 1
+  # Assignment-driven: complete when every models.yml-ASSIGNED lmstudio MLX slug
+  # is wired into config.yaml. The LFM2.5 demo (LITELLM_SLUG=local-lfm2-mlx) is
+  # required only when explicitly opted in via LMS_LOAD_LFM2=1.
+  if [[ "${LMS_LOAD_LFM2:-0}" == "1" ]]; then
+    grep -q "model_name: ${LITELLM_SLUG}\b" "$CONFIG" 2>/dev/null || return 1
+  fi
+  local _yml="$AI_STACK/installer/models.yml" _s
+  if [[ -f "$_yml" ]] && command -v yq >/dev/null 2>&1; then
+    while IFS= read -r _s; do
+      [[ -z "$_s" ]] && continue
+      yq -r '.assignments | to_entries | .[].value' "$_yml" 2>/dev/null | grep -qxF "$_s" || continue
+      grep -q "model_name: ${_s}\b" "$CONFIG" 2>/dev/null || return 1
+    done < <(yq -r '.models | to_entries | .[] | select(.value.runtime=="lmstudio") | .key' "$_yml" 2>/dev/null)
+  fi
   return 0
 }
 
@@ -118,7 +130,69 @@ if ! _server_up; then
 fi
 ok "LM Studio server up on $LMS_URL"
 
-# --- 3. Ensure the LFM2.5 MLX weights are on disk --------------------------
+# --- 3. ASSIGNMENT-DRIVEN MLX load (the default) ---------------------------
+# Load ONLY models that an agent is actually assigned in installer/models.yml
+# (the canonical MLX slugs local-qwen3.6 / local-qwen3-coder). If nothing is
+# assigned, NOTHING is loaded — LM Studio does not auto-load a model. Best-effort,
+# non-fatal: the canonical config.yaml rows already exist (Phase 01); here we make
+# the running LM Studio actually serve an assigned id so `model sync` can promote
+# the agents off the gemma4 fallback. (To also disable LM Studio's OWN auto-load,
+# turn off "JIT model loading" + "load last model on launch" in its app settings.)
+MODELS_YML="$AI_STACK/installer/models.yml"
+_lms_registered=0   # config.yaml actually CHANGED -> LiteLLM needs a reload
+_lms_assigned=0     # at least one agent is assigned an MLX slug (loadable or not)
+if [[ -f "$MODELS_YML" ]]; then
+  while IFS= read -r _slug; do
+    [[ -z "$_slug" ]] && continue
+    case "$_slug" in local-qwen3.6|local-qwen3-coder) : ;; *) continue ;; esac
+    _served="$(yq -r ".models.\"$_slug\".served" "$MODELS_YML" 2>/dev/null)"
+    _ttl="$(yq -r ".models.\"$_slug\".ttl // 1800" "$MODELS_YML" 2>/dev/null)"
+    [[ -z "$_served" || "$_served" == "null" ]] && continue
+    # Skip unless an agent is actually assigned this slug.
+    if ! yq -r '.assignments | to_entries | .[].value' "$MODELS_YML" 2>/dev/null | grep -qxF "$_slug"; then
+      continue
+    fi
+    _lms_assigned=1
+    log "Loading assigned MLX model $_slug ($_served) per the one-big-MLX policy..."
+    if lms_load_big "$_served" "$_ttl"; then
+      # Only a CHANGED config.yaml warrants a LiteLLM restart (idempotent re-runs
+      # return UNCHANGED — don't bounce LiteLLM for nothing).
+      case "$(lms_register_model "$_slug" "$_served" lmstudio)" in
+        CHANGED)   ok "registered $_slug → $_served in litellm/config.yaml"; _lms_registered=1 ;;
+        UNCHANGED) ok "$_slug already registered ($_served) in litellm/config.yaml" ;;
+        *)         warn "could not register $_slug in config.yaml" ;;
+      esac
+    else
+      warn "$_slug ($_served) not loadable right now — config row stays; agent stays on the fallback until 'model sync'"
+    fi
+  done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
+fi
+
+# --- LFM2.5 demo is OPT-IN (NOT auto-loaded) -------------------------------
+# By DEFAULT this phase loads only the assigned MLX models above — it will NOT
+# download or load the LFM2.5 demo model. Set LMS_LOAD_LFM2=1 to set up LFM2.5
+# (a ~5GB MLX model with working tool-calling, handy for A/B vs the Ollama GGUF).
+if [[ "${LMS_LOAD_LFM2:-0}" != "1" ]]; then
+  if (( _lms_registered )); then
+    log "Restarting LiteLLM to pick up the newly-registered assigned MLX model(s)..."
+    docker restart litellm >/dev/null 2>&1 || warn "docker restart litellm failed — restart it manually"
+    for _ in $(seq 1 30); do curl -s -o /dev/null --max-time 2 http://litellm:4000/health/liveliness 2>/dev/null && break; sleep 2; done
+    ok "LiteLLM reloaded — assigned MLX model(s) now servable"
+  elif (( _lms_assigned )); then
+    note "Assigned MLX model(s) are already registered or not loadable right now — no LiteLLM restart needed; run 'vz-ai-stack.sh model sync' once they load."
+  else
+    note "No agent is assigned an LM Studio MLX model — nothing loaded (LM Studio does NOT auto-load a model)."
+    note "Assign one, then re-run:  vz-ai-stack.sh model assign <agent> local-qwen3.6   (or local-qwen3-coder)"
+  fi
+  note "LFM2.5 demo is opt-in: set LMS_LOAD_LFM2=1 to download + load it (~5GB)."
+  stamp_mark "$PHASE"
+  record "phase 25: LM Studio server wired; assignment-driven MLX load only (registered=${_lms_registered}); LFM2.5 opt-in (not loaded)"
+  ok "Phase 25 — LM Studio — complete (assignment-driven; LFM2.5 opt-in)"
+  exit 0
+fi
+# LMS_LOAD_LFM2=1 → fall through to the LFM2.5 setup below.
+
+# --- 4. (opt-in) Ensure the LFM2.5 MLX weights are on disk -----------------
 # LM Studio's catalog doesn't index LFM2.5 yet (very new), so `lms get` can't
 # resolve it; pull the weights from HF straight into LM Studio's models dir.
 # Presence is gated on the actual WEIGHTS (*.safetensors), not just config.json —
@@ -163,36 +237,6 @@ case "$(lms_register_model "$LITELLM_SLUG" "$MLX_ID" lmstudio)" in
   UNCHANGED) ok "$LITELLM_SLUG already in litellm/config.yaml" ;;
   *)         err "failed to inject $LITELLM_SLUG into config.yaml"; exit 1 ;;
 esac
-
-# --- 5b. Register the canonical MLX slugs from models.yml (if assigned) -----
-# When an agent is assigned local-qwen3.6 / local-qwen3-coder (installer/models.yml),
-# this phase can serve them too. We load the one whose served id we can confirm
-# (one-big-MLX RAM policy) and ADD-ONLY register it. Best-effort, non-fatal — the
-# canonical config.yaml rows already exist (Phase 01); here we just make sure the
-# running LM Studio is actually serving an assigned id so `model sync` can promote
-# the agents off the gemma4 fallback.
-MODELS_YML="$AI_STACK/installer/models.yml"
-if [[ -f "$MODELS_YML" ]]; then
-  while IFS= read -r _slug; do
-    [[ -z "$_slug" ]] && continue
-    # Only the canonical MLX slugs are relevant to LM Studio.
-    case "$_slug" in local-qwen3.6|local-qwen3-coder) : ;; *) continue ;; esac
-    _served="$(yq -r ".models.\"$_slug\".served" "$MODELS_YML" 2>/dev/null)"
-    _ttl="$(yq -r ".models.\"$_slug\".ttl // 1800" "$MODELS_YML" 2>/dev/null)"
-    [[ -z "$_served" || "$_served" == "null" ]] && continue
-    # Is any agent actually assigned this slug? (skip work otherwise)
-    if ! yq -r '.assignments | to_entries | .[].value' "$MODELS_YML" 2>/dev/null | grep -qxF "$_slug"; then
-      continue
-    fi
-    log "Loading assigned MLX model $_slug ($_served) per the one-big-MLX policy..."
-    if lms_load_big "$_served" "$_ttl"; then
-      lms_register_model "$_slug" "$_served" lmstudio >/dev/null \
-        && ok "registered $_slug → $_served in litellm/config.yaml"
-    else
-      warn "$_slug ($_served) not loadable right now — config row stays, agent stays on the fallback until 'model sync'"
-    fi
-  done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
-fi
 
 # --- 6. Restart LiteLLM (reloads config.yaml) + verify the pipe ------------
 log "Restarting LiteLLM to load the new model..."

@@ -1,9 +1,10 @@
 # LM Studio (MLX) wired as a second runtime behind LiteLLM (Phase 25).
 #
 # Opt-in. Passes (no-op) when LM Studio isn't installed. When installed, verifies
-# the lms CLI + the OpenAI server on :1234 + the local-lfm2-mlx provider in
-# litellm/config.yaml. Does NOT run a (slow) model round-trip — it only checks
-# the wiring is in place. NO secrets printed.
+# the lms CLI + the OpenAI server on :1234 + that any models.yml-ASSIGNED lmstudio
+# MLX slugs are wired into litellm/config.yaml. (`install lmstudio` is
+# assignment-driven; the LFM2.5 `local-lfm2-mlx` demo is opt-in via LMS_LOAD_LFM2
+# and is NOT required.) Does NOT run a (slow) model round-trip. NO secrets printed.
 CHECKS+=(lmstudio)
 CHECK_TITLE[lmstudio]="LM Studio (MLX) wired behind LiteLLM (Phase 25)"
 
@@ -27,15 +28,13 @@ lmstudio_diagnose() {
     echo "  (LM Studio installed but server not running — opt-in; start it with '$lms server start -p 1234 --bind 0.0.0.0' or re-run 'install lmstudio')"
     return 0
   fi
-  # Server is UP — from here a wiring gap IS a real failure (the phase ran but
-  # didn't finish wiring LiteLLM, so the running server is unusable by the stack).
-  if ! grep -q 'model_name: local-lfm2-mlx\b' "$AI_STACK/litellm/config.yaml" 2>/dev/null; then
-    echo "server up on :1234 but local-lfm2-mlx NOT wired into litellm/config.yaml — re-run 'vz-ai-stack.sh install lmstudio'"
-    return 1
-  fi
+  # Server is UP. NOTE: `install lmstudio` is ASSIGNMENT-DRIVEN — it wires only the
+  # models.yml-assigned MLX slugs (checked below). The LFM2.5 `local-lfm2-mlx` demo
+  # is OPT-IN (LMS_LOAD_LFM2=1), so it is NOT required here — its absence is normal,
+  # not a fault (this used to false-RED a correct default install).
   local n
   n="$(curl -s --max-time 5 http://127.0.0.1:1234/v1/models 2>/dev/null | python3 -c 'import sys,json; print(sum(1 for m in json.load(sys.stdin).get("data",[]) if "embed" not in m["id"].lower()))' 2>/dev/null || echo 0)"
-  echo "  (LM Studio server up on :1234, $n LLM(s) served; local-lfm2-mlx wired into LiteLLM. A/B vs Ollama via Phoenix.)"
+  echo "  (LM Studio server up on :1234, $n LLM(s) served; assignment-driven wiring checked below. A/B vs Ollama via Phoenix.)"
 
   # models.yml lmstudio slugs: when the server is up, the canonical MLX slugs
   # SHOULD be wired into config.yaml (registered by Phase 01 / 'model sync').

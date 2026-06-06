@@ -176,6 +176,12 @@ validate() {
     [[ -n "$sv" && "$sv" != "null" ]] || { err "models.yml: model '$m' missing .served"; return 2; }
   done < <(my_q '.models | keys | .[]')
 
+  # 'all' is a reserved keyword for `model assign all <model>` — an agent named
+  # 'all' would make assign (wildcard) and sync (specific agent) disagree.
+  if agent_exists all; then
+    err "models.yml: 'all' is reserved (it's the blanket-assign keyword) — rename that kind"; return 2
+  fi
+
   # Every assignment must reference a known agent (in kinds:) AND a declared model.
   local a am
   while IFS= read -r a; do
@@ -758,12 +764,7 @@ cmd_assign() {
   done
   validate || exit $?
   if [[ -z "$agent" || -z "$model" ]]; then
-    err "usage: vz-ai-stack.sh model assign <agent> <model> [--dry-run] [--no-sync]"
-    exit 2
-  fi
-  if ! agent_exists "$agent"; then
-    err "unknown agent '$agent'. Valid agents:"
-    my_q '.kinds | keys | .[]' | sed 's/^/    /' >&2
+    err "usage: vz-ai-stack.sh model assign <agent|all> <model> [--dry-run] [--no-sync]"
     exit 2
   fi
   if ! model_exists "$model"; then
@@ -771,6 +772,42 @@ cmd_assign() {
     my_q '.models | keys | .[]' | sed 's/^/    /' >&2
     exit 2
   fi
+  # `assign all <model>` — blanket-assign EVERY agent (all .kinds) to one model,
+  # then sync once. Overwrites existing per-agent assignments BY DESIGN, so we:
+  #   - print a before->after table (you see exactly what's being replaced),
+  #   - back up models.yml first (rollback: cp models.yml.bak models.yml),
+  #   - apply ALL keys in ONE atomic `yq -i` (no half-written file on interrupt;
+  #     in-place key sets preserve the YAML comments + structure).
+  if [[ "$agent" == "all" ]]; then
+    local _agents _a _expr="" n=0
+    _agents="$(my_q '.kinds | keys | .[]')"
+    note "blanket assign — every agent -> $model:"
+    while IFS= read -r _a; do
+      [[ -z "$_a" ]] && continue
+      printf '    %-26s %s -> %s\n' "$_a" "$(agent_assigned "$_a")" "$model" >&2
+      [[ -n "$_expr" ]] && _expr+=" | "
+      _expr+=".assignments[\"$_a\"] = strenv(MODEL)"
+      n=$((n+1))
+    done <<<"$_agents"
+    if (( dry )); then note "[dry-run] no write (would update $n agents)"; exit 0; fi
+    cp -p "$MODELS_YML" "$MODELS_YML.bak" 2>/dev/null || true
+    if ! MODEL="$model" yq -i "$_expr" "$MODELS_YML"; then
+      err "blanket assign failed — models.yml unchanged (restore: cp $MODELS_YML.bak $MODELS_YML)"; exit 1
+    fi
+    ok "assigned all $n agents -> $model  (prior models.yml backed up to $(basename "$MODELS_YML").bak)"
+    if (( nosync )); then
+      note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync' to apply."
+      exit 0
+    fi
+    cmd_sync   # no agent arg = reconcile every agent
+    exit 0
+  fi
+  if ! agent_exists "$agent"; then
+    err "unknown agent '$agent'. Valid agents (or 'all'):"
+    my_q '.kinds | keys | .[]' | sed 's/^/    /' >&2
+    exit 2
+  fi
+  # (model existence already validated above, before the `all` branch.)
   local before; before="$(agent_assigned "$agent")"
   if (( dry )); then
     note "[dry-run] would set assignments.$agent: $before -> $model (no write)"
@@ -1207,7 +1244,8 @@ main() {
       cat <<'EOF'
 vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml)
   model list [--json]              READ-ONLY catalog + live agent matrix
-  model assign <agent> <model> [--dry-run] [--no-sync]
+  model assign <agent> <model> [--dry-run] [--no-sync]    re-point one agent
+  model assign all <model> [--dry-run] [--no-sync]        re-point EVERY agent (blanket)
   model discover                   READ-ONLY LM Studio library (LLMs + embeddings); loads nothing
   model add <lms-slug> [as <name>] [--dry-run] [--no-sync]   declare a library LLM (no load)
   model sync [<agent>] [--dry-run] [--no-restart]

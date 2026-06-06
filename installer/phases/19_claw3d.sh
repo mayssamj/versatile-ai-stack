@@ -6,7 +6,7 @@
 # generic upstream — the stack-agents bridge (claw3d-bridge/bridge.py) — which
 # implements claw3d's "custom HTTP runtime" contract (/health, /state, /registry,
 # /v1/chat/completions) and routes chat AUTHENTICALLY to every isolated agent:
-#   - Hermes profiles ×7  → openshell sandbox exec → `hermes --profile X -z`
+#   - Hermes profiles ×9  → openshell sandbox exec → `hermes --profile X -z`
 #   - Pi                  → openshell sandbox exec → `pi -p` in pi-v1
 #   - DeerFlow            → POST :2026 LangGraph /runs/wait
 # (AutoFyn is reserved as a future kind="task-launcher" — see bridge.py.)

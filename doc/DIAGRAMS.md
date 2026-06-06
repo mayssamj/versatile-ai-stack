@@ -375,8 +375,8 @@ Notes:
 - Because every scoped key (`HERMES_LITELLM_KEY`, `PI_LITELLM_KEY`,
   `ACE_LITELLM_KEY`, `RLM_LITELLM_KEY`) is minted against the DERIVED
   `model superset` (`vz-ai-stack.sh model superset` — a sorted-unique union,
-  not a hardcoded list), `model assign <agent> <model>` re-points an agent
-  without ever re-minting a key.
+  not a hardcoded list), `model assign <agent> <model>` (or `model assign all
+  <model>` for every agent) re-points agents without ever re-minting a key.
 - The four diagrams below (§5a–§5e) zoom into this pipeline: §5a the
   per-agent selection (assignment → gate → effective → rendered + drift),
   §5b the multi-engine topology, §5c the discover/add/sync lifecycle, §5d

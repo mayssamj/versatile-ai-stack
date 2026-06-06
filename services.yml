@@ -1011,13 +1011,14 @@ services:
     desc: "LM Studio MLX engine as a 2nd OpenAI-compatible runtime behind LiteLLM"
     phase: "25"
     network: none
-    # Host OpenAI server on :1234 (bound 0.0.0.0 for container access). Adds
-    # `local-lfm2-mlx` to LiteLLM (LFM2.5 MLX — working tool-calling, unlike the
-    # Ollama GGUF). Ollama stays the default. `vz-ai-stack.sh install lmstudio`.
+    # Host OpenAI server on :1234 (bound 0.0.0.0 for container access).
+    # `install lmstudio` is assignment-driven: loads only models.yml-assigned MLX
+    # (local-qwen3.6 / local-qwen3-coder); the local-lfm2-mlx demo is opt-in via
+    # LMS_LOAD_LFM2=1. Ollama stays the default. `vz-ai-stack.sh install lmstudio`.
     consumes_env:
       - LITELLM_MASTER_KEY
     help:
-      "what": LM Studio's Apple-MLX engine added as a SECOND OpenAI-compatible local runtime behind LiteLLM (server on :1234), home of the two big MLX models local-qwen3.6 / local-qwen3-coder plus local-lfm2-mlx (LFM2.5 with working tool-calling the Ollama GGUF can't do).
+      "what": LM Studio's Apple-MLX engine added as a SECOND OpenAI-compatible local runtime behind LiteLLM (server on :1234), home of the two big MLX models local-qwen3.6 / local-qwen3-coder. install lmstudio is ASSIGNMENT-DRIVEN — it loads ONLY MLX models assigned to an agent in models.yml and does NOT auto-load otherwise; the local-lfm2-mlx demo (LFM2.5 with working tool-calling the Ollama GGUF can't do) is OPT-IN via LMS_LOAD_LFM2=1.
       "why": Reach for it when you want MLX speed/tool-calling on Apple Silicon or to actually run the heavy/coder MLX models; Ollama stays the default and lmstudio-assigned agents fall back to local-gemma4 when LM Studio is down.
       "usage":
         - bash vz-ai-stack.sh install lmstudio

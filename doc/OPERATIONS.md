@@ -346,6 +346,7 @@ activate the subscription models: bring Meridian up (`bin/start-meridian.sh`), t
 ```bash
 vz-ai-stack.sh model list                 # read-only catalog + live per-agent matrix
 vz-ai-stack.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
+vz-ai-stack.sh model assign all local-gemma4       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
 vz-ai-stack.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
 vz-ai-stack.sh model superset             # print the canonical scoped-key allowlist
 ```
@@ -389,14 +390,20 @@ openshell` (check 39); a pending alert surfaces in check 43. Full failure write-
 
 ## LM Studio (opt-in, quit it when done)
 
-LM Studio (Phase 25) is a *second* local runtime behind LiteLLM (`local-lfm2-mlx`,
-Apple MLX, working tool-calling) — Ollama stays the default. It is **opt-in** because
-the LM Studio desktop app idle-spins ~0.8–1 core **even with no model loaded and the
-server stopped**. Run it only when you need MLX tool-calling, and quit it afterward:
+LM Studio (Phase 25) is a *second* local runtime behind LiteLLM (Apple MLX, home of
+`local-qwen3.6` / `local-qwen3-coder`) — Ollama stays the default. It is **opt-in**
+because the LM Studio desktop app idle-spins ~0.8–1 core **even with no model loaded
+and the server stopped**. Run it only when you need MLX, and quit it afterward.
+
+`install lmstudio` is **assignment-driven**: it loads ONLY the MLX models you've
+assigned to an agent in `models.yml` (`model assign <agent> local-qwen3.6`) — it does
+**not** auto-load anything otherwise. The LFM2.5 demo model (`local-lfm2-mlx`, working
+tool-calling) is **opt-in** via `LMS_LOAD_LFM2=1`.
 
 ```bash
-stack install lmstudio              # add it (Phase 25)
-~/.lmstudio/bin/lms server stop     # stop the :1234 server when done…
+stack install lmstudio                          # assignment-driven: loads only assigned MLX models
+LMS_LOAD_LFM2=1 stack install lmstudio          # also set up the LFM2.5 demo (local-lfm2-mlx, ~5GB)
+~/.lmstudio/bin/lms server stop                 # stop the :1234 server when done…
 #   …then Cmd-Q the LM Studio app (stopping the server alone is not enough)
 ```
 

@@ -65,3 +65,4 @@ __pycache__/
 .DS_Store
 *.swp
 *~
+installer/models.yml.bak

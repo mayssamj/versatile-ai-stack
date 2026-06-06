@@ -512,7 +512,7 @@ These checks pass-as-skip when the tool isn't installed (the tools are opt-in, n
 | 35 | `cmux` | `brew list --cask cmux` or `/Applications/cmux.app` present | cask/app absent (or non-macOS) |
 | 36 | `skillspector` | venv CLI + `bin/skillspector` exist and `--help` runs | `skillspector/.venv` absent |
 | 37 | `openagents` | `agn` resolves on PATH or under `~/.openagents` | `agn` absent |
-| 38 | `lmstudio` | `lms` CLI + the OpenAI server on `:1234` + `local-lfm2-mlx` wired into `litellm/config.yaml` | `/Applications/LM Studio.app` absent |
+| 38 | `lmstudio` | `lms` CLI + the OpenAI server on `:1234` + every models.yml-**assigned** lmstudio MLX slug wired into `litellm/config.yaml` (the `local-lfm2-mlx` demo is opt-in via `LMS_LOAD_LFM2=1`, not required) | `/Applications/LM Studio.app` absent |
 
 ---
 

@@ -230,6 +230,7 @@ from it (deep dive: [models.md](models.md)).
 | `vz-ai-stack.sh model list` | live agent matrix (ASSIGNED / LITELLM / SERVED / KEY-OK / DRIFT / EFFECTIVE) |
 | `vz-ai-stack.sh model list --json` | machine-readable matrix |
 | `vz-ai-stack.sh model assign <agent> <model>` | re-point one agent, then sync it |
+| `vz-ai-stack.sh model assign all <model>` | blanket-assign EVERY agent to one model (prints before→after, backs up `models.yml` to `.bak`), then syncs |
 | `vz-ai-stack.sh model sync [agent]` | reconcile everything (or one agent) |
 | `vz-ai-stack.sh model sync --dry-run` | preview the plan + config diff, write nothing |
 | `vz-ai-stack.sh model discover` | READ-ONLY LM Studio library catalog (server may be down) |
@@ -1475,8 +1476,9 @@ profiles, Pi's default `local-qwen3-coder`, or DeerFlow's `local-qwen3.6`.
 
 ```bash
 # 1. Install the opt-in LM Studio phase (NOT part of `install all`).
-#    Adds the host OpenAI server on :1234 + the local-lfm2-mlx legacy slug;
-#    Ollama stays the default runtime.
+#    Starts the host OpenAI server on :1234 and is ASSIGNMENT-DRIVEN: it wires ONLY
+#    the MLX models assigned to an agent in models.yml (it does NOT auto-load otherwise).
+#    The local-lfm2-mlx demo is opt-in: prefix `LMS_LOAD_LFM2=1`. Ollama stays default.
 bash ~/ai-stack/vz-ai-stack.sh install lmstudio        # or: install 25
 
 # 2. In the LM Studio app: load the model you want served.
@@ -2097,6 +2099,7 @@ bash ~/ai-stack/vz-ai-stack.sh help regen [<svc>]     # refresh prose from the l
 # Models (declarative model↔agent binding — see §2.16)
 bash ~/ai-stack/vz-ai-stack.sh model list             # catalog + live declared-vs-served matrix
 bash ~/ai-stack/vz-ai-stack.sh model assign <agent> <model>   # re-point one agent (yq -i + sync)
+bash ~/ai-stack/vz-ai-stack.sh model assign all <model>       # blanket-assign EVERY agent (before→after + .bak), then sync
 bash ~/ai-stack/vz-ai-stack.sh model sync             # reconcile everything from models.yml (opt-in)
 bash ~/ai-stack/vz-ai-stack.sh model superset         # canonical scoped-key allowlist superset
 

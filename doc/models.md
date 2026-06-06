@@ -153,6 +153,7 @@ the start command for each.
 vz-ai-stack.sh model list                 # READ-ONLY catalog + live agent matrix
 vz-ai-stack.sh model list --json          # machine-readable
 vz-ai-stack.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
+vz-ai-stack.sh model assign all local-gemma4       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
 vz-ai-stack.sh model sync                 # render EVERY agent + the LiteLLM model_list
 vz-ai-stack.sh model sync pi              # render just one agent
 vz-ai-stack.sh model sync --dry-run       # print the plan + a config.yaml diff, write nothing
