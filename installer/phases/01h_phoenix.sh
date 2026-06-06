@@ -49,10 +49,22 @@ if [[ -z "$SECRET" ]]; then
   set_env PHOENIX_SECRET "$SECRET"
 fi
 
-# --- Start (or report foreign) Phoenix ---
+# --- Start (or HEAL) Phoenix ---
+# Same cold/second-machine hazard as LiteLLM: a running+managed container left
+# over from a prior/partial run can be unhealthy. Probe it; if it isn't serving,
+# recreate so the phase self-heals instead of silently wiring LiteLLM to a dead
+# Phoenix endpoint.
+PHOENIX_SMOKE="${PHOENIX_BASE_URL:-$(get_env PHOENIX_BASE_URL http://phoenix:6006)}"
+phoenix_up() { wait_http "$PHOENIX_SMOKE" "${1:-60}" || wait_http http://127.0.10.2 "${1:-60}"; }
 if container_running phoenix; then
   if container_managed phoenix; then
-    ok "phoenix container already running and managed"
+    if phoenix_up 15; then
+      ok "phoenix container already running and serving"
+    else
+      warn "phoenix is running+managed but NOT serving — recreating to heal it."
+      bash "$AI_STACK/bin/start-phoenix.sh" --recreate
+      phoenix_up 60 || { err "Phoenix UI didn't come up after recreate (check: docker logs phoenix)"; exit 1; }
+    fi
   else
     warn "phoenix is running but FOREIGN."
     warn "Run:  bash vz-ai-stack.sh adopt phoenix   to take ownership."
@@ -60,10 +72,7 @@ if container_running phoenix; then
 else
   log "Starting Phoenix..."
   bash "$AI_STACK/bin/start-phoenix.sh"
-  # Try alias first (post-refactor), then loopback fallback.
-  PHOENIX_SMOKE="${PHOENIX_BASE_URL:-$(get_env PHOENIX_BASE_URL http://phoenix:6006)}"
-  wait_http "$PHOENIX_SMOKE" 60 || wait_http http://127.0.10.2 60 \
-    || { err "Phoenix UI didn't come up"; exit 1; }
+  phoenix_up 60 || { err "Phoenix UI didn't come up"; exit 1; }
 fi
 
 # --- Wire LiteLLM callbacks ---

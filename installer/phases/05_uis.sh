@@ -37,7 +37,18 @@ if container_running openwebui; then
 else
   bash "$AI_STACK/bin/start-openwebui.sh"
 fi
-wait_http http://openwebui:8080 180 || warn "openwebui didn't come up in 180s — first-pull may still be running; recheck with 'docker logs openwebui'"
+# 180s is generous for the first image-pull/boot. If a MANAGED container is still
+# not serving after that, it's almost certainly broken (not still pulling) — heal
+# it once via recreate rather than silently leaving a dead UI behind a warning.
+if ! wait_http http://openwebui:8080 180; then
+  if container_managed openwebui; then
+    warn "openwebui managed but not serving after 180s — recreating once to heal it."
+    bash "$AI_STACK/bin/start-openwebui.sh" --recreate
+    wait_http http://openwebui:8080 180 || warn "openwebui still not up — check 'docker logs openwebui'"
+  else
+    warn "openwebui didn't come up in 180s — first-pull may still be running; recheck with 'docker logs openwebui'"
+  fi
+fi
 
 # --- Hermes Workspace ---
 # Upstream URL is a placeholder — the published repo path may differ.

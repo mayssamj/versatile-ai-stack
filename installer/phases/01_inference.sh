@@ -6,8 +6,10 @@
 #   - Model pulls: skipped if model already present in `ollama list`.
 #   - LiteLLM container: if already running AND foreign (not managed by us),
 #     prompts user to `vz-ai-stack.sh adopt litellm`. If already running AND
-#     managed, leaves it alone unless config.yaml has been mutated since
-#     container start (then queues a restart).
+#     managed, it is HEALTH-PROBED (not trusted blindly): a managed container
+#     that isn't actually serving /v1/models (stale config, old master key,
+#     Postgres down, mid-boot — the classic cold/second-machine failure) is
+#     recreated via start-litellm.sh --recreate so the phase self-heals.
 #   - config.yaml + trace_to_file.py: written if missing, never silently
 #     overwrites a user-edited file.
 set -Eeuo pipefail
@@ -159,10 +161,22 @@ fi
   exit 1
 }
 
-# --- Start (or report foreign) LiteLLM container ---
+# --- Start (or HEAL) the LiteLLM container ---
+# A running+managed container is NOT trusted blindly: one left over from a prior
+# or partial install can be unhealthy (stale config, an old LITELLM_MASTER_KEY,
+# Postgres not up, or still booting). We probe it; if it isn't actually serving
+# /v1/models we recreate it (start-litellm.sh runs the Postgres precheck, injects
+# the CURRENT master key, and rewrites the config) so a cold/second machine heals
+# itself instead of dying on the smoke test.
 if container_running litellm; then
   if container_managed litellm; then
-    ok "litellm container already running and managed"
+    if litellm_wait_ready 8; then
+      ok "litellm container already running and serving"
+    else
+      warn "litellm is running+managed but NOT serving /v1/models — recreating to heal it."
+      bash "$AI_STACK/bin/start-litellm.sh" --recreate || { litellm_diagnose; exit 1; }
+      litellm_wait_ready 60 || { litellm_diagnose; exit 1; }
+    fi
   else
     warn "litellm is running but FOREIGN (started outside the installer)."
     warn "Run:  bash vz-ai-stack.sh adopt litellm   to take ownership."
@@ -170,8 +184,8 @@ if container_running litellm; then
   fi
 else
   log "Starting LiteLLM..."
-  bash "$AI_STACK/bin/start-litellm.sh"
-  litellm_wait_ready 60 || { err "LiteLLM did not come up"; exit 1; }
+  bash "$AI_STACK/bin/start-litellm.sh" || { litellm_diagnose; exit 1; }
+  litellm_wait_ready 60 || { litellm_diagnose; exit 1; }
 fi
 
 # --- Smoke: /v1/models lists at least one model ---
@@ -180,17 +194,13 @@ if [[ -z "$KEY" ]]; then
   err "LITELLM_MASTER_KEY empty — cannot smoke test"
   exit 1
 fi
-# Smoke against the alias URL (post-refactor). If /etc/hosts isn't yet
-# populated, fall back to the loopback IP directly.
-LITELLM_SMOKE="${LITELLM_BASE_URL:-$(get_env LITELLM_BASE_URL http://litellm:4000)}"
-if ! curl -s --max-time 5 "${LITELLM_SMOKE}/v1/models" \
-     -H "Authorization: Bearer $KEY" | grep -q '"data"'; then
-  warn "Alias smoke (${LITELLM_SMOKE}/v1/models) failed; retrying via 127.0.10.1..."
-  if ! curl -s --max-time 5 http://127.0.10.1/v1/models \
-       -H "Authorization: Bearer $KEY" | grep -q '"data"'; then
-    err "LiteLLM /v1/models did not return a model list"
-    exit 1
-  fi
+# Tries the alias URL, loopback :4000, the lo0 alias :4000, AND the actual
+# docker-published port — so it works on macOS (lo0/OrbStack) and a plain Linux
+# Docker host alike. On failure, dump a self-explaining diagnostic.
+if ! litellm_smoke_ok "$KEY"; then
+  err "LiteLLM /v1/models did not return a model list."
+  litellm_diagnose
+  exit 1
 fi
 ok "LiteLLM /v1/models responds"
 
