@@ -75,6 +75,31 @@ setup_run() {
   env_ensure_baseline
   ok "Baseline ready — .env @ 0600, service URLs set, LITELLM_MASTER_KEY + PHOENIX_SECRET generated."
 
+  # Self-heal: an earlier setup had a stdin-collision bug (fixed below) that could
+  # write THIS catalog's own definition lines into .env as VALUES, e.g.
+  #   ANTHROPIC_API_KEY=Cloud LLM providers (optional)|OPENAI_API_KEY|1|...
+  # Scrub them back to empty — but ONLY when a key's value is byte-IDENTICAL to an
+  # actual catalog definition line. (A shape heuristic could nuke a legit value
+  # that happens to look catalog-ish; exact membership cannot false-positive — a
+  # real key/token/id-list can't equal a definition line by accident.)
+  local _sk _sv _cl _g _sec _desc
+  local -a _catlines=()
+  mapfile -t _catlines < <(_setup_catalog)
+  for _cl in "${_catlines[@]}"; do
+    IFS='|' read -r _g _sk _sec _desc <<<"$_cl"
+    [[ -z "$_sk" ]] && continue
+    _sv="$(get_env "$_sk" "" 2>/dev/null)" || _sv=""   # guarded: never abort scrub under set -e
+    [[ -z "$_sv" ]] && continue
+    local _other
+    for _other in "${_catlines[@]}"; do
+      if [[ "$_sv" == "$_other" ]]; then
+        set_env "$_sk" ""
+        warn "cleared corrupted $_sk (leaked catalog text from an older setup bug)"
+        break
+      fi
+    done
+  done
+
   if [[ "${NO_PROMPT:-0}" == "1" ]] || [[ ! -t 0 ]]; then
     note "Non-interactive (NO_PROMPT or no TTY): skipped the optional API-key prompts."
     note "A local-only / Claude-subscription setup needs nothing more — run 'doctor' next."
@@ -87,12 +112,21 @@ setup_run() {
   note "Everything below is OPTIONAL and skippable (press Enter to skip each one)."
   note "Local gemma + Claude-subscription (-sub, incl. opus) models need NONE of these keys."
 
+  # Read the catalog into an array FIRST, then iterate. The previous form piped
+  # the catalog onto the loop's stdin (`while … < <(_setup_catalog)`), so the
+  # per-key prompt's `read`/`secret_input` consumed the NEXT CATALOG LINE instead
+  # of the user's keystroke — writing catalog text into .env. With an array, the
+  # prompt loop's stdin stays the terminal, so reads get the user's input.
   local last_group="" entry group key sec desc
-  while IFS='|' read -r group key sec desc; do
+  local -a _catalog=()
+  mapfile -t _catalog < <(_setup_catalog)
+  for entry in "${_catalog[@]}"; do
+    [[ -z "$entry" ]] && continue
+    IFS='|' read -r group key sec desc <<<"$entry"
     [[ -z "$key" ]] && continue
     if [[ "$group" != "$last_group" ]]; then printf '\n— %s —\n' "$group" >&2; last_group="$group"; fi
     setup_prompt_one "$key" "$sec" "$desc"
-  done < <(_setup_catalog)
+  done
 
   echo >&2
   note "Claude subscription models (-sub, incl. opus): no API key needed — start the Meridian"
