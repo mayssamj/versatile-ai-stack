@@ -4,6 +4,37 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-06 — fix: OpenShell expired-token relay storm now self-heals on install (`f7dc329`)
+
+`install all` died at **phase 04f** with `× status: DeadlineExceeded, message: "relay open timed out"`,
+which the script MISreported as a `pip install hermes-agent` / PyPI 403 failure.
+
+**Root cause.** The OpenShell sandbox `hermes-fleet-v1`'s short-lived gateway token had
+EXPIRED. The sandbox still reported `Phase: Ready` and `openshell policy set` still worked
+(both **control-plane**), but the gateway→sandbox **exec relay was dead**, so every
+`openshell sandbox exec` timed out at ~10s. The in-sandbox agent logged
+`RefreshSandboxToken returned Unauthenticated; static token sources cannot rebootstrap
+automatically` + `invalid token: ExpiredSignature` — the token **cannot self-refresh**; only
+RECREATING the sandbox mints a fresh one. Notably the relay was dead at **~0.2% CPU**, so the
+existing CPU-threshold storm detector (and the watchdog's CPU view) could not see it.
+
+Two defects: (A) `openshell_sandbox_ensure` trusted `Phase==Ready` without probing the relay,
+so Phase 04 passed a dead sandbox to 04f; (B) 04f read the relay timeout as a pip/PyPI failure.
+
+**Fix** (`installer/lib/openshell.sh` + phases 04/04f/15):
+- New `openshell_relay_ok` (bounded, hang-safe trivial-`exec` probe) + `openshell_token_storm`
+  (LOG-signature detector — `ExpiredSignature`/`RefreshSandboxToken…Unauthenticated`, never CPU).
+- `openshell_sandbox_ensure` now probes the relay on `Ready`; recreates **only on a confirmed
+  token-storm**, else RETRIES with a 40s timeout before discarding — so a slow-but-healthy
+  sandbox on a loaded M4 is never needlessly destroyed (would lose `/sandbox`+`/tmp` scratch).
+- Prechecks in phases 04/04f/15 probe the relay so a stamped-but-dead sandbox re-runs its body
+  (→ `ensure` heals it). 04f's early relay gate now emits the CORRECT diagnosis (`install 04 04f`),
+  and the pip path distinguishes a mid-phase relay death from a real pip/PyPI failure.
+
+Verified live against BOTH real storming sandboxes: `install 04→04f` (hermes) and `install 15`
+(pi) both self-healed; healthy fast-path does NOT recreate; doctor 30/43 green. 2 adversarial
+subagent reviews + debate (caught + fixed a false-positive-destroy risk before merge).
+
 ## 2026-06-06 — fix: LiteLLM cold-start `P1010` — grant the key-store DB role owner/public access (`652c447`)
 
 A second/cold machine hit `install 01` → litellm container `Up`, `:5432` reachable,
