@@ -9,6 +9,7 @@ set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"   # get_env/set_env for HERMES_LITELLM_KEY
+source "$AI_STACK/installer/lib/openshell.sh"  # openshell_relay_ok / openshell_token_storm
 
 PHASE=04f
 SANDBOX=hermes-fleet-v1
@@ -73,6 +74,9 @@ precheck() {
   # exits non-zero (e.g. no gateway registered yet). If the sandbox isn't
   # there, this precheck reports "not done" and the phase tries to run.
   if openshell sandbox list 2>/dev/null | grep -qxF "$SANDBOX"; then
+    # Present is not enough — a sandbox with an expired gateway token still lists
+    # but its exec relay is dead. Don't report "done" on a storming sandbox.
+    openshell_relay_ok "$(command -v openshell)" "$SANDBOX" || return 1
     return 0
   fi
   return 1
@@ -261,6 +265,29 @@ fi
 # silently misinterpreted: the name slot becomes the command, so we'd see
 # "<name>: command not found" inside the sandbox. CHANGELOG 2026-05-29.
 
+# --- Relay liveness gate (run BEFORE any sandbox exec) -----------------------
+# `sandbox list` showed the sandbox above, but Phase=Ready / list-present is
+# CONTROL-PLANE only: a sandbox whose gateway token EXPIRED still lists as present
+# while every exec fails after ~10s with "relay open timed out" (DeadlineExceeded).
+# Probe the data path here — otherwise the first exec below fails and gets
+# MISREPORTED as a pip/PyPI 403 (it isn't). The token can't self-refresh; only
+# recreating the sandbox fixes it, and Phase 04 owns recreation (+ re-applies the
+# network policy). During `install all`, Phase 04 now self-heals this before 04f
+# runs; this gate catches a standalone `install 04f` against a stale sandbox.
+if ! openshell_relay_ok "$(command -v openshell)" "$SANDBOX"; then
+  err "Sandbox '$SANDBOX' is present but its exec relay is DEAD ('relay open timed out')."
+  if openshell_token_storm "$SANDBOX"; then
+    err "Cause: the sandbox's gateway token EXPIRED (ExpiredSignature in container logs)."
+    err "It cannot self-refresh — the sandbox must be RECREATED to mint a fresh token."
+  else
+    err "Cause: the gateway↔sandbox relay is unresponsive (no clear token signature)."
+  fi
+  err "Heal (recreates the sandbox WITH its network policy, then re-bootstraps the fleet):"
+  err "    bash $AI_STACK/vz-ai-stack.sh install 04 04f"
+  err "(This is NOT a PyPI/pip problem — do not pre-stage hermes-agent for this.)"
+  exit 1
+fi
+
 # Pre-flight: is Hermes installed inside the sandbox?
 #
 # The OpenShell base sandbox ships an uv-managed virtualenv at /sandbox/.venv
@@ -277,8 +304,22 @@ if ! openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'command -v hermes
   warn "Hermes not detected inside sandbox. Installing from PyPI..."
   # hermes-agent shipped on PyPI as of v0.14.0 (2026-05-28). Cleaner than
   # `curl scripts/install.sh | bash` which the sandbox proxy 403s.
-  openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1 | tail -10 \
-    || { err "Hermes install inside sandbox failed (pip install hermes-agent)."; err "If PyPI is also 403'd through the proxy, pre-stage hermes-agent like Phase 15 does for Pi (tarball upload)."; exit 1; }
+  # The relay was verified live above, so a failure here is a genuine pip/PyPI
+  # problem — but distinguish a relay that died MID-PHASE from a real pip error,
+  # so we never print a phantom "PyPI 403" for a token-expiry timeout.
+  if _pip_out="$(openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1)"; then
+    printf '%s\n' "$_pip_out" | tail -10
+  else
+    printf '%s\n' "$_pip_out" | tail -10
+    if grep -qE 'relay open timed out|DeadlineExceeded' <<<"$_pip_out"; then
+      err "Sandbox exec relay died during install ('relay open timed out') — recreate the sandbox:"
+      err "    bash $AI_STACK/vz-ai-stack.sh install 04 04f"
+    else
+      err "Hermes install inside sandbox failed (pip install hermes-agent)."
+      err "If PyPI is 403'd through the proxy, pre-stage hermes-agent like Phase 15 does for Pi (tarball upload)."
+    fi
+    exit 1
+  fi
 fi
 
 # LLM routing config is applied AFTER the bootstrap creates the profiles (see

@@ -54,6 +54,12 @@ precheck() {
   "$osh" sandbox list 2>/dev/null \
     | awk -v s="$SANDBOX" 'NR>1 && $1==s && $NF=="Ready" {ok=1} END{exit !ok}' \
     || return 1
+  # Phase=Ready is control-plane only — probe the exec relay (hang-safe, bounded)
+  # before trusting it. A sandbox with an expired gateway token still lists Ready
+  # while every exec times out; without this, the exec checks below would hang on
+  # the CLI's own deadline. A dead relay -> "not done" -> body re-runs ->
+  # openshell_sandbox_ensure recreates pi-v1 with a fresh token.
+  openshell_relay_ok "$osh" "$SANDBOX" || return 1
   # Pi CLI must be installed inside the sandbox.
   "$osh" sandbox exec -n "$SANDBOX" --no-tty -- \
     /bin/sh -c 'test -x /sandbox/node_modules/.bin/pi' 2>/dev/null || return 1

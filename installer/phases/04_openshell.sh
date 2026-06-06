@@ -57,6 +57,11 @@ precheck() {
   [[ -f "$POLICY" ]] || return 1
   gateway_listening || return 1
   "$osh" sandbox list 2>/dev/null | grep -qE "(^| )${SANDBOX}( |$)" || return 1
+  # A listed sandbox can still have a DEAD exec relay (expired gateway token).
+  # Probe it so we never declare the phase "already complete" on a storming
+  # sandbox — returning 1 here makes the body run and openshell_sandbox_ensure
+  # recreate it. (openshell_relay_ok is sourced from lib/openshell.sh above.)
+  openshell_relay_ok "$osh" "$SANDBOX" || return 1
   return 0
 }
 

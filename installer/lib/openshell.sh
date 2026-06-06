@@ -38,6 +38,58 @@ declare -F port_listening >/dev/null 2>&1 || source "$AI_STACK/installer/lib/val
 
 _osh_strip_ansi() { sed $'s/\x1b\\[[0-9;]*m//g'; }
 
+# openshell_relay_ok <osh> <name> [timeout_s] — probe the gateway<->sandbox EXEC
+# relay with a trivial command.
+#
+# WHY: `sandbox list/get` Phase=Ready is CONTROL-PLANE metadata held by the
+# gateway — it never round-trips to the in-sandbox agent. A sandbox whose
+# short-lived gateway token has EXPIRED still reports Ready (and `policy set`
+# still works — also control-plane) while its exec relay is DEAD: every exec then
+# fails after ~10s with `status: DeadlineExceeded, message: "relay open timed
+# out"`. Phase readiness therefore does NOT prove the data path is live; any phase
+# that will `exec` must probe first or it inherits a dead sandbox (observed
+# 2026-06-06: Phase 04 passed a token-expired sandbox to 04f, which detonated on
+# the first exec and misreported it as a PyPI failure).
+#
+# Runs the probe in the background (matching this file's create-watchdog pattern)
+# and reaps it with _osh_kill so a post-Ready CLI hang can't wedge the caller.
+# Returns 0 iff a trivial exec completes (rc 0) within timeout_s.
+openshell_relay_ok() {
+  local osh="$1" name="$2" timeout_s="${3:-15}"
+  "$osh" sandbox exec -n "$name" --no-tty -- /bin/sh -c 'exit 0' >/dev/null 2>&1 &
+  local pid=$! waited=0
+  while (( waited < timeout_s )); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      if wait "$pid"; then return 0; else return 1; fi
+    fi
+    sleep 1; waited=$((waited+1))
+  done
+  _osh_kill "$pid"
+  return 1
+}
+
+# openshell_token_storm <name> — true (0) iff the sandbox container shows the
+# expired-token signature in its recent logs: the in-sandbox agent's
+# RefreshSandboxToken returns Unauthenticated / `invalid token: ExpiredSignature`.
+# The token CANNOT self-refresh ("static token sources cannot rebootstrap
+# automatically", verified upstream) — only RECREATING the sandbox mints a fresh
+# one. Mirrors bin/openshell-watchdog.sh::_is_storming, but matches ONLY the LOG
+# signature (never CPU): a low-CPU manifestation exists where the agent retries on
+# a ~5s cadence (0.2% CPU) rather than a no-backoff storm — the relay is just as
+# dead, so a CPU threshold would miss it. Returns 1 if docker / container /
+# signature is absent (caller treats that as "unknown cause", still recreates).
+openshell_token_storm() {
+  local name="$1" docker_bin cid logs
+  docker_bin="$(command -v docker 2>/dev/null || true)"
+  [[ -n "$docker_bin" ]] || return 1
+  cid="$("$docker_bin" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
+  [[ -n "$cid" ]] || return 1
+  logs="$("$docker_bin" logs "$cid" --since 3m --tail 80 2>&1 || true)"
+  grep -q 'ExpiredSignature' <<<"$logs" && return 0
+  grep -q 'RefreshSandboxToken.*Unauthenticated' <<<"$logs" && return 0
+  return 1
+}
+
 # openshell_sandbox_phase <OSH> <name>
 # Echoes the sandbox Phase (Ready|Error|Creating|Pending|...) or "" if the
 # sandbox does not exist. ALWAYS returns 0 so callers using `set -e` +
@@ -131,8 +183,31 @@ openshell_sandbox_ensure() {
   fi
 
   phase="$(openshell_sandbox_phase "$osh" "$name")"
-  if [[ "$phase" == "Ready" ]]; then ok "sandbox '$name' already Ready"; return 0; fi
-  if [[ -n "$phase" ]]; then
+  if [[ "$phase" == "Ready" ]]; then
+    # Phase=Ready is CONTROL-PLANE only. Probe the exec relay before trusting it:
+    # a sandbox whose gateway token expired still reports Ready while every exec
+    # times out ("relay open timed out"). Without this probe a storming sandbox
+    # sails through here and detonates in the NEXT phase's exec (Phase 04 -> 04f,
+    # observed 2026-06-06). The token cannot self-refresh, so recreating is the
+    # only fix — and re-running the phase reconstitutes in-sandbox state.
+    if openshell_relay_ok "$osh" "$name"; then
+      ok "sandbox '$name' already Ready (relay verified)"; return 0
+    fi
+    # Relay probe failed. DESTROY only on a CONFIRMED expired-token signature.
+    # Otherwise the sandbox may just be SLOW under host load (M4/24GB swap thrash,
+    # LM Studio/Ollama pinning cores) and a single 15s probe can false-negative —
+    # so retry once with a generous timeout before discarding it. Recreating
+    # DISCARDS the sandbox's /sandbox + /tmp scratch state, so we must not nuke a
+    # healthy-but-slow sandbox on one timed-out probe.
+    if openshell_token_storm "$name"; then
+      warn "sandbox '$name' reports Ready but its gateway token EXPIRED (relay dead; ExpiredSignature in container logs) — recreating to mint a fresh token (discards in-sandbox /sandbox + /tmp scratch state)"
+    elif openshell_relay_ok "$osh" "$name" 40; then
+      ok "sandbox '$name' Ready (relay verified on retry — was slow, not dead)"; return 0
+    else
+      warn "sandbox '$name' reports Ready but its exec relay is unresponsive after a 40s retry — recreating to recover (discards in-sandbox /sandbox + /tmp scratch state)"
+    fi
+    openshell_sandbox_delete "$osh" "$name"
+  elif [[ -n "$phase" ]]; then
     warn "sandbox '$name' present in Phase=$phase; deleting before recreate"
     openshell_sandbox_delete "$osh" "$name"
   fi
