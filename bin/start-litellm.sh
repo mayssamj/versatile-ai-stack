@@ -71,26 +71,39 @@ if ! nc -z 127.0.0.1 5432 2>/dev/null \
 fi
 ok "Postgres reachable on :5432 — LiteLLM can connect to its key store"
 
-# Ensure the 'litellm' DATABASE exists — not just that the server is up. Honcho's
-# Postgres provides the SERVER on :5432 but only creates the 'postgres' DB;
-# NOTHING creates 'litellm' (the DB named in DATABASE_URL). On a fresh/second
-# machine that absent DB makes LiteLLM's Prisma block uvicorn startup, so
-# /v1/models times out (container Up, :5432 reachable, key OK — but never
-# serving). Create it idempotently. Best-effort: if the pg container can't be
-# reached by name we warn and let LiteLLM try (no regression vs. prior behaviour).
+# Ensure the 'litellm' DATABASE exists AND that the role LiteLLM connects as
+# (`postgres`, per DATABASE_URL below) OWNS it and can use its `public` schema.
+# Honcho's Postgres provides the SERVER on :5432 + the 'postgres' DB only; nothing
+# creates 'litellm'. A bare CREATE DATABASE is NOT enough on PG15+/wolfi-based
+# images: the locked-down `public` schema denies the login role CREATE unless it
+# owns the DB, so Prisma's `migrate deploy` fails with "P1010: User `postgres` was
+# denied access on the database `litellm.public`" and LiteLLM never serves
+# /v1/models (container Up, :5432 reachable, key OK — but timing out). So we (1)
+# create the DB if missing, then (2) idempotently grant `postgres` ownership +
+# public-schema rights — which also REPAIRS a DB created by an earlier (create-
+# only) version. Best-effort: if the pg container can't be reached by name we warn
+# and let LiteLLM try (no regression vs. prior behaviour).
 PG_CTR="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -m1 -iE 'honcho.*(database|postgres|db)' || true)"
 [[ -z "$PG_CTR" ]] && PG_CTR="honcho-database-1"
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$PG_CTR"; then
-  if docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
-    ok "Postgres database 'litellm' present"
-  else
+  if ! docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
     log "Postgres database 'litellm' missing — creating it (LiteLLM Prisma key store)..."
-    if docker exec "$PG_CTR" psql -U postgres -c "CREATE DATABASE litellm" >/dev/null 2>&1; then
-      ok "created Postgres database 'litellm'"
-    else
-      warn "Could not auto-create 'litellm' DB via '$PG_CTR'. If LiteLLM hangs on boot, create it manually:"
-      warn "    docker exec $PG_CTR psql -U postgres -c 'CREATE DATABASE litellm'"
-    fi
+    docker exec "$PG_CTR" psql -U postgres -c "CREATE DATABASE litellm" >/dev/null 2>&1 \
+      || warn "Could not create 'litellm' DB via '$PG_CTR' (will still attempt grants below)."
+  fi
+  # Idempotent ownership + public-schema grant for the DATABASE_URL role (postgres).
+  # No-op when already satisfied; fixes the P1010 'denied on public' case on a DB
+  # that exists but isn't owned/usable by the connecting role. Each guarded so a
+  # benign failure never aborts the start.
+  docker exec "$PG_CTR" psql -U postgres -c "ALTER DATABASE litellm OWNER TO postgres;"               >/dev/null 2>&1 || true
+  docker exec "$PG_CTR" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE litellm TO postgres;"   >/dev/null 2>&1 || true
+  docker exec "$PG_CTR" psql -U postgres -d litellm -c "GRANT ALL ON SCHEMA public TO postgres;"      >/dev/null 2>&1 || true
+  if docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
+    ok "Postgres database 'litellm' present + 'postgres' granted owner/public access"
+  else
+    warn "Could not ensure 'litellm' DB via '$PG_CTR'. Create + grant manually, then retry:"
+    warn "    docker exec $PG_CTR psql -U postgres -c 'CREATE DATABASE litellm'"
+    warn "    docker exec $PG_CTR psql -U postgres -d litellm -c 'GRANT ALL ON SCHEMA public TO postgres'"
   fi
 else
   warn "Postgres container not found by name ('$PG_CTR') — skipping 'litellm' DB ensure (LiteLLM will attempt a Prisma migrate on boot)."
