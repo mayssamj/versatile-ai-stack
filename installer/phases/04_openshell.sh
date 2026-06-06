@@ -57,11 +57,11 @@ precheck() {
   [[ -f "$POLICY" ]] || return 1
   gateway_listening || return 1
   "$osh" sandbox list 2>/dev/null | grep -qE "(^| )${SANDBOX}( |$)" || return 1
-  # A listed sandbox can still have a DEAD exec relay (expired gateway token).
-  # Probe it so we never declare the phase "already complete" on a storming
-  # sandbox — returning 1 here makes the body run and openshell_sandbox_ensure
-  # recreate it. (openshell_relay_ok is sourced from lib/openshell.sh above.)
-  openshell_relay_ok "$osh" "$SANDBOX" || return 1
+  # A listed Ready sandbox can still be DEAD if its gateway token expired. Detect
+  # that via the in-container LOG signature (non-invasive) so we never declare the
+  # phase "already complete" on a storming sandbox — returning 1 makes the body
+  # run and openshell_sandbox_ensure recreate it. (Sourced from lib/openshell.sh.)
+  if openshell_token_storm "$SANDBOX"; then return 1; fi
   return 0
 }
 
@@ -187,6 +187,25 @@ OSH="$(resolve_openshell)"
 [[ -n "$OSH" ]] || { warn "openshell binary not found; skipping gateway+sandbox setup"; stamp_mark "$PHASE"; ok "Phase 04 — OpenShell — scaffold complete (no binary)"; exit 0; }
 OS_VER="$("$OSH" --version 2>&1 | awk '/openshell/ {print $2; exit}' || echo "?")"
 ok "openshell on PATH: $OSH (v${OS_VER})"
+
+# Version-skew guard: a bare `openshell` on PATH (e.g. a uv-tool install in
+# ~/.local/bin) can SHADOW the brew binary that matches the gateway. A client
+# newer/older than the running gateway fails execs with `phase: Unspecified` /
+# `relay open timed out` even on a healthy sandbox (cost hours 2026-06-06: 04f
+# used bare `openshell`). We always drive sandbox ops through $OSH (= the brew
+# binary) — but warn loudly if the PATH default disagrees, so any stray
+# bare-`openshell` caller (or the user's own shell) is on notice.
+BARE_OSH="$(command -v openshell 2>/dev/null || true)"
+if [[ -n "$BARE_OSH" && "$BARE_OSH" != "$OSH" ]]; then
+  BARE_VER="$("$BARE_OSH" --version 2>&1 | awk '/openshell/ {print $2; exit}' || echo "?")"
+  if [[ "$BARE_VER" == "?" || "$OS_VER" == "?" ]]; then
+    warn "openshell version undeterminable for one binary (PATH '$BARE_OSH'=v${BARE_VER} / gateway-matching '$OSH'=v${OS_VER}) — can't confirm CLI/gateway match; installer code uses $OSH regardless."
+  elif [[ "$BARE_VER" != "$OS_VER" ]]; then
+    warn "openshell VERSION SKEW: PATH default '$BARE_OSH' is v${BARE_VER} but the gateway-matching binary '$OSH' is v${OS_VER}."
+    warn "  The mismatched client fails execs ('phase: Unspecified' / 'relay open timed out') even on a healthy sandbox."
+    warn "  Align them: 'brew upgrade openshell' or remove/upgrade the shadowing install (e.g. 'uv tool upgrade openshell'). Installer code uses $OSH regardless."
+  fi
+fi
 
 # --- Configure the gateway env (DRIVERS + DOCKER_HOST) ---------------------
 # The brew formula's wrapper script (openshell-gateway-homebrew-service)

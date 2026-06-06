@@ -9,11 +9,25 @@ set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"   # get_env/set_env for HERMES_LITELLM_KEY
-source "$AI_STACK/installer/lib/openshell.sh"  # openshell_relay_ok / openshell_token_storm
+source "$AI_STACK/installer/lib/openshell.sh"  # openshell_token_storm (expired-token detection)
 
 PHASE=04f
 SANDBOX=hermes-fleet-v1
 SOULS_DIR="$AI_STACK/openshell/fleet-souls"
+
+# Resolve the gateway-matching openshell binary. A bare `openshell` on PATH may be
+# a uv-tool install in ~/.local/bin that SHADOWS the brew binary AND is a different
+# version than the running gateway → execs fail with `phase: Unspecified` /
+# `relay open timed out` on a perfectly healthy sandbox (ROOT CAUSE of the
+# 2026-06-06 04f failure: bare `openshell` resolved to uv v0.0.57 vs gateway
+# v0.0.51). Prefer the brew binary, exactly like Phase 04 / Phase 15 / fleet.sh.
+# Use "$OSH" for EVERY sandbox op below — never bare `openshell`.
+resolve_openshell() {
+  if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
+  elif command -v openshell >/dev/null 2>&1; then command -v openshell
+  else echo ""; fi
+}
+OSH="$(resolve_openshell)"
 # Hermes routes LLM calls through LiteLLM (OpenAI-compatible) via a virtual key,
 # reached from inside the sandbox at host.docker.internal:4000 (allowlisted in
 # hermes-fleet-v1.yaml). Default model is `local` = gemma4:e4b — LIGHT + FAST
@@ -63,7 +77,7 @@ while IFS= read -r _p; do
 done < <(fleet_profiles)
 
 precheck() {
-  command -v openshell >/dev/null || return 1
+  [[ -n "$OSH" ]] || return 1
   [[ -d "$SOULS_DIR" ]] || return 1
   local prof
   while IFS= read -r prof; do
@@ -73,10 +87,11 @@ precheck() {
   # Sandbox existence check: tolerate the case where `openshell sandbox list`
   # exits non-zero (e.g. no gateway registered yet). If the sandbox isn't
   # there, this precheck reports "not done" and the phase tries to run.
-  if openshell sandbox list 2>/dev/null | grep -qxF "$SANDBOX"; then
+  if "$OSH" sandbox list 2>/dev/null | grep -qxF "$SANDBOX"; then
     # Present is not enough — a sandbox with an expired gateway token still lists
-    # but its exec relay is dead. Don't report "done" on a storming sandbox.
-    openshell_relay_ok "$(command -v openshell)" "$SANDBOX" || return 1
+    # but its relay is dead. Detect via the in-container LOG signature (non-invasive)
+    # so we don't report "done" on a storming sandbox.
+    if openshell_token_storm "$SANDBOX"; then return 1; fi
     return 0
   fi
   return 1
@@ -90,7 +105,7 @@ fi
 hdr "Phase 04·F — Hermes fleet"
 
 # Phase 04 must be done — but be friendly about it.
-if ! command -v openshell >/dev/null; then
+if [[ -z "$OSH" ]]; then
   err "openshell not on PATH — run phase 04 first"
   exit 1
 fi
@@ -98,7 +113,7 @@ fi
 # the sandbox name is the first whitespace-delimited field on the row. The
 # previous `grep -qxF "$SANDBOX"` required full-line match and never matched
 # real output (CHANGELOG 2026-05-29).
-if ! openshell sandbox list 2>/dev/null \
+if ! "$OSH" sandbox list 2>/dev/null \
        | sed $'s/\x1b\\[[0-9;]*m//g' \
        | awk -v n="$SANDBOX" 'NR>1 && $1==n {ok=1} END{exit !ok}'; then
   warn "sandbox '$SANDBOX' not present. OpenShell CLI may need manual gateway setup first."
@@ -265,23 +280,18 @@ fi
 # silently misinterpreted: the name slot becomes the command, so we'd see
 # "<name>: command not found" inside the sandbox. CHANGELOG 2026-05-29.
 
-# --- Relay liveness gate (run BEFORE any sandbox exec) -----------------------
+# --- Expired-token gate (run BEFORE any sandbox exec) ------------------------
 # `sandbox list` showed the sandbox above, but Phase=Ready / list-present is
-# CONTROL-PLANE only: a sandbox whose gateway token EXPIRED still lists as present
-# while every exec fails after ~10s with "relay open timed out" (DeadlineExceeded).
-# Probe the data path here — otherwise the first exec below fails and gets
-# MISREPORTED as a pip/PyPI 403 (it isn't). The token can't self-refresh; only
-# recreating the sandbox fixes it, and Phase 04 owns recreation (+ re-applies the
-# network policy). During `install all`, Phase 04 now self-heals this before 04f
-# runs; this gate catches a standalone `install 04f` against a stale sandbox.
-if ! openshell_relay_ok "$(command -v openshell)" "$SANDBOX"; then
-  err "Sandbox '$SANDBOX' is present but its exec relay is DEAD ('relay open timed out')."
-  if openshell_token_storm "$SANDBOX"; then
-    err "Cause: the sandbox's gateway token EXPIRED (ExpiredSignature in container logs)."
-    err "It cannot self-refresh — the sandbox must be RECREATED to mint a fresh token."
-  else
-    err "Cause: the gateway↔sandbox relay is unresponsive (no clear token signature)."
-  fi
+# CONTROL-PLANE only: a sandbox whose gateway token EXPIRED still lists present
+# while every exec fails "relay open timed out". Detect that via the in-container
+# LOG signature (reliable + NON-INVASIVE — an exec probe is fragile under version
+# skew/contention and the old one MISreported this as a pip/PyPI 403). During
+# `install all`, Phase 04 self-heals this before 04f runs; this gate catches a
+# standalone `install 04f` against a token-expired sandbox. (Every exec below uses
+# "$OSH" = the gateway-matching brew binary, so a healthy sandbox won't trip here.)
+if openshell_token_storm "$SANDBOX"; then
+  err "Sandbox '$SANDBOX' is present but its gateway token EXPIRED (ExpiredSignature in container logs)."
+  err "Its exec relay is dead and the token cannot self-refresh — the sandbox must be RECREATED."
   err "Heal (recreates the sandbox WITH its network policy, then re-bootstraps the fleet):"
   err "    bash $AI_STACK/vz-ai-stack.sh install 04 04f"
   err "(This is NOT a PyPI/pip problem — do not pre-stage hermes-agent for this.)"
@@ -300,14 +310,14 @@ fi
 # are not visible in this virtualenv."). Dropping both — they were only
 # needed for system-managed Python installs (PEP 668), which the venv avoids
 # by design.
-if ! openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'command -v hermes >/dev/null && hermes --version' >/dev/null 2>&1; then
+if ! "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'command -v hermes >/dev/null && hermes --version' >/dev/null 2>&1; then
   warn "Hermes not detected inside sandbox. Installing from PyPI..."
   # hermes-agent shipped on PyPI as of v0.14.0 (2026-05-28). Cleaner than
   # `curl scripts/install.sh | bash` which the sandbox proxy 403s.
   # The relay was verified live above, so a failure here is a genuine pip/PyPI
   # problem — but distinguish a relay that died MID-PHASE from a real pip error,
   # so we never print a phantom "PyPI 403" for a token-expiry timeout.
-  if _pip_out="$(openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1)"; then
+  if _pip_out="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1)"; then
     printf '%s\n' "$_pip_out" | tail -10
   else
     printf '%s\n' "$_pip_out" | tail -10
@@ -336,16 +346,16 @@ fi
 # single-file uploads. To eliminate ambiguity, iterate per-file like
 # Phase 15 does. Costs ~7 RPC roundtrips but they're cheap.
 log "Uploading souls + bootstrap into sandbox and running..."
-openshell sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'mkdir -p /sandbox/fleet-souls /sandbox/fleet-boot' 2>&1 | tail -3 || true
+"$OSH" sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'mkdir -p /sandbox/fleet-souls /sandbox/fleet-boot' 2>&1 | tail -3 || true
 for soul_file in "$SOULS_DIR"/*.md; do
   [[ -f "$soul_file" ]] || continue
-  openshell sandbox upload "$SANDBOX" "$soul_file" /sandbox/fleet-souls/ 2>&1 | tail -1 \
+  "$OSH" sandbox upload "$SANDBOX" "$soul_file" /sandbox/fleet-souls/ 2>&1 | tail -1 \
     || { err "sandbox upload soul $soul_file failed"; exit 1; }
 done
-openshell sandbox upload "$SANDBOX" "$BOOT_DIR/bootstrap.sh" /sandbox/fleet-boot/ 2>&1 | tail -3 \
+"$OSH" sandbox upload "$SANDBOX" "$BOOT_DIR/bootstrap.sh" /sandbox/fleet-boot/ 2>&1 | tail -3 \
   || { err "sandbox upload bootstrap failed"; exit 1; }
 # Verify souls actually landed (defense against silent upload misbehavior).
-SOUL_COUNT="$(openshell sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'ls /sandbox/fleet-souls/*.md 2>/dev/null | wc -l' 2>/dev/null | tr -d '[:space:]')"
+SOUL_COUNT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'ls /sandbox/fleet-souls/*.md 2>/dev/null | wc -l' 2>/dev/null | tr -d '[:space:]')"
 # Expect one uploaded soul per DERIVED profile (>=7; the reserved guard keeps the
 # core 7 unremovable so this floor always holds). The universal seeder above
 # guarantees a soul exists on disk for every derived profile before upload.
@@ -362,7 +372,7 @@ if [[ "${SOUL_COUNT:-0}" -lt "$_EXPECT" ]]; then
   exit 1
 fi
 ok "Uploaded $SOUL_COUNT souls + bootstrap"
-openshell sandbox exec -n "$SANDBOX" --workdir /sandbox --no-tty -- bash /sandbox/fleet-boot/bootstrap.sh 2>&1 | tail -20
+"$OSH" sandbox exec -n "$SANDBOX" --workdir /sandbox --no-tty -- bash /sandbox/fleet-boot/bootstrap.sh 2>&1 | tail -20
 
 # --- Mint a LiteLLM virtual key for Hermes (scoped to local models) -------
 # Mirrors Phase 15 (Pi). The key authenticates Hermes → LiteLLM; LiteLLM
@@ -446,10 +456,10 @@ resolve_profile_model() {
 # to re-set). api_key is re-piped via STDIN ONLY (never in argv/log).
 configure_hermes_profile() {
   local pflag="$1" model="$2"
-  openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
+  "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
     "hermes $pflag config set model.default $model >/dev/null; hermes $pflag config set model.provider custom:litellm >/dev/null; hermes $pflag config set providers.litellm.base_url $LITELLM_SANDBOX_URL >/dev/null; hermes $pflag config set providers.litellm.model $model >/dev/null" \
     2>&1 | tail -2 || warn "hermes ${pflag:-(default)} non-secret config returned non-zero"
-  printf '%s' "$HERMES_KEY" | openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
+  printf '%s' "$HERMES_KEY" | "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
     "read -r K; hermes $pflag config set providers.litellm.api_key \"\$K\" >/dev/null" \
     >/dev/null 2>&1 || warn "hermes ${pflag:-(default)} api_key config returned non-zero"
 }
@@ -467,7 +477,7 @@ ok "configured default + ${#PROFILES[@]} profiles"
 # Grep the rendered config.yaml for the provider wiring; never cat it (it holds
 # the key). A failure here is loud-but-non-fatal so a hermes quirk doesn't break
 # the install — doctor check 30 re-verifies.
-VERIFY_OUT="$(openshell sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
+VERIFY_OUT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
   'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; grep -q "provider: custom:litellm" "$f" && grep -q "base_url: http://host.docker.internal:4000" "$f" && echo WIRED || echo MISSING' \
   2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
 if [[ "$VERIFY_OUT" == "WIRED" ]]; then

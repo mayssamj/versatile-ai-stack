@@ -38,35 +38,15 @@ declare -F port_listening >/dev/null 2>&1 || source "$AI_STACK/installer/lib/val
 
 _osh_strip_ansi() { sed $'s/\x1b\\[[0-9;]*m//g'; }
 
-# openshell_relay_ok <osh> <name> [timeout_s] — probe the gateway<->sandbox EXEC
-# relay with a trivial command.
-#
-# WHY: `sandbox list/get` Phase=Ready is CONTROL-PLANE metadata held by the
-# gateway — it never round-trips to the in-sandbox agent. A sandbox whose
-# short-lived gateway token has EXPIRED still reports Ready (and `policy set`
-# still works — also control-plane) while its exec relay is DEAD: every exec then
-# fails after ~10s with `status: DeadlineExceeded, message: "relay open timed
-# out"`. Phase readiness therefore does NOT prove the data path is live; any phase
-# that will `exec` must probe first or it inherits a dead sandbox (observed
-# 2026-06-06: Phase 04 passed a token-expired sandbox to 04f, which detonated on
-# the first exec and misreported it as a PyPI failure).
-#
-# Runs the probe in the background (matching this file's create-watchdog pattern)
-# and reaps it with _osh_kill so a post-Ready CLI hang can't wedge the caller.
-# Returns 0 iff a trivial exec completes (rc 0) within timeout_s.
-openshell_relay_ok() {
-  local osh="$1" name="$2" timeout_s="${3:-15}"
-  "$osh" sandbox exec -n "$name" --no-tty -- /bin/sh -c 'exit 0' >/dev/null 2>&1 &
-  local pid=$! waited=0
-  while (( waited < timeout_s )); do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      if wait "$pid"; then return 0; else return 1; fi
-    fi
-    sleep 1; waited=$((waited+1))
-  done
-  _osh_kill "$pid"
-  return 1
-}
+# NOTE (2026-06-06): an earlier `openshell_relay_ok` (a backgrounded `sandbox
+# exec` probe reaped with _osh_kill) was REMOVED. It was both unreliable and
+# HARMFUL: killing the openshell CLI mid-relay-open left dangling gateway
+# channels and could push a healthy sandbox into `phase: Unspecified`; and a
+# CLI/gateway VERSION SKEW (a PATH `openshell` newer than the running gateway)
+# made the probe read `Unspecified`/time-out on a sandbox that was actually fine.
+# Detect the real failure (expired token) via the LOG signature below instead —
+# it is reliable and NON-INVASIVE — and always drive sandbox exec through
+# osh_bin/resolve_openshell so the CLI matches the gateway it created.
 
 # openshell_token_storm <name> — true (0) iff the sandbox container shows the
 # expired-token signature in its recent logs: the in-sandbox agent's
@@ -79,12 +59,18 @@ openshell_relay_ok() {
 # dead, so a CPU threshold would miss it. Returns 1 if docker / container /
 # signature is absent (caller treats that as "unknown cause", still recreates).
 openshell_token_storm() {
-  local name="$1" docker_bin cid logs
+  local name="$1" docker_bin cid logs to=""
   docker_bin="$(command -v docker 2>/dev/null || true)"
   [[ -n "$docker_bin" ]] || return 1
   cid="$("$docker_bin" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
   [[ -n "$cid" ]] || return 1
-  logs="$("$docker_bin" logs "$cid" --since 3m --tail 80 2>&1 || true)"
+  # Bound the log read: a wedged docker daemon must not hang the installer.
+  # Prefer coreutils timeout/gtimeout; killing a `docker logs` reader is harmless
+  # (unlike killing an openshell exec, which degrades the gateway). Fall back to
+  # plain if neither is present (the watchdog has run this unbounded in prod).
+  if   command -v timeout  >/dev/null 2>&1; then to="timeout 10"
+  elif command -v gtimeout >/dev/null 2>&1; then to="gtimeout 10"; fi
+  logs="$($to "$docker_bin" logs "$cid" --since 3m --tail 200 2>&1 || true)"
   grep -q 'ExpiredSignature' <<<"$logs" && return 0
   grep -q 'RefreshSandboxToken.*Unauthenticated' <<<"$logs" && return 0
   return 1
@@ -184,29 +170,19 @@ openshell_sandbox_ensure() {
 
   phase="$(openshell_sandbox_phase "$osh" "$name")"
   if [[ "$phase" == "Ready" ]]; then
-    # Phase=Ready is CONTROL-PLANE only. Probe the exec relay before trusting it:
-    # a sandbox whose gateway token expired still reports Ready while every exec
-    # times out ("relay open timed out"). Without this probe a storming sandbox
-    # sails through here and detonates in the NEXT phase's exec (Phase 04 -> 04f,
-    # observed 2026-06-06). The token cannot self-refresh, so recreating is the
-    # only fix — and re-running the phase reconstitutes in-sandbox state.
-    if openshell_relay_ok "$osh" "$name"; then
-      ok "sandbox '$name' already Ready (relay verified)"; return 0
-    fi
-    # Relay probe failed. DESTROY only on a CONFIRMED expired-token signature.
-    # Otherwise the sandbox may just be SLOW under host load (M4/24GB swap thrash,
-    # LM Studio/Ollama pinning cores) and a single 15s probe can false-negative —
-    # so retry once with a generous timeout before discarding it. Recreating
-    # DISCARDS the sandbox's /sandbox + /tmp scratch state, so we must not nuke a
-    # healthy-but-slow sandbox on one timed-out probe.
+    # Phase=Ready is CONTROL-PLANE only: a sandbox whose short-lived gateway token
+    # EXPIRED still reports Ready while its exec relay is dead (every exec times
+    # out "relay open timed out"). Detect that via the in-container LOG signature
+    # (reliable + NON-INVASIVE) — NOT an exec probe, which is fragile under
+    # CLI/gateway version skew + contention and can degrade the gateway. The token
+    # can't self-refresh, so recreate to mint a fresh one (re-running the phase
+    # reconstitutes in-sandbox state). On a clean Ready, trust it.
     if openshell_token_storm "$name"; then
-      warn "sandbox '$name' reports Ready but its gateway token EXPIRED (relay dead; ExpiredSignature in container logs) — recreating to mint a fresh token (discards in-sandbox /sandbox + /tmp scratch state)"
-    elif openshell_relay_ok "$osh" "$name" 40; then
-      ok "sandbox '$name' Ready (relay verified on retry — was slow, not dead)"; return 0
+      warn "sandbox '$name' reports Ready but its gateway token EXPIRED (ExpiredSignature in container logs) — recreating to mint a fresh token (discards in-sandbox /sandbox + /tmp scratch state)"
+      openshell_sandbox_delete "$osh" "$name"
     else
-      warn "sandbox '$name' reports Ready but its exec relay is unresponsive after a 40s retry — recreating to recover (discards in-sandbox /sandbox + /tmp scratch state)"
+      ok "sandbox '$name' already Ready"; return 0
     fi
-    openshell_sandbox_delete "$osh" "$name"
   elif [[ -n "$phase" ]]; then
     warn "sandbox '$name' present in Phase=$phase; deleting before recreate"
     openshell_sandbox_delete "$osh" "$name"

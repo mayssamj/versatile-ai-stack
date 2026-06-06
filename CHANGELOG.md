@@ -4,7 +4,34 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
-## 2026-06-06 — fix: OpenShell expired-token relay storm now self-heals on install (`f7dc329`)
+## 2026-06-06 — fix: OpenShell 04f failure — correct the relay self-heal (version skew + log-signature; supersedes earlier same-day attempt)
+
+Re-running the ACTUAL failing command (`install all`, not just the phases individually)
+exposed that the first same-day attempt (`f7dc329`, below) did NOT fix it and was flawed.
+
+**Two real causes** of the 04f `relay open timed out`, both now addressed:
+1. **Expired gateway token** — sandbox reports `Phase: Ready` (control-plane) but the exec
+   relay is dead; can be dead at ~0.2% CPU (CPU detectors miss it). Detected via the
+   in-container LOG signature (`ExpiredSignature`/`RefreshSandboxToken…Unauthenticated`)
+   by `openshell_token_storm` — reliable + NON-INVASIVE. `openshell_sandbox_ensure`
+   recreates a `Ready`-but-storming sandbox; prechecks in 04/04f/15 use the same signal.
+2. **CLI/gateway VERSION SKEW** — phase 04f used bare `openshell`, which a uv-tool install
+   (`~/.local/bin`, v0.0.57) shadows ahead of the brew binary (v0.0.51) that matches the
+   gateway. The mismatched client fails execs with `phase: Unspecified` on a HEALTHY
+   sandbox. Fix: 04f resolves `$OSH` (brew binary, like 04/15/fleet) for EVERY sandbox op;
+   Phase 04 emits a VERSION SKEW warning when the PATH default disagrees.
+
+**REMOVED** the `f7dc329` approach: a backgrounded `sandbox exec` probe (`openshell_relay_ok`)
+that was unreliable (job-control reap races) AND harmful (killing the CLI mid-relay-open
+degraded the gateway into `phase: Unspecified`) and didn't address the skew at all.
+
+Verified end-to-end: `install all` now passes phase 04f (stops only at the pre-existing,
+unrelated phase-20 `HERMES_TELEGRAM_BOT_TOKEN` gap); a forced clean `install 04f` bootstraps
+all 9 profiles; healthy `Ready` sandbox is NOT falsely recreated; doctor 30/43 green. 2
+adversarial reviews + debate. Tracked follow-ups: centralize the ~10 duplicated
+`resolve_openshell` defs into `lib/openshell.sh`; add a doctor check for version skew.
+
+## 2026-06-06 — fix: OpenShell expired-token relay storm now self-heals on install (`f7dc329`) — SUPERSEDED (see entry above)
 
 `install all` died at **phase 04f** with `× status: DeadlineExceeded, message: "relay open timed out"`,
 which the script MISreported as a `pip install hermes-agent` / PyPI 403 failure.
