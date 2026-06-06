@@ -207,6 +207,7 @@
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
+    MP["mempalace (CLI, opt-in)"]
   end
 
   subgraph Docs[Documents]
@@ -246,6 +247,9 @@
   DC --> LI
   LI --> Docs
 
+  CLI --> MP
+  MP -.optional refiner.-> LL
+
   Agents -.optional.-> LG</div>
   </div>
 </div>
@@ -261,6 +265,12 @@
 <li>Honcho and Qdrant are the long-term state. Everything else is</li>
 </ul>
 <p>  ephemeral.</p>
+<ul>
+<li>MemPalace (Phase 26, opt-in) is <strong>CLI-only</strong> verbatim conversation</li>
+</ul>
+<p>  memory: its embeddings are computed <strong>on-device</strong> (local ONNX), so it</p>
+<p>  touches LiteLLM <em>only</em> for the optional refiner LLM — and not at all</p>
+<p>  otherwise.</p>
 
 <hr>
 <section id="sec-2-2-layer-boundary-diagram"><h2>2. Layer / boundary diagram</h2>
@@ -304,6 +314,7 @@
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
+    MP["mempalace (CLI, opt-in)"]
   end
 
   subgraph L5[Document layer]
@@ -825,6 +836,7 @@ sequenceDiagram
     HF["Hermes profiles (sandbox)"]
     Traces["traces/*.jsonl"]
     Docs["ingestor/*"]
+    MP["mempalace (CLI, on-device embeddings)"]
   end
 
   subgraph Cloud[Optional — leaves your machine]
@@ -872,6 +884,13 @@ sequenceDiagram
 <p>  run via LiteLLM, so if Honcho calls a cloud model, the message</p>
 <p>  content is sent to that model — but the derived facts stay in your</p>
 <p>  Postgres.</p>
+<ul>
+<li><strong>MemPalace</strong> (Phase 26, opt-in) verbatim conversation memory is</li>
+</ul>
+<p>  local-by-design: its embeddings are computed <strong>on-device</strong> (local</p>
+<p>  ONNX), and its store (local ChromaDB) never leaves the machine. The</p>
+<p>  only thing that can leave is the <em>optional</em> refiner LLM — and only via</p>
+<p>  LiteLLM, only if you enable it and point it at a cloud model.</p>
 <ul>
 <li><strong>Traces</strong> are written to <code>traces/</code> on disk and into Phoenix&#x27;s local</li>
 </ul>

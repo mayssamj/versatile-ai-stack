@@ -20,7 +20,7 @@ Then the four you'll use daily:
 
 ```bash
 stack status        # declared vs actual — what's enabled, what's running, what drifted
-stack doctor        # 44 health checks + per-check auto-fix offers (your first move when something's off)
+stack doctor        # 45 health checks + per-check auto-fix offers (your first move when something's off)
 stack phases        # list every phase as  id → name
 stack logs <svc>    # docker logs wrapper, e.g.  stack logs litellm -f
 stack model list    # which LLM each agent is bound to (models.yml) — assign/sync/superset too

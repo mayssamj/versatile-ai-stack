@@ -292,10 +292,10 @@
 
 <section id="overview" class="hero">
   <h1>Your AI stack, made operational.</h1>
-  <p>39 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>vz-ai-stack.sh</code> done to a working multi-service workflow.</p>
+  <p>40 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>vz-ai-stack.sh</code> done to a working multi-service workflow.</p>
   <div class="stat-row">
-    <div class="stat"><span class="n">39</span><span class="l">Services</span></div>
-    <div class="stat"><span class="n">40</span><span class="l">Doctor checks</span></div>
+    <div class="stat"><span class="n">40</span><span class="l">Services</span></div>
+    <div class="stat"><span class="n">45</span><span class="l">Doctor checks</span></div>
     <div class="stat"><span class="n">12</span><span class="l">Recipes</span></div>
     <div class="stat"><span class="n">4</span><span class="l">Profiles</span></div>
     <div class="stat"><span class="n">~25</span><span class="l">Model routes</span></div>
@@ -309,7 +309,7 @@
     <div class="step">
       <span class="n">Step 1</span>
       <h3>Confirm health</h3>
-      <p>Run doctor. Target: 43/43 ✓.</p>
+      <p>Run doctor. Target: 45/45 ✓.</p>
       <a class="link" href="#cheatsheet">Cheatsheet →</a>
     </div>
     <div class="step">
@@ -535,6 +535,20 @@ const services = [
      {desc:'Search a peer\'s memory.', cmd:'curl -s "http://honcho:8000/v3/workspaces/default/peers/my-experiment/search?query=build" | jq'}
    ],
    combine:['autofyn','paperclip','pi','hermes_fleet']},
+
+  {id:'mempalace', layer:'memory', layerLabel:'Memory', name:'mempalace', port:'(CLI + MCP)', phase:'26 (opt-in)', tagline:'Local-first verbatim conversation memory',
+   what:'Local-first VERBATIM conversation memory for Claude Code sessions — it remembers prior sessions word-for-word (not LLM-summarized like Honcho) and lets a new session "wake up" with that context. Spatial model: people/projects are wings, topics are rooms, content lives in drawers, over a temporal SQLite knowledge graph. Ships as a CLI + an MCP server (29 tools) + a Python lib (PyPI `mempalace`, MIT). No daemon, no port. Embeddings run LOCAL on-device via ONNX/CoreML (M4 Neural Engine) — default `all-MiniLM-L6-v2`, 384-dim; `embeddinggemma` multilingual is opt-in. There are NO cloud embeddings and they do NOT go through LiteLLM. Storage is local on-device ChromaDB (a Qdrant backend adapter is staged at mempalace/backend-qdrant/ but not live — MemPalace 3.3.5 hardcodes ChromaBackend). Opt-in Phase 26 — NOT part of `install all`; add it by name with `vz-ai-stack.sh install mempalace`. Install is PyPI-ONLY (the mempalace.tech domain is a malware squat — never install from it).',
+   when:'When you want Claude Code (or any session) to recall what you actually said and did in prior sessions, verbatim — debugging context, decisions, the exact commands you ran. Reach for Honcho instead when you want derived/summarized cross-agent facts; MemPalace is the verbatim-transcript complement. (Honcho = derived facts, Qdrant = doc RAG, Lumen = code search, MemPalace = verbatim session recall.)',
+   tryThis:[
+     {desc:'Install the opt-in phase once (NOT in `install all`). First run downloads the ~80MB on-device embedding model — retry if it times out.', cmd:'bash ~/ai-stack/vz-ai-stack.sh install mempalace'},
+     {desc:'Prime a fresh session with prior context.', cmd:'bash ~/ai-stack/bin/mempalace wake-up'},
+     {desc:'Search your verbatim memory.', cmd:'bash ~/ai-stack/bin/mempalace search "why did we switch off qdrant-client"'},
+     {desc:'Backfill from existing transcripts (large/slow — extracts general memories).', cmd:'bash ~/ai-stack/bin/mempalace mine ~/.claude/projects --mode convos --extract general'},
+     {desc:'Status (palace contents, model, backend).', cmd:'bash ~/ai-stack/bin/mempalace status'},
+     {desc:'(Opt-in) auto-save hooks — reversible, backup-first. Disable live with MEMPALACE_HOOKS_AUTO_SAVE=false.', cmd:'bash ~/ai-stack/bin/mempalace-hooks install --apply'}
+   ],
+   warn:'Optional only: the entity-refiner LLM (when MEMPALACE_LITELLM_KEY is set) routes through LiteLLM → Phoenix. Embeddings are on-device and do NOT trace. Doctor check 44 verifies the install (green-skip when not installed).',
+   combine:['honcho','litellm']},
 
   // Agent runtime
   {id:'openshell', layer:'agent', layerLabel:'Agent runtime', name:'openshell', port:'(brew + CLI)', phase:'04', tagline:'Linux sandbox platform',
@@ -936,7 +950,7 @@ const recipes = [
 // ============ Data: cheatsheet ============
 const cheatsheet = [
   {section:'Health + state', items:[
-    {cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'43 health checks + auto-fix offers'},
+    {cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'45 health checks + auto-fix offers'},
     {cmd:'bash ~/ai-stack/vz-ai-stack.sh status', desc:'declared vs actual table'},
     {cmd:'bash ~/ai-stack/vz-ai-stack.sh verify', desc:'phase 00·V pre-install runtime probes'},
     {cmd:'OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor', desc:'+9 negative network probes for pi-v1'}

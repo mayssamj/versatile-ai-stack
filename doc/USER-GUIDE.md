@@ -2068,7 +2068,7 @@ Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shor
 
 ```bash
 # Health + state
-bash ~/ai-stack/vz-ai-stack.sh doctor                 # 44 health checks + auto-fix offers
+bash ~/ai-stack/vz-ai-stack.sh doctor                 # 45 health checks + auto-fix offers
 bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
 bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
 
