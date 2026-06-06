@@ -105,6 +105,7 @@ source "$LIB/prompt.sh"
 source "$LIB/litellm.sh"
 source "$LIB/bootstrap.sh"
 source "$LIB/deps.sh"
+source "$LIB/setup.sh"
 
 # --- error trap (Reviewer B #2) ---------------------------------------------
 trap 'err "ERR line $LINENO: $BASH_COMMAND (exit=$?)"' ERR
@@ -141,9 +142,10 @@ usage() {
   cat <<'EOF'
 ai-stack-installer — usage:
 
-  Two-step bootstrap (recommended):
+  First-run bootstrap (recommended):
     sudo bash vz-ai-stack.sh prepare-sudo   one-time host-system setup (sudo)
-    bash vz-ai-stack.sh                     full install (no sudo)
+    bash vz-ai-stack.sh setup               (optional) enter API keys — all skippable; local + Claude-sub need none
+    bash vz-ai-stack.sh                     full install (no sudo; offers setup on first run)
 
   All subcommands:
     vz-ai-stack.sh                          interactive top-to-bottom install
@@ -156,6 +158,8 @@ ai-stack-installer — usage:
     vz-ai-stack.sh test <phase>             run smoke tests for one phase (id or name)
     vz-ai-stack.sh deps [--check]           show the host dependency map; install/start
                                           what's missing (--check = read-only, CI exit code)
+    vz-ai-stack.sh setup                    interactive .env / API-key bootstrap (alias: keys);
+                                          all keys optional + skippable; local + Claude-sub need none
     vz-ai-stack.sh status                   tabular service status
     vz-ai-stack.sh help <service>           what it is · how it's configured · how to use
     vz-ai-stack.sh help services            list services that have help prose
@@ -340,6 +344,10 @@ cmd_install() {
   lock_acquire
 
   if [[ "$target" == "all" ]]; then
+    # First-run, TTY-only, skippable offer to set optional API keys before the
+    # phases run (so a phase that registers cloud models sees them). No-op under
+    # NO_PROMPT / --yes / non-TTY, once a cloud key is set, or once already offered.
+    setup_maybe_offer
     # Run in order; stop at first failure (with a clear resume hint).
     # 00v runs AFTER 00n so the network is up before we probe it; AFTER 00s
     # so docker is reachable; and BEFORE 01 so we catch routing failures
@@ -512,6 +520,19 @@ _list_startable_services() {
     | sort -u | sed 's/^/  - /'
 }
 
+# cmd_setup — interactive .env / API-key bootstrap. Ensures the non-interactive
+# baseline (so local-only / Claude-subscription works with no keys), then offers
+# each optional external secret (cloud LLM keys, GitHub, Blaxel, Telegram) — all
+# skippable, written 0600, never echoed. Logic lives in installer/lib/setup.sh.
+# Non-interactive (NO_PROMPT / no TTY) ensures the baseline and skips prompts.
+cmd_setup() {
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    err "Do not run 'vz-ai-stack.sh setup' under sudo. Run as your normal user."
+    exit 2
+  fi
+  setup_run "$@"
+}
+
 # cmd_deps — show the host dependency map with live status, and (by default)
 # install/start anything missing. `--check` is read-only (CI-friendly; non-zero
 # exit if anything is missing/down). Logic lives in installer/lib/deps.sh.
@@ -630,6 +651,7 @@ main() {
     fleet)             cmd_fleet "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
     deps)              cmd_deps "$@" ;;
+    setup|keys)        cmd_setup "$@" ;;
     verify)            cmd_verify ;;
     adopt)             cmd_adopt "$1" ;;
     apply-restarts)    cmd_apply_restarts ;;

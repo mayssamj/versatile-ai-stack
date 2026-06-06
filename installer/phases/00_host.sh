@@ -67,63 +67,14 @@ ensure_orbstack   || { err "OrbStack/Docker could not be ensured (see above)"; e
 log "Ensuring directory tree..."
 mkdir -p "$AI_STACK"/{bin,litellm,data/phoenix,data/falkor,data/qdrant,data/honcho,data/openwebui,traces,ingestor/inbox,ingestor/processed,guardrails,openshell/policies,tools,hermes-workspace,ingestor,autofyn,deer-flow,halo,installer/state,CHANGELOG.d}
 
-# --- .env starter ---
-ensure_env_file
-chmod 600 "$AI_STACK/.env"
-
-declare -A DEFAULTS=(
-  [ANTHROPIC_API_KEY]=""
-  [OPENAI_API_KEY]=""
-  [OPENROUTER_API_KEY]=""
-  [GOOGLE_API_KEY]=""
-  [PHOENIX_COLLECTOR_HTTP_ENDPOINT]="http://phoenix:6006/v1/traces"
-  [PHOENIX_PROJECT_NAME]="ai-stack"
-  [PHOENIX_API_KEY]=""
-  [PHOENIX_SECRET]=""
-  [BLAXEL_API_KEY]=""
-  [BLAXEL_WORKSPACE]=""
-  [GITHUB_TOKEN]=""
-  [HONCHO_API_KEY]=""
-  [HONCHO_BASE_URL]="http://honcho:8000"
-  [LITELLM_BASE_URL]="http://litellm:4000"
-  [QDRANT_URL]="http://qdrant:6333"
-  [PHOENIX_BASE_URL]="http://phoenix:6006"
-  [LITELLM_MASTER_KEY]=""
-)
-for key in "${!DEFAULTS[@]}"; do
-  current="$(get_env "$key" "")"
-  if [[ -z "$current" ]]; then
-    if [[ -n "${DEFAULTS[$key]}" ]]; then
-      set_env "$key" "${DEFAULTS[$key]}"
-    fi
-    continue
-  fi
-  # Safety Reviewer 1 F1/F2: migrate stale pre-refactor values that point
-  # at host.docker.internal. The post-refactor design uses Docker DNS names
-  # (e.g., http://phoenix:6006/v1/traces) and breaks if a stale value is
-  # left in place from an older install. If the current value mentions
-  # host.docker.internal but the new default doesn't, migrate.
-  if [[ -n "${DEFAULTS[$key]}" \
-        && "$current" == *host.docker.internal* \
-        && "${DEFAULTS[$key]}" != *host.docker.internal* ]]; then
-    warn "$key contains stale 'host.docker.internal' — migrating to '${DEFAULTS[$key]}'"
-    set_env "$key" "${DEFAULTS[$key]}"
-    queue_restart litellm   # affected consumers need to re-read
-  fi
-done
-unset current
-
-# Auto-generate LITELLM_MASTER_KEY once (so re-runs don't churn it).
-if [[ -z "$(get_env LITELLM_MASTER_KEY "")" ]]; then
-  set_env LITELLM_MASTER_KEY "sk-local-$(openssl rand -hex 16)"
-  warn "Generated LITELLM_MASTER_KEY"
-fi
-
-# Auto-generate PHOENIX_SECRET if empty.
-if [[ -z "$(get_env PHOENIX_SECRET "")" ]]; then
-  set_env PHOENIX_SECRET "$(openssl rand -hex 32)"
-  warn "Generated PHOENIX_SECRET (JWT signing key — NOT login password)"
-fi
+# --- .env baseline ---
+# Single source of truth lives in installer/lib/env.sh::env_ensure_baseline
+# (shared with `vz-ai-stack.sh setup`): ensures the file @ 0600, sets non-secret
+# service-URL defaults, migrates stale host.docker.internal values (queues a
+# litellm restart via queue_restart, loaded in this phase), and auto-generates
+# LITELLM_MASTER_KEY + PHOENIX_SECRET. Cloud API keys are intentionally left
+# empty here and offered interactively by `setup`.
+env_ensure_baseline
 
 # --- host.docker.internal probe ---
 log "Probing host.docker.internal from inside a container..."

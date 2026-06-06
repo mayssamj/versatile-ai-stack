@@ -187,13 +187,23 @@ cd ~/ai-stack
 #    Idempotent — safe to re-run.
 sudo bash vz-ai-stack.sh prepare-sudo
 
-# 2. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
-#    Installs all 27 core phases top-to-bottom; resumes if interrupted.
+# 2. (Optional) Enter API keys interactively. EVERY key is skippable — a
+#    local-only or Claude-subscription (-sub, incl. opus) setup needs NONE of
+#    them: local gemma + the subscription models work on the generated baseline.
+#    (Skip this and `install all` will offer it on first run anyway.)
+bash vz-ai-stack.sh setup
+
+# 3. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
+#    Installs all core phases top-to-bottom; resumes if interrupted.
 bash vz-ai-stack.sh install all
 
-# 3. Verify everything is healthy. Expect 45/45.
+# 4. Verify everything is healthy. Expect 45/45.
 bash vz-ai-stack.sh doctor
 ```
+
+> No cloud keys? You're done after step 1 — `setup` (or the first-run offer) just
+> generates the local secrets and you proceed. Cloud providers, GitHub, Blaxel and
+> the Telegram bot are all opt-in and can be added later by re-running `setup`.
 
 > Tip: a cheap `bash vz-ai-stack.sh verify` (< 10 sec) probes the alias chain end-to-end
 > and is worth running *before* the full install.

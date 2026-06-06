@@ -133,6 +133,72 @@ load_env_strict() {
   return $bad
 }
 
+# env_ensure_baseline — make .env install/doctor-ready WITHOUT any prompting.
+#
+# Idempotent, non-interactive. Single source of truth for the ".env baseline"
+# shared by Phase 00 (00_host.sh) and the interactive `vz-ai-stack.sh setup`:
+#   1. Ensure the file exists @ 0600.
+#   2. Set non-secret DEFAULTS (service URLs, project name) only when empty.
+#   3. Migrate stale `host.docker.internal` URL values to Docker-DNS names
+#      (queues a litellm restart IF the restart-queue lib is loaded).
+#   4. Auto-generate LITELLM_MASTER_KEY + PHOENIX_SECRET once (re-runs don't churn).
+# Cloud API keys are intentionally LEFT EMPTY here — they are optional and are
+# offered interactively by `setup`. A local-only / Claude-subscription user
+# needs nothing beyond this baseline to reach `doctor`.
+env_ensure_baseline() {
+  ensure_env_file
+  chmod 600 "$ENV_FILE" 2>/dev/null || true
+
+  # Non-secret defaults (value = "" means "leave empty unless the user fills it").
+  local -A _DEFAULTS=(
+    [ANTHROPIC_API_KEY]=""
+    [OPENAI_API_KEY]=""
+    [OPENROUTER_API_KEY]=""
+    [GOOGLE_API_KEY]=""
+    [PHOENIX_COLLECTOR_HTTP_ENDPOINT]="http://phoenix:6006/v1/traces"
+    [PHOENIX_PROJECT_NAME]="ai-stack"
+    [PHOENIX_API_KEY]=""
+    [PHOENIX_SECRET]=""
+    [BLAXEL_API_KEY]=""
+    [BLAXEL_WORKSPACE]=""
+    [GITHUB_TOKEN]=""
+    [HONCHO_API_KEY]=""
+    [HONCHO_BASE_URL]="http://honcho:8000"
+    [LITELLM_BASE_URL]="http://litellm:4000"
+    [QDRANT_URL]="http://qdrant:6333"
+    [PHOENIX_BASE_URL]="http://phoenix:6006"
+    [LITELLM_MASTER_KEY]=""
+  )
+  local key current
+  for key in "${!_DEFAULTS[@]}"; do
+    current="$(get_env "$key" "")"
+    if [[ -z "$current" ]]; then
+      [[ -n "${_DEFAULTS[$key]}" ]] && set_env "$key" "${_DEFAULTS[$key]}"
+      continue
+    fi
+    # Migrate stale pre-refactor values that point at host.docker.internal to
+    # the Docker-DNS default. Only when a non-host.docker.internal default exists.
+    if [[ -n "${_DEFAULTS[$key]}" \
+          && "$current" == *host.docker.internal* \
+          && "${_DEFAULTS[$key]}" != *host.docker.internal* ]]; then
+      warn "$key contains stale 'host.docker.internal' — migrating to '${_DEFAULTS[$key]}'"
+      set_env "$key" "${_DEFAULTS[$key]}"
+      declare -F queue_restart >/dev/null 2>&1 && queue_restart litellm || true
+    fi
+  done
+
+  # Auto-generate the local master key once (so re-runs don't churn it).
+  if [[ -z "$(get_env LITELLM_MASTER_KEY "")" ]]; then
+    set_env LITELLM_MASTER_KEY "sk-local-$(openssl rand -hex 16)"
+    warn "Generated LITELLM_MASTER_KEY"
+  fi
+  # Auto-generate PHOENIX_SECRET (JWT signing key — NOT the login password).
+  if [[ -z "$(get_env PHOENIX_SECRET "")" ]]; then
+    set_env PHOENIX_SECRET "$(openssl rand -hex 32)"
+    warn "Generated PHOENIX_SECRET (JWT signing key — NOT login password)"
+  fi
+}
+
 # fix_crlf — strip CR from every line. Used by doctor.
 fix_crlf() {
   ensure_env_file
