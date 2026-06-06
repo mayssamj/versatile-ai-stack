@@ -65,3 +65,13 @@ only when a key is missing.
   automation).
 - The privileged host step (`/etc/hosts` + `lo0` aliases) is separate:
   `sudo bash vz-ai-stack.sh prepare-sudo` (see [INSTALL.md](INSTALL.md)).
+- **Secrets/`.env` are a separate, optional step** — `deps` bootstraps host *tooling*;
+  it does **not** touch `.env`. To seed `.env` + (optionally) enter API keys, run
+  `vz-ai-stack.sh setup` (alias `keys`). It always ensures the non-interactive baseline
+  (generated `LITELLM_MASTER_KEY` + `PHOENIX_SECRET`, service-URL defaults), then offers
+  each optional external secret — every prompt skippable. A local-only / Claude-subscription
+  (`-sub`) setup needs **zero** keys. See [OPERATIONS.md § Bootstrap helpers](OPERATIONS.md#bootstrap-helpers-deps-setup---dry-run-per-command-help).
+
+The canonical first-run order is **`deps` → `setup` → `prepare-sudo` → `install all`
+→ `doctor`** (`deps` + `setup` are optional-but-recommended; both run as your normal
+user — only `prepare-sudo` needs `sudo`).

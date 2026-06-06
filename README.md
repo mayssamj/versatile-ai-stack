@@ -181,29 +181,38 @@ Run these in order, from the repo:
 # 0. Go into the repo
 cd ~/ai-stack
 
-# 1. The ONE sudo step (first time only).
+# 1. (Optional, recommended) Bootstrap host dependencies — runs as your normal
+#    user, NO sudo. Verifies + installs + starts + re-verifies Homebrew, the core
+#    CLI tools (yq jq node pnpm uv git tesseract openssl), OrbStack, and Ollama.
+#    `deps --check` is a read-only CI gate. (Folded into install too, so skippable.)
+bash vz-ai-stack.sh deps
+
+# 2. (Optional, recommended) Enter API keys interactively — runs as your normal
+#    user. EVERY key is skippable — a local-only or Claude-subscription (-sub, incl.
+#    opus) setup needs NONE of them: local gemma + the subscription models work on
+#    the generated baseline. (Skip this and `install all` offers it on first run.)
+bash vz-ai-stack.sh setup
+
+# 3. The ONE sudo step (first time only).
 #    Writes the /etc/hosts block, binds the 127.0.10.x loopback aliases to lo0,
 #    installs a launchd plist so they persist across reboots, and flushes DNS.
 #    Idempotent — safe to re-run.
 sudo bash vz-ai-stack.sh prepare-sudo
 
-# 2. (Optional) Enter API keys interactively. EVERY key is skippable — a
-#    local-only or Claude-subscription (-sub, incl. opus) setup needs NONE of
-#    them: local gemma + the subscription models work on the generated baseline.
-#    (Skip this and `install all` will offer it on first run anyway.)
-bash vz-ai-stack.sh setup
-
-# 3. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
+# 4. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
 #    Installs all core phases top-to-bottom; resumes if interrupted.
+#    Preview first with `install all --dry-run` (alias --plan) — read-only, changes nothing.
 bash vz-ai-stack.sh install all
 
-# 4. Verify everything is healthy. Expect 45/45.
+# 5. Verify everything is healthy. Expect 45/45.
 bash vz-ai-stack.sh doctor
 ```
 
-> No cloud keys? You're done after step 1 — `setup` (or the first-run offer) just
-> generates the local secrets and you proceed. Cloud providers, GitHub, Blaxel and
-> the Telegram bot are all opt-in and can be added later by re-running `setup`.
+> No cloud keys? You're done — `setup` (or the first-run offer) just generates the
+> local secrets and you proceed. Cloud providers, GitHub, Blaxel and the Telegram
+> bot are all opt-in and can be added later by re-running `setup`. Steps 1–2 (`deps`
+> and `setup`) are optional-but-recommended and both run as your normal user; only
+> `prepare-sudo` needs `sudo`.
 
 > Tip: a cheap `bash vz-ai-stack.sh verify` (< 10 sec) probes the alias chain end-to-end
 > and is worth running *before* the full install.
@@ -429,9 +438,18 @@ Beyond the [quickstart happy path](#novice-quickstart--install), the daily-drive
 subcommands are:
 
 ```bash
+# Bootstrap host deps / .env before installing (both no-sudo; see quickstart)
+bash ~/ai-stack/vz-ai-stack.sh deps [--check]      # host-dependency bootstrap / CI gate
+bash ~/ai-stack/vz-ai-stack.sh setup               # interactive .env / API-key bootstrap (alias: keys)
+
 # Install/re-run one phase by NAME or number (run `phases` to list id→name)
 bash ~/ai-stack/vz-ai-stack.sh install phoenix     # == install 01h
+bash ~/ai-stack/vz-ai-stack.sh install all --dry-run  # read-only preview (alias --plan)
 bash ~/ai-stack/vz-ai-stack.sh phases
+
+# Focused per-command help (bare `help` / `--help` = full command list)
+bash ~/ai-stack/vz-ai-stack.sh install --help      # == help install
+bash ~/ai-stack/vz-ai-stack.sh help <service>      # per-service: what / config / usage
 
 # See declared vs actual state
 bash ~/ai-stack/vz-ai-stack.sh status
@@ -508,7 +526,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 40
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 45
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
   for less common issues (incl. the OpenShell CPU-storm watchdog and the OrbStack CPU cap).
 
@@ -582,12 +600,13 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
-- **27 core install phases (+6 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · mempalace) · 40 services · 44 doctor checks.**
+- **28 core install phases (+6 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · mempalace) · 40 services · 45 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
-  the 6 opt-in extras' checks (34–38, 44) pass-as-skip when not installed, and check 39
-  (`openshell_storm`) reports the watchdog status.
+  the 6 opt-in extras' checks (34–38, 44) pass-as-skip when not installed, check 39
+  (`openshell_storm`) reports the watchdog status, and check 45 (`tutorial`, always-on)
+  asserts `doc/TUTORIAL.html` is self-contained and in sync with its markdown source.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
   of truth) and rendered by `vz-ai-stack.sh model {list,assign,sync,superset}`. Three local
   models: `local-gemma4` (Ollama gemma4:e4b — the default for any unassigned agent),

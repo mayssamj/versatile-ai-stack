@@ -172,6 +172,11 @@ These appear in `services.yml` but have no alias because they have no listener:
 | `mempalace`                   | cli-only         | on-device (CoreML embeddings + ChromaDB); opt-in Phase 26; `bin/mempalace` + `bin/mempalace-hooks`; optional refiner via `MEMPALACE_LITELLM_KEY` |
 | `deerflow` (`${PORT:-2026}`)  | docker-compose   | upstream default; not yet aliased             |
 
+> **`setup` / `deps` are CLI subcommands, not services.** `vz-ai-stack.sh setup`
+> (`installer/lib/setup.sh`, interactive `.env`/API-key bootstrap) and
+> `vz-ai-stack.sh deps` (`installer/lib/deps.sh`, host-dependency bootstrap) listen
+> on nothing and have no alias — they run, mutate `.env` / the host, and exit.
+
 **Container-internal ports that are NOT published to host** (live in the docker network only):
 - `honcho-redis-1` → `6379/tcp` (intentionally unpublished; FalkorDB owns `127.0.10.7:6379`)
 - `honcho-deriver-1` → `8000/tcp` (worker, no API surface)
@@ -350,7 +355,7 @@ Phase 15 needed `host.docker.internal:4000` to reach LiteLLM from inside the `pi
 
 ### LiteLLM Postgres backend (Phase 15 prerequisite)
 
-Phase 15 needs `/key/generate` to mint `PI_LITELLM_KEY`, which requires LiteLLM to have a database. LiteLLM's Prisma schema is hardcoded to `postgresql://` (SQLite is not supported). Rather than spin up a dedicated Postgres container, `bin/start-litellm.sh` points at Honcho's existing `honcho-database-1:5432` via `host.docker.internal:5432` and uses a sibling database named `litellm`. Phase 15 creates that database the first time it runs (`CREATE DATABASE litellm` via `docker exec honcho-database-1 psql -U postgres`). Coupling tradeoff: Honcho compose lifecycle now affects LiteLLM's key store — bringing Honcho down kicks LiteLLM's Prisma connection until it reconnects.
+Phase 15 needs `/key/generate` to mint `PI_LITELLM_KEY`, which requires LiteLLM to have a database. LiteLLM's Prisma schema is hardcoded to `postgresql://` (SQLite is not supported). Rather than spin up a dedicated Postgres container, `bin/start-litellm.sh` points at Honcho's existing `honcho-database-1:5432` via `host.docker.internal:5432` and uses a sibling database named `litellm`. `bin/start-litellm.sh` now **ensures the `litellm` DATABASE itself exists** on every start (a reachable Postgres server on `:5432` ≠ the `litellm` db being present — nothing else creates it), running `CREATE DATABASE litellm` via `docker exec <pg> psql -U postgres` if missing; this self-heals a cold/second machine where the server is up but the db was never created. `installer/lib/litellm.sh` adds `litellm_smoke_ok` (is `/v1/models` serving?) and `litellm_diagnose` (a secret-free, actionable diagnostic — e.g. the exact `CREATE DATABASE litellm` + `start-litellm.sh --recreate` fix) [89778b9, ad01a9f]. Coupling tradeoff: Honcho compose lifecycle now affects LiteLLM's key store — bringing Honcho down kicks LiteLLM's Prisma connection until it reconnects.
 
 ### `unsloth` (python-bg)
 

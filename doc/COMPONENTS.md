@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **27 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **44 doctor checks**.
+- **28 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **45 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -50,7 +50,7 @@ FalkorDB, LFM2, etc.).
 |---|---|---|
 | **Open WebUI** | Chat UI in front of LiteLLM | `http://openwebui:8080` |
 | **Hermes Workspace** | Chat workspace UI — *community project (`outsourc-e`), built on Nous Research's `hermes-agent`; not a Nous product* | `http://workspace:3000` |
-| **claw3d** | 3D agent "office" — visualizes + chats with your sandboxed agents (Hermes ×7, Pi, DeerFlow) via the stack-agents bridge. Each agent's model is declared per-agent in `models.yml` (default `local-gemma4`) | `http://claw3d:4310` (alias) or `http://localhost:4310` |
+| **claw3d** | 3D agent "office" — visualizes + chats with your sandboxed agents (Hermes ×9, Pi, DeerFlow) via the stack-agents bridge. Each agent's model is declared per-agent in `models.yml` (default `local-gemma4`) | `http://claw3d:4310` (alias) or `http://localhost:4310` |
 | **claw3d bridge** | Host daemon implementing claw3d's custom runtime; routes chat authentically to each agent (`claw3d-bridge/bridge.py`). Intentionally **`127.0.0.1`-only** (auth-less, drives all 9 agents → loopback by design) | `http://127.0.0.1:7780` (internal) |
 | **Hermes Telegram gateway** | Native hermes gateway (runs inside `hermes-fleet-v1`); DM the bot to reach the fleet from your phone. Secure-by-default (allowlist required) | `@vz_hermes_controller_bot` on Telegram |
 
@@ -78,7 +78,7 @@ FalkorDB, LFM2, etc.).
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
 ## Opt-in experimental extras (Phases 21–26 — NOT in `install all`)
-Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 44 pass-as-skip when not installed.
+Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 44 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
 | Component | What it is | Install |
 |---|---|---|
 | **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `vz-ai-stack.sh install portless` |
@@ -97,7 +97,11 @@ Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34�
 ---
 
 ## The `stack` CLI (`bin/stack` = `vz-ai-stack.sh`)
-`install [phase\|all]` · `reset --confirm soft\|hard\|nuke [--yes]` · `verify` · `status` ·
+`install [phase\|all] [--dry-run]` · `deps [--check]` · `setup` (alias `keys`) ·
+`reset --confirm soft\|hard\|nuke [--yes]` · `verify` · `status` ·
 `doctor [filter]` · `start/stop <svc>` · `adopt <svc>` · `apply-restarts` · `logs <svc>` ·
-`prepare-sudo`. Per-service launchers live in `bin/start-<svc>.sh`; daily-driver wrappers
-are `bin/{pi,ace,rlm,halo,lumen,mempalace}` (mempalace is opt-in — Phase 26).
+`prepare-sudo`. `deps` (`installer/lib/deps.sh`) bootstraps + verifies host dependencies;
+`setup` (`installer/lib/setup.sh`) is the interactive, skippable `.env` / API-key bootstrap
+(both layer over `env.sh::env_ensure_baseline`, the single source of truth for the `.env`
+baseline shared with Phase 00). Per-service launchers live in `bin/start-<svc>.sh`;
+daily-driver wrappers are `bin/{pi,ace,rlm,halo,lumen,mempalace}` (mempalace is opt-in — Phase 26).

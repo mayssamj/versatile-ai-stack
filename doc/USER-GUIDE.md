@@ -42,6 +42,22 @@ source ~/ai-stack/.env
 
 If `doctor` reports anything failed and the auto-fix prompt won't fix it, jump to §6 (Triage).
 
+### Missing an API key? `setup` (alias `keys`)
+
+`vz-ai-stack.sh setup` is the interactive `.env` / API-key bootstrap. It first ensures
+the non-interactive baseline secrets (so a **local-only / Claude-subscription** user
+needs ZERO keys and can skip every prompt), then offers each optional external secret —
+cloud-LLM keys (Anthropic/OpenAI/OpenRouter/Google), Helicone, GitHub, Blaxel, Telegram.
+Every prompt is skippable; values are written atomically (0600) and never echoed.
+
+```bash
+bash ~/ai-stack/vz-ai-stack.sh setup        # or: keys
+```
+
+A first `install all` offers `setup` automatically on a TTY, so you usually don't run it
+by hand. It writes nothing harmful — if an older run ever corrupted `.env` (e.g. catalog
+text landed in a value), just re-run `setup` and it self-heals the file.
+
 ---
 
 ## §1. The 5-minute wow
@@ -563,11 +579,11 @@ openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c 'whoami; uname -srm'
 
 **Phoenix trace pattern.** Calls from inside the sandbox to `inference.local` land in Phoenix because the gateway forwards them through LiteLLM.
 
-**Combine with.** `hermes_fleet` (the 7 agent profiles that LIVE in the sandbox), Recipe 8 (sandboxed Hermes task).
+**Combine with.** `hermes_fleet` (the 9 agent profiles that LIVE in the sandbox), Recipe 8 (sandboxed Hermes task).
 
 ---
 
-#### `hermes_fleet` (7 sandbox-internal profiles)
+#### `hermes_fleet` (9 sandbox-internal profiles)
 
 **What.** Seven specialized Hermes agent personas pre-staged in the `hermes-fleet-v1` sandbox at `~/ai-stack/openshell/fleet-souls/`. Each profile is a "soul" (system prompt + tool config + default model) — none of them are running processes by default, you boot one when you need it.
 
@@ -2020,7 +2036,7 @@ Per-repo indexing keeps signal high — Lumen ranks results by cosine similarity
 
 Profiles are intent-aware presets: one command (would-be — see ⚠ below) flips multiple services so the stack matches the workload.
 
-**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | upgrade | reset | start (enable) | stop (disable) | prepare-sudo`. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
+**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | deps | setup (keys) | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | upgrade | tutorial-serve | reset | start (enable) | stop (disable) | prepare-sudo`. Any verb takes per-command help via `<command> --help` or `help <command>`; bare `help` / `--help` prints the full list. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
 
 ### `fleet` — multi-agent everyday
 
@@ -2086,6 +2102,16 @@ bash ~/ai-stack/vz-ai-stack.sh model superset         # canonical scoped-key all
 
 # Slow-mode doctor (includes 9 negative network probes for pi-v1)
 OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor
+
+# First-run bootstrap (canonical order: deps → setup → prepare-sudo → install all → doctor)
+bash ~/ai-stack/vz-ai-stack.sh deps                   # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama)
+bash ~/ai-stack/vz-ai-stack.sh deps --check           # read-only: report the host-dep map, CI exit code, install nothing
+bash ~/ai-stack/vz-ai-stack.sh setup                  # interactive .env / API-key bootstrap (alias: keys); all skippable
+bash ~/ai-stack/vz-ai-stack.sh install all --dry-run  # preview ONLY: host-deps + ordered phases (done vs would-run); alias --plan
+
+# Per-command help (any verb)
+bash ~/ai-stack/vz-ai-stack.sh install --help         # focused usage for one command (== help install)
+bash ~/ai-stack/vz-ai-stack.sh help                   # full command list (== --help)
 
 # Install / re-run one phase
 bash ~/ai-stack/vz-ai-stack.sh install 15             # idempotent; safe to re-run

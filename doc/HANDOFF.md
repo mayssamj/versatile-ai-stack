@@ -6,7 +6,7 @@ in fifteen minutes.
 
 ---
 
-## 0. Snapshot — state as of 2026-06-03
+## 0. Snapshot — state as of 2026-06-05
 
 | Property | Value |
 |---|---|
@@ -16,12 +16,12 @@ in fifteen minutes.
 | Total phases | **28 core + 6 opt-in extras** = 34 phase files. Core (in `install all`): 00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, **04h**, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. **04h `agent_fleet`** (NEW 2026-06-02) installs the cross-platform agent fleet (runs LAST). Opt-in (install by name, NOT in `install all`): 21 portless, 22 cmux, 23 skillspector, 24 openagents, 25 lmstudio, **26 mempalace**. |
 | Default phase order (`install all`) | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h` (note: 03 before 01 — see §3.1; 04h LAST — it uploads to pi-v1 (15) + widens the PI/HERMES keys) |
 | Total services in `services.yml` | **40** |
-| Total doctor checks | **44** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**, `watchdog_alert` #43, **`mempalace` #44**) |
+| Total doctor checks | **45** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**, `watchdog_alert` #43, **`mempalace` #44** (opt-in, green-skips when not installed), **`tutorial` #45** (ALWAYS-ON — validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`: self-contained, link-clean, in sync with the `.md`)) |
 | Model↔agent binding | `installer/models.yml` is the single source of truth. **3 local models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in) **+ the Claude SUBSCRIPTION effort-ladder** via the Meridian host daemon: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` + `claude-sonnet-4.6-sub-{low,medium,high,max}` (runtime `meridian`, availability-gated to `local-gemma4` when Meridian is down). The 9-role Hermes fleet + Pi are assigned subscription models. `vz-ai-stack.sh model {list,assign,sync,superset,discover,add}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed`. NEW: `doc/TUTORIAL.md` + `doc/TUTORIAL.html` (hands-on tutorial). |
-| Last verified doctor pass | **2026-06-04: `doctor` = 45/45** on the live stack (44th check = `mempalace`, green-skips when not installed; **45th = `tutorial`**, always-on — validates `doc/TUTORIAL.html` is self-contained, link-clean & in sync with the `.md`). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) The `help` command (below) is **doctor-independent**; `help --check` is its own CI lint, not wired into doctor. |
+| Last verified doctor pass | **2026-06-05: `doctor` = 45/45** on the live stack (44th check = `mempalace`, green-skips when not installed; **45th = `tutorial`**, always-on — validates `doc/TUTORIAL.html` is self-contained, link-clean & in sync with the `.md` via `installer/lib/build_tutorial_html.py --check`). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) The `help` command (below) is **doctor-independent**; `help --check` is its own CI lint, not wired into doctor. |
 | Last verified cold install | **2026-06-02: `reset --confirm hard --yes` → `install all` → `doctor` 43/43** green, end-to-end (incl. the 9-role fleet rebuilt to exactly 9 profiles + a live subscription chat). See CHANGELOG / commit `6971198`. (MemPalace check #44 is opt-in and green-skips, so `install all` now passes 45/45.) |
-| NEW since last handoff | **`help` command** (`vz-ai-stack.sh help <svc> / help services / help regen`) — see §1 CLI list + §3.0. The `help` work is **merged to main** (`831262b`); a **doc-cohesion audit** + `.html` sync followed (`de70eff`, `5644e0b`). |
+| NEW since last handoff | **First-run onboarding + cold-start hardening** (2026-06-04→05) — see §1 CLI list + §3.-1. New verbs: **`setup`/`keys`** (interactive, skippable .env/API-key bootstrap; `4f67e43`, `f142da4`), **`deps [--check]`** (host-dependency bootstrap; `19d8464`), **`install --dry-run`/`--plan`** (read-only preview; `e472386`), **per-command help** (`<cmd> --help` / `help <cmd>`; `df371a3`). **LiteLLM cold-start self-heal** (`89778b9`, `ad01a9f`, `1e18dfa`). **MemPalace Phase 26** + doctor check 44 (`b2f4f4b`). **Tutorial doctor check 45** (`8a4768d`). Canonical first-run order is now **deps → setup → prepare-sudo → install all → doctor**. |
 
 **Constitutional rules** (Mayssam's repeated explicit asks):
 1. **Autonomous execution.** Diagnose → fix in code → update installer → sweep docs → verify → THEN report. Don't hand back a recipe.
@@ -36,7 +36,7 @@ in fifteen minutes.
 
 **Memory pointers** (auto-loaded in this user's Claude sessions, see `~/.claude/projects/-Users-mayssam-sayyadian-ai-stack/memory/MEMORY.md`):
 - `feedback_autonomous_execution.md`, `feedback_background_tasks.md`, `feedback_upgrade_fleet_prefs.md`
-- `project_doctor_count.md` (now **44** checks — update if you add checks)
+- `project_doctor_count.md` (now **45** checks — update if you add checks)
 - `project_model_strategy.md` (3 local + Claude subscription via Meridian; the `-sub-*` effort ladder)
 - `project_agent_fleet.md` (the 9-role team across Hermes/Pi/Claude Code; phase 04h)
 - `project_tutorial.md` (doc/TUTORIAL.md+.html + the `tutorial-serve` ephemeral-key proxy)
@@ -83,7 +83,9 @@ in fifteen minutes.
 - **MemPalace** (Phase 26, NEW 2026-06-04, **opt-in** — NOT in `install all`; install by name `vz-ai-stack.sh install 26` / alias `mempalace`) — local-first, **verbatim CONVERSATION memory** for Claude Code sessions (CLI + stdio MCP, no daemon, no port). PyPI-only (`uv tool install mempalace`). Runs on local on-device **ChromaDB** with **on-device ONNX/CoreML embeddings** (default `all-MiniLM-L6-v2`, 384-dim English; `embeddinggemma` multilingual opt-in) — **no cloud embeddings, NOT routed through LiteLLM**. The OPTIONAL entity-refiner LLM *does* route through LiteLLM (`MEMPALACE_LITELLM_KEY` → visible in Phoenix). Stop/PreCompact auto-save hooks are **opt-in/reversible** via `bin/mempalace-hooks` (NOT wired by install). A Qdrant backend adapter is **STAGED at `mempalace/backend-qdrant/` but NOT live** (MemPalace 3.3.5 hardcodes ChromaBackend + doesn't consume the backend registry yet). Complements Honcho (derived cross-agent facts) / Qdrant (document RAG) / Lumen (code search) — its niche is **verbatim Claude Code session recall**. Doctor check **44 `mempalace`** (conditional green-skip when not installed).
 
 ### `stack` CLI subcommands (`vz-ai-stack.sh`)
-- `install [phase|all]` — run a phase or all phases
+- `deps [--check]` — host-dependency bootstrap (verify → install → start → re-verify: brew, yq, jq, node, orbstack, ollama). `--check` is verify-only. Lib `installer/lib/deps.sh`; see [PREREQUISITES.md](PREREQUISITES.md). (NEW 2026-06-04, `19d8464`)
+- `setup` (alias `keys`) — interactive, skippable `.env` / API-key bootstrap. Ensures the **baseline first** (generates `LITELLM_MASTER_KEY` + `PHOENIX_SECRET` + service-URL defaults) via `installer/lib/env.sh::env_ensure_baseline` (SHARED with Phase 00), then walks an optional-secret catalog (cloud LLM keys, Helicone, GitHub, Blaxel, Telegram) — **all skippable, written 0600, never echoed**. Local-only / Claude-subscription (`-sub`, incl. opus) needs **ZERO keys**. `install all` offers it on first run (TTY-only). Lib `installer/lib/setup.sh`. (NEW 2026-06-04, `4f67e43`, `f142da4`)
+- `install [phase|all] [--dry-run|--plan]` — run a phase or all phases. `--dry-run`/`--plan` is a read-only preview of host-deps + the ordered phase list (no changes). (`--dry-run` NEW 2026-06-04, `e472386`)
 - `prepare-sudo` — sudo'd /etc/hosts + lo0 + launchd plist setup (idempotent)
 - `verify` — runtime probes (lo0, /etc/hosts, host-gateway, end-to-end routing). Cheap, < 10s.
 - `status` — declared vs actual + ownership table
@@ -91,7 +93,7 @@ in fifteen minutes.
 - `fleet list|add|remove|new|destroy` — manage the Hermes fleet (add/remove a profile in hermes-fleet-v1; `new`/`destroy` a separate fleet sandbox)
 - `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
 - `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
-- `help <service>` / `help services` / `help regen [<svc>] [--apply] [--check] [--model <m>] [--force]` — per-service help (NEW 2026-06-03). `help <svc>` prints **what it is** (authored prose) · **how it's configured** (computed LIVE from services.yml/aliases/env-key names — never `.env` _values_) · **how to use**. Prose lives in `services.yml` `help:` blocks (**38 seeded** from doc/EXPLORE.html's verified prose). `help regen` drafts/refreshes prose via the stack's own LiteLLM (default model `local-gemma4`, override `--model` or `HELP_REGEN_MODEL`), writes a STAGED overlay + unified diff; `--apply` merges it back (atomic `yq -i`). `--check` is a CI lint (NOT a doctor check). Lib: `installer/lib/help.sh`.
+- `help` / `--help` (full subcommand list) · `<cmd> --help` / `help <cmd>` (focused per-command usage, NEW 2026-06-04 `df371a3`) · `help <service>` / `help services` / `help regen [<svc>] [--apply] [--check] [--model <m>] [--force]` — per-service help (NEW 2026-06-03). `help <svc>` prints **what it is** (authored prose) · **how it's configured** (computed LIVE from services.yml/aliases/env-key names — never `.env` _values_) · **how to use**. Prose lives in `services.yml` `help:` blocks (**38 seeded** from doc/EXPLORE.html's verified prose). `help regen` drafts/refreshes prose via the stack's own LiteLLM (default model `local-gemma4`, override `--model` or `HELP_REGEN_MODEL`), writes a STAGED overlay + unified diff; `--apply` merges it back (atomic `yq -i`). `--check` is a CI lint (NOT a doctor check). Lib: `installer/lib/help.sh`.
 - `doctor [<filter>]` — 45 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
@@ -168,11 +170,24 @@ The 9-role fleet + Pi route to the Meridian Claude subscription. The common fail
 
 Read **CHANGELOG.md top to bottom** for full reasoning. Newest first:
 
+### 3.-1 — 2026-06-04 → 06-05 (first-run onboarding, cold-start hardening, MemPalace, tutorial guard)
+
+Newest work. Brings the cold/second-machine first-run experience up to spec and adds two doctor checks (now **45** total):
+
+- **`setup` / `keys` — interactive `.env` bootstrap** (`4f67e43`, `f142da4`). Skippable wizard. Ensures the **baseline first** — generates `LITELLM_MASTER_KEY` + `PHOENIX_SECRET` and the service-URL defaults via `installer/lib/env.sh::env_ensure_baseline` (the SAME function Phase 00 calls, so `setup` and a plain `install all` converge on identical baseline `.env`). Then an **optional-secret catalog** (cloud LLM keys, Helicone, GitHub, Blaxel, Telegram) — every entry skippable, written **0600, never echoed to stdout/log** (constitutional rule 6). The local-only / Claude-subscription path (`-sub`, incl. opus) needs **ZERO keys**. `install all` offers `setup` on first run (TTY-only; non-interactive installs skip it). `f142da4` fixed a prompt-loop that was writing the catalog's own help text into `.env` values. Lib `installer/lib/setup.sh`.
+- **`deps [--check]` — host-dependency bootstrap** (`19d8464`). verify → install → start → re-verify for brew/yq/jq/node/orbstack/ollama. `--check` is verify-only (no installs). Lib `installer/lib/deps.sh` + new `doc/PREREQUISITES.md`.
+- **`install [all] --dry-run` (alias `--plan`)** (`e472386`). Read-only preview of host-deps + the ordered phase list; also fixed arg-forwarding so flags reach the phase runner.
+- **Per-command help** (`df371a3`). `<cmd> --help` / `help <cmd>` → focused usage; bare `help` / `--help` → full subcommand list; `help <service>` → per-service (§1). Also fixed an ERR-trap leak.
+- **LiteLLM cold-start hardening** (`89778b9`, `ad01a9f`, `1e18dfa`). (1) A running-but-**managed-and-unhealthy** litellm/phoenix/openwebui is now health-probed and **recreated** (self-heal) instead of assumed-good. (2) `bin/start-litellm.sh` now ensures the **`litellm` Postgres DATABASE exists** — server-reachable ≠ db-present was the real cause of the cold / 2nd-machine `/v1/models` timeout. (3) `litellm_diagnose` is a self-explaining, **secret-redacted** diagnostic. (4) The Ollama model disk-space precheck was right-sized + gated.
+- **MemPalace Phase 26** (`b2f4f4b`) — opt-in local-first conversation memory. ChromaDB live; a **Qdrant adapter is STAGED at `mempalace/backend-qdrant/` but NOT runtime-wired** (MemPalace 3.3.5 hardcodes ChromaBackend). On-device CoreML/ONNX embeddings (no cloud, **NOT via LiteLLM**); the optional entity-refiner DOES route via LiteLLM (`MEMPALACE_LITELLM_KEY`). **Doctor check 44 `mempalace`** (green-skips when not installed). See §1 + §12.
+- **Tutorial doctor check 45** (`8a4768d`, with `d239eb1`, `a12f5b0`) — **ALWAYS-ON** `tutorial` check validates `doc/TUTORIAL.html` is self-contained, link-clean, and in sync with `doc/TUTORIAL.md` via `installer/lib/build_tutorial_html.py --check`. (MemPalace was surfaced in EXPLORE/USER-GUIDE/DIAGRAMS HTML + the 39→40 service-count bump in `746f622`, `41375f7`, `6e62263`.)
+- **Canonical first-run order is now: `deps → setup → prepare-sudo → install all → doctor`** (see §7).
+
 ### 3.0 — 2026-06-01 → 06-03 (help command, rename, agent fleet, subscription wiring, tutorial)
 
 A debugger should know these touched a lot of surface area:
 
-- **Per-service `help` command** (`831262b`, `178044a`; design spec `c0fe83c`/`b769731`) — NEWEST addition, **merged to main**. `vz-ai-stack.sh help <svc>` prints three sections: **what it is** (authored prose), **how it's configured** (computed live from `services.yml` / `aliases.tsv` / env-key _names_ — **never `.env` values**), **how to use**. `help services` lists services with prose; `help regen [<svc>] [--apply] [--check] [--model <m>]` drafts/refreshes prose via the stack's own LiteLLM (default `local-gemma4`), staging to `installer/state/help-staged-<key>.yaml` + a unified diff, only writing back on `--apply` (atomic `yq -i`). Prose authored in `services.yml` `help:` blocks — **38 seeded** from doc/EXPLORE.html's verified prose. Lib: `installer/lib/help.sh`. **Doctor was untouched by the help work (it stayed at 43 checks then; the count is now 44 after the opt-in MemPalace check landed)** — `help --check` is a standalone CI lint, NOT yet wired into doctor (candidate next step). A **doc-cohesion audit across `doc/*.md`** was run alongside this.
+- **Per-service `help` command** (`831262b`, `178044a`; design spec `c0fe83c`/`b769731`) — NEWEST addition, **merged to main**. `vz-ai-stack.sh help <svc>` prints three sections: **what it is** (authored prose), **how it's configured** (computed live from `services.yml` / `aliases.tsv` / env-key _names_ — **never `.env` values**), **how to use**. `help services` lists services with prose; `help regen [<svc>] [--apply] [--check] [--model <m>]` drafts/refreshes prose via the stack's own LiteLLM (default `local-gemma4`), staging to `installer/state/help-staged-<key>.yaml` + a unified diff, only writing back on `--apply` (atomic `yq -i`). Prose authored in `services.yml` `help:` blocks — **38 seeded** from doc/EXPLORE.html's verified prose. Lib: `installer/lib/help.sh`. **Doctor was untouched by the help work (it stayed at 43 checks then; the count is now 45 after the opt-in MemPalace check #44 + the always-on tutorial check #45 landed — see §3.-1)** — `help --check` is a standalone CI lint, NOT yet wired into doctor (candidate next step). A **doc-cohesion audit across `doc/*.md`** was run alongside this.
 - **`install.sh` → `vz-ai-stack.sh` rename** (`a796e2e`, `667af6b`). Project-wide sweep (797 refs, 124 files): the entrypoint, all `bin/*`, installer code, all docs. `bin/stack` wraps it. **Third-party `install.sh` URLs were preserved** (pi.dev, unsloth, OpenShell, blaxel, hermes `scripts/install.sh`). If you find a stale `install.sh`, it's either third-party (leave it) or a miss (fix it). Memory + `~/.claude/` global agent copies may still say `install.sh` until re-synced.
 - **9-role agent fleet across 3 platforms** (`b867c34`). The Hermes fleet was REPLACED (old 7 `hermes_cos/...` → 9 `hermes_{manager,techlead,frontend_engineer,backend_engineer,ml_engineer,qa_test_engineer,reviewing_engineer,sre_engineer,incident_manager}`). Same roster on Pi (`bin/pi-as <role>`) + Claude Code (`~/.claude/agents`, GLOBAL). Source of truth: `agent-profiles/{hermes,pi,claude-code}/`. Keystone shared skill `team-protocol`. Installed by **phase `04h_agent_fleet.sh`** (`vz-ai-stack.sh install agent_fleet`). 04f is now fully data-driven (souls sourced from `agent-profiles/`, prunes stale in-sandbox profiles so a 7→9 swap can't leave a Frankenfleet). claw3d-bridge `bridge.py` registry migrated to the 9 roles.
 - **All-subscription model wiring + cold-path fixes** (`6971198`, `3328206`, `9f8992b`). Hermes+Pi route to the Meridian Claude subscription. Two real bugs fixed: (1) `resolve_profile_model` only gated `lmstudio` → on a cold `install all` with Meridian down it pinned the fleet to unreachable `claude-*-sub-*` slugs; now gates `meridian` too (04f + fleet.sh + 15_pi.sh). (2) Phase 01's register loop dropped the per-model `effort`, flattening the subscription effort ladder to `high` on every install; now passes effort. NEW doctor checks: **41 `meridian`** (incl. an effort-ladder-drift guard) + **42 `agent_fleet`** (verifies the cross-platform fleet landed; opt-in green-skip). Check 30 got a Frankenfleet guard.
@@ -314,17 +329,29 @@ Phase 17 captures `ACE_PIN` SHA in `.env`. Should also be in a separate `install
 
 ## 7. From-scratch install (verified procedure)
 
+Canonical first-run order (2026-06-04): **deps → setup → prepare-sudo → install all → doctor**.
+
 ```bash
+# 0. Host-dependency bootstrap (brew/yq/jq/node/orbstack/ollama). `--check` = verify-only.
+bash ~/ai-stack/vz-ai-stack.sh deps
+
+# 0.5 Interactive .env / API-key bootstrap (skippable; local-only / Claude-sub needs ZERO keys).
+#     `install all` also offers this on first run (TTY-only).
+bash ~/ai-stack/vz-ai-stack.sh setup          # alias: keys
+
 # 1. One-time sudo prep (writes /etc/hosts ai-stack block + lo0 aliases + launchd plist)
 sudo bash ~/ai-stack/vz-ai-stack.sh prepare-sudo
 
 # 2. Hard reset if there's prior state (add --yes / -y for non-interactive)
 bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 
+# (preview-only, optional) read-only plan of host-deps + ordered phases, no changes
+bash ~/ai-stack/vz-ai-stack.sh install all --dry-run
+
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/vz-ai-stack.sh install all
 
-# 4. Verify (45/45 expected — MemPalace check #44 green-skips, it's opt-in)
+# 4. Verify (45/45 expected — MemPalace check #44 green-skips, it's opt-in; #45 tutorial is always-on)
 bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
@@ -396,9 +423,12 @@ If you keep these as constraints, you'll write the right code.
 | `vz-ai-stack.sh` | Entry point, phase dispatcher, lock + bash5 gate |
 | `services.yml` | Single source of truth: 40 services with type/enabled/path/port/project/process_pattern/etc. (schema `version: 2`) |
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
+| `installer/lib/env.sh` | `.env` upserts (atomic mv), `get_env`/`set_env`. **`env_ensure_baseline`** generates `LITELLM_MASTER_KEY` + `PHOENIX_SECRET` + service-URL defaults; SHARED by Phase 00 and `setup` so both converge on identical baseline `.env`. |
+| `installer/lib/deps.sh` | Backs `vz-ai-stack.sh deps [--check]` — host-dependency bootstrap (verify → install → start → re-verify: brew/yq/jq/node/orbstack/ollama). See `doc/PREREQUISITES.md`. |
+| `installer/lib/setup.sh` | Backs `vz-ai-stack.sh setup` (alias `keys`) — interactive, skippable `.env`/API-key bootstrap. Calls `env_ensure_baseline` first, then an optional-secret catalog (all skippable, 0600, never echoed). |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (45 checks). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix` |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (**45 checks**). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix`. Check **44 `mempalace`** (opt-in, green-skips when not installed) + **45 `tutorial`** (always-on; validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`). |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |
@@ -416,6 +446,7 @@ If you keep these as constraints, you'll write the right code.
 | `doc/TUTORIAL.md`, `doc/TUTORIAL.html` | Hands-on from-scratch tutorial (7 acts, 30 lessons) + interactive page |
 | `agent-profiles/{hermes,pi,claude-code}/` | **Source of truth for the 9-role fleet** — SOUL.md / SYSTEM.md / `.claude` subagents + the `team-protocol` skill. Phase 04f (Hermes) + 04h (Pi+Claude) install from here. |
 | `installer/lib/tutorial-serve.sh` + `tutorial_proxy.py` | `tutorial-serve` live-demo: mints an ephemeral local-only LiteLLM key, serves TUTORIAL.html + an allowlisted `/api` proxy (key injected server-side), auto-revokes. |
+| `installer/lib/build_tutorial_html.py` | Builds `doc/TUTORIAL.html` from `doc/TUTORIAL.md`. **`--check`** mode (no write) validates the HTML is self-contained, link-clean, and in sync with the `.md` — invoked by doctor check **45 `tutorial`**. |
 | `installer/lib/help.sh` | Backs `vz-ai-stack.sh help`. Renders authored `help:` prose + LIVE-computed config (services.yml/aliases/env-key NAMES; never `.env` values). `help regen` drafts via LiteLLM (default `local-gemma4`), stages to `installer/state/help-staged-<key>.yaml` + diff, applies on `--apply`. Prose source-of-truth = `services.yml` `help:` blocks (38 seeded). |
 | `installer/phases/04h_agent_fleet.sh` | Installs the fleet to Claude Code (`~/.claude`, global) + Pi (`pi-v1`), re-runs 04f, widens the PI/HERMES keys. |
 | `installer/phases/26_mempalace.sh` | **Opt-in** (NOT in `install all`). Installs MemPalace via PyPI (`uv tool install mempalace`), writes `bin/mempalace` + launchers + palace config, mints `MEMPALACE_LITELLM_KEY` (for the OPTIONAL entity-refiner LLM only — embeddings stay on-device ONNX/CoreML, never via LiteLLM). Stop/PreCompact auto-save hooks are opt-in/reversible via `bin/mempalace-hooks` (NOT wired here). Doctor check 44 `mempalace`. |

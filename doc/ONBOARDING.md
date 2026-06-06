@@ -6,6 +6,20 @@ doctor is green. For first-time install see [INSTALL.md](INSTALL.md); for the de
 service-by-service tour see [STACK-GUIDE.md](STACK-GUIDE.md); for recipes see
 [USER-GUIDE.md](USER-GUIDE.md).
 
+**Haven't installed yet?** The canonical first-run order is:
+
+```bash
+bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama); --check = read-only
+bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
+sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
+bash vz-ai-stack.sh install all       # the 28 core phases (offers `setup` on first run if you skipped it)
+bash vz-ai-stack.sh doctor            # 45 checks — target all green
+```
+
+A plain `install all` runs `deps` for you and offers `setup` on a first run, so on a
+clean Mac `prepare-sudo` then `install all` is enough; the steps above are the explicit
+form. Preview without changing anything: `install all --dry-run` (alias `--plan`).
+
 ---
 
 ## 1. The `stack` command (everything goes through it)
@@ -44,7 +58,7 @@ stack test inference         # alias → smoke test for phase 01 (litellm)
 Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 `hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
 `halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. Run
-`stack phases` if you're not sure of a name. `install all` runs the 27 core phases
+`stack phases` if you're not sure of a name. `install all` runs the 28 core phases
 (the 6 opt-in extras are excluded — see §5).
 
 ---
@@ -87,7 +101,7 @@ Studio is down, so a plain `install all` works with no LM Studio.
 
 | Agent | How to reach it | What it is |
 |---|---|---|
-| **claw3d office** | `http://claw3d:4310` | A 3D "office" where you click + chat with the stack's agents — the Hermes fleet, **Pi**, and **DeerFlow** — routed authentically through the stack-agents bridge. The friendliest front door. (Note: the bridge's agent registry still lists the old 7-profile roster and is pending migration to the 9-role team.) |
+| **claw3d office** | `http://claw3d:4310` | A 3D "office" where you click + chat with the stack's agents — the Hermes fleet, **Pi**, and **DeerFlow** — routed authentically through the stack-agents bridge. The friendliest front door. (The bridge's agent registry serves the 9-role fleet plus Pi and DeerFlow.) |
 | **Telegram bot** | DM `@vz_hermes_controller_bot` | The Hermes fleet from your phone. Secure-by-default: **set an allowlist or it denies everyone** — `HERMES_TELEGRAM_ALLOWED_USERS=<your-id>` in `.env`, then `stack install 20`. (Get your id from `@userinfobot`.) |
 | **Hermes fleet** | `openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_manager -m local …` | A 9-role sandboxed engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) running a spec→deploy pipeline under the shared team-protocol. Same team also runs as Pi personas + Claude Code subagents. |
 | **Pi** | `bin/pi` | Earendil terminal coding agent, sandboxed; scoped virtual key, local-only. |

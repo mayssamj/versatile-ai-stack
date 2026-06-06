@@ -7,7 +7,7 @@ and what the fix does.
 Run filtered:
 
 ```bash
-stack doctor                    # all 44
+stack doctor                    # all 45
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -80,7 +80,8 @@ installer/doctor/checks/
 ├── 41_meridian.sh                         (Claude subscription behind LiteLLM; opt-in, Phase via start-meridian.sh)
 ├── 42_agent_fleet.sh                      (9-role fleet across claude-code + pi personas; opt-in Phase 04h)
 ├── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
-└── 44_mempalace.sh                         (opt-in Phase 26; conditional green-skip when not installed)
+├── 44_mempalace.sh                         (opt-in Phase 26; conditional green-skip when not installed)
+└── 45_tutorial.sh                          (always-on; doc/TUTORIAL.html self-contained / link-clean / in-sync)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -600,6 +601,18 @@ hardcodes `ChromaBackend`). A Qdrant backend adapter is staged at
 because `qdrant-client`'s protobuf/grpc pins break `import chromadb` if co-installed
 into the mempalace tool env (so the doctor never adds it). See
 [TROUBLESHOOTING.md § MemPalace](TROUBLESHOOTING.md) for the install gotchas.
+
+---
+
+## 45 · TUTORIAL.html is self-contained, link-clean, and in sync
+
+| | |
+|---|---|
+| Asserts | `doc/TUTORIAL.html` is a valid in-repo artifact: exactly 7 in-page `<section id="act-…">` sections (the page is self-contained — no chapter lives off-page); zero external `TUTORIAL.md#…` nav links (they 404 under `tutorial-serve`); every in-page `#anchor` resolves to an element `id` with no duplicate ids; and the HTML is in sync with `doc/TUTORIAL.md` (`installer/lib/build_tutorial_html.py --check`). |
+| Fails when | The HTML drifted from the markdown source (someone edited `TUTORIAL.md` without regenerating), a section/anchor was dropped or duplicated, or an external `TUTORIAL.md#…` link crept back in. |
+| Auto-fix | Regenerates the page from the markdown source via `installer/lib/build_tutorial_html.py` (overwriting `doc/TUTORIAL.html`). |
+
+This check is **always-on** (unlike the opt-in service checks 34–38/44): the tutorial is an in-repo artifact that ships with the stack, so its integrity is a hard invariant. The validator parses real element attributes via `HTMLParser` (not a regex over the page text), so `id="…"` substrings inside code examples (e.g. `workspace_id="tutorial"`) and attrs like `*_id` never false-positive. See [project_tutorial](../doc/TUTORIAL.md) / `installer/lib/tutorial-serve.sh` for the live ephemeral-proxy serve path.
 
 ---
 

@@ -301,7 +301,9 @@ host alias. (The detailed two-layer aliasing mechanics live in
 ├── installer/
 │   ├── lib/                         — sourced helpers; no direct exec
 │   │   ├── common.sh                — log/color/lock/stamp/queue/atomic_write
-│   │   ├── env.sh                   — atomic .env read/write (awk-based)
+│   │   ├── env.sh                   — atomic .env read/write (awk-based) + env_ensure_baseline (the .env baseline SSoT)
+│   │   ├── deps.sh                  — `vz-ai-stack.sh deps`: host-dependency verify/install/start/re-verify
+│   │   ├── setup.sh                 — `vz-ai-stack.sh setup`: interactive, skippable .env / API-key bootstrap
 │   │   ├── docker.sh                — managed docker run; recreate guard; backup
 │   │   ├── validate.sh              — wait_http / port_listening / require_disk
 │   │   ├── prompt.sh                — confirm / choose / secret_input
@@ -327,7 +329,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 02_storage.sh            — FalkorDB + Qdrant
 │   │   ├── 03_honcho.sh             — clone + compose + redis port fix
 │   │   ├── 04_openshell.sh          — OpenShell binary + policy
-│   │   ├── 04f_hermes_fleet.sh      — 7 SOULs + bootstrap (sandbox-side deferred; all-local routing)
+│   │   ├── 04f_hermes_fleet.sh      — 9 SOULs + bootstrap (sandbox-side deferred; all-local routing)
 │   │   ├── 04g_security.sh          — guardrails.handler + LLM Guard + audit.sh
 │   │   ├── 05_uis.sh                — Open WebUI + Hermes Workspace
 │   │   ├── 06_documents.sh          — Docling + LlamaIndex venv + MCP server
@@ -339,11 +341,15 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 12_blaxel.sh             — npm CLI (cloud-only)
 │   │   ├── 13_ragflow_reserved.sh   — no-op placeholder
 │   │   ├── 14 … 17                  — best-effort (15 is OpenShell-isolated)
-│   │   └── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
+│   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
+│   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
+│   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
+│   │   ├── 21 … 26                  — opt-in extras (install BY NAME): portless … mempalace
+│   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (44 today)
+│   │   └── checks/                  — one file per failure mode (45 today; 39–45 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh
@@ -365,7 +371,8 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 19_lo0_aliases.sh
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
-│   │       └── 22_etc_hosts_ownership.sh
+│   │       ├── 22_etc_hosts_ownership.sh
+│   │       └── 23_… 45_tutorial.sh  — full list in doc/DOCTOR.md (45 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
@@ -471,7 +478,14 @@ new failure mode = adding a new file. No central registry to update.
 Each helper does one thing:
 
 - `common.sh`: log/color, lock, stamp, restart-queue, atomic_write, per-run id.
-- `env.sh`: get_env / set_env / require_env / env_hash / load_env_strict / fix_crlf.
+- `env.sh`: get_env / set_env / require_env / env_hash / load_env_strict / fix_crlf;
+  `env_ensure_baseline` is the **single source of truth for the `.env` baseline**
+  (non-secret DEFAULTS + one-time `LITELLM_MASTER_KEY`/`PHOENIX_SECRET` generation +
+  stale-`host.docker.internal`-URL migration), called by **both** Phase 00 (`00_host.sh`)
+  and `vz-ai-stack.sh setup`.
+- `deps.sh`: `vz-ai-stack.sh deps` — bootstraps host dependencies (verify → install → start → re-verify).
+- `setup.sh`: `vz-ai-stack.sh setup` — interactive, skippable `.env` / API-key bootstrap; always
+  ensures `env_ensure_baseline` first, so a local-only / Claude-subscription user can skip every prompt.
 - `docker.sh`: container_exists / managed / recreate_guard / backup / ensure_image.
 - `validate.sh`: wait_http / port_listening / require_disk_free.
 - `prompt.sh`: confirm / choose / secret_input.

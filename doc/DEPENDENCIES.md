@@ -110,7 +110,7 @@ graph TD
 
 Three distinct planes meet at well-defined bridge points:
 
-1. **macOS host** — Mac shell, browser, host-side Python (docs_ingestor, docs_mcp, halo, paperclip, rlm, lumen, mempalace), and the brew-managed `ollama` service. Reaches `ai-stack` services by alias via the `/etc/hosts` block that Phase 00·N writes (`127.0.10.x` loopback range).
+1. **macOS host** — Mac shell, browser, host-side Python (docs_ingestor, docs_mcp, halo, paperclip, rlm, lumen, mempalace), and the brew-managed `ollama` service. Reaches `ai-stack` services by alias via the `/etc/hosts` block that Phase 00·N writes (`127.0.10.x` loopback range). The host-plane bootstrap also lives here: `vz-ai-stack.sh deps` (`installer/lib/deps.sh`) verifies/installs/starts host dependencies, and `vz-ai-stack.sh setup` (`installer/lib/setup.sh`) writes optional API keys into `.env`. Both layer over `env.sh::env_ensure_baseline` — the single source of truth for the `.env` baseline (non-secret DEFAULTS + one-time `LITELLM_MASTER_KEY`/`PHOENIX_SECRET` + stale-URL migration), which is **also** what Phase 00 (`00_host.sh`) calls, so a local-only / Claude-subscription user reaches `doctor` with zero prompts.
 2. **`ai-stack` Docker bridge** (`10.99.0.0/24`) — every managed container joins via `--network ai-stack`. Docker's embedded DNS resolves bare container names to in-network IPs.
 3. **`honcho_default` Docker network** — compose-internal for the Honcho stack. `honcho-api-1` and `honcho-deriver-1` are multi-network: they're on both `honcho_default` (to reach their database and redis) and `ai-stack` (to reach LiteLLM and to be reached by other services).
 4. **OpenShell sandbox** (`hermes-fleet-v1`) — not joined to `ai-stack`; its egress is policy-controlled.
@@ -394,6 +394,10 @@ graph TD
   p16[Phase 16 lumen]:::opt
   p17[Phase 17]:::opt
   p18[Phase 18 rlm]:::opt
+  p19[Phase 19 claw3d office + bridge]:::opt
+  p20[Phase 20 hermes_telegram gateway]:::opt
+  p21_26[Phases 21-26 opt-in extras<br/>install BY NAME: portless ... mempalace]:::opt
+  p04h[Phase 04 H agent_fleet - RUNS LAST<br/>cross-platform 9-role fleet -> pi-v1 Phase 15 + Claude Code<br/>widens PI/HERMES virtual keys]:::sec
 
   p00 --> p00s --> p01 --> p01h
   p01 --> p02
@@ -403,7 +407,9 @@ graph TD
   p04f --> p04g
   p04g --> p05
   p05 --> p06
-  p06 --> p07 --> p08 --> p09 --> p10 --> p11 --> p12 --> p13 --> p14 --> p15 --> p16 --> p17 --> p18
+  p06 --> p07 --> p08 --> p09 --> p10 --> p11 --> p12 --> p13 --> p14 --> p15 --> p16 --> p17 --> p18 --> p19 --> p20
+  p15 --> p04h
+  p20 --> p04h
 ```
 
 **Hard ordering constraints** (cannot be reordered):

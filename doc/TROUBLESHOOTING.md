@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the 44 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
+For the 45 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---
@@ -26,6 +26,51 @@ open http://phoenix:6006
 stack apply-restarts                       # recreate litellm with new env
 stack test 01h                             # verify 'ai-stack' project appears
 ```
+
+---
+
+## "LiteLLM container is 'Up' but `/v1/models` times out" (Phase 01 fails on a fresh / 2nd machine)
+
+A classic cold-machine / second-machine install blocker: the `litellm` container reports
+**Up**, Postgres `:5432` is reachable, but `GET /v1/models` hangs and Phase 01 fails with
+*"did not return a model list"*. The usual cause is that **the `litellm` Postgres DATABASE
+doesn't exist** — Honcho's Postgres only creates the `postgres` DB, so the database named
+in `DATABASE_URL` is missing and Prisma blocks uvicorn startup. The server is up; the DB
+it needs isn't.
+
+Fix:
+
+```bash
+bash ~/ai-stack/bin/start-litellm.sh --recreate   # now auto-creates the 'litellm' DB if missing
+# or just re-run the phase (it self-heals):
+stack install 01
+```
+
+Phase 01 now **self-heals** a running-but-unhealthy managed LiteLLM/Phoenix/OpenWebUI on
+cold/second machines and, on failure, prints a self-diagnosing block — container status,
+published ports, Postgres reachability, whether the **`litellm` DB** exists, master-key
+match, and the last 20 (secret-redacted) log lines — so the install explains itself instead
+of dying on a bare error. To check the DB by hand:
+
+```bash
+docker exec honcho-database-1 psql -U postgres -tAc \
+  "SELECT 1 FROM pg_database WHERE datname='litellm'"   # prints 1 if present
+```
+
+---
+
+## "My `.env` looks corrupted (catalog text in a value)" — re-run `setup`
+
+`vz-ai-stack.sh setup` (alias `keys`) writes nothing harmful. If an older run ever
+corrupted `.env` — e.g. its own prompt catalog text landed inside a value — just re-run it
+and it **self-heals** the file:
+
+```bash
+bash ~/ai-stack/vz-ai-stack.sh setup
+```
+
+`setup` always ensures the non-interactive baseline first, so a local-only / Claude-subscription
+install needs no keys at all; every external-secret prompt is optional and skippable.
 
 ---
 
@@ -540,7 +585,7 @@ bash ~/ai-stack/vz-ai-stack.sh install 20
 ```
 
 Open access (anyone who finds the bot) is `HERMES_TELEGRAM_ALLOW_ALL=true` in `.env`
-— **not advised**, since the bot can drive all 7 agent profiles.
+— **not advised**, since the bot can drive all 9 agent profiles.
 
 Other causes:
 

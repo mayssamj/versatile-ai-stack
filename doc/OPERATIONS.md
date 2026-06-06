@@ -23,10 +23,14 @@ Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/vz-ai-sta
 
 ```bash
 stack                                   # interactive install/resume
+stack deps [--check]                    # bootstrap host deps; --check = read-only CI gate (see PREREQUISITES.md)
+stack setup                             # interactive, skippable .env / API-key bootstrap (alias: keys)
 stack phases                            # list every phase as id → name (also: steps, list)
 stack install <phase|all>               # install one phase by NAME or number (or everything)
+stack install <phase|all> --dry-run     # read-only preview of what would run (alias: --plan)
 stack verify                            # Phase 00·V — 6 runtime probes; no install
 stack status                            # declared vs actual table
+stack <cmd> --help  /  stack help <cmd> # focused per-command usage (bare `help`/`--help` = full list)
 stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
 stack fleet list|add|remove|new|destroy # Hermes 9-role fleet manager (see models.md / STACK-GUIDE)
@@ -79,6 +83,38 @@ stack help regen [<svc>]         # refresh help prose from the live codebase via
                                  #   file + diff). --apply writes it back; --check is a
                                  #   CI staleness gate; --model <m> picks the drafting model.
 ```
+
+### Bootstrap helpers (`deps`, `setup`, `--dry-run`, per-command help)
+
+```bash
+stack deps                       # show the host-dependency map; install/start anything missing
+stack deps --check               # read-only; non-zero exit if anything's missing/down (CI gate)
+stack setup                      # interactive .env / API-key bootstrap (alias: stack keys)
+stack install all --dry-run      # preview: host-dep status + each phase ✓already / •would-run; changes nothing
+stack install all --plan         # alias for --dry-run
+stack install --help             # per-command usage (same as `stack help install`)
+```
+
+- **`deps`** (`installer/lib/deps.sh`) is the authoritative host-dependency
+  bootstrap — it verifies, installs, starts, and re-verifies Homebrew + the core
+  CLI tools + OrbStack + Ollama. `--check` is the read-only CI gate. It runs as
+  your normal user (no sudo). [PREREQUISITES.md](PREREQUISITES.md) is its companion map.
+- **`setup`** (alias **`keys`**) is an interactive, fully skippable `.env` / API-key
+  bootstrap. It always ensures the non-interactive baseline first (generates
+  `LITELLM_MASTER_KEY` + `PHOENIX_SECRET`, service-URL defaults), then offers each
+  *optional* external secret (cloud LLM keys, Helicone, GitHub, Blaxel, Telegram) —
+  every prompt is skippable (Enter = keep/skip), written `0600`, never echoed. A
+  **local-only or Claude-subscription (`-sub`) setup needs ZERO keys** — skip every
+  prompt and you still reach `doctor`. `install all` auto-offers it on first run only
+  when interactive (TTY) and no cloud key is set yet; non-interactive/CI never blocks.
+- **`install … --dry-run`** (alias **`--plan`**) is a read-only preview: it prints the
+  host-dependency status plus every phase in run-order marked `✓ already-complete` vs
+  `• would-run`. It makes **no** changes — never runs preflight, never takes the lock,
+  never runs a phase body. Works for `all`, a single phase, and the `--plan` alias.
+- **Per-command help** — `stack <cmd> --help` (or `stack help <cmd>`) prints focused
+  usage for one subcommand; a bare `stack help` / `stack --help` prints the full
+  command list. (`stack help <service>` / `help services` / `help regen` go to the
+  per-service help above.)
 
 `stack verify` is the cheapest health probe in the toolbox — it does not
 install or restart anything; it just confirms the alias chain

@@ -64,6 +64,27 @@ does for us**, and **how it connects to the rest**.
 
 ## Platform
 
+### Host bootstrap — `deps` and `setup` (before any phase)
+
+**What is it?** Two pre-install helpers on `vz-ai-stack.sh` that get a clean Mac ready.
+
+- **`deps [--check]`** is the authoritative host-dependency bootstrap: it verifies, then
+  installs, starts, and re-verifies the host prerequisites — Homebrew, bash 5+, the core
+  CLI formulae (`yq`, `jq`, `node@22`, `pnpm`, `uv`, …), and the services tier (OrbStack/docker,
+  Ollama). It is idempotent (a no-op on a prepared host); `--check` makes it read-only with a
+  CI-friendly exit code and installs nothing. A plain `install all` runs `deps` for you.
+- **`setup`** (alias **`keys`**) is the interactive `.env` / API-key bootstrap. It first
+  ensures the non-interactive baseline secrets — so a **local-only / Claude-subscription**
+  user needs **zero** keys — then offers each optional external secret (cloud-LLM keys,
+  Helicone, GitHub, Blaxel, Telegram). Every prompt is skippable; values are written
+  atomically (0600) and never echoed. A first `install all` offers `setup` automatically.
+
+**Where does it fit?** They run *before* the phases. The canonical first-run order is
+**`deps` → `setup` → `prepare-sudo` → `install all` → `doctor`**; on a clean Mac
+`prepare-sudo` then `install all` is enough, since `install all` runs `deps` and offers
+`setup` itself. Preview the whole plan without touching anything: `install all --dry-run`
+(alias `--plan`).
+
 ### OrbStack (Phase 00)
 
 **What is it?** OrbStack is a macOS-native replacement for Docker Desktop.

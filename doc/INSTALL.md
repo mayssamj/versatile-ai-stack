@@ -16,7 +16,12 @@ Just these:
 - Ability to run `sudo` interactively once (Phase 00·N writes a managed block
   to `/etc/hosts`).
 
-You do **not** need to pre-install anything else. Phase 00 installs the rest.
+You do **not** need to pre-install anything else. The installer **verifies,
+installs what's missing, starts what needs starting, and re-verifies** — run
+`bash vz-ai-stack.sh deps` to do that host-tooling bootstrap explicitly (or
+`deps --check` for a read-only CI gate). It's also folded into `preflight`, so
+`install all` self-bootstraps. See [PREREQUISITES.md](PREREQUISITES.md) for the
+full tier map.
 
 > If you already have OrbStack, Ollama, brew, jq, yq, node, etc., the installer
 > detects them and skips. It will not duplicate work.
@@ -63,33 +68,55 @@ the migration script, and every start script all read from.
 
 ## 1. Bootstrap
 
-**Two-step flow** — exactly one command needs `sudo`; the rest runs as you.
+**Canonical first-run order** — exactly one command needs `sudo`; the rest runs as
+you. `deps` and `setup` are optional-but-recommended (both run as your normal user):
 
 ```bash
 git clone <wherever-you-keep-it> ~/ai-stack   # or copy the directory in
 cd ~/ai-stack
 
-# Step A — one-time host-system setup (sudo).
+# Step 1 (optional, recommended) — host-dependency bootstrap (no sudo).
+# Verifies + installs + starts + re-verifies Homebrew, the core CLI tools
+# (yq jq node@22 pnpm uv git tesseract openssl), OrbStack, and Ollama.
+# `--check` is a read-only CI gate. Companion doc: PREREQUISITES.md.
+bash vz-ai-stack.sh deps
+
+# Step 2 (optional, recommended) — .env / API-key bootstrap (no sudo).
+# Ensures the non-interactive baseline (generates LITELLM_MASTER_KEY +
+# PHOENIX_SECRET, service-URL defaults), then offers each OPTIONAL external
+# secret — every prompt skippable. A local-only / Claude-subscription (-sub)
+# setup needs ZERO keys. Alias: `keys`. (Skip it and `install all` offers it
+# on first interactive run anyway.)
+bash vz-ai-stack.sh setup
+
+# Step 3 — one-time host-system setup (sudo).
 # Writes the /etc/hosts alias block, binds 127.0.10.x aliases on lo0,
 # installs the launchd plist for reboot persistence, flushes the macOS
 # DNS cache. Idempotent: safe to re-run.
 sudo bash vz-ai-stack.sh prepare-sudo
 
-# Step B — runtime verification (no sudo). Probes the alias chain
+# Step 4 — runtime verification (no sudo). Probes the alias chain
 # end-to-end before any container starts. Catches lo0/DNS regressions
 # while the fix is still cheap. Safe to re-run anytime.
 bash vz-ai-stack.sh verify
 
-# Step C — full install (no sudo). Interactive top-to-bottom.
+# Step 5 — full install (no sudo). Interactive top-to-bottom.
 # Walks every phase, prompts to adopt foreign containers, prompts for the
 # Phoenix API key, drains the restart queue, runs the final doctor.
-bash vz-ai-stack.sh
+# Preview first with `install all --dry-run` (alias --plan): read-only, lists
+# every phase ✓already-complete vs •would-run and changes nothing.
+bash vz-ai-stack.sh install all
+
+# Step 6 — verify everything is healthy. Expect 45/45.
+bash vz-ai-stack.sh doctor
 ```
 
-That's the whole bootstrap. **After Step A, no further `sudo` prompts will
-appear** during Steps B and C. This is the recommended path.
+That's the whole bootstrap. **After Step 3, no further `sudo` prompts will
+appear** during the later steps. This is the recommended path. (`bash
+vz-ai-stack.sh` with no args is equivalent to `install all` — interactive
+top-to-bottom resume.)
 
-### `vz-ai-stack.sh verify` (Step B)
+### `vz-ai-stack.sh verify` (Step 4)
 
 `bash vz-ai-stack.sh verify` runs Phase 00·V — six runtime probes against
 the alias chain:
@@ -104,11 +131,11 @@ the alias chain:
 
 Failure prints the exact fix command — usually `sudo bash vz-ai-stack.sh
 prepare-sudo` — and exits 1. Phase 00·V also runs automatically as part
-of Step C, between Phase 00·N (networking foundation) and Phase 01
+of Step 5 (`install all`), between Phase 00·N (networking foundation) and Phase 01
 (inference plane); the standalone `verify` subcommand is for re-checking
 after any networking change (VPN connect/disconnect, OrbStack restart).
 
-### Hardening notes (Step A)
+### Hardening notes (Step 3, `prepare-sudo`)
 
 `prepare-sudo` refuses to run if any of these guards trip:
 - `vz-ai-stack.sh` lives in a temp directory (`/tmp`, `/var/tmp`).
@@ -129,9 +156,9 @@ concurrent `prepare-sudo` runs serialize cleanly, and uses `chown -h`
 `$AI_STACK`. Design record:
 [preparesudo-design-final.md](../installer/state/preparesudo-design-final.md).
 
-### Fallback: no separate Step A
+### Fallback: no separate Step 3
 
-You can run `bash vz-ai-stack.sh` directly without Step A **IF you're running it
+You can run `bash vz-ai-stack.sh` directly without Step 3 **IF you're running it
 in an interactive terminal**. Phase 00·N will prompt for your sudo password
 inline when it hits `/etc/hosts`. The two-step flow above is just cleaner
 (sudo upfront, then sit back) and is the only path that works in CI or
@@ -155,6 +182,33 @@ how to resume (`bash vz-ai-stack.sh install <phase>`).
 The installer is **non-interactive** by default for everything except prompts
 where it genuinely needs your input (e.g., a confirmation before recreating an
 existing container).
+
+### If Phase 01 (LiteLLM) fails on a cold / second machine
+
+Phase 01 is **self-healing** and self-diagnosing, so a failure here is rarely
+fatal — re-running `install 01` usually clears it. Two cold-machine fixes are
+worth understanding:
+
+- **LiteLLM Postgres DB auto-create.** LiteLLM's `DATABASE_URL` names a `litellm`
+  database, but Honcho's Postgres only ships the server + a `postgres` DB — nothing
+  else creates `litellm`. On a machine where it doesn't already exist, LiteLLM's
+  Prisma blocks `uvicorn` startup waiting on a DB it can't reach, so `/v1/models`
+  times out even though the container is `Up` and `:5432` is reachable.
+  `bin/start-litellm.sh` now issues an idempotent `CREATE DATABASE litellm` (via the
+  Honcho pg container) after the `:5432` reachability check, on every fresh start /
+  `--recreate`. A healthy managed LiteLLM is never touched.
+- **Cold-start self-heal.** A running+managed `litellm` (or `phoenix` / `openwebui`)
+  left over from a prior/partial run is no longer trusted blindly — Phase 01
+  **health-probes** it (`litellm_wait_ready`) and, if it isn't actually serving,
+  recreates it via `start-litellm.sh --recreate` (which re-runs the Postgres
+  precheck, injects the current master key, and writes fresh config) and re-waits.
+- **Self-diagnosing failure output.** On a genuine smoke failure the phase prints
+  `litellm_diagnose` — container state, published ports, `:5432` reachability, a
+  `litellm DB present/MISSING` line, master-key match between container env and
+  `.env`, raw `/v1/models`, and a redacted log tail — instead of dying with a bare
+  "did not return a model list". The diagnostic runs to completion even under
+  `set -Eeuo pipefail` (it's wrapped in a `+e` subshell), so the most useful part
+  (the logs) is never truncated. This is the first thing to read if Phase 01 fails.
 
 ---
 
@@ -297,8 +351,14 @@ Once the `hermes-fleet-v1` sandbox is up:
 bash vz-ai-stack.sh install 04f       # mounts SOULs + runs the bootstrap
 ```
 
-(SOUL templates for all 7 fleet profiles are pre-staged on the host at
+(SOUL templates for all 9 fleet profiles are pre-staged on the host at
 `~/ai-stack/openshell/fleet-souls/` so the bootstrap is just a mount + exec.)
+
+> **Two fleet installers, two scopes.** `install 04f` installs the fleet
+> *inside* the Hermes sandbox (`hermes-fleet-v1`). `install 04h` (which runs
+> **last** in the phase order) installs the cross-platform fleet to Claude Code
+> + Pi personas and widens the `PI_*`/`HERMES_*` virtual keys to cover the
+> full 9-role roster.
 
 ### 4. (Optional) Best-effort upstream phases
 
