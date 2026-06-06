@@ -71,6 +71,31 @@ if ! nc -z 127.0.0.1 5432 2>/dev/null \
 fi
 ok "Postgres reachable on :5432 — LiteLLM can connect to its key store"
 
+# Ensure the 'litellm' DATABASE exists — not just that the server is up. Honcho's
+# Postgres provides the SERVER on :5432 but only creates the 'postgres' DB;
+# NOTHING creates 'litellm' (the DB named in DATABASE_URL). On a fresh/second
+# machine that absent DB makes LiteLLM's Prisma block uvicorn startup, so
+# /v1/models times out (container Up, :5432 reachable, key OK — but never
+# serving). Create it idempotently. Best-effort: if the pg container can't be
+# reached by name we warn and let LiteLLM try (no regression vs. prior behaviour).
+PG_CTR="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -m1 -iE 'honcho.*(database|postgres|db)' || true)"
+[[ -z "$PG_CTR" ]] && PG_CTR="honcho-database-1"
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$PG_CTR"; then
+  if docker exec "$PG_CTR" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
+    ok "Postgres database 'litellm' present"
+  else
+    log "Postgres database 'litellm' missing — creating it (LiteLLM Prisma key store)..."
+    if docker exec "$PG_CTR" psql -U postgres -c "CREATE DATABASE litellm" >/dev/null 2>&1; then
+      ok "created Postgres database 'litellm'"
+    else
+      warn "Could not auto-create 'litellm' DB via '$PG_CTR'. If LiteLLM hangs on boot, create it manually:"
+      warn "    docker exec $PG_CTR psql -U postgres -c 'CREATE DATABASE litellm'"
+    fi
+  fi
+else
+  warn "Postgres container not found by name ('$PG_CTR') — skipping 'litellm' DB ensure (LiteLLM will attempt a Prisma migrate on boot)."
+fi
+
 # Guard: refuse silent recreate.
 recreate_guard "$NAME" "$RECREATE_FLAG" || exit 1
 

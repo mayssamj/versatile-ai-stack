@@ -111,7 +111,12 @@ litellm_smoke_ok() {
 # litellm_diagnose — print an actionable, secret-free diagnostic when LiteLLM
 # won't serve. Designed so a failing install on a remote/cold machine EXPLAINS
 # itself instead of dying on a bare "did not return a model list".
-litellm_diagnose() {
+litellm_diagnose() (
+  # Subshell body ( ) + relaxed errexit: a diagnostic MUST run to completion —
+  # it is invoked precisely when things fail, under the phase's `set -Eeuo
+  # pipefail`. The previous {} form aborted at the first failing probe (e.g. curl
+  # to a dead litellm) — right before the logs, the most useful part. Never again.
+  set +e +o pipefail
   local key; key="$(get_env LITELLM_MASTER_KEY "")"
   warn "──── LiteLLM diagnostics ────────────────────────────────────────"
   if container_running litellm 2>/dev/null; then
@@ -119,30 +124,39 @@ litellm_diagnose() {
   else
     warn "container   : NOT running — start it: bash $AI_STACK/bin/start-litellm.sh"
   fi
-  warn "published   : $(docker port litellm 2>/dev/null | tr '\n' ' ' || echo '(none)')"
+  warn "published   : $(docker port litellm 2>/dev/null | tr '\n' ' ')"
   if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-    warn "postgres    : :5432 reachable (LiteLLM key store OK)"
+    warn "postgres    : :5432 reachable (server up)"
   else
-    warn "postgres    : :5432 NOT reachable — LiteLLM can't serve. Start Honcho: bash $AI_STACK/vz-ai-stack.sh install 03"
+    warn "postgres    : :5432 NOT reachable — start Honcho: bash $AI_STACK/vz-ai-stack.sh install 03"
   fi
-  local cenv; cenv="$(docker exec litellm printenv LITELLM_MASTER_KEY 2>/dev/null || true)"
+  # Server-reachable != database-present. A MISSING 'litellm' DB (Honcho's pg only
+  # creates 'postgres') makes Prisma block uvicorn startup → /v1/models times out.
+  local pgc; pgc="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -m1 -iE 'honcho.*(database|postgres|db)')"
+  [[ -z "$pgc" ]] && pgc="honcho-database-1"
+  if docker exec "$pgc" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" 2>/dev/null | grep -q 1; then
+    warn "litellm DB  : present"
+  else
+    warn "litellm DB  : MISSING — this blocks Prisma/uvicorn startup (the usual cold-machine cause)."
+    warn "              Fix: docker exec $pgc psql -U postgres -c 'CREATE DATABASE litellm'  then  bash $AI_STACK/bin/start-litellm.sh --recreate"
+  fi
+  local cenv; cenv="$(docker exec litellm printenv LITELLM_MASTER_KEY 2>/dev/null)"
   if [[ -n "$cenv" && -n "$key" && "$cenv" == "$key" ]]; then
     warn "master key  : container matches .env"
   elif [[ -n "$cenv" ]]; then
-    warn "master key  : MISMATCH — running container holds a different key than .env."
-    warn "              Fix: bash $AI_STACK/bin/start-litellm.sh --recreate"
+    warn "master key  : MISMATCH — recreate: bash $AI_STACK/bin/start-litellm.sh --recreate"
   fi
-  local raw; raw="$(curl -s --max-time 5 "${LITELLM_BASE_URL:-http://litellm:4000}/v1/models" \
-                    -H "Authorization: Bearer $key" 2>&1 | tr -d '\r' | head -c 220)"
-  warn "GET /v1/models -> ${raw:-<empty or timeout>}"
+  # Truncate with parameter expansion (NOT `head -c`, which SIGPIPEs upstream).
+  local raw; raw="$(curl -s --max-time 5 "${LITELLM_BASE_URL:-http://litellm:4000}/v1/models" -H "Authorization: Bearer $key" 2>&1 | tr -d '\r')"
+  if [[ -n "$raw" ]]; then warn "GET /v1/models -> ${raw:0:220}"; else warn "GET /v1/models -> <empty or timeout>"; fi
   warn "recent litellm logs (tail 20):"
   # Redact any sk-… token (LiteLLM logs its master key on first boot) BEFORE it
   # reaches the terminal/stderr — a tee'd install log would otherwise persist it.
-  docker logs litellm --tail 20 2>&1 | sed -E 's/sk-[A-Za-z0-9_-]+/[REDACTED]/g; s/^/    /' \
-    || warn "    (no logs — container missing)"
+  docker logs litellm --tail 20 2>&1 | sed -E 's/sk-[A-Za-z0-9_-]+/[REDACTED]/g; s/^/    /'
   warn "─────────────────────────────────────────────────────────────────"
   warn "Most common fix: bash $AI_STACK/bin/start-litellm.sh --recreate   then re-run: bash $AI_STACK/vz-ai-stack.sh install 01"
-}
+  return 0
+)
 
 # Assert a callback was loaded by inspecting docker logs.
 litellm_assert_callback_loaded() {
