@@ -203,9 +203,41 @@ ai-stack-installer — usage:
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 26 mempalace
 
+Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
+  e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model
+Per-SERVICE help:  vz-ai-stack.sh help <service>   (what it is · config · usage; `help services` lists them)
 EOF
+}
+
+# usage_for TOKEN — focused, per-subcommand help: the usage line(s) for TOKEN
+# plus their indented continuation lines. Reuses usage() as the single source of
+# truth (no duplicated help text). Falls back to the full usage if TOKEN is not a
+# documented subcommand.
+usage_for() {
+  local t="$1" out
+  out="$(usage | awk -v t="$t" '
+    /^    vz-ai-stack\.sh /{ show = ($0 ~ "^    vz-ai-stack\\.sh "t"([ ]|$)") }
+    show { print }
+  ')"
+  if [[ -z "$out" ]]; then
+    echo "No per-command help for '$t'. Full command list:"; echo
+    usage
+    return 0
+  fi
+  printf 'vz-ai-stack.sh %s — usage:\n\n%s\n\nFull command list:  vz-ai-stack.sh --help\n' "$t" "$out"
+}
+
+# is_subcommand TOKEN — true if TOKEN is a known top-level verb (for routing
+# `help <verb>` to usage_for vs. the per-service help path).
+is_subcommand() {
+  case "$1" in
+    install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
+    setup|keys|verify|adopt|apply-restarts|logs|history|gc|migrate-v2|upgrade|\
+    tutorial-serve|reset|start|enable|stop|disable|help) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # --- prepare-sudo subcommand -------------------------------------------------
@@ -529,7 +561,16 @@ cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "
 cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
-cmd_help()    { bash "$AI_STACK/installer/lib/help.sh" "$@"; }
+cmd_help() {
+  # bare `help` → the full command list (same as --help; "what can I do?").
+  if [[ -z "${1:-}" ]]; then usage; return 0; fi
+  # `help <subcommand>` (install, model, fleet, …) → that command's usage.
+  # `help <service>` / `help services` / `help regen` → per-service help (help.sh).
+  if is_subcommand "$1"; then usage_for "$1"; return 0; fi
+  # `|| true`: help.sh exits non-zero on an unknown service — keep the friendly
+  # message it prints, but don't let it trip the ERR trap into the user's output.
+  bash "$AI_STACK/installer/lib/help.sh" "$@" || true
+}
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
@@ -710,6 +751,14 @@ summary_end_of_install() {
 main() {
   local cmd="${1:-install}"
   shift || true
+  # Per-command help: `vz-ai-stack.sh <command> --help|-h` → focused usage for
+  # that command (instead of the command rejecting the flag). `help`/`-h`/`--help`
+  # as the command itself fall through to the case below.
+  if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then
+    case "${1:-}" in
+      -h|--help) usage_for "$cmd"; return 0 ;;
+    esac
+  fi
   case "$cmd" in
     install|"")        cmd_install "$@" ;;   # forward ALL args (target + flags like --dry-run)
     prepare-sudo)      cmd_prepare_sudo ;;
