@@ -69,24 +69,40 @@ hdr "Phase 01 — inference plane"
 # installed yet) is what makes LiteLLM->ollama work on a fresh machine.
 ensure_ollama || { err "Ollama could not be ensured"; exit 1; }
 
-# --- Disk-space precheck for models ---
-require_disk_free 30 "$HOME" || { err "Need 30GB free for Ollama models"; exit 1; }
-
-# --- Pull required models if missing ---
+# --- Work out which default models still need pulling -------------------------
+# The default lazy-Ollama set is small: gemma4:e4b (~9.6GB) + nomic-embed-text
+# (~0.3GB) ≈ 10GB. The heavy 17GB+ models (qwen3.6:27b etc.) moved to LM Studio
+# and are NOT pulled here (see installer/models.yml). So an already-pulled machine
+# needs ZERO new disk and must never be blocked — the space requirement below is
+# gated on what is ACTUALLY missing.
 INSTALLED_MODELS="$(ollama list 2>/dev/null | awk 'NR>1{print $1}')"
+MISSING_MODELS=()
 for m in "${REQUIRED_MODELS[@]}"; do
   if echo "$INSTALLED_MODELS" | grep -qE "^${m}(:|$)"; then
     ok "model present: $m"
-    continue
+  else
+    MISSING_MODELS+=("$m")
   fi
-  log "Pulling $m (this may take several minutes)..."
-  if ! ollama pull "$m"; then
-    err "ollama pull $m failed; cleaning partial blob..."
-    ollama rm "$m" 2>/dev/null || true
-    exit 1
-  fi
-  ok "pulled: $m"
 done
+
+# --- Disk-space precheck — ONLY for models we actually need to download --------
+# ~10GB of models + download/extract headroom = ~15GB. (Previously a flat,
+# unconditional 30GB — stale, sized for the old qwen3.6:27b-era pull policy — which
+# blocked re-installs on a fully-provisioned box that needed nothing.)
+if (( ${#MISSING_MODELS[@]} )); then
+  require_disk_free 15 "$HOME" || { err "Need ~15GB free to pull missing models: ${MISSING_MODELS[*]}"; exit 1; }
+  for m in "${MISSING_MODELS[@]}"; do
+    log "Pulling $m (this may take several minutes)..."
+    if ! ollama pull "$m"; then
+      err "ollama pull $m failed; cleaning partial blob..."
+      ollama rm "$m" 2>/dev/null || true
+      exit 1
+    fi
+    ok "pulled: $m"
+  done
+else
+  ok "all default models already present — no download needed, no disk check"
+fi
 
 # --- LiteLLM config.yaml ---
 if [[ ! -f "$AI_STACK/litellm/config.yaml" ]]; then
