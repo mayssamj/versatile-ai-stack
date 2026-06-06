@@ -11,6 +11,7 @@ source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
+source "$AI_STACK/installer/lib/deps.sh"
 
 PHASE=00
 precheck() {
@@ -49,82 +50,18 @@ fi
 
 hdr "Phase 00 — host preparation"
 
-# --- brew + formulae ---
-if ! command -v brew >/dev/null; then
-  err "Homebrew is required. Install from https://brew.sh and re-run."
-  exit 1
-fi
-log "Resolving brew formulae..."
-# Per-formula install with graceful handling of pre-existing symlinks
-# (e.g. a globally-installed npm pnpm that conflicts with brew pnpm).
-# We use `brew list <name>` which exits 0 if installed, non-zero otherwise.
-FORMULAE=(bash yq jq node@22 pnpm uv git tesseract openssl@3)
-for f in "${FORMULAE[@]}"; do
-  short="${f%@*}"
-  if brew list "$short" >/dev/null 2>&1 || brew list "$f" >/dev/null 2>&1; then
-    continue
-  fi
-  log "Installing: $f"
-  if ! brew install "$f" 2>&1 | tail -5; then
-    # Symlink conflicts are non-fatal — brew install usually exits non-zero
-    # but the binary is in the cellar and reachable via `brew --prefix $f`/bin.
-    warn "brew install $f exited non-zero (likely a symlink conflict). Continuing."
-  fi
-done
-# Best-effort relink for node@22 (keg-only); ignore failures.
-brew link --overwrite node@22 >/dev/null 2>&1 || true
+# --- host dependencies: core CLI tools + OrbStack/Docker (verified actions) ---
+# Centralized in installer/lib/deps.sh so the SAME check->install->verify logic
+# backs preflight, this phase, and `vz-ai-stack.sh deps`. Each ensures only what
+# is missing, then re-verifies — no assumptions. Ollama (install + cross-container
+# env-patch + start + model pulls) is ensured in Phase 01 so that step stays one
+# coherent unit. See doc/PREREQUISITES.md for the full map.
+ensure_core_tools || { err "core CLI tools could not be ensured (see above)"; exit 1; }
+ensure_orbstack   || { err "OrbStack/Docker could not be ensured (see above)"; exit 1; }
 
-# OrbStack is a cask, separate code path.
-if ! brew list --cask 2>/dev/null | grep -qx orbstack; then
-  log "Installing OrbStack (cask)..."
-  brew install --cask orbstack
-fi
-
-if ! docker info >/dev/null 2>&1; then
-  warn "Docker daemon not reachable. Launching OrbStack..."
-  open -a OrbStack || true
-  i=0
-  until docker info >/dev/null 2>&1; do
-    sleep 1
-    (( ++i > 60 )) && { err "OrbStack didn't come up in 60s"; exit 1; }
-  done
-fi
-ok "Docker daemon ready"
-
-# --- Ollama host + origins + keep-alive (cross-container access + lazy mem) -
-# Ollama defaults to binding 127.0.0.1 with an origin allowlist limited to
-# localhost — so LiteLLM containers calling http://ollama:11434/api/chat
-# via --add-host=ollama:host-gateway get 403 Forbidden. Set OLLAMA_HOST=0.0.0.0
-# and OLLAMA_ORIGINS=* on the brew service so any in-stack container can
-# reach it. We also set OLLAMA_KEEP_ALIVE=0 so Ollama NEVER keeps a model
-# resident after a request — on a 24GB box the big models thrash RAM, and the
-# lazy-Ollama policy (2026-05-31) keeps only gemma4:e4b/embeddings light; a
-# resident 9.6GB model otherwise sits in memory between calls. Persist via the
-# plist + launchctl setenv so daemons spawned later in this session also see it.
-OLLAMA_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.ollama.plist"
-if command -v ollama >/dev/null && [[ -f "$OLLAMA_PLIST" ]]; then
-  needs_restart=0
-  for key in OLLAMA_HOST OLLAMA_ORIGINS OLLAMA_KEEP_ALIVE; do
-    if ! plutil -extract "EnvironmentVariables.$key" raw "$OLLAMA_PLIST" >/dev/null 2>&1; then
-      needs_restart=1
-    fi
-  done
-  if (( needs_restart )); then
-    log "Patching $OLLAMA_PLIST with OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=* + OLLAMA_KEEP_ALIVE=0..."
-    # Use PlistBuddy (built-in on macOS); merge into existing EnvironmentVariables dict.
-    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OLLAMA_HOST string 0.0.0.0" "$OLLAMA_PLIST" 2>/dev/null \
-      || /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:OLLAMA_HOST 0.0.0.0" "$OLLAMA_PLIST"
-    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OLLAMA_ORIGINS string *" "$OLLAMA_PLIST" 2>/dev/null \
-      || /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:OLLAMA_ORIGINS *" "$OLLAMA_PLIST"
-    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OLLAMA_KEEP_ALIVE string 0" "$OLLAMA_PLIST" 2>/dev/null \
-      || /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:OLLAMA_KEEP_ALIVE 0" "$OLLAMA_PLIST"
-    launchctl setenv OLLAMA_HOST "0.0.0.0"
-    launchctl setenv OLLAMA_ORIGINS "*"
-    launchctl setenv OLLAMA_KEEP_ALIVE "0"
-    brew services restart ollama 2>&1 | tail -2 || warn "brew services restart ollama failed"
-    ok "patched + restarted ollama (OLLAMA_HOST=0.0.0.0, OLLAMA_ORIGINS=*, OLLAMA_KEEP_ALIVE=0)"
-  fi
-fi
+# (Ollama install + cross-container env-patch + start moved to Phase 01 via
+# ensure_ollama in installer/lib/deps.sh — it must run AFTER ollama is installed,
+# and Phase 01 is where ollama is installed + models are pulled.)
 
 # --- directory tree ---
 log "Ensuring directory tree..."

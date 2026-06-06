@@ -104,6 +104,7 @@ source "$LIB/validate.sh"
 source "$LIB/prompt.sh"
 source "$LIB/litellm.sh"
 source "$LIB/bootstrap.sh"
+source "$LIB/deps.sh"
 
 # --- error trap (Reviewer B #2) ---------------------------------------------
 trap 'err "ERR line $LINENO: $BASH_COMMAND (exit=$?)"' ERR
@@ -116,32 +117,23 @@ preflight() {
     exit 2
   fi
 
-  # Resolve and pin tool paths so a later PATH change can't bite mid-script.
-  local missing=()
-  for tool in brew docker git curl jq yq openssl awk grep sed mktemp stat lsof; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-      missing+=("$tool")
-    fi
-  done
-  if (( ${#missing[@]} > 0 )); then
-    err "Missing required tools: ${missing[*]}"
-    err "Install missing tools and re-run. Most are available via:  brew install ${missing[*]}"
-    exit 2
-  fi
-
-  # Docker daemon reachable?  (catches both OrbStack-not-running and
-  # Docker-Desktop-not-running on macOS).
-  if ! docker info >/dev/null 2>&1; then
-    err "Docker daemon not reachable. Start OrbStack: open -a OrbStack"
-    exit 2
-  fi
-
-  # ~/ai-stack writable?
+  # ~/ai-stack writable? (check before installing anything — we write .env, state, etc.)
   if ! touch "$AI_STACK/.write-test" 2>/dev/null; then
     err "$AI_STACK is not writable for $(whoami)"
     exit 2
   fi
   rm -f "$AI_STACK/.write-test"
+
+  # VERIFIED ACTIONS, NO ASSUMPTIONS: instead of asserting yq/jq/docker/etc. are
+  # present and aborting (which made the install phase that INSTALLS them
+  # unreachable on a clean Mac), ensure them now — install what's missing, start
+  # OrbStack, and verify each before proceeding. Idempotent: a no-op when the host
+  # is already prepared. Ollama is ensured by Phase 01 (alongside its model pulls).
+  # See installer/lib/deps.sh + doc/PREREQUISITES.md.
+  bootstrap_host_deps || {
+    err "Host dependencies could not be ensured. Fix the error(s) above and re-run."
+    exit 2
+  }
 }
 
 # --- subcommand dispatch -----------------------------------------------------
@@ -162,6 +154,8 @@ ai-stack-installer — usage:
                                           vz-ai-stack.sh install hermes_telegram  (alias: telegram)
     vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
     vz-ai-stack.sh test <phase>             run smoke tests for one phase (id or name)
+    vz-ai-stack.sh deps [--check]           show the host dependency map; install/start
+                                          what's missing (--check = read-only, CI exit code)
     vz-ai-stack.sh status                   tabular service status
     vz-ai-stack.sh help <service>           what it is · how it's configured · how to use
     vz-ai-stack.sh help services            list services that have help prose
@@ -518,6 +512,17 @@ _list_startable_services() {
     | sort -u | sed 's/^/  - /'
 }
 
+# cmd_deps — show the host dependency map with live status, and (by default)
+# install/start anything missing. `--check` is read-only (CI-friendly; non-zero
+# exit if anything is missing/down). Logic lives in installer/lib/deps.sh.
+cmd_deps() {
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    err "Do not run 'vz-ai-stack.sh deps' under sudo. Run as your normal user."
+    exit 2
+  fi
+  deps_report "${1:-}"
+}
+
 # cmd_verify — standalone runtime-verification sweep (Safety Reviewer 2).
 #
 # Runs Phase 00·V's probes (lib/verify.sh) followed by doctor checks 19–22.
@@ -624,6 +629,7 @@ main() {
     model)             cmd_model "$@" ;;
     fleet)             cmd_fleet "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
+    deps)              cmd_deps "$@" ;;
     verify)            cmd_verify ;;
     adopt)             cmd_adopt "$1" ;;
     apply-restarts)    cmd_apply_restarts ;;

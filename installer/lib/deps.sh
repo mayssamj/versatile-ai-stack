@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+# deps.sh — the authoritative HOST DEPENDENCY MAP + idempotent ensure routines.
+#
+# WHY: on a clean Mac the installer used to ASSUME yq/jq/node/OrbStack/Ollama were
+# present and hard-exit telling the user to install them — preflight even gated on
+# tools that Phase 00 is supposed to install, so the install phase was unreachable.
+# This module replaces "assume + abort" with "verify + install + start + re-verify".
+# Every routine is idempotent: a no-op on an already-prepared host.
+#
+# Tiers (see doc/PREREQUISITES.md for the full table):
+#   0  bootstrap   — Homebrew, bash 5+, Xcode CLT (git/curl). Can't be brew-installed normally.
+#   1  core CLI    — brew formulae the framework + many phases need (yq, jq, node@22, …).
+#   2  services    — install AND start AND verify (OrbStack/docker, Ollama).
+#   3  opt-in      — each owned by its own phase (lms, openshell, blaxel, …); NOT here.
+#
+# Sourced by vz-ai-stack.sh (after common.sh) and by Phase 00/01. Also runnable as
+# `vz-ai-stack.sh deps [--check]`. Safe to source twice.
+
+# --- the manifest (single source of truth; doc/PREREQUISITES.md mirrors this) ----
+# Core brew formulae. `<formula>` may carry a version (node@22); the short name is
+# used for `brew list`/`command -v`. Order is install order.
+DEPS_FORMULAE=(bash yq jq node@22 pnpm uv git tesseract openssl@3)
+
+# macOS built-ins we REQUIRE but never install — verify only, fail loud if absent
+# (a broken PATH or a stripped base system). python3 is verified separately so we
+# can offer to install it (it isn't always present until Xcode CLT / brew).
+DEPS_BUILTINS=(awk grep sed stat mktemp lsof perl plutil launchctl open sysctl curl)
+
+# Map a formula token to the command it provides (for post-install verification).
+_dep_cmd_for() {
+  case "$1" in
+    node@22) echo node ;;
+    openssl@3) echo openssl ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# Fallbacks if sourced without common.sh (keeps deps.sh runnable standalone).
+command -v log  >/dev/null 2>&1 || log()  { printf '  %s\n' "$*"; }
+command -v ok   >/dev/null 2>&1 || ok()   { printf '✓ %s\n' "$*"; }
+command -v warn >/dev/null 2>&1 || warn() { printf '⚠ %s\n' "$*" >&2; }
+command -v err  >/dev/null 2>&1 || err()  { printf '✗ %s\n' "$*" >&2; }
+command -v note >/dev/null 2>&1 || note() { printf '  %s\n' "$*"; }
+command -v hdr  >/dev/null 2>&1 || hdr()  { printf '\n=== %s ===\n' "$*"; }
+
+# --- small verified-wait helper (no coreutils dependency) --------------------
+# _dep_wait <timeout_s> <description> <cmd...> : poll until <cmd> succeeds.
+_dep_wait() {
+  local timeout="$1" desc="$2"; shift 2
+  local i=0
+  until "$@" >/dev/null 2>&1; do
+    sleep 1
+    if (( ++i >= timeout )); then
+      err "timed out after ${timeout}s waiting for: $desc"
+      return 1
+    fi
+  done
+  return 0
+}
+
+dep_have() { command -v "$1" >/dev/null 2>&1; }
+
+# ===========================================================================
+# TIER 0 — bootstrap
+# ===========================================================================
+
+# ensure_homebrew — install Homebrew if absent (it's the package manager every
+# other dependency rides on). Confirms first unless NO_PROMPT=1 (then NONINTERACTIVE).
+ensure_homebrew() {
+  if dep_have brew; then return 0; fi
+  # Maybe installed but not on PATH yet (fresh shell after install).
+  local b
+  for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    if [[ -x "$b" ]]; then eval "$("$b" shellenv)"; dep_have brew && { ok "Homebrew found at $b"; return 0; }; fi
+  done
+  warn "Homebrew is not installed — it's required to install everything else."
+  if [[ "${NO_PROMPT:-0}" != "1" ]]; then
+    printf '  Install Homebrew now via the official script? [Y/n] ' >&2
+    local ans; read -r ans || true
+    case "${ans:-Y}" in [Nn]*) err "Homebrew required. Install from https://brew.sh and re-run."; return 1 ;; esac
+  fi
+  log "Installing Homebrew (https://brew.sh)..."
+  NONINTERACTIVE="${NO_PROMPT:+1}" /bin/bash -c \
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+    || { err "Homebrew install failed — install manually from https://brew.sh and re-run."; return 1; }
+  for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [[ -x "$b" ]] && eval "$("$b" shellenv)"
+  done
+  dep_have brew || { err "Homebrew installed but 'brew' still not on PATH — open a new shell and re-run."; return 1; }
+  ok "Homebrew ready"
+}
+
+# ===========================================================================
+# TIER 1 — core CLI tools
+# ===========================================================================
+
+# ensure_builtins — verify (never install) the macOS base tools we depend on.
+# python3 is treated as installable (not always present on a bare system).
+ensure_builtins() {
+  local missing=()
+  local t
+  for t in "${DEPS_BUILTINS[@]}"; do dep_have "$t" || missing+=("$t"); done
+  if (( ${#missing[@]} )); then
+    err "Missing base system tool(s): ${missing[*]}"
+    err "These ship with macOS — a missing one means a broken PATH or base system."
+    err "Try: install the Xcode Command Line Tools ('xcode-select --install') and re-run."
+    return 1
+  fi
+  if ! dep_have python3; then
+    log "python3 not found — installing (brew python3)..."
+    brew install python3 2>&1 | tail -3 || warn "brew install python3 exited non-zero; continuing"
+    dep_have python3 || { err "python3 still missing — run 'xcode-select --install' or 'brew install python3' and re-run."; return 1; }
+  fi
+  return 0
+}
+
+# ensure_core_tools — install the core brew formulae that are missing, then verify.
+# Per-formula (graceful on pre-existing symlink conflicts, e.g. a global npm pnpm).
+ensure_core_tools() {
+  ensure_homebrew || return 1
+  ensure_builtins || return 1
+  log "Verifying core CLI tools (brew formulae)..."
+  local f short installed_any=0
+  for f in "${DEPS_FORMULAE[@]}"; do
+    short="${f%@*}"
+    if brew list "$short" >/dev/null 2>&1 || brew list "$f" >/dev/null 2>&1; then
+      continue
+    fi
+    log "Installing: $f"
+    installed_any=1
+    if ! brew install "$f" 2>&1 | tail -5; then
+      # brew often exits non-zero on a symlink conflict while the binary IS in the
+      # cellar and reachable. Verify by command before treating it as fatal.
+      warn "brew install $f exited non-zero (likely a symlink conflict). Verifying..."
+    fi
+  done
+  # node@22 is keg-only; relink so `node`/`npm` are on PATH.
+  brew link --overwrite node@22 >/dev/null 2>&1 || true
+
+  # Re-verify every formula actually provides its command now. No assumptions.
+  local cmd missing=()
+  for f in "${DEPS_FORMULAE[@]}"; do
+    cmd="$(_dep_cmd_for "$f")"
+    dep_have "$cmd" || missing+=("$f ($cmd)")
+  done
+  (( BASH_VERSINFO[0] >= 5 )) || missing+=("bash 5+ (you're on ${BASH_VERSINFO[0]}.x — open a new shell so brew-bash is on PATH)")
+  if (( ${#missing[@]} )); then
+    err "Core tools still missing after install: ${missing[*]}"
+    err "Install them manually ('brew install <name>') and re-run."
+    return 1
+  fi
+  (( installed_any )) && ok "core CLI tools installed" || ok "core CLI tools present"
+  return 0
+}
+
+# ===========================================================================
+# TIER 2 — runtime services (install AND start AND verify)
+# ===========================================================================
+
+# ensure_orbstack — install the OrbStack cask if missing, then make sure the
+# Docker daemon is actually reachable (launch OrbStack + wait).
+ensure_orbstack() {
+  ensure_homebrew || return 1
+  if ! brew list --cask 2>/dev/null | grep -qx orbstack && [[ ! -d "/Applications/OrbStack.app" ]]; then
+    log "Installing OrbStack (Docker runtime, cask)..."
+    brew install --cask orbstack 2>&1 | tail -6 || { err "brew install --cask orbstack failed — install from https://orbstack.dev and re-run."; return 1; }
+  fi
+  if docker info >/dev/null 2>&1; then ok "Docker daemon ready"; return 0; fi
+  log "Starting OrbStack (Docker daemon)..."
+  open -a OrbStack 2>/dev/null || open -a Docker 2>/dev/null || true
+  if _dep_wait 90 "Docker daemon (docker info)" docker info; then
+    ok "Docker daemon ready"
+    return 0
+  fi
+  err "Docker daemon did not come up. Start OrbStack manually (open -a OrbStack) and re-run."
+  return 1
+}
+
+# ensure_ollama — install Ollama, configure it for cross-container access + lazy
+# memory, start it, and verify it responds. Centralized here so the env-patch
+# ALWAYS runs right after install (it used to be in Phase 00, gated on ollama
+# already existing — so a cold install, which installs ollama in Phase 01, never
+# got patched and LiteLLM->ollama 403'd). See doc/PREREQUISITES.md.
+ensure_ollama() {
+  ensure_homebrew || return 1
+  if ! dep_have ollama; then
+    log "Installing Ollama..."
+    brew install ollama 2>&1 | tail -5 || { err "brew install ollama failed."; return 1; }
+    dep_have ollama || { err "ollama still not on PATH after install."; return 1; }
+  fi
+  # Start the service first so brew writes the launchd plist we then patch.
+  if ! brew services list 2>/dev/null | awk '$1=="ollama"{print $2}' | grep -q started; then
+    log "Starting Ollama brew service..."
+    brew services start ollama 2>&1 | tail -2 || warn "brew services start ollama returned non-zero"
+  fi
+  _dep_ollama_patch_env
+  if ! _dep_wait 30 "Ollama API (:11434/api/tags)" curl -sf --max-time 3 http://127.0.0.1:11434/api/tags; then
+    err "Ollama did not respond on :11434. Check 'brew services info ollama'."
+    return 1
+  fi
+  ok "Ollama running (:11434, cross-container env applied)"
+}
+
+# Patch the brew ollama launchd plist so in-stack containers can reach it
+# (OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=*) and so it never pins a model resident
+# on a 24GB box (OLLAMA_KEEP_ALIVE=0). Restarts only if a key was missing.
+_dep_ollama_patch_env() {
+  local plist="$HOME/Library/LaunchAgents/homebrew.mxcl.ollama.plist"
+  [[ -f "$plist" ]] || return 0   # not service-managed (rare) — nothing to patch
+  local needs=0 key
+  for key in OLLAMA_HOST OLLAMA_ORIGINS OLLAMA_KEEP_ALIVE; do
+    plutil -extract "EnvironmentVariables.$key" raw "$plist" >/dev/null 2>&1 || needs=1
+  done
+  (( needs )) || return 0
+  log "Patching Ollama for cross-container access (OLLAMA_HOST=0.0.0.0, ORIGINS=*, KEEP_ALIVE=0)..."
+  local pb=/usr/libexec/PlistBuddy
+  "$pb" -c "Add :EnvironmentVariables:OLLAMA_HOST string 0.0.0.0" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_HOST 0.0.0.0" "$plist"
+  "$pb" -c "Add :EnvironmentVariables:OLLAMA_ORIGINS string *" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_ORIGINS *" "$plist"
+  "$pb" -c "Add :EnvironmentVariables:OLLAMA_KEEP_ALIVE string 0" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_KEEP_ALIVE 0" "$plist"
+  launchctl setenv OLLAMA_HOST 0.0.0.0 2>/dev/null || true
+  launchctl setenv OLLAMA_ORIGINS "*" 2>/dev/null || true
+  launchctl setenv OLLAMA_KEEP_ALIVE 0 2>/dev/null || true
+  brew services restart ollama 2>&1 | tail -2 || warn "brew services restart ollama failed"
+}
+
+# ===========================================================================
+# Orchestration + reporting
+# ===========================================================================
+
+# bootstrap_host_deps — Tier 0 + 1 + the Docker service (Tier 2). Idempotent.
+# Ollama (also Tier 2) is ensured by Phase 01 via ensure_ollama right before it
+# pulls models, so its install+config+start+model-pull stay one coherent step.
+bootstrap_host_deps() {
+  ensure_core_tools || return 1
+  ensure_orbstack   || return 1
+  return 0
+}
+
+# deps_report [--check] — print the dependency map with live status. With --check,
+# exit non-zero if anything is missing/down (read-only; never installs). Without a
+# flag, install/start what's missing (verified actions), then report.
+deps_report() {
+  local check_only=0
+  [[ "${1:-}" == "--check" ]] && check_only=1
+  hdr "Host dependency map (macOS Apple Silicon)"
+
+  local rc=0 f cmd
+  # _drow <label> <tier> <status> — print a status row. Status + rc are computed
+  # in the PARENT shell (NOT inside $()) so a MISSING actually bumps rc.
+  _drow() { printf '  %-22s %-10s %s\n' "$1" "$3" "$2"; }
+  printf '  %-22s %-10s %s\n' "DEPENDENCY" "STATUS" "TIER"
+
+  if dep_have brew;                then _drow "brew" "0 bootstrap" present; else _drow "brew" "0 bootstrap" MISSING; rc=1; fi
+  if (( BASH_VERSINFO[0] >= 5 ));   then _drow "bash 5+" "0 bootstrap" present; else _drow "bash 5+" "0 bootstrap" OLD; rc=1; fi
+  for f in "${DEPS_FORMULAE[@]}"; do
+    [[ "$f" == bash ]] && continue
+    cmd="$(_dep_cmd_for "$f")"
+    if dep_have "$cmd";             then _drow "$f" "1 core" present; else _drow "$f" "1 core" MISSING; rc=1; fi
+  done
+  if dep_have python3;              then _drow "python3" "1 core" present; else _drow "python3" "1 core" MISSING; rc=1; fi
+  if docker info >/dev/null 2>&1;   then _drow "OrbStack/docker" "2 service" running; else _drow "OrbStack/docker" "2 service" DOWN; rc=1; fi
+  if curl -sf --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+    _drow "Ollama (:11434)" "2 service" running; else _drow "Ollama (:11434)" "2 service" DOWN; rc=1; fi
+
+  if (( check_only )); then
+    echo
+    (( rc == 0 )) && ok "all host dependencies present + services running" \
+                  || err "one or more host dependencies missing/down (run 'vz-ai-stack.sh deps' to install)"
+    return $rc
+  fi
+  if (( rc )); then
+    echo
+    log "Installing/starting missing dependencies (verified actions)..."
+    bootstrap_host_deps || return 1
+    ensure_ollama || return 1
+    ok "host dependencies ensured"
+  else
+    ok "all host dependencies already present + running"
+  fi
+  return 0
+}

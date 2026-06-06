@@ -18,6 +18,7 @@ source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
 source "$AI_STACK/installer/lib/litellm.sh"
 source "$AI_STACK/installer/lib/lmstudio.sh"   # lms_register_model (ADD-ONLY upsert)
+source "$AI_STACK/installer/lib/deps.sh"        # ensure_ollama (install + env-patch + start + verify)
 
 PHASE=01
 
@@ -60,17 +61,13 @@ fi
 
 hdr "Phase 01 — inference plane"
 
-# --- Ollama brew install + start ---
-if ! command -v ollama >/dev/null; then
-  log "Installing Ollama..."
-  brew install ollama
-fi
-if ! brew services list 2>/dev/null | awk '$1=="ollama" {print $2}' | grep -q started; then
-  log "Starting Ollama brew service..."
-  brew services start ollama
-fi
-wait_http http://127.0.0.1:11434/api/tags 30 || { err "Ollama did not come up"; exit 1; }
-ok "Ollama running"
+# --- Ollama: install + cross-container env-patch + start + verify (deps.sh) ---
+# ensure_ollama installs ollama if missing, patches the launchd plist for
+# cross-container access (OLLAMA_HOST=0.0.0.0 / ORIGINS=* / KEEP_ALIVE=0), starts
+# the service, and verifies :11434 responds. Centralizing the env-patch here (vs
+# the old Phase-00 block that was skipped on a cold install because ollama wasn't
+# installed yet) is what makes LiteLLM->ollama work on a fresh machine.
+ensure_ollama || { err "Ollama could not be ensured"; exit 1; }
 
 # --- Disk-space precheck for models ---
 require_disk_free 30 "$HOME" || { err "Need 30GB free for Ollama models"; exit 1; }
