@@ -4,6 +4,41 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-06 — fix: LiteLLM cold-start `P1010` — grant the key-store DB role owner/public access (`652c447`)
+
+A second/cold machine hit `install 01` → litellm container `Up`, `:5432` reachable,
+master key OK, the `litellm` DB now created — yet `/v1/models` still timed out.
+`litellm_diagnose` revealed Prisma failing with
+`P1010: User \`postgres\` was denied access on the database \`litellm.public\``.
+
+**Root cause.** Creating the DB (the prior `ad01a9f` fix) is not sufficient on
+**PG15+/wolfi-based** Postgres: the `public` schema is locked down (owned by
+`pg_database_owner`, `CREATE` revoked from `PUBLIC`), so a connecting role that
+doesn't OWN the database is denied `CREATE` and Prisma's `migrate deploy` can't
+build its tables → uvicorn never serves. On the dev Mac the `postgres` role is a
+superuser+owner, so it never reproduced there — the happy-path blind spot the
+verify-the-failure-path discipline exists to catch.
+
+**Fix.** `bin/start-litellm.sh`'s DB-ensure now, after creating the DB if missing,
+idempotently runs `ALTER DATABASE litellm OWNER TO postgres` +
+`GRANT ALL PRIVILEGES ON DATABASE litellm TO postgres` +
+`GRANT ALL ON SCHEMA public TO postgres`, then **PROVES** the role can actually
+`CREATE` in `public` via a rolled-back probe (`BEGIN; CREATE TABLE …; ROLLBACK;` —
+tests the exact privilege `P1010` denies, leaves no artifact). The success line
+fires only on a passing probe; a failing probe warns loudly with the precise
+superuser remediation commands. This also REPAIRS a DB left by the earlier
+create-only version on the next `install 01` / `--recreate`. The DB identity
+(`PG_USER`/`PG_PASS`/`PG_DB`) is single-sourced so the granted role can never
+diverge from the container's `DATABASE_URL`.
+
+**Verified** on the real honcho PG15 (failure-path repro): the probe FAILS as a
+non-owner role and PASSES after the grants, leaves 0 artifact rows, and is a clean
+no-op on the healthy `litellm` DB (litellm keeps serving). `bash -n` clean. Two
+independent subagent reviews (adversarial + senior-correctness) + a 3-way debate
+drove the probe-don't-trust-exit-codes design and the single-source role.
+
+---
+
 ## 2026-06-04 — fix: self-contained tutorial + NEW doctor check 45 `tutorial`
 
 The HTML tutorial (`doc/TUTORIAL.html`) — a new user's first interface — was broken:
