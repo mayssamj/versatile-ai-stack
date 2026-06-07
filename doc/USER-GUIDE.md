@@ -590,7 +590,7 @@ openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c 'whoami; uname -srm'
 
 #### `hermes_fleet` (9 sandbox-internal profiles)
 
-**What.** Seven specialized Hermes agent personas pre-staged in the `hermes-fleet-v1` sandbox at `~/ai-stack/openshell/fleet-souls/`. Each profile is a "soul" (system prompt + tool config + default model) — none of them are running processes by default, you boot one when you need it.
+**What.** Nine specialized Hermes agent personas pre-staged in the `hermes-fleet-v1` sandbox at `~/ai-stack/openshell/fleet-souls/`. Each profile is a "soul" (system prompt + tool config + default model) — none of them are running processes by default, you boot one when you need it.
 
 **The roster (and the model each is bound to).** The fleet is a **9-role
 software-engineering team** that runs a spec→deploy pipeline. Each profile's
@@ -602,15 +602,15 @@ subscription via Meridian**. The bindings as shipped:
 
 | Profile                     | Bound model                  | When you'd dispatch one                                          |
 |-----------------------------|------------------------------|------------------------------------------------------------------|
-| `hermes_manager`            | `claude-opus-4.8-sub-high`   | Frame a goal into a spec, decompose, delegate, orchestrate gates (read-only) |
-| `hermes_techlead`           | `claude-opus-4.8-sub-high`   | Architecture decisions, ADRs, interface contracts, design review |
-| `hermes_frontend_engineer`  | `claude-sonnet-4.6-sub-high` | Accessible, performant UI against the design contract            |
-| `hermes_backend_engineer`   | `claude-sonnet-4.6-sub-high` | APIs, services, data access, security basics against the contract|
-| `hermes_ml_engineer`        | `claude-opus-4.8-sub-high`   | Model selection, evals, data pipelines, finetuning, RAG          |
-| `hermes_qa_test_engineer`   | `claude-sonnet-4.6-sub-high` | Test strategy + automation; the green-bar quality gate           |
-| `hermes_reviewing_engineer` | `claude-sonnet-4.6-sub-high` | Adversarial code review + the security pass (read-only)          |
-| `hermes_sre_engineer`       | `claude-sonnet-4.6-sub-high` | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
-| `hermes_incident_manager`   | `claude-sonnet-4.6-sub-high` | Incident command + blameless postmortems (read-only)            |
+| `hermes_manager`            | `claude-opus-4.8-sub-xhigh`  | Frame a goal into a spec, decompose, delegate, orchestrate gates (read-only) |
+| `hermes_techlead`           | `claude-opus-4.8-sub-max`    | Architecture decisions, ADRs, interface contracts, design review |
+| `hermes_frontend_engineer`  | `claude-opus-4.8-sub-max`    | Accessible, performant UI against the design contract            |
+| `hermes_backend_engineer`   | `claude-opus-4.8-sub-max`    | APIs, services, data access, security basics against the contract|
+| `hermes_ml_engineer`        | `claude-opus-4.8-sub-max`    | Model selection, evals, data pipelines, finetuning, RAG          |
+| `hermes_qa_test_engineer`   | `claude-opus-4.8-sub-xhigh`  | Test strategy + automation; the green-bar quality gate           |
+| `hermes_reviewing_engineer` | `claude-opus-4.8-sub-max`    | Adversarial code review + the security pass (read-only)          |
+| `hermes_sre_engineer`       | `claude-opus-4.8-sub-xhigh`  | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
+| `hermes_incident_manager`   | `claude-opus-4.8-sub-xhigh`  | Incident command + blameless postmortems (read-only)            |
 
 **Same team, three platforms.** This identical 9-role team is also realized as
 **Pi personas** (`bin/pi-as <role>`) and **Claude Code subagents**
@@ -1411,7 +1411,7 @@ per-agent `assignments:` live there; see [models.md](models.md) for the full
 contract.
 
 **When.** Whenever you want to re-point an agent at a different model
-(e.g., move `hermes_ml_engineer` from `claude-opus-4.8-sub-high` to a local
+(e.g., move `hermes_ml_engineer` from `claude-opus-4.8-sub-max` to a local
 model), or after you bring Meridian up and want the subscription-bound Hermes
 profiles to actually use their assigned Claude model instead of the gated
 `local-gemma4` fallback.
@@ -1428,7 +1428,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list --json | jq '.assignments'
 #    Example: drop the ml-engineer to a local model to save subscription budget.
 bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer local-qwen3.6
 #    …and put it back to its subscription model later:
-bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer claude-opus-4.8-sub-high
+bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer claude-opus-4.8-sub-max
 
 # 3. RECONCILE everything from models.yml. Crash-safe 6-phase pass:
 #    validate → register model_list (ADD-ONLY) → restart LiteLLM ONCE if the
@@ -1862,7 +1862,7 @@ openshell sandbox download hermes-fleet-v1 /sandbox/test_buggy.py ~/ai-stack/san
 cd ~/ai-stack/sandbox-workspace && python -m pytest test_buggy.py -v
 ```
 
-**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_backend_engineer`, model = the profile's bound model (`claude-sonnet-4.6-sub-high`, or `local-gemma4` when availability-gated because Meridian is down), tool calls for shell ops + file writes.
+**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_backend_engineer`, model = the profile's bound model (`claude-opus-4.8-sub-max`, or `local-gemma4` when availability-gated because Meridian is down), tool calls for shell ops + file writes.
 
 **Combine with.** Recipe 10 (orchestrate this dispatch from Paperclip instead of by hand).
 

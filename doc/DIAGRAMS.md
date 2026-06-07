@@ -352,15 +352,14 @@ flowchart TB
 
 What the assignments look like (from `models.yml`, see
 [models.md](models.md)):
-- **claude-opus-4.8-sub-high** (subscription via Meridian) — `hermes_manager`,
-  `hermes_techlead`, `hermes_ml_engineer`, `deerflow`.
-- **claude-sonnet-4.6-sub-high** (subscription via Meridian) —
-  `hermes_frontend_engineer`, `hermes_backend_engineer`,
-  `hermes_qa_test_engineer`, `hermes_reviewing_engineer`,
-  `hermes_sre_engineer`, `hermes_incident_manager`.
-- **claude-opus-4.8-sub-max** (subscription via Meridian) — `pi`.
-- **local-gemma4** (the default) — `ace`, `rlm`; also the
-  availability-gated fallback for all nine Hermes profiles when Meridian is down.
+- **claude-opus-4.8-sub-xhigh** (subscription via Meridian) — `hermes_manager`,
+  `hermes_qa_test_engineer`, `hermes_sre_engineer`, `hermes_incident_manager`,
+  `ace`, `rlm`.
+- **claude-opus-4.8-sub-max** (subscription via Meridian) — `hermes_techlead`,
+  `hermes_ml_engineer`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
+  `hermes_reviewing_engineer`, `pi`, `deerflow`.
+- **local-gemma4** (the default) — the availability-gated fallback for every
+  subscription-assigned agent (incl. all nine Hermes profiles) when Meridian is down.
 
 Notes:
 - The Hermes fleet now routes to a Claude subscription via the Meridian host

@@ -38,19 +38,19 @@ sharing the `team-protocol` skill.
 
 | Agent | Assigned | Kind | Scoped key |
 |-------|----------|------|------------|
-| `hermes_manager`            | `claude-opus-4.8-sub-high`   | hermes-profile | `HERMES_LITELLM_KEY` (shared by all 9 profiles) |
-| `hermes_techlead`           | `claude-opus-4.8-sub-high`   | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_ml_engineer`        | `claude-opus-4.8-sub-high`   | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_frontend_engineer`  | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_backend_engineer`   | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_qa_test_engineer`   | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_reviewing_engineer` | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_sre_engineer`       | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_incident_manager`   | `claude-sonnet-4.6-sub-high` | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_manager`            | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` (shared by all 9 profiles) |
+| `hermes_techlead`           | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_ml_engineer`        | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_frontend_engineer`  | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_backend_engineer`   | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_qa_test_engineer`   | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_reviewing_engineer` | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_sre_engineer`       | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_incident_manager`   | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
 | `pi`                       | `claude-opus-4.8-sub-max` | pi       | `PI_LITELLM_KEY` |
 | `deerflow`                 | `claude-opus-4.8-sub-max` | deerflow | *(none — master key)* |
-| `ace`                      | `local-gemma4`      | ace            | `ACE_LITELLM_KEY` |
-| `rlm`                      | `local-gemma4`      | rlm            | `RLM_LITELLM_KEY` |
+| `ace`                      | `claude-opus-4.8-sub-xhigh` | ace            | `ACE_LITELLM_KEY` |
+| `rlm`                      | `claude-opus-4.8-sub-xhigh` | rlm            | `RLM_LITELLM_KEY` |
 | `mempalace`                | `local-gemma4`      | mempalace      | `MEMPALACE_LITELLM_KEY` |
 
 **MemPalace is a partial binding.** `mempalace` (Phase 26, opt-in) is a
@@ -148,12 +148,13 @@ the start command for each.
     `litellm/config.yaml`, joins them to the scoped-key superset, and makes them
     **assignable** (`vz-ai-stack.sh model assign pi claude-opus-4.8-sub-xhigh`).
     They availability-gate to `default` (local-gemma4) when Meridian is down.
-  - **Current assignments:** `pi` (coding) and `deerflow` (research) →
-    `claude-opus-4.8-sub-max`. The 9-role Hermes fleet runs on the subscription too
-    — the three senior roles (`hermes_manager`, `hermes_techlead`, `hermes_ml_engineer`)
-    on `claude-opus-4.8-sub-high`, the other six on `claude-sonnet-4.6-sub-high` (see
-    the assignment table above). All availability-gate to `default` (local-gemma4)
-    when Meridian is down. ACE/RLM stay local.
+  - **Current assignments:** every agent runs on the **Claude Opus subscription**
+    via Meridian. `pi` and `deerflow` → `claude-opus-4.8-sub-max`; `ace` and `rlm` →
+    `claude-opus-4.8-sub-xhigh`. The 9-role Hermes fleet is all-Opus too — `manager`,
+    `qa_test_engineer`, `sre_engineer`, `incident_manager` on `claude-opus-4.8-sub-xhigh`
+    and `techlead`, `ml_engineer`, `frontend_engineer`, `backend_engineer`,
+    `reviewing_engineer` on `claude-opus-4.8-sub-max` (see the assignment table above).
+    All availability-gate to `default` (local-gemma4) when Meridian is down.
 
 ## Workflow
 

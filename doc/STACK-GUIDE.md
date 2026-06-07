@@ -542,15 +542,15 @@ when Meridian is down, `model sync` availability-gates every profile back to
 
 | Profile | Role | Assigned model |
 |---|---|---|
-| `hermes_manager` | Engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; read-only, writes no code | claude-opus-4.8-sub-high |
-| `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-4.8-sub-high |
-| `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-sonnet-4.6-sub-high |
-| `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-sonnet-4.6-sub-high |
-| `hermes_ml_engineer` | ML engineer — model selection, evals, data pipelines, finetuning, RAG | claude-opus-4.8-sub-high |
-| `hermes_qa_test_engineer` | QA / test engineer — test strategy + automation; the green-bar quality gate | claude-sonnet-4.6-sub-high |
-| `hermes_reviewing_engineer` | Reviewing engineer (read-only) — adversarial review including the security pass | claude-sonnet-4.6-sub-high |
-| `hermes_sre_engineer` | SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed | claude-sonnet-4.6-sub-high |
-| `hermes_incident_manager` | Incident manager (read-only) — incident command + blameless postmortems | claude-sonnet-4.6-sub-high |
+| `hermes_manager` | Engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; read-only, writes no code | claude-opus-4.8-sub-xhigh |
+| `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-4.8-sub-max |
+| `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-opus-4.8-sub-max |
+| `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-opus-4.8-sub-max |
+| `hermes_ml_engineer` | ML engineer — model selection, evals, data pipelines, finetuning, RAG | claude-opus-4.8-sub-max |
+| `hermes_qa_test_engineer` | QA / test engineer — test strategy + automation; the green-bar quality gate | claude-opus-4.8-sub-xhigh |
+| `hermes_reviewing_engineer` | Reviewing engineer (read-only) — adversarial review including the security pass | claude-opus-4.8-sub-max |
+| `hermes_sre_engineer` | SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed | claude-opus-4.8-sub-xhigh |
+| `hermes_incident_manager` | Incident manager (read-only) — incident command + blameless postmortems | claude-opus-4.8-sub-xhigh |
 
 **What does it do for us?** Each profile reads its `SOUL.md` as the
 first thing in its system prompt — that shapes its mandate and gate behavior.

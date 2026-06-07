@@ -38,7 +38,8 @@ models:
   claude-sonnet-4.6-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
 default: local-gemma4
 assignments:
-  # AI software-engineering team (9 roles). manager/techlead/ml -> Opus, rest -> Sonnet.
+  # AI software-engineering team (9 roles). All Claude Opus subscription:
+  # manager/qa/sre/incident -> sub-xhigh; techlead/ml/frontend/backend/reviewing -> sub-max.
   hermes_manager: claude-opus-4.8-sub-xhigh
   hermes_techlead: claude-opus-4.8-sub-max
   hermes_ml_engineer: claude-opus-4.8-sub-max

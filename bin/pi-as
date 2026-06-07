@@ -4,8 +4,8 @@
 # Phase-1 personas (Pi has no native subagents): each role is a per-project
 # SYSTEM.md at /sandbox/agents/<role>/SYSTEM.md (uploaded by Phase 04h). This
 # wrapper `cd`s into that dir so Pi loads the role's SYSTEM.md from cwd, and
-# pins the role's model (manager/techlead/ml-engineer -> Opus, others -> Sonnet;
-# from installer/models.yml). The shared team-protocol skill governs handoffs
+# pins the role's model (all 9 roles -> Claude Opus subscription, effort xhigh/max
+# per role; from installer/models.yml assignments). The shared team-protocol skill governs handoffs
 # even though you switch hats manually.
 #
 #   bin/pi-as                      # list the roles

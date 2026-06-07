@@ -4,6 +4,21 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-07 (doc cohesion) — propagate the all-Opus model assignments into every doc
+
+A single-agent cohesion audit (parity: every md/html ↔ each other ↔ code ↔ setup) found the
+model-assignment docs were stale: commit `6157e59` had moved EVERY agent to the **Claude Opus
+subscription** (manager/qa/sre/incident → `sub-xhigh`; techlead/ml/frontend/backend/reviewing →
+`sub-max`; pi/deerflow → `sub-max`; ace/rlm → `sub-xhigh`) but the docs still described the old
+opus/sonnet `-high` split + "ACE/RLM stay local". Verified against `vz-ai-stack.sh model list`
+(authoritative = models.yml) and fixed in: models.md, USER-GUIDE.md+.html, OPERATIONS.md,
+TROUBLESHOOTING.md, DIAGRAMS.md+.html, STACK-GUIDE.md, EXPLORE.html (9 hermes cards), TUTORIAL.md
+(→regen .html), plus stale comments in `bin/pi-as` and `installer/models.yml`. Also fixed a
+fleet-count typo (USER-GUIDE "Seven"→"Nine"). `agent-profiles/*/README.md` intentionally keep
+"(Sonnet)" for juniors — that reflects the **claude-code subagents** (`~/.claude/agents`, verified
+sonnet), a separate binding from the all-Opus models.yml fleet. Counts confirmed 45/40/9; TUTORIAL
+in sync; all 4 HTML files valid.
+
 ## 2026-06-07 (follow-up) — fix start regression + restore doctor to 45/45 (3-agent council)
 
 Post-merge, `doctor` showed 13 reds. A constitution-bound 3-agent council (infra root-cause /

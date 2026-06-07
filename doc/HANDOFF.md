@@ -36,6 +36,31 @@ fail-with-exact-command in CI; (2) claw3d stays provisioned by `install all` (do
 hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is an edge name — use
 `start claw3d` (or `start claw3d-bridge`, hyphen). doctor count unchanged at **45**; services **40**.
 
+### Follow-ups (2026-06-07, later same day) — `doctor` back to 45/45 + full doc cohesion
+
+1. **Start-regression fixed** (commit `82411ae`): the `cmd_start` docker-idempotency short-circuit
+   skipped the start script when a `type:docker` container was already running, bypassing pre-flight
+   side-effects incl. `start-litellm.sh`'s P1010 grant-probe. Now `cmd_start` ALWAYS runs the script
+   and maps the benign "already exists + running" exit to idempotent success.
+2. **Ollama runtime restored** (host/upstream, not the change): the Homebrew `ollama` 0.30.6 FORMULA
+   bottle ships **no `llama-server`** (GGUF chat → HTTP 500); fixed by installing the official
+   `ollama-darwin` runner set into `Cellar/.../libexec/lib/ollama`. Also: `brew services restart`
+   regenerates the plist and wipes the `OLLAMA_HOST=0.0.0.0` env-patch → `deps.sh` now boots the
+   edited plist via `launchctl bootout/bootstrap`. See memory `project_ollama_runner_gotcha`. ⚠ The
+   runner workaround is overwritten by a future `brew upgrade/reinstall ollama` — re-apply if GGUF
+   chat 500s again (`llama-server binary not found`).
+3. **Full doc cohesion sweep** (this commit): a model-assignment drift predating the change
+   (commit `6157e59` moved ALL agents to Claude **Opus** subscription — manager/qa/sre/incident →
+   `sub-xhigh`, techlead/ml/frontend/backend/reviewing → `sub-max`, pi/deerflow → `sub-max`,
+   ace/rlm → `sub-xhigh`) was never propagated to docs. Fixed across models.md, USER-GUIDE(.md/.html),
+   OPERATIONS, TROUBLESHOOTING, DIAGRAMS(.md/.html), STACK-GUIDE, EXPLORE.html, TUTORIAL(.md→regen),
+   `bin/pi-as` comment, `models.yml` comment. NOTE: `agent-profiles/*/README.md` keep "(Sonnet)" for
+   junior roles **on purpose** — that reflects the **claude-code subagents** (`~/.claude/agents`,
+   verified backend/frontend/qa = sonnet), which are a SEPARATE binding from the all-Opus
+   models.yml fleet. `models.yml` is the authoritative source for hermes/pi/deerflow/ace/rlm.
+
+**State: `vz-ai-stack.sh doctor` = 45/45, 0 failed** (verified live, incl. a real `local-gemma4` chat).
+
 ---
 
 ## 0. Snapshot — state as of 2026-06-05

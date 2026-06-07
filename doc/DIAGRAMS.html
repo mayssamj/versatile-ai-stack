@@ -531,10 +531,9 @@ sequenceDiagram
 <p>What the assignments look like (from <code>models.yml</code>, see</p>
 <p><a href="models.md">models.md</a>):</p>
 <ul>
-<li><strong>claude-opus-4.8-sub-high</strong> (subscription via Meridian) — <code>hermes_manager</code>, <code>hermes_techlead</code>, <code>hermes_ml_engineer</code>, <code>deerflow</code>.</li>
-<li><strong>claude-sonnet-4.6-sub-high</strong> (subscription via Meridian) — <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>.</li>
-<li><strong>claude-opus-4.8-sub-max</strong> (subscription via Meridian) — <code>pi</code>.</li>
-<li><strong>local-gemma4</strong> (the default) — <code>ace</code>, <code>rlm</code>; also the availability-gated fallback for all nine Hermes profiles when Meridian is down.</li>
+<li><strong>claude-opus-4.8-sub-xhigh</strong> (subscription via Meridian) — <code>hermes_manager</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>ace</code>, <code>rlm</code>.</li>
+<li><strong>claude-opus-4.8-sub-max</strong> (subscription via Meridian) — <code>hermes_techlead</code>, <code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>pi</code>, <code>deerflow</code>.</li>
+<li><strong>local-gemma4</strong> (the default) — the availability-gated fallback for every subscription-assigned agent (incl. all nine Hermes profiles) when Meridian is down.</li>
 </ul>
 <p>Notes:</p>
 <ul>

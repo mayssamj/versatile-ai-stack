@@ -274,7 +274,7 @@ If you opted into the retired `local-lfm2-mlx` (`LMS_LOAD_LFM2=1`) and its calls
 after you quit LM Studio, that's why — restart the server (`vz-ai-stack.sh start
 lmstudio`) or remove the model from `litellm/config.yaml` while it's off.
 The same availability-gating protects subscription-assigned agents: the nine Hermes
-profiles (e.g. `hermes_backend_engineer` → `claude-sonnet-4.6-sub-high`), `pi`, and
+profiles (e.g. `hermes_backend_engineer` → `claude-opus-4.8-sub-max`), `pi`, and
 `deerflow` don't 404 when the Meridian host daemon is down — `vz-ai-stack.sh model sync`
 gates them back to `local-gemma4`. Re-run `model sync` once Meridian is up
 (`bin/start-meridian.sh`) to promote them again (see [models.md](models.md)).

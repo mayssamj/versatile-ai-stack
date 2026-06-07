@@ -272,7 +272,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 
 ### L6 · Declarative model↔agent binding · 🟡 · ~12 min
 
-**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-4.8-sub-high` and `ace` runs on `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
+**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-4.8-sub-xhigh` and the `default` is `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
 
 **Prereqs.** Phase 01 complete. `~/ai-stack/installer/models.yml` present (shipped in-repo). `yq` available. These commands are **read-mostly**: `list` and `superset` are read-only; `assign`/`sync` mutate `models.yml` / configs and may queue a LiteLLM restart — run those only when you mean to re-point something.
 
@@ -635,7 +635,7 @@ The bridge shells out to `hermes --profile hermes_backend_engineer` inside the `
 bin/pi-as backend-engineer -p "Sketch the interface for POST /tokens (JWT in an httpOnly cookie). Contract only."
 ```
 
-You'll see `▶ Pi as backend-engineer (model: claude-sonnet-4.6-sub-high) — cwd /sandbox/agents/backend-engineer` before it answers. Drop `-p "…"` to get the interactive TUI instead. Notice the persona stays in lane: ask the *backend* engineer to design the whole system and it will tell you that's the techlead's job and escalate — that's `team-protocol §4` working.
+You'll see `▶ Pi as backend-engineer (model: claude-opus-4.8-sub-max) — cwd /sandbox/agents/backend-engineer` before it answers. Drop `-p "…"` to get the interactive TUI instead. Notice the persona stays in lane: ask the *backend* engineer to design the whole system and it will tell you that's the techlead's job and escalate — that's `team-protocol §4` working.
 
 ---
 
