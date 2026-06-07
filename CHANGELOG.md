@@ -4,6 +4,35 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-07 (follow-up) — fix start regression + restore doctor to 45/45 (3-agent council)
+
+Post-merge, `doctor` showed 13 reds. A constitution-bound 3-agent council (infra root-cause /
+full doc audit / regression adversary) proved + fixed everything:
+
+- **REGRESSION FIXED (introduced by the cohesion change):** the `cmd_start` docker-idempotency
+  short-circuit skipped the start script when a `type:docker` container was already running —
+  bypassing its pre-flight side-effects, incl. **`start-litellm.sh`'s Postgres P1010 grant-probe
+  self-heal**. Now `cmd_start` ALWAYS runs the start script and maps the benign "already exists +
+  running" exit (`recreate_guard`) to idempotent success. Verified: `start litellm` while running
+  now re-runs the grant probe, then reports the endpoint (exit 0).
+- **EXPLORE.html:** docs_mcp + llm_guard cards now show `vz-ai-stack.sh start <svc>` as the run
+  command (the only 2 startable services the earlier sweep missed).
+- **Ollama runtime restored (host/upstream issue, not the cohesion change):** the Homebrew `ollama`
+  0.30.6 **formula bottle ships no `llama-server`** (the llama.cpp runner GGUF models need), so
+  `local-gemma4` returned HTTP 500 (doctor check 8 only lists models, never does inference — a gap).
+  Fixed by installing the official `ollama-darwin` release runner set into the formula's
+  `libexec/lib/ollama`. Also re-applied the `OLLAMA_HOST=0.0.0.0` env-patch the brew plist had lost.
+- **`deps.sh` durability fix:** `_dep_ollama_patch_env` did PlistBuddy-edit → `brew services
+  restart`, but modern Homebrew **regenerates the plist on restart and wipes the patch** (so
+  containers lose Ollama). Now it boots the edited plist directly via `launchctl bootout/bootstrap`
+  (proven to bind `0.0.0.0` and stay tracked by `brew services`).
+- **Environmental heal** (pre-existing, not the change): cleared an active OpenShell token-storm
+  (gateway 28% CPU / ~16k TIME_WAIT) by deleting + recreating the sandboxes (install 04 04f 15 20
+  04h), removed the uv `openshell` 0.0.57 PATH shadow of brew 0.0.51, `model sync`, started docs_mcp
+  + unsloth, cleared the watchdog alert.
+
+**Result: `vz-ai-stack.sh doctor` = 45/45, 0 failed, 0 skipped** (verified live).
+
 ## 2026-06-07 — service run/lifecycle cohesion: one `start`/`run`/`stop` for every service + browser-open + doc sweep
 
 Orchestrated multi-agent build (4 parallel code workstreams → integrate+verify → 2 adversarial

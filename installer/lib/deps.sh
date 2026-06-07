@@ -220,7 +220,20 @@ _dep_ollama_patch_env() {
   launchctl setenv OLLAMA_HOST 0.0.0.0 2>/dev/null || true
   launchctl setenv OLLAMA_ORIGINS "*" 2>/dev/null || true
   launchctl setenv OLLAMA_KEEP_ALIVE 0 2>/dev/null || true
-  brew services restart ollama 2>&1 | tail -2 || warn "brew services restart ollama failed"
+  # Reload by booting the EDITED plist directly — NOT `brew services restart`, which
+  # on modern Homebrew REGENERATES the plist from the formula and wipes the keys we
+  # just added (the formula only declares FLASH_ATTENTION/KV_CACHE_TYPE). Verified:
+  # after a brew regen the ollama process had no OLLAMA_HOST and bound 127.0.0.1, so
+  # in-stack containers (LiteLLM) could not reach it. bootout+bootstrap loads the
+  # on-disk plist as-is; `brew services list` still reports it started. Fallback to
+  # brew restart only if the launchctl path is unavailable.
+  local _uid; _uid="$(id -u)"
+  if launchctl bootout "gui/${_uid}/homebrew.mxcl.ollama" 2>/dev/null; sleep 1; \
+     launchctl bootstrap "gui/${_uid}" "$plist" 2>/dev/null; then
+    :
+  else
+    brew services restart ollama 2>&1 | tail -2 || warn "ollama reload failed"
+  fi
 }
 
 # ===========================================================================

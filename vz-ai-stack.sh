@@ -718,8 +718,7 @@ cmd_start() {
   # Step 1: enumerated pre-flight setup check (claw3d, lmstudio).
   _ensure_setup "$svc"
 
-  # Read the declared type once (drives the docker idempotency pre-check below
-  # and the non-daemon dispatch in Step 4).
+  # Read the declared type once (drives the non-daemon dispatch in Step 4).
   local svc_type
   svc_type="$(SVC="$svc" yq -r '.services[strenv(SVC)].type // ""' "$SERVICES_YML" 2>/dev/null || true)"
 
@@ -728,42 +727,41 @@ cmd_start() {
   # irrelevant — and gating on -x silently mis-routes a present-but-non-executable
   # script (e.g. a perms slip in an edit) to the "no start script" error path.
   if [[ -f "$script" ]]; then
-    # Idempotency for single-container docker services (type == docker, where the
-    # container name == svc): the docker start scripts call recreate_guard, which
-    # exits non-zero on an already-existing container ("Container 'x' already
-    # exists" → suggests --recreate). The start contract requires "already running
-    # = success". So if the container is already RUNNING, short-circuit to an
-    # idempotent success + report (no re-open). Scoped to type==docker ONLY:
-    # node-bg/python-bg host services and compose services (container name != svc)
-    # must NOT be matched here — a stale unrelated container named e.g. "claw3d"
-    # would otherwise wrongly suppress their real start. They self-handle idempotency.
-    if [[ "$svc_type" == "docker" ]] \
-       && [[ "$(docker inspect -f '{{.State.Running}}' "$svc" 2>/dev/null)" == "true" ]]; then
-      ok "$svc already running."
-      _START_FRESH=0
-      _report_started "$svc"
-      return 0
-    fi
-    # Step 2: run the start script WITHOUT exec so post-start actions
-    # (_report_started, _browser_open) run after it returns. Preserve the exit code.
+    # Step 2: ALWAYS run the start script (no exec, no docker pre-skip). Running it
+    # every time is REQUIRED for correctness: docker start scripts perform pre-flight
+    # side-effects BEFORE their recreate_guard — e.g. start-litellm.sh's Postgres
+    # reachability check + the P1010 ownership/grant-probe self-heal. An earlier
+    # "container already running → short-circuit" optimization skipped those and was
+    # a regression. Instead we run the script and (below) map its benign
+    # "already exists + running" non-zero exit to an idempotent success.
     #
-    # `... | tee "$tmp_out" || rc=$?` : tee streams the script's combined output to
-    # OUR stdout (visible interactively AND capturable via `start x >log`) while also
-    # writing a copy to the temp file for idempotency detection. The `|| rc=$?`
-    # suppresses errexit on a non-zero start and captures the pipeline status
-    # (pipefail ⇒ the start script's true exit code, not tee's). Verified: a script
-    # that exits 7 yields rc=7 here and does NOT abort cmd_start.
+    # `... | tee "$tmp_out" || rc=$?` : tee streams combined stdout+stderr to OUR
+    # stdout (visible interactively AND capturable via `start x >log`) and to the temp
+    # file. The 2>&1 merge is REQUIRED so recreate_guard's stderr warnings land in
+    # $captured for the mapping below. pipefail ⇒ rc is the script's true exit code,
+    # not tee's. Verified: a script that exits 7 yields rc=7 and does NOT abort here.
     local rc=0 tmp_out captured
     tmp_out="$(mktemp)"
     bash "$script" "${@:2}" 2>&1 | tee "$tmp_out" || rc=$?
     captured="$(cat "$tmp_out")"
     rm -f "$tmp_out"
     if (( rc != 0 )); then
+      # Benign idempotent case: the script ran its side-effects, then recreate_guard
+      # refused to clobber an already-existing + RUNNING container ("Container 'x'
+      # already exists." / "Status: running.") and returned non-zero. The start
+      # contract says "already running = success" → report + return 0 (no re-open).
+      # Confirmed against the authoritative docker state so a real failure still
+      # propagates.
+      if printf '%s' "$captured" | grep -qi "already exists" \
+         && [[ "$(docker inspect -f '{{.State.Running}}' "$svc" 2>/dev/null)" == "true" ]]; then
+        _START_FRESH=0
+        _report_started "$svc"
+        return 0
+      fi
       return "$rc"
     fi
-    # Fresh vs idempotent: start scripts print `ok "... already running ..."` on an
-    # idempotent re-run. Default is suppressed (_START_FRESH=0); flip to fresh only
-    # when the script did NOT report "already running".
+    # rc==0: the script started fresh OR self-reported idempotent ("already running").
+    # Flip to fresh (browser-open eligible) only when it did NOT say "already running".
     if printf '%s' "$captured" | grep -qi "already running"; then
       _START_FRESH=0
     else
