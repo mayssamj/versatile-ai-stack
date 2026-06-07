@@ -134,14 +134,19 @@ of `aliases.tsv`:
 Detail:
 - **claw3d UI (`:4310`)** and **claw3d-bridge (`:7780`)** both run with
   `network: host` (Phase 19). The bridge routes chat across every
-  isolated agent; because it is auth-less it must stay on loopback. Reach
-  the 3D agent-office UI at `http://localhost:4310` in a browser.
+  isolated agent; because it is auth-less it must stay on loopback. Run it
+  with `vz-ai-stack.sh start claw3d` (health-gated composite — starts the
+  bridge, waits for its `/health`, then the UI, then opens the browser at
+  `http://localhost:4310`).
 - **lmstudio (`:1234`)** is an OPT-IN extra (Phase 25 — install by name).
   When enabled, LM Studio's OpenAI server is bound `0.0.0.0:1234` on the
   host and LiteLLM dials it from inside its container via
   `http://host.docker.internal:1234`. It is a 2nd local runtime behind
   LiteLLM; Ollama stays the default. There is no `lo0` alias because the
-  caller is a container, not the Mac.
+  caller is a container, not the Mac. Start the server with
+  `vz-ai-stack.sh start lmstudio` (idempotent; no model auto-loads — assign
+  one in `models.yml` + `model sync`); stop it with `vz-ai-stack.sh stop
+  lmstudio`. (`LMS_AUTOSTART` / `lms server start` are no longer the run path.)
 
 **Pi** (Phase 15) also has no alias — but unlike the above it has no host
 listener at all. Pi runs inside the `pi-v1` OpenShell sandbox; launch via
@@ -363,7 +368,7 @@ Phase 15 needs `/key/generate` to mint `PI_LITELLM_KEY`, which requires LiteLLM 
 - **Internal**: Python FastAPI backend (`/api/*`) + OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/embeddings` (all auth-gated; bootstrap user `unsloth` with password at `~/.unsloth/studio/auth/.bootstrap_password`).
 - **Healthcheck**: `curl -s http://unsloth:8898/api/health` (returns `{"status":"healthy",...}`)
 - **Models cache**: `~/.cache/huggingface/hub/`
-- **Stop / start**: `bash bin/start-unsloth.sh` (idempotent); `kill $(cat installer/state/unsloth.pid)`
+- **Stop / start**: `vz-ai-stack.sh start unsloth` (idempotent) / `vz-ai-stack.sh stop unsloth` (PID-file stop)
 - **Source**: `services.yml:301-307`, `installer/phases/14_unsloth_studio.sh`, `bin/start-unsloth.sh`, `installer/lib/aliases.tsv`
 
 ### `paperclip_honcho_plugin` (paperclip-plugin)

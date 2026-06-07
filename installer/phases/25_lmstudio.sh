@@ -111,7 +111,10 @@ ok "LM Studio present; lms CLI at $LMS"
 # --- 2. Start the OpenAI-compatible server (bound for container access) ----
 if ! _server_up; then
   if [[ "${LMS_AUTOSTART:-}" == "1" ]]; then
-    warn "LMS_AUTOSTART=1 — starting LM Studio. Its desktop app idle-spins ~0.8 core; quit it when done (lms server stop + quit the app)."
+    # LMS_AUTOSTART=1 is an INSTALL-TIME one-shot convenience only — not the
+    # documented run path. The canonical way to start the server is:
+    #   vz-ai-stack.sh start lmstudio
+    warn "LMS_AUTOSTART=1 — starting LM Studio server (install-time convenience). Its desktop app idle-spins ~0.8 core; quit it when done (lms server stop + quit the app)."
     log "Starting LM Studio server on 0.0.0.0:${LMS_PORT}..."
     "$LMS" server start -p "$LMS_PORT" --bind 0.0.0.0 2>&1 | tail -3 || true
     sleep 3
@@ -120,11 +123,13 @@ if ! _server_up; then
       exit 0
     fi
   else
-    # OPT-IN: do NOT auto-start. Auto-starting the server here (and the big-MLX
-    # auto-load below) is what swap-thrash-locked the Mac 2026-06-01. The user
-    # starts LM Studio deliberately when they have the RAM for it.
-    note "LM Studio server not running and LMS_AUTOSTART unset — LM Studio is OPT-IN (its app idle-spins CPU; big MLX models need lots of RAM)."
-    note "To use MLX models:  $LMS server start -p ${LMS_PORT} --bind 0.0.0.0   then re-run 'vz-ai-stack.sh install lmstudio'  (or set LMS_AUTOSTART=1 for a one-shot start)."
+    # OPT-IN: do NOT auto-start during install. Auto-starting the server here
+    # (and the big-MLX auto-load below) is what swap-thrash-locked the Mac
+    # 2026-06-01. The user starts LM Studio deliberately via `start lmstudio`.
+    note "LM Studio server not running — server start is OPT-IN (its app idle-spins CPU; big MLX models need lots of RAM)."
+    note "To start the server now and use MLX models, run:  vz-ai-stack.sh start lmstudio"
+    note "Then re-run install to wire the assigned model:   vz-ai-stack.sh install lmstudio"
+    note "(LMS_AUTOSTART=1 is still accepted as an install-time one-shot if needed.)"
     exit 0
   fi
 fi

@@ -65,8 +65,13 @@ touch `models.yml`, LiteLLM, or Ollama. Skip the refiner and MemPalace makes no
 LiteLLM call at all.
 
 The legacy slugs (`local`, `local-heavy`, `local-lfm2`, `local-lfm2-mlx`) are
-**never deleted** — the canonical IDs are added alongside them (add-only). New
-and old coexist; agents can still be pointed at a legacy slug by hand.
+**retired** but **never deleted** from the scoped-key superset — the canonical
+IDs are added alongside them (add-only), so old keys keep resolving. They are
+**no longer auto-pulled or runnable defaults**: `local-heavy` (Ollama
+`qwen3.6:27b`) moved to LM Studio as **`local-qwen3.6`** (opt-in MLX), and
+`local-lfm2` / `local-lfm2-mlx` (LiquidAI LFM2.5) require a manual opt-in pull.
+Use **`local-gemma4`** in any runnable example. An agent can still be pointed at
+a retired slug by hand, but it 503s unless you pull/serve it yourself.
 
 ## LiteLLM is the only hub (`litellm:4000`)
 
@@ -97,9 +102,12 @@ the start command for each.
   no model stays resident between requests; Phase 01 eager-pulls **only**
   `gemma4:e4b` + `nomic-embed-text`. Serves the default `local-gemma4`. Reached
   by LiteLLM at `http://ollama:11434`.
-- **LM Studio (MLX)** — **opt-in, no auto-start**. Reached at
-  `http://host.docker.internal:${LMS_PORT}/v1` (`LMS_PORT` defaults to `1234` —
-  see `LMS_PORT` in `installer/lib/lmstudio.sh`). Serves `local-qwen3.6` /
+- **LM Studio (MLX)** — **opt-in, no auto-start**. Start the server with
+  `vz-ai-stack.sh start lmstudio` (idempotent; warns it idle-spins ~0.8 core, so
+  quit when done, and that **no model auto-loads** — assign one in `models.yml` +
+  `vz-ai-stack.sh model sync`). `vz-ai-stack.sh stop lmstudio` stops the server.
+  Reached at `http://host.docker.internal:${LMS_PORT}/v1` (`LMS_PORT` defaults to
+  `1234` — see `LMS_PORT` in `installer/lib/lmstudio.sh`). Serves `local-qwen3.6` /
   `local-qwen3-coder`. The host-side probe uses `http://127.0.0.1:${LMS_PORT}`
   (`LMS_URL`); the container-side route is `host.docker.internal:${LMS_PORT}`.
 - **Cloud** (optional) — Anthropic / OpenAI / OpenRouter / Gemini, used **only**
@@ -362,10 +370,10 @@ served by Ollama) — like every other service, and is **overridable via the
 > **Default source.** `installer/phases/03_honcho.sh` reads
 > `HONCHO_DERIVER_MODEL` (falling back to `models.yml .default`) and writes it to
 > `honcho/.env` as `LLM_OPENAI_MODEL`. To use a heavier model for richer
-> personas, set `HONCHO_DERIVER_MODEL=local-qwen3.6` (or pull `qwen3.6:27b` and
-> use `local-heavy`) in `.env`, then `docker compose up -d deriver` from
-> `honcho/` to recreate the container so it reloads the env.
+> personas, set `HONCHO_DERIVER_MODEL=local-qwen3.6` in `.env` (opt-in LM Studio
+> MLX — `vz-ai-stack.sh start lmstudio` + assign it), then `docker compose up -d
+> deriver` from `honcho/` to recreate the container so it reloads the env.
 >
-> *(Was previously pinned to `local-heavy` → `ollama_chat/qwen3.6:27b-q4_K_M`,
+> *(Was previously pinned to the retired `local-heavy` → `ollama_chat/qwen3.6:27b-q4_K_M`,
 > which is not pre-pulled, so every derivation hit the `local-heavy: ["local"]`
 > fallback. Now points directly at the served default — no wasted retry.)*

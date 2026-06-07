@@ -156,7 +156,7 @@ curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
 curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/key/generate \
-  -d '{"models":["local","local-heavy"],"max_budget":2.0,"budget_duration":"1d","key_alias":"teammate-bob"}' \
+  -d '{"models":["local-gemma4"],"max_budget":2.0,"budget_duration":"1d","key_alias":"teammate-bob"}' \
   | jq '{key, models, max_budget}'
 ```
 
@@ -193,13 +193,17 @@ canonical local models** are declared per-agent in `installer/models.yml`
 big MLX models"). The two big MLX models can't be resident together on a 24 GB
 box; LM Studio JIT-loads with idle-unload so only one is in RAM at a time.
 
-**Legacy aliases (add-only, NOT canonical).** `local`, `local-heavy`,
+**Legacy aliases (add-only, NOT canonical — deprecated).** `local`, `local-heavy`,
 `local-lfm2`, and `local-lfm2-mlx` still resolve in `litellm/config.yaml` for
-backward compatibility, but they are NOT among the canonical three in
-`models.yml`. `local-heavy` (Ollama `qwen3.6:27b`) is **no longer auto-pulled**
-and 404s until you `ollama pull` it; `local-lfm2-mlx` (LiquidAI LFM2.5 MLX) is
-added only when you install the opt-in Phase 25 (LM Studio). For new work, prefer
-the canonical names — they're what `vz-ai-stack.sh model assign/sync` manages.
+backward compatibility, but they are NOT among the canonical three in `models.yml`
+and are deprecated. `local-heavy` (the old Ollama `qwen3.6:27b`) has been **removed
+from Ollama** — the heavy model now lives in LM Studio as the canonical
+`local-qwen3.6` (opt-in MLX). `local-lfm2` (LiquidAI LFM2.5 GGUF on Ollama) is
+**no longer auto-pulled** and 404s until you manually `ollama pull` it;
+`local-lfm2-mlx` (LiquidAI LFM2.5 MLX) is added only when you install the opt-in
+Phase 25 (LM Studio). For new work, prefer the canonical names — they're what
+`vz-ai-stack.sh model assign/sync` manages, and `local-gemma4` is the zero-config
+default for any "try it" example.
 
 **Try this (comparison).** (`local-qwen3.6` requires LM Studio running with the
 model loaded — start it + `vz-ai-stack.sh model sync`, or it falls back to `local-gemma4`.)
@@ -242,7 +246,7 @@ from it (deep dive: [models.md](models.md)).
 LM Studio-bound agents (`local-qwen3.6` / `local-qwen3-coder`)
 **availability-gate to `local-gemma4`** and are recorded as *pending* in the
 installer state file. To promote them: start LM Studio
-(`lms server start -p 1234 --bind 0.0.0.0`), load the model, then re-run
+(`vz-ai-stack.sh start lmstudio`), assign + load the model, then re-run
 `vz-ai-stack.sh model sync`. See
 [models.md → Per-agent selection pipeline](models.md#per-agent-selection-pipeline).
 
@@ -260,7 +264,7 @@ reuses your Claude Code OAuth (auto-refreshed) and runs the agent loop in
 npm install -g @rynfar/meridian      # one-time
 claude login                         # if not already logged in (OAuth → Keychain)
 bash ~/ai-stack/bin/start-meridian.sh install   # launchd: always-on + seeds thinking
-bash ~/ai-stack/bin/start-litellm.sh --recreate # reload config so the *-sub-* models appear
+vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload config so the *-sub-* models appear
 ```
 
 Open `http://openwebui:8080`, refresh — the default model is
@@ -737,7 +741,7 @@ curl -s -X POST http://llm-guard:8000/scan \
 
 # 3. Toggle on/off in LiteLLM's config (manual flip — no shortcut command).
 yq -i '.litellm_settings.callbacks |= unique + ["llm_guard"]' ~/ai-stack/litellm/config.yaml
-bash ~/ai-stack/bin/start-litellm.sh --recreate
+vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload config
 ```
 
 **Combine with.** Both LiteLLM guardrails (in-process); Recipe 9 (paranoid mode).
@@ -903,7 +907,7 @@ curl -s -X POST http://docs-mcp:8765/tools/list_collections \
   -d '{}' | jq
 ```
 
-**Daemon note.** `docs-mcp` is started by `bash ~/ai-stack/bin/start-docs_mcp.sh`. The alias is permanently in `/etc/hosts` (Phase 06 reserves it) — connection-refused from curl means "daemon down, restart the script", not "DNS broken".
+**Daemon note.** Start `docs-mcp` with `vz-ai-stack.sh start docs_mcp`. The alias is permanently in `/etc/hosts` (Phase 06 reserves it) — connection-refused from curl means "daemon down, `start` it again", not "DNS broken".
 
 **Combine with.** `docs_ingestor` (the writer), `qdrant` (the index), `openwebui` (RAG tool consumer), `pi` (its sandbox allowlists `docs-mcp:8765`).
 
@@ -955,8 +959,8 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?quer
 **Try this.**
 
 ```bash
-# 1. Start (it's auto-started by Phase 08, but you can manually restart).
-bash ~/ai-stack/bin/start-paperclip.sh
+# 1. Start (it's auto-started by Phase 08, but you can start it any time — opens the UI).
+bash ~/ai-stack/vz-ai-stack.sh start paperclip
 
 # 2. Open.
 open http://paperclip:3100
@@ -1003,7 +1007,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 
 #### `pi` (Phase 15, sandboxed in `pi-v1`)
 
-**What.** Earendil's `@earendil-works/pi-coding-agent` running inside the `pi-v1` OpenShell sandbox. Pi is a tree-branching TUI coding agent. Network policy: can reach `host.docker.internal:4000` (LiteLLM via `PI_LITELLM_KEY` virtual key, allowlisted to the local-model superset — `local`, `local-gemma4`, `local-heavy`, `local-lfm2`, `local-qwen3-coder`, `local-qwen3.6`; Pi's assigned model is `local-qwen3-coder`, see [models.md](models.md)), `:8000` (Honcho with `pi` peer namespace), `:8765` (docs-mcp). Cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or the master key.
+**What.** Earendil's `@earendil-works/pi-coding-agent` running inside the `pi-v1` OpenShell sandbox. Pi is a tree-branching TUI coding agent. Network policy: can reach `host.docker.internal:4000` (LiteLLM via `PI_LITELLM_KEY` virtual key, allowlisted to the derived local-model superset — `local-gemma4`, `local-qwen3-coder`, `local-qwen3.6` plus the retained legacy slugs `local` / `local-heavy` / `local-lfm2` (retired, not runnable defaults); Pi's assigned model is `local-qwen3-coder`, see [models.md](models.md)), `:8000` (Honcho with `pi` peer namespace), `:8765` (docs-mcp). Cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or the master key.
 
 **When.** Sandboxed code experimentation. New project bootstrap. Working with code from an untrusted source. Anytime you want strong-isolation guarantees.
 
@@ -1068,11 +1072,9 @@ All three are guarded by marker comments — re-running Phase 10 is a no-op. `ba
 ```bash
 # Stop:
 stack stop deerflow                          # or: stack deerflow stop
-                                             # or: bash bin/stop-deerflow.sh
 
 # Start:
-stack start deerflow                         # or: stack deerflow start
-                                             # or: bash bin/start-deerflow.sh
+stack start deerflow                         # or: stack deerflow start (opens the UI)
 ```
 
 `enable` / `disable` are accepted as aliases for `start` / `stop`. All four forms route through `bin/start-deerflow.sh`, which exports `LITELLM_MASTER_KEY` from `~/ai-stack/.env` before invoking `deer-flow/scripts/deploy.sh`. This is what suppresses the `WARN[0000] The "LITELLM_MASTER_KEY" variable is not set` line you'd otherwise see — docker compose substitutes `${LITELLM_MASTER_KEY}` at parse time from the shell, not from the `env_file:` directive inside the YAML.
@@ -1475,11 +1477,15 @@ profiles, Pi's default `local-qwen3-coder`, or DeerFlow's `local-qwen3.6`.
 **Try this (full enable path).**
 
 ```bash
-# 1. Install the opt-in LM Studio phase (NOT part of `install all`).
-#    Starts the host OpenAI server on :1234 and is ASSIGNMENT-DRIVEN: it wires ONLY
-#    the MLX models assigned to an agent in models.yml (it does NOT auto-load otherwise).
-#    The local-lfm2-mlx demo is opt-in: prefix `LMS_LOAD_LFM2=1`. Ollama stays default.
+# 1. Install (setup) the opt-in LM Studio phase (NOT part of `install all`).
+#    ASSIGNMENT-DRIVEN: it wires ONLY the MLX models assigned to an agent in
+#    models.yml (it does NOT auto-load otherwise). Ollama stays the default.
+#    (The legacy local-lfm2-mlx demo is opt-in only: prefix `LMS_LOAD_LFM2=1`.)
 bash ~/ai-stack/vz-ai-stack.sh install lmstudio        # or: install 25
+
+# 1b. Start the LM Studio server (the run path — idempotent, macOS/app-guarded).
+#     Warns it idle-spins ~0.8 core; no model auto-loads (assign one + model sync).
+bash ~/ai-stack/vz-ai-stack.sh start lmstudio          # or: stop lmstudio to bring it down
 
 # 2. In the LM Studio app: load the model you want served.
 #      - Qwen 3.6 27B MLX           → serves as local-qwen3.6
@@ -1519,7 +1525,7 @@ The catalog above tells you what each piece does. The recipes here show you cano
 
 **What you'll build.** Drop a PDF on disk, sweep it into Qdrant via Docling + LlamaIndex, then query it from Open WebUI via the `docs-mcp` MCP server.
 
-**Prereqs.** `stack status` shows green: `ollama`, `litellm`, `qdrant`, `openwebui`. The host-side `docs_ingestor` venv exists at `~/ai-stack/ingestor/.venv` (Phase 06). The `docs-mcp` daemon is started by `bin/start-docs_mcp.sh`.
+**Prereqs.** `stack status` shows green: `ollama`, `litellm`, `qdrant`, `openwebui`. The host-side `docs_ingestor` venv exists at `~/ai-stack/ingestor/.venv` (Phase 06). Start the `docs-mcp` daemon with `vz-ai-stack.sh start docs_mcp`.
 
 **Steps.**
 
@@ -1538,8 +1544,8 @@ curl -s http://qdrant:6333/collections/ai-stack-docs | jq '.result.points_count'
 
 # 4. Start (or confirm) docs-mcp. The alias is permanently in /etc/hosts
 #    (Phase 06 reserves it), so connection-refused means "daemon down,
-#    re-run start-docs_mcp.sh".
-bash ~/ai-stack/bin/start-docs_mcp.sh
+#    `start` it again". start is idempotent.
+bash ~/ai-stack/vz-ai-stack.sh start docs_mcp
 curl -s http://docs-mcp:8765/health
 
 # 5. Wire docs-mcp into Open WebUI as a tool:
@@ -1678,13 +1684,14 @@ client = openai.OpenAI(api_key=os.environ["LITELLM_MASTER_KEY"], base_url="http:
 rows = [json.loads(l) for l in pathlib.Path("eval-dataset.jsonl").read_text().splitlines()]
 out = []
 for r in rows[:50]:
-    resp = client.chat.completions.create(model="local-lfm2", messages=[{"role":"user","content": r["prompt"]}])
+    resp = client.chat.completions.create(model="local-gemma4", messages=[{"role":"user","content": r["prompt"]}])
     out.append({**r, "candidate": resp.choices[0].message.content})
 pathlib.Path("eval-candidates.jsonl").write_text("\n".join(json.dumps(r) for r in out))
 print(f"replayed {len(out)} prompts")
 PY
 
-# 4. Score with local-heavy as judge.
+# 4. Score with local-qwen3.6 as judge (opt-in heavy model — needs `start lmstudio`
+#    + the model loaded; falls back to local-gemma4 if LM Studio is off).
 python - <<'PY'
 import json, openai, pathlib, os
 client = openai.OpenAI(api_key=os.environ["LITELLM_MASTER_KEY"], base_url="http://litellm:4000/v1")
@@ -1692,7 +1699,7 @@ rubric = "Score 1-5: how well does CANDIDATE answer PROMPT compared to REFERENCE
 rows = [json.loads(l) for l in pathlib.Path("eval-candidates.jsonl").read_text().splitlines()]
 out = []
 for r in rows:
-    j = client.chat.completions.create(model="local-heavy", messages=[
+    j = client.chat.completions.create(model="local-qwen3.6", messages=[
         {"role":"system","content": rubric},
         {"role":"user","content": f"PROMPT: {r['prompt']}\nREFERENCE: {r['response']}\nCANDIDATE: {r['candidate']}"},
     ])
@@ -1706,7 +1713,7 @@ PY
 
 **Expected.** Step 2 writes ~100-200 prompts. Step 3 → `eval-candidates.jsonl`. Step 4 prints mean score. 5-15 minutes total on M4.
 
-**You'll see this in Phoenix.** Filter on `model=local-lfm2` (candidate) and `model=local-heavy` (judge); tag with a session name to bookmark a baseline run.
+**You'll see this in Phoenix.** Filter on `model=local-gemma4` (candidate) and `model=local-qwen3.6` (judge); tag with a session name to bookmark a baseline run.
 
 **Combine with.** Recipe 2 (eval AutoFyn output), Recipe 7 (use evals to detect when fine-tune helped).
 
@@ -1758,14 +1765,14 @@ PARANOID_DISABLE=(openwebui autofyn deerflow paperclip phoenix docs_mcp)
 for s in "${PARANOID_ENABLE[@]}"; do yq -i ".services.$s.enabled = true" ~/ai-stack/services.yml; done
 for s in "${PARANOID_DISABLE[@]}"; do yq -i ".services.$s.enabled = false" ~/ai-stack/services.yml; done
 
-# Apply changes. (No batch — stop the disabled ones manually.)
-for c in openwebui autofyn phoenix; do docker stop $c 2>/dev/null; done
-stack stop deerflow 2>/dev/null
-kill $(cat ~/ai-stack/installer/state/paperclip.pid 2>/dev/null) 2>/dev/null
-kill $(cat ~/ai-stack/installer/state/docs_mcp.pid 2>/dev/null) 2>/dev/null
+# Apply changes. (No batch — stop the disabled ones one by one; `stop` is idempotent
+# and knows each service's teardown: docker stop, compose down, or PID-file kill.)
+for s in openwebui autofyn phoenix deerflow paperclip docs_mcp; do
+  vz-ai-stack.sh stop "$s" 2>/dev/null
+done
 
 # Ensure llm_guard is up.
-bash ~/ai-stack/bin/start-llm_guard.sh
+vz-ai-stack.sh start llm_guard
 
 # Now use the stack via curl only.
 source ~/ai-stack/.env
@@ -1796,8 +1803,9 @@ open http://localhost:8898
 # 2. Dataset import: traces/litellm.jsonl, mapping messages → response,
 #    filter kind=success.
 
-# 3. Pick a base: LFM2.5-8B-A1B (local-lfm2) fits the 24GB M4 budget for
-#    fine-tuning. Qwen 27B doesn't.
+# 3. Pick a base: a small model like Gemma 4 E4B (local-gemma4, the default) or
+#    LFM2.5-8B-A1B fits the 24GB M4 budget for fine-tuning. Qwen 27B doesn't.
+#    (LFM2.5 is no longer auto-pulled — `ollama pull` it first if you want it.)
 
 # 4. LoRA defaults: 3 epochs, rank=16. Watch GPU:
 #    sudo powermetrics --samplers gpu_power -i 1000
@@ -1815,10 +1823,10 @@ $EDITOR ~/ai-stack/litellm/config.yaml
 #     litellm_params:
 #       model: ollama_chat/local-tuned
 #       api_base: http://ollama:11434
-bash ~/ai-stack/bin/start-litellm.sh --recreate
+vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload the new config
 ```
 
-**You'll see this in Phoenix.** A/B by sending the same prompt to `local-lfm2` and `local-tuned`; the eval pipeline from Recipe 4 scores the difference.
+**You'll see this in Phoenix.** A/B by sending the same prompt to `local-gemma4` (the base) and `local-tuned`; the eval pipeline from Recipe 4 scores the difference.
 
 ---
 
@@ -2125,20 +2133,24 @@ bash ~/ai-stack/vz-ai-stack.sh logs litellm -f
 docker logs -f phoenix
 tail -f ~/ai-stack/installer/state/unsloth.log
 
-# Service start scripts (one per service in bin/)
-bash ~/ai-stack/bin/start-litellm.sh              # canonical restart
-bash ~/ai-stack/bin/start-litellm.sh --recreate   # backup + recreate
-bash ~/ai-stack/bin/start-phoenix.sh
-bash ~/ai-stack/bin/start-honcho.sh
-bash ~/ai-stack/bin/start-qdrant.sh
-bash ~/ai-stack/bin/start-falkordb.sh
-bash ~/ai-stack/bin/start-openwebui.sh
-bash ~/ai-stack/bin/start-hermes_workspace.sh
-bash ~/ai-stack/bin/start-autofyn.sh
-bash ~/ai-stack/bin/start-paperclip.sh
-bash ~/ai-stack/bin/start-docs_mcp.sh
-bash ~/ai-stack/bin/start-llm_guard.sh
-bash ~/ai-stack/bin/start-unsloth.sh
+# Run / stop any service — ONE uniform path (alias: `run`; reverse-form `<svc> start` also works).
+# `start` prints the URL/Endpoint + the Stop line and opens UIs in the browser; it's idempotent.
+bash ~/ai-stack/vz-ai-stack.sh start litellm                 # bring it up + print reach line
+bash ~/ai-stack/vz-ai-stack.sh stop litellm && \
+  bash ~/ai-stack/vz-ai-stack.sh start litellm               # reload config (stop+start)
+bash ~/ai-stack/vz-ai-stack.sh start phoenix
+bash ~/ai-stack/vz-ai-stack.sh start honcho
+bash ~/ai-stack/vz-ai-stack.sh start qdrant
+bash ~/ai-stack/vz-ai-stack.sh start falkordb
+bash ~/ai-stack/vz-ai-stack.sh start openwebui
+bash ~/ai-stack/vz-ai-stack.sh start hermes_workspace
+bash ~/ai-stack/vz-ai-stack.sh start autofyn
+bash ~/ai-stack/vz-ai-stack.sh start paperclip
+bash ~/ai-stack/vz-ai-stack.sh start docs_mcp
+bash ~/ai-stack/vz-ai-stack.sh start llm_guard
+bash ~/ai-stack/vz-ai-stack.sh start unsloth
+bash ~/ai-stack/vz-ai-stack.sh start claw3d              # health-gated composite (bridge→UI→open :4310)
+bash ~/ai-stack/vz-ai-stack.sh start lmstudio            # opt-in LM Studio server (macOS/app-guarded)
 
 # Sandboxed coding (Pi)
 bash ~/ai-stack/bin/pi                            # launch Pi inside pi-v1
@@ -2198,7 +2210,7 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 |------------|---------------------------------------------------------------|
 | `stack profile <name>` | Manual yq + bin/start scripts (see §4)            |
 | `stack apply`          | Re-run `vz-ai-stack.sh install <phase>` for the changed phase     |
-| `stack restart <svc>`  | `bash bin/start-<svc>.sh --recreate`                          |
+| `stack restart <svc>`  | `vz-ai-stack.sh stop <svc> && vz-ai-stack.sh start <svc>` (idempotent) |
 
 ---
 
@@ -2229,7 +2241,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 
 | Symptom | First check | Then |
 |---|---|---|
-| `curl http://litellm:4000` → connection refused | Doctor 11, 14 | `docker ps | grep litellm`; `bash bin/start-litellm.sh` |
+| `curl http://litellm:4000` → connection refused | Doctor 11, 14 | `docker ps | grep litellm`; `vz-ai-stack.sh start litellm` |
 | `curl http://litellm:4000` → 401 | Doctor 26 | `source .env`; verify `LITELLM_MASTER_KEY` not stale |
 | Phoenix has no traces | Doctor 6, 9, 13 | LiteLLM env: `PHOENIX_API_KEY`, `PHOENIX_COLLECTOR_HTTP_ENDPOINT` |
 | Ollama 403 from inside container | Phase 00 plist | Reset Ollama: `OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=*` then `brew services restart ollama` |
@@ -2238,7 +2250,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 | Pi can reach forbidden destination | Doctor 25 | `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` |
 | `openshell sandbox list` → empty | Doctor 24 | `bash vz-ai-stack.sh install 04` then `install 15` |
 | Sandbox network policy not enforcing | Doctor 25 (slow mode) | `OPENSHELL_DOCTOR_SLOW=1 stack doctor` |
-| docs-mcp returns nothing | Phase 06 | `bash bin/start-docs_mcp.sh`; verify `curl docs-mcp:8765/health` |
+| docs-mcp returns nothing | Phase 06 | `vz-ai-stack.sh start docs_mcp`; verify `curl docs-mcp:8765/health` |
 | Fan is on, idle CPU high | DeerFlow probably | See §2.10 — disable DeerFlow when not researching |
 
 ---

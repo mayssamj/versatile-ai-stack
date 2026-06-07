@@ -4,6 +4,67 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-07 — service run/lifecycle cohesion: one `start`/`run`/`stop` for every service + browser-open + doc sweep
+
+Orchestrated multi-agent build (4 parallel code workstreams → integrate+verify → 2 adversarial
+reviews + 3-way debate → 5 parallel doc agents → 2 doc audits). Design + plan + interface contract
+under `doc/specs/2026-06-07-service-run-cohesion*.md`.
+
+**Run/stop contract — `vz-ai-stack.sh start <svc>` is the single way to run anything:**
+- New **`run`** verb = pure alias of `start` (wired into `is_subcommand`, dispatch, and reverse-form
+  `<svc> run`). `enable`/`disable` remain aliases of `start`/`stop`.
+- `cmd_start` rewritten into a type-aware funnel: **drops `exec`** (post-start actions now run),
+  prints a uniform reach line (`URL:` for UIs / `Endpoint:` for APIs, from `services.yml`) + a
+  `Stop:` line, and **auto-opens UI services in the browser** — gated: skipped on headless/no-TTY,
+  `NO_BROWSER`/`CI`, or `--no-open`; `--open` forces it; the URL is always printed.
+- **Idempotent** ("already running" = success, no re-open): docker services short-circuit on an
+  already-running container (type==docker); start scripts self-detect "already running".
+- **Honest per-type degradation:** non-daemon types (cli-only, clone-only, pip-package, npm-global,
+  agent-pattern, litellm-feature/-virtual-key, paperclip-plugin, hermes-profiles, sandbox-daemon,
+  openshell) print a categorical message + the correct invocation — never the misleading
+  "no start script" error (fixes `start pi`, etc.).
+- **Not-set-up boundary** (claw3d, lmstudio): interactive TTY → prompt-then-`install`; CI/non-TTY →
+  print the exact `install` command and exit non-zero. (`read -t 30`; install rc is checked.)
+
+**claw3d** — `start claw3d` is a **health-gated composite**: starts the bridge, waits for its
+`/health`, then starts the UI (:4310) and opens the browser; aborts if the bridge is unhealthy
+(no more "UI up / bridge dead / broken Connect"). Idempotency re-checks bridge health and restores
+it if the UI is up but the bridge died. Phase 19 delegates its launch to `start claw3d` (single
+source of truth); `install claw3d` stays provisioning-only and in `install all` (doctor 32 unchanged).
+Fixed a latent bug: the start scripts were committed mode `644` (non-executable) so `start claw3d`
+via the funnel always failed; restored `755` + `cmd_start` now gates on `-f` not `-x`. Fixed the UI
+idempotency (absolute-path launch so `pid_is_ours` matches — a 2nd start no longer orphans the UI).
+
+**lmstudio** — new **`bin/start-lmstudio.sh`** (macOS/app/`lms`-CLI guarded, idempotent, starts the
+server on :1234, warns about idle-spin + that no model auto-loads → assign + `model sync`). New
+`bin/stop-lmstudio.sh`. Phase 25 + `installer/lib/lmstudio.sh` no longer present `LMS_AUTOSTART` /
+`lms server start` as the run path — they point at `vz-ai-stack.sh start lmstudio` (LMS_AUTOSTART
+remains only an install-time convenience).
+
+**Stop-side cohesion** — `stop <svc>` now works for every startable service. Added a generic,
+ownership-checked PID-file fallback in `cmd_stop` (host-process services: claw3d, paperclip,
+docs_mcp, unsloth…) and composite/compose stop scripts: `stop-claw3d.sh` (UI+bridge),
+`stop-paperclip.sh` (daemon+relay), `stop-honcho.sh` (compose down, warns it also stops the Postgres
+LiteLLM uses), `stop-autofyn.sh`, `stop-hermes_workspace.sh`. The PID-file kill verifies process
+ownership before signalling (recycled-PID safety).
+
+**Critical fix found in review** — `http_ok()` in both claw3d scripts reported DOWN services as
+healthy (`curl` prints `000` AND exits non-zero → `|| echo 000` appended a 2nd `000` → `"000000"
+!= "000"` → true), silently defeating the composite health-gate. Now accepts only `2xx/3xx`.
+
+**services.yml** — new optional `open_url` per UI service (claw3d, openwebui, phoenix,
+qdrant `/dashboard`, falkordb→falkordb-ui:3000, deerflow, autofyn, paperclip, hermes_workspace,
+unsloth); lmstudio/claw3d `help` blocks updated to the new contract; runnable `help.usage`/key
+examples retired off the removed `local-heavy` → `local-gemma4`.
+
+**Documentation sweep** — README, USER-GUIDE(.md/.html), OPERATIONS, TROUBLESHOOTING, DOCTOR,
+models, INSTALL, DEPENDENCIES, ARCHITECTURE, COMPONENTS, DIAGRAMS(.md/.html), ATTRIBUTION,
+STACK-GUIDE, PORTS, EXPLORE.html, TUTORIAL.md→regen TUTORIAL.html all updated to the run/stop
+contract and to **retire the deprecated `local-lfm2` (LFM2.5 GGUF) and `local-heavy` (Ollama
+qwen3.6:27b)** — runnable examples now use the zero-config `local-gemma4`; the heavy model is noted
+as `local-qwen3.6` (LM Studio, opt-in). The code-asserted `LEGACY_SUPERSET` slugs (doctor check 40)
+are intentionally preserved. doctor 45 (tutorial) stays green; doctor count unchanged at 45.
+
 ## 2026-06-06 — feat/fix batch: brew start/stop, `model assign all`, assignment-driven LM Studio, docs/ consolidation
 
 Five user-requested changes (2 adversarial reviews + debate; review fixes applied):

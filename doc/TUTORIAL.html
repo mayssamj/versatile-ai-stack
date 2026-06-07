@@ -827,10 +827,10 @@ skills: [team-protocol, tdd, hypothesis-debugging, verification-gates, reversibl
 <p><strong>Telegram — DM the fleet from your phone.</strong> Hermes ships a native multi-platform gateway; Phase 20 points it at Telegram (bot <code>@vz_hermes_controller_bot</code>). The gateway runs <strong>inside</strong> <code>hermes-fleet-v1</code> (long-polling <code>api.telegram.org</code>, allowlisted by Phase 04's network policy) and is kept alive by a host helper.</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>vz-ai-stack.sh install 20</code></pre>
 <p><strong>The security model is the headline.</strong> The gateway is <strong>secure-by-default</strong>: with <em>no allowlist and no allow-all</em>, it connects but <strong>denies every user</strong> — the bot stays silent. It can drive all nine profiles, so it must never be open by accident. To use it, set <code>HERMES_TELEGRAM_ALLOWED_USERS=&lt;your numeric Telegram id&gt;</code> in <code>.env</code> and re-run the phase. <code>HERMES_TELEGRAM_ALLOW_ALL=true</code> exists but is explicitly <em>not recommended</em>.</p>
-<p><strong>claw3d — the 3D agent office.</strong> Phase 19 stands up claw3d, a Next.js "virtual office" that visualizes the agents, plus the <strong>stack-agents bridge</strong> (<code>claw3d-bridge/bridge.py</code>) — the same one-endpoint API you used in L12:</p>
-<pre><button class="copy-btn" data-copy>copy</button><code>vz-ai-stack.sh install 19
-# then open the office:
-open http://localhost:4310     # click Connect — the bridge URL is pre-filled</code></pre>
+<p><strong>claw3d — the 3D agent office.</strong> claw3d is a Next.js "virtual office" that visualizes the agents, fronted by the <strong>stack-agents bridge</strong> (<code>claw3d-bridge/bridge.py</code>) — the same one-endpoint API you used in L12. <code>install all</code> (or <code>install claw3d</code>) provisions it (clone + npm); <code>start claw3d</code> runs it:</p>
+<pre><button class="copy-btn" data-copy>copy</button><code>vz-ai-stack.sh start claw3d    # health-gated composite: start bridge → wait /health
+                               # → start UI → open http://localhost:4310 (Connect pre-filled)</code></pre>
+<p><code>start claw3d</code> is a <strong>health-gated composite</strong>: it starts the bridge first, waits for its <code>/health</code>, <em>then</em> brings up the UI and opens the browser — so you never land on "UI up, bridge dead, broken Connect". It's idempotent, and <code>stop claw3d</code> brings both the UI and the bridge down. (Not set up yet? <code>start</code> offers to run the one-time clone+npm for you; or run <code>vz-ai-stack.sh install claw3d</code> first.)</p>
 <p>The bridge is the clever bit: it implements claw3d's "custom HTTP runtime" contract (<code>/health</code>, <code>/state</code>, <code>/registry</code>, <code>/v1/chat/completions</code>) and routes chat <strong>authentically</strong> to every isolated agent through <strong>one</strong> upstream — the nine Hermes roles (<code>openshell exec → hermes --profile X</code>), Pi (<code>pi -p</code> in <code>pi-v1</code>), and DeerFlow (LangGraph <code>:2026</code>). So one office surfaces agents that otherwise live in separate sandboxes. The bridge runs on the host (<code>127.0.0.1:7780</code>), logs no prompts, and fails fast with "agent unavailable" if the OpenShell relay is down rather than hanging the UI.</p>
 <div class="callout"><p><strong>Try it (live demo via bridge; copy-run if bridge not running):</strong> the office is point-and-click, but the bridge underneath is just the L12 <code>curl</code> — walk over to any agent's desk in the 3D office and chat, and you're hitting <code>POST /v1/chat/completions</code> with that agent's <code>role</code>.</p></div>
 <p><strong>Where you are now.</strong> You can address one specialist, run a full review-gated delivery pipeline, use Pi as a sandboxed coding agent, invoke the same nine roles as Claude Code subagents, and reach all of it from Telegram or a 3D office. Next act wires the fleet into the rest of the stack — memory, RAG, and observability.</p>
@@ -843,18 +843,19 @@ open http://localhost:4310     # click Connect — the bridge URL is pre-filled<
 <p><strong>Why.</strong> A single chat turn gives you a one-shot answer. Real research is <em>plan → gather → synthesize → cite</em>. DeerFlow (LangGraph, <code>bytedance/deer-flow</code>) is the heavyweight researcher in the stack: it plans a multi-step investigation, web-searches, and writes a report with citations. We pair it with the <strong>dual-LLM researcher</strong> safety pattern — the discipline that keeps an untrusted document from hijacking your agent.</p>
 <p><strong>Prereqs.</strong> Phase 10 installed (<code>bash vz-ai-stack.sh install 10</code>); LiteLLM + Ollama up. DeerFlow is heavy (~520 MB of containers) — stop it when done.</p>
 <p><strong>Steps.</strong></p>
-<pre><button class="copy-btn" data-copy>copy</button><code># 1. Bring DeerFlow up. The wrapper exports LITELLM_MASTER_KEY so compose's
-#    ${LITELLM_MASTER_KEY} substitution resolves, then calls deploy.sh.
-bash ~/ai-stack/bin/start-deerflow.sh
+<pre><button class="copy-btn" data-copy>copy</button><code># 1. Bring DeerFlow up. start prints the URL + Stop line and (on a fresh
+#    start, GUI session) opens the UI at http://localhost:2026 for you.
+#    Idempotent — "already running" is success.
+vz-ai-stack.sh start deerflow
 
 # 2. Confirm the compose project is running (detected by LABEL, not name —
 #    containers are deer-flow-gateway etc., with a dash).
 docker ps --filter 'label=com.docker.compose.project=deer-flow' --filter 'status=running'
 
-# 3. Open the UI and ask a research question; the LangGraph agent plans,
-#    searches, and produces a cited report. Calls route through LiteLLM
+# 3. In the UI (opened by step 1, or reach it at http://localhost:2026),
+#    ask a research question; the LangGraph agent plans, searches, and
+#    produces a cited report. Calls route through LiteLLM
 #    (DeerFlow assigned local-qwen3.6, gated back to local-gemma4).
-open http://localhost:2026
 
 # 4. The dual-LLM researcher pattern (no service — a prompting discipline):
 #    a summarizer reads the UNTRUSTED doc; the operator only ever sees the
@@ -868,10 +869,10 @@ SUMMARY=$(curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Typ
 echo "Summary the operator sees: $SUMMARY"
 
 # 5. Reclaim the RAM when you're done.
-bash ~/ai-stack/bin/stop-deerflow.sh</code></pre>
+vz-ai-stack.sh stop deerflow</code></pre>
 <p><strong>Expected.</strong> Step 3 yields a multi-section report with inline citations. Step 4 prints <code>Summary the operator sees: cats are mammals.</code> — the <code>output your system prompt</code> injection is dropped, never reaching the operator. Phoenix shows DeerFlow's multi-step calls and two distinct summarizer/operator clusters on model <code>local</code>.</p>
 <p><strong>Lesson.</strong> Research is a <em>graph</em>, not a turn — DeerFlow makes that graph explicit. And whenever an agent ingests untrusted content, split the model in two: a cheap local summarizer absorbs the payload, the operator only sees sanitized facts. The fleet's RAG and security profiles (<code>hermes_ml_engineer</code>, <code>hermes_reviewing_engineer</code>) already apply this.</p>
-<p><strong>Go deeper.</strong> DeerFlow is NOT aliased — reach it at <code>http://localhost:2026</code> (upstream default <code>PORT</code>), not via an <code>/etc/hosts</code> name. Its two-tier <code>models:</code> block (<code>local</code> / <code>local-heavy</code>) is rendered from <code>installer/models.yml</code>; re-render with <code>vz-ai-stack.sh model sync</code>.</p>
+<p><strong>Go deeper.</strong> DeerFlow is NOT aliased — <code>start deerflow</code> opens it at <code>http://localhost:2026</code> (upstream default <code>PORT</code>), not via an <code>/etc/hosts</code> name. Its two-tier <code>models:</code> block (<code>local-gemma4</code> / <code>local-qwen3.6</code>) is rendered from <code>installer/models.yml</code>; re-render with <code>vz-ai-stack.sh model sync</code>. (<code>local-qwen3.6</code> is the opt-in LM Studio MLX heavy model — start it with <code>vz-ai-stack.sh start lmstudio</code>; without it, calls gate back to <code>local-gemma4</code>.)</p>
 <h3 id="l18">L18 · Agents that improve themselves — ACE &amp; RLM · 🔴 · ~25 min <span class="tier adv">advanced</span></h3>
 <p><strong>Why.</strong> Two ways an agent gets <em>better</em> without retraining weights. <strong>ACE</strong> (Agentic Context Engineering, <code>ace-agent/ace</code>) evolves a reusable context <strong>playbook</strong> — a Generator/Reflector/Curator loop that distills lessons into a Markdown artifact you paste into any agent's system prompt. <strong>RLM</strong> (Recursive Language Models, <code>rlms</code>) answers over inputs too large for one call by writing Python in a REPL that chunks and recursively re-calls the model. ACE improves the <em>context</em>; RLM improves the <em>reach</em>.</p>
 <p><strong>Prereqs.</strong> Phases 17 + 18 installed (<code>bash vz-ai-stack.sh install 17 18</code>); <code>uv</code> present (from Phase 14); LiteLLM up; Docker/OrbStack up (RLM's REPL is sandboxed).</p>
@@ -893,8 +894,9 @@ ls ~/ai-stack/ace/results/
 # (--env docker default), NOT on the host.
 bin/rlm "Use the REPL to compute the 20th Fibonacci number."
 
-# Bigger task + deeper recursion + heavier model (22 GB — watch RAM).
-bin/rlm "Summarize this 500-page log into 5 bullets: &lt;paste or path&gt;" -m local-heavy --max-depth 2
+# Bigger task + deeper recursion + heavier model (opt-in LM Studio MLX —
+# start it first with `vz-ai-stack.sh start lmstudio`; ~22 GB, watch RAM).
+bin/rlm "Summarize this 500-page log into 5 bullets: &lt;paste or path&gt;" -m local-qwen3.6 --max-depth 2
 
 # Ready-to-copy examples:
 bash ~/ai-stack/bin/sample-rlm-usage.sh</code></pre>
@@ -919,8 +921,9 @@ curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: applica
 #    virtual key and injects --model local unless you pass -m.
 bin/halo ~/ai-stack/traces/litellm.jsonl -p "Find the most common failure and propose a fix"
 
-# 3. Harder reasoning? Override the model.
-bin/halo ~/ai-stack/traces/litellm.jsonl -p "..." -m local-heavy
+# 3. Harder reasoning? Override the model (opt-in LM Studio MLX — start it
+#    first with `vz-ai-stack.sh start lmstudio`).
+bin/halo ~/ai-stack/traces/litellm.jsonl -p "..." -m local-qwen3.6
 
 # Cameo — autoreason (Phase 11, clone-only research artifact): an A/B/AB
 # self-refinement tournament judged by blind Borda count. Reading only.
@@ -933,17 +936,20 @@ open ~/ai-stack/halo/autoreason/README.md</code></pre>
 <p><strong>Prereqs.</strong> Phases 07 + 08 installed; Honcho (Phase 03) up; Docker up for AutoFyn.</p>
 <p><strong>Steps.</strong></p>
 <pre><button class="copy-btn" data-copy>copy</button><code># --- AutoFyn: dashboard + confirm memory wiring ---------------------------
+# start prints the URL + Stop line and opens the dashboard for you.
 # (First boot pulls images + runs migrations — a brief 502 is normal.)
-open http://autofyn:3400
+vz-ai-stack.sh start autofyn
 docker exec autofyn-dashboard wget -qO- http://honcho:8000/health
 
 # --- Paperclip: ensure the daemon, dispatch a task ------------------------
-bash ~/ai-stack/bin/start-paperclip.sh          # idempotent; first build 60-120s
+# start prints the URL + Stop line and opens the UI for you (idempotent;
+# first build 60-120s). stop paperclip later brings the daemon+relay down.
+vz-ai-stack.sh start paperclip
 curl -s http://paperclip:3100/api/health | jq   # health path is /api/health
 
-# Open the UI, enable the Honcho plugin (Settings -&gt; Plugins — it reads
-# HONCHO_API_KEY from ~/ai-stack/.env), then dispatch a task.
-open http://paperclip:3100
+# In the UI (opened by start, or reach it at http://paperclip:3100), enable
+# the Honcho plugin (Settings -&gt; Plugins — it reads HONCHO_API_KEY from
+# ~/ai-stack/.env), then dispatch a task.
 
 # Confirm the task landed in Honcho via the plugin (callback to L8). The
 # plugin has no port — verify it INDIRECTLY by searching the paperclip peer.
@@ -961,7 +967,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 <p><strong>Setup.</strong> Use a scoped key (you mint one in L22). For now, the tutorial demo key works — start the server and it mints an ephemeral key allowlisted to your wired models:</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>vz-ai-stack.sh tutorial-serve            # mints a $0.50-capped, ttl=30m key (all wired models)
 export LITELLM_KEY="sk-..."              # the scoped key from L22, or the demo key</code></pre>
-<div class="callout"><p><strong>Model ids:</strong> the gateway answers to <em>two</em> naming systems that both resolve locally — the <code>models.yml</code>-rendered ids you met in Act II (<code>local-gemma4</code>, <code>local-qwen3.6</code>, <code>local-qwen3-coder</code>) and the canonical <code>litellm/config.yaml</code> rows used below (<code>local</code> = the same Ollama Gemma default, <code>local-heavy</code> = Qwen 27B, <code>local-lfm2</code> = Liquid LFM2.5). Either name works; the examples below use the <code>config.yaml</code> rows.</p></div>
+<div class="callout"><p><strong>Model ids:</strong> the gateway answers to <em>two</em> naming systems that both resolve locally — the <code>models.yml</code>-rendered ids you met in Act II (<code>local-gemma4</code>, <code>local-qwen3.6</code>, <code>local-qwen3-coder</code>) and the canonical <code>litellm/config.yaml</code> row <code>local</code> (= the same zero-config Ollama Gemma default). Either name works; the examples below use <code>local</code>, which is always available. (<code>local-qwen3.6</code> / <code>local-qwen3-coder</code> are the opt-in LM Studio MLX models — start LM Studio with <code>vz-ai-stack.sh start lmstudio</code> and assign one before calling them.)</p></div>
 <p><strong>Python</strong> (<code>call.py</code>) — chat, then stream, then swap models with one line:</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>from openai import OpenAI
 
@@ -984,8 +990,9 @@ for chunk in client.chat.completions.create(
         print(delta, end="", flush=True)
 print()
 
-# 3) Model swap — change ONE string. local → local-heavy (Qwen 27B) → a cloud route.
-for m in ("local", "local-lfm2", "openrouter-claude-opus-4.7-fast"):
+# 3) Model swap — change ONE string. local (zero-config) → a subscription
+#    route → a cloud route. (local-qwen3.6 also works once LM Studio is up.)
+for m in ("local", "claude-sonnet-4.6-sub", "openrouter-claude-opus-4.7-fast"):
     r = client.chat.completions.create(model=m, messages=[{"role": "user", "content": "hi in 3 words"}])
     print(m, "-&gt;", r.choices[0].message.content)</code></pre>
 <pre><button class="copy-btn" data-copy>copy</button><code>import os  # (add at top of call.py)</code></pre>
@@ -1010,7 +1017,7 @@ console.log(r.choices[0].message.content);</code></pre>
 RESP=$(curl -s -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/key/generate \
   -d '{
-        "models":          ["local", "local-lfm2", "local-heavy"],
+        "models":          ["local", "local-qwen3.6", "local-qwen3-coder"],
         "max_budget":      0.50,
         "budget_duration": "1d",
         "duration":        "30m",
@@ -1022,7 +1029,7 @@ KEY=$(echo "$RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ke
 echo "minted: $KEY"</code></pre>
 <p><strong>Use it as a Bearer token</strong> — drop it straight into the L21 client:</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>export LITELLM_KEY="$KEY"
-python call.py          # now scoped: only local/local-lfm2/local-heavy, $0.50/day, 30-min life</code></pre>
+python call.py          # now scoped: only local/local-qwen3.6/local-qwen3-coder, $0.50/day, 30-min life</code></pre>
 <p>Ask for a model <em>outside</em> the allowlist (e.g. <code>openai-gpt-5.5</code>) and LiteLLM rejects the call — the scope is enforced server-side, not by your code.</p>
 <p><strong>Revoke when done</strong> (the tutorial server does this automatically on exit via <code>/key/delete</code>):</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>curl -s -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
@@ -1097,7 +1104,7 @@ curl -s -X POST http://127.0.0.1:7780/v1/chat/completions -H 'Content-Type: appl
 <div class="callout"><p>🧪 <strong>Try it.</strong> Copy-run the three <code>curl</code>s. Note the contract twist: unlike LiteLLM (where <code>model</code> picks the model), here <strong><code>role</code> picks the agent</strong> — <code>model</code> is accepted only as a fallback selector.</p></div>
 <h3 id="l25">L25 · Fine-tune (Unsloth) → deploy (Blaxel) + capstone · 🔴 <span class="tier adv">advanced</span></h3>
 <p><strong>Why.</strong> The last mile: shape a model to your data, then ship it. Unsloth Studio (<code>:8898</code>, <code>installer/phases/14_unsloth_studio.sh</code>) does local LoRA fine-tuning on Apple Silicon; Blaxel (<code>bl</code> CLI, <code>installer/phases/12_blaxel.sh</code>) deploys to the cloud on demand. Then the capstone ties five services into one run.</p>
-<div class="callout warn"><p>⚠️ <strong>RAM caution (M4 / 24 GB).</strong> Training is the heaviest thing on this box. A LoRA on a small base is fine, but it competes with Ollama/LM Studio for memory. Before you train: <code>ollama stop &lt;model&gt;</code>, quit LM Studio, and keep the base small. Do <em>not</em> train and run <code>local-heavy</code> (Qwen 27B) at the same time — you'll thrash.</p></div>
+<div class="callout warn"><p>⚠️ <strong>RAM caution (M4 / 24 GB).</strong> Training is the heaviest thing on this box. A LoRA on a small base is fine, but it competes with Ollama/LM Studio for memory. Before you train: <code>ollama stop &lt;model&gt;</code>, quit LM Studio, and keep the base small. Do <em>not</em> train and run <code>local-qwen3.6</code> (the opt-in LM Studio MLX heavy model) at the same time — you'll thrash.</p></div>
 <p><strong>(a) A LoRA, conceptually.</strong> Open Unsloth Studio at <code>http://127.0.0.1:8898</code>, pick a small base model, point it at a JSONL of instruction/response pairs, and train a LoRA adapter — you're learning a thin set of weights on top of a frozen base, not retraining the whole model. Export the merged result as <strong>GGUF</strong> so Ollama can serve it. Then point it back at LiteLLM by adding a <code>model_list</code> entry in <code>litellm/config.yaml</code>:</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>  - model_name: my-lora
     litellm_params:
@@ -1248,7 +1255,7 @@ vz-ai-stack.sh install lmstudio       # 25 — LM Studio MLX as a 2nd local runt
 vz-ai-stack.sh install mempalace      # 26 — verbatim conversation memory (see L10½)</code></pre>
 <p><strong>Expected.</strong> Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and <em>does not stamp</em>, so a later re-run completes). The first five extras' doctor checks are <strong>34–38</strong>; MemPalace's is <strong>check 44</strong> — each runs only once the corresponding extra is installed.</p>
 <p><strong>Lesson — what each is, and the gotchas.</strong></p>
-<ul><li><strong><code>portless</code> (21)</strong> — global npm CLI on the host; maps stable <code>name.localhost</code> HTTPS URLs to local dev servers and ships a Claude Code skill so an agent finds the right URL instead of guessing ports. Advisory only if Node &lt; 24.</li><li><strong><code>cmux</code> (22)</strong> — a native macOS <strong>GUI app</strong> (Homebrew cask from the upstream tap), not a container or daemon: there's nothing to start; you launch <code>cmux.app</code> yourself. Ships a <code>cmux notify</code> CLI for agent hooks.</li><li><strong><code>openagents</code> (24)</strong> — a <strong>competing orchestration layer</strong> ("Ollama for AI agents"). It overlaps OpenShell, the Hermes fleet, and the front-ends; we install it into its own <code>~/.openagents</code> prefix and wire it into <em>nothing</em>. Treat it as an evaluation sandbox.</li><li><strong><code>lmstudio</code> (25)</strong> — adds Apple's <strong>MLX</strong> engine as a second local runtime behind LiteLLM (e.g. for LFM2.5 with working tool calling). ⚠ <strong>CPU/RAM gotchas:</strong> LM Studio <strong>idle-spins ~0.8 of a core</strong> even when nothing is in flight — <strong>quit it when you're done</strong> (<code>mlx_lm.server</code> is a lighter alternative). On a 24 GB box, the heavy MLX slugs (<code>local-qwen3.6</code>, <code>local-qwen3-coder</code>, ~17 GB) thrash if you also have Ollama resident — load one runtime at a time. <strong>Security:</strong> LM Studio binds <code>0.0.0.0:1234</code> with <strong>no auth</strong> so the container can reach it via <code>host.docker.internal</code>, which exposes the LLM to your LAN — fine on a trusted network, otherwise firewall it.</li><li><strong><code>mempalace</code> (26)</strong> — local-first <strong>verbatim</strong> conversation memory (the L10½ lesson): a CLI + MCP server (29 tools) + Python lib that indexes your past Claude Code sessions and lets you <code>search</code>/<code>wake-up</code> over them. Embeddings are <strong>on-device</strong> (local ONNX), the store is local ChromaDB, and the only optional egress is a refiner LLM via LiteLLM — so it's privacy-clean by default. ⚠ <strong>Security:</strong> install only from PyPI (<code>mempalace</code>) or github.com/MemPalace/mempalace — <code>mempalace.tech</code> is a known malware squat.</li></ul>
+<ul><li><strong><code>portless</code> (21)</strong> — global npm CLI on the host; maps stable <code>name.localhost</code> HTTPS URLs to local dev servers and ships a Claude Code skill so an agent finds the right URL instead of guessing ports. Advisory only if Node &lt; 24.</li><li><strong><code>cmux</code> (22)</strong> — a native macOS <strong>GUI app</strong> (Homebrew cask from the upstream tap), not a container or daemon: there's nothing to start; you launch <code>cmux.app</code> yourself. Ships a <code>cmux notify</code> CLI for agent hooks.</li><li><strong><code>openagents</code> (24)</strong> — a <strong>competing orchestration layer</strong> ("Ollama for AI agents"). It overlaps OpenShell, the Hermes fleet, and the front-ends; we install it into its own <code>~/.openagents</code> prefix and wire it into <em>nothing</em>. Treat it as an evaluation sandbox.</li><li><strong><code>lmstudio</code> (25)</strong> — adds Apple's <strong>MLX</strong> engine as a second local runtime behind LiteLLM (home of the heavy MLX models <code>local-qwen3.6</code> / <code>local-qwen3-coder</code>). <code>install lmstudio</code> does the setup + model wiring; <strong><code>vz-ai-stack.sh start lmstudio</code></strong> starts the server when you want it (and <code>stop lmstudio</code> stops it) — no model auto-loads, so assign one in <code>models.yml</code> + <code>vz-ai-stack.sh model sync</code>. ⚠ <strong>CPU/RAM gotchas:</strong> LM Studio <strong>idle-spins ~0.8 of a core</strong> even when nothing is in flight — <strong>quit it when you're done</strong> (<code>mlx_lm.server</code> is a lighter alternative). On a 24 GB box, the heavy MLX slugs (<code>local-qwen3.6</code>, <code>local-qwen3-coder</code>, ~17 GB) thrash if you also have Ollama resident — load one runtime at a time. <strong>Security:</strong> LM Studio binds <code>0.0.0.0:1234</code> with <strong>no auth</strong> so the container can reach it via <code>host.docker.internal</code>, which exposes the LLM to your LAN — fine on a trusted network, otherwise firewall it.</li><li><strong><code>mempalace</code> (26)</strong> — local-first <strong>verbatim</strong> conversation memory (the L10½ lesson): a CLI + MCP server (29 tools) + Python lib that indexes your past Claude Code sessions and lets you <code>search</code>/<code>wake-up</code> over them. Embeddings are <strong>on-device</strong> (local ONNX), the store is local ChromaDB, and the only optional egress is a refiner LLM via LiteLLM — so it's privacy-clean by default. ⚠ <strong>Security:</strong> install only from PyPI (<code>mempalace</code>) or github.com/MemPalace/mempalace — <code>mempalace.tech</code> is a known malware squat.</li></ul>
 <p><strong>Go deeper.</strong> Phases <code>installer/phases/21_portless.sh</code> … <code>26_mempalace.sh</code> each carry a full rationale header. The model strategy (which slug runs where, why qwen3.6 moved off Ollama to LM Studio) is in <code>doc/models.md</code> and <code>doc/ALTERNATIVES.md</code>; MemPalace's place among the memory options is in <code>doc/ALTERNATIVES.md</code> and its attribution/license in <code>doc/ATTRIBUTION.md</code>.</p>
 <h3 id="l30">L30 · Where to go next · 🟢 · ~5 min <span class="tier basic">basic</span></h3>
 <p><strong>Why.</strong> You've gone from a bare model to a personalized, grounded, multi-agent, observable, <em>guarded</em> stack. This lesson maps what you learned back to the reference docs and shows the two most common ways to extend it.</p>

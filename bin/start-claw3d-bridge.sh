@@ -28,7 +28,11 @@ pid_is_ours() {
   kill -0 "$pid" 2>/dev/null || return 1
   ps -p "$pid" -o args= 2>/dev/null | grep -qF "claw3d-bridge/bridge.py"
 }
-http_ok() { [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || echo 000)" != "000" ]]; }
+# http_ok <url> — true ONLY on a 2xx/3xx response. The old `!= "000"` form reported
+# a DOWN service as healthy: on connection-refused, curl prints "000" AND exits
+# non-zero, so `|| echo 000` appended a second "000" → "000000" != "000" → true.
+# That made the bridge's own self-health-check pass even when it never came up.
+http_ok() { local code; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null)" || code="000"; [[ "$code" =~ ^[23] ]]; }
 
 # Idempotent re-entry.
 if [[ -f "$PID_FILE" ]]; then

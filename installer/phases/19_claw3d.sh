@@ -90,11 +90,14 @@ JSONEOF
 chmod 600 "$SETTINGS_DIR/settings.json" 2>/dev/null || true
 ok "wrote claw3d/.env + $SETTINGS_DIR/settings.json (custom runtime → $BRIDGE_URL)"
 
-# --- 4. Start the bridge, then claw3d ---
-log "Starting claw3d-bridge..."
-CLAW3D_BRIDGE_PORT="$BRIDGE_PORT" bash "$AI_STACK/bin/start-claw3d-bridge.sh" || { err "bridge failed to start"; exit 1; }
-log "Starting claw3d UI..."
-CLAW3D_PORT="$CLAW3D_PORT" bash "$AI_STACK/bin/start-claw3d.sh" || { err "claw3d failed to start"; exit 1; }
+# --- 4. Delegate launch to bin/start-claw3d.sh (single source of truth) ---
+# start-claw3d.sh is the health-gated composite: it starts the bridge, confirms
+# /health independently (30s timeout), then starts the UI. No duplicated launch
+# logic here — provisioning (clone/npm/.env/settings.json) stays above; running
+# is owned by the start script.
+log "Starting claw3d composite (bridge → health-gate → UI)..."
+CLAW3D_BRIDGE_PORT="$BRIDGE_PORT" CLAW3D_PORT="$CLAW3D_PORT" \
+  bash "$AI_STACK/bin/start-claw3d.sh" || { err "claw3d composite start failed"; exit 1; }
 
 # --- 5. Smoke: bridge contract + agent count ---
 AGENTS_N="$(curl -s --max-time 5 "$BRIDGE_URL/state" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("active",{})))' 2>/dev/null || echo 0)"

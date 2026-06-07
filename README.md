@@ -290,7 +290,7 @@ sequenceDiagram
 cp ~/Downloads/some-paper.pdf ~/ai-stack/ingestor/inbox/
 cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py
 curl -s http://qdrant:6333/collections/ai-stack-docs | jq '.result.points_count'
-bash ~/ai-stack/bin/start-docs_mcp.sh
+bash ~/ai-stack/vz-ai-stack.sh start docs_mcp
 curl -s http://docs-mcp:8765/health
 ```
 
@@ -613,7 +613,8 @@ snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
   `local-qwen3.6` (LM Studio MLX, heavy reasoning), `local-qwen3-coder` (LM Studio MLX,
   coding). lmstudio-assigned agents auto-fall-back to `local-gemma4` when LM Studio (:1234)
   is down, so a plain `install all` works with no LM Studio. See [doc/models.md](doc/models.md).
-  (`local-heavy` is a legacy Ollama alias — no longer auto-pulled.)
+  (`local-heavy` is a removed legacy Ollama alias — the heavy model now lives in
+  LM Studio as `local-qwen3.6`. `local-lfm2` is likewise no longer auto-pulled.)
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.
   A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is caught by

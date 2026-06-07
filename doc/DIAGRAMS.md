@@ -536,15 +536,15 @@ sequenceDiagram
   participant HO as honcho :8000 (api)
   participant DR as honcho deriver
   participant LL as litellm.ai-stack:4000
-  participant LH as local-heavy (intended Ollama qwen3.6:27b)
+  participant LH as local-gemma4 (Ollama gemma4:e4b, default)
   participant PG as Postgres (data/honcho)
 
   AG->>HO: write message (session, peer-scoped)
   HO->>PG: persist raw message
   HO->>DR: enqueue derivation
-  DR->>LL: extract user representation (model=local-heavy, pinned)
+  DR->>LL: extract user representation (model=local-gemma4, override via HONCHO_DERIVER_MODEL)
   LL->>LH: forward
-  Note over LL,LH: KNOWN GAP - qwen3.6:27b not pre-pulled in Ollama -> 404 until pulled or phase 03 repointed
+  Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
   LH-->>LL: derived facts
   LL-->>DR: derived facts (also traced to Phoenix)
   DR->>PG: persist derived representation (namespace-isolated)

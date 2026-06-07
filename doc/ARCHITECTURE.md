@@ -204,9 +204,11 @@ actually serves.
 
 `default: local-gemma4`. (Phase 25 can optionally add the `local-lfm2-mlx` slug,
 but ONLY when opted in via `LMS_LOAD_LFM2=1` — by default `install lmstudio` is
-assignment-driven and wires only models.yml-assigned MLX slugs. `local-heavy` /
-`local-lfm2` remain add-only legacy entries in `litellm/config.yaml` that 404 until
-pulled. None of these three are in the canonical roster.)
+assignment-driven and wires only models.yml-assigned MLX slugs. The heavy
+Ollama model `local-heavy` (`qwen3.6:27b`) is **removed** — it now lives in LM
+Studio as `local-qwen3.6` (opt-in MLX). `local-heavy` / `local-lfm2` remain
+add-only legacy entries in `litellm/config.yaml` that 404 until manually pulled;
+neither is auto-pulled, and neither is in the canonical roster.)
 
 ### Availability-gating — fallback to `local-gemma4`
 

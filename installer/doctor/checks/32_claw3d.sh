@@ -19,7 +19,7 @@ claw3d_diagnose() {
   fi
   [[ -f "$AI_STACK/claw3d-bridge/bridge.py" ]] || { echo "claw3d-bridge/bridge.py missing — re-run 'install 19'"; return 1; }
   if [[ "$(_claw3d_code "$bridge/health")" == "000" ]]; then
-    echo "bridge not serving on $bridge — start: bash $AI_STACK/bin/start-claw3d-bridge.sh"
+    echo "bridge not serving on $bridge — start: vz-ai-stack.sh start claw3d"
     return 1
   fi
   # bridge /state should enumerate agents
@@ -27,7 +27,7 @@ claw3d_diagnose() {
   n="$(curl -s --max-time 4 "$bridge/state" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("active",{})))' 2>/dev/null || echo 0)"
   if [[ "${n:-0}" -lt 1 ]]; then echo "bridge /state lists no agents (got ${n:-0})"; return 1; fi
   if [[ "$(_claw3d_code "$ui/")" == "000" ]]; then
-    echo "claw3d UI not serving on $ui — start: bash $AI_STACK/bin/start-claw3d.sh"
+    echo "claw3d UI not serving on $ui — start: vz-ai-stack.sh start claw3d"
     return 1
   fi
   echo "  (bridge: $n agents; UI up at $ui — open in a browser, click Connect)"
@@ -35,10 +35,11 @@ claw3d_diagnose() {
 }
 
 claw3d_fix() {
-  warn "Restart the bridge + claw3d UI:"
-  warn "    bash $AI_STACK/bin/start-claw3d-bridge.sh && bash $AI_STACK/bin/start-claw3d.sh"
-  warn "Or re-run the phase:  bash $AI_STACK/vz-ai-stack.sh install 19"
-  bash "$AI_STACK/bin/start-claw3d-bridge.sh" >/dev/null 2>&1 || true
-  bash "$AI_STACK/bin/start-claw3d.sh" >/dev/null 2>&1 || true
+  # Use the single run funnel: `start claw3d` is the health-gated composite
+  # (bridge → /health → UI). NO_BROWSER so the doctor doesn't pop a tab.
+  warn "Restart claw3d (health-gated composite — bridge → UI):"
+  warn "    vz-ai-stack.sh start claw3d"
+  warn "Or re-run the phase:  vz-ai-stack.sh install 19"
+  NO_BROWSER=1 bash "$AI_STACK/vz-ai-stack.sh" start claw3d >/dev/null 2>&1 || true
   return 1
 }

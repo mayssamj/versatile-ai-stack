@@ -428,14 +428,14 @@
   <table>
     <thead><tr><th>Symptom</th><th>First check</th><th>Then</th></tr></thead>
     <tbody>
-      <tr><td><code>curl http://litellm:4000</code> → connection refused</td><td>11, 14</td><td><code>docker ps | grep litellm</code>; <code>bin/start-litellm.sh</code></td></tr>
+      <tr><td><code>curl http://litellm:4000</code> → connection refused</td><td>11, 14</td><td><code>docker ps | grep litellm</code>; <code>vz-ai-stack.sh start litellm</code></td></tr>
       <tr><td><code>curl http://litellm:4000</code> → 401</td><td>26</td><td><code>source .env</code>; verify <code>LITELLM_MASTER_KEY</code></td></tr>
       <tr><td>Phoenix has no traces</td><td>6, 9, 13</td><td>LiteLLM env: <code>PHOENIX_API_KEY</code>, <code>PHOENIX_COLLECTOR_HTTP_ENDPOINT</code></td></tr>
       <tr><td>Ollama 403 from inside container</td><td>Phase 00 plist</td><td><code>OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=*</code>, then <code>brew services restart ollama</code></td></tr>
       <tr><td><code>bin/pi</code>: "PI_LITELLM_KEY missing"</td><td>26</td><td><code>bash vz-ai-stack.sh install 15</code> (re-mints)</td></tr>
       <tr><td>Pi can reach forbidden destination</td><td>25</td><td><code>openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait</code></td></tr>
       <tr><td><code>openshell sandbox list</code> → empty</td><td>24</td><td><code>install 04</code> then <code>install 15</code></td></tr>
-      <tr><td><code>docs-mcp</code> returns nothing</td><td>Phase 06</td><td><code>bin/start-docs_mcp.sh</code>; verify <code>curl docs-mcp:8765/health</code></td></tr>
+      <tr><td><code>docs-mcp</code> returns nothing</td><td>Phase 06</td><td><code>vz-ai-stack.sh start docs_mcp</code>; verify <code>curl docs-mcp:8765/health</code></td></tr>
       <tr><td>Fan is on, idle CPU high</td><td>DeerFlow config crash-loop most likely</td><td><code>bash vz-ai-stack.sh doctor</code> check 28; re-run <code>bash vz-ai-stack.sh install 10</code> to re-patch <code>config.yaml</code>. After fix, idle is ~1% CPU / ~520 MB.</td></tr>
     </tbody>
   </table>
@@ -652,7 +652,7 @@ const services = [
    tryThis:[
      {desc:'Health.', cmd:'curl -s http://docs-mcp:8765/health | jq'},
      {desc:'Direct search.', cmd:'curl -s -X POST http://docs-mcp:8765/tools/search_documents \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"query":"vector embeddings","top_k":3}\' | jq'},
-     {desc:'Restart daemon.', cmd:'bash ~/ai-stack/bin/start-docs_mcp.sh'}
+     {desc:'Start / restart daemon (idempotent).', cmd:'vz-ai-stack.sh start docs_mcp'}
    ],
    combine:['docs_ingestor','qdrant','openwebui','pi']},
 
@@ -671,9 +671,9 @@ const services = [
    what:'Browser UI for dispatching to Hermes profiles, AutoFyn, or any registered worker. Tracks budgets, governance, audit trails.',
    when:'When you have multiple agents and want one place to dispatch and watch.',
    tryThis:[
-     {desc:'Start (auto-started by Phase 08).', cmd:'bash ~/ai-stack/bin/start-paperclip.sh'},
+     {desc:'Start (auto-started by Phase 08; opens the UI).', cmd:'vz-ai-stack.sh start paperclip'},
      {desc:'Open.', cmd:'open http://paperclip:3100'},
-     {desc:'Kill cleanly.', cmd:'kill $(cat ~/ai-stack/installer/state/paperclip.pid 2>/dev/null)'}
+     {desc:'Stop cleanly (daemon+relay).', cmd:'vz-ai-stack.sh stop paperclip'}
    ],
    combine:['hermes_fleet','autofyn','paperclip_honcho_plugin']},
 
@@ -703,7 +703,7 @@ const services = [
    when:'Deep research, multi-step browsing, structured report generation.',
    warn:'Phase 10 idempotently patches config.yaml + docker-compose.yaml + .env to wire DeerFlow to local LiteLLM via host.docker.internal:4000. Doctor check 28 catches regressions. Use stack start/stop deerflow (NOT raw deploy.sh) so LITELLM_MASTER_KEY is exported into the shell for compose substitution. Idle CPU ~1%, MEM ~520 MB.',
    tryThis:[
-     {desc:'Start (warning-free).', cmd:'stack start deerflow    # also: stack deerflow start, or bash bin/start-deerflow.sh'},
+     {desc:'Start (warning-free; opens the UI).', cmd:'stack start deerflow    # also: stack deerflow start'},
      {desc:'Open frontend.', cmd:'open "http://localhost:${PORT:-2026}"'},
      {desc:'Stop when done.', cmd:'stack stop deerflow     # also: stack deerflow stop'},
      {desc:'Verify config is patched.', cmd:'bash ~/ai-stack/vz-ai-stack.sh doctor deerflow_config'}
@@ -802,7 +802,7 @@ const recipes = [
      'cp ~/Downloads/some-paper.pdf ~/ai-stack/ingestor/inbox/',
      'cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py',
      'curl -s http://qdrant:6333/collections/ai-stack-docs | jq \'.result.points_count\'',
-     'bash ~/ai-stack/bin/start-docs_mcp.sh',
+     'vz-ai-stack.sh start docs_mcp',
      'curl -s http://docs-mcp:8765/health',
      '# Open WebUI: Settings → Tools → Add → URL=http://docs-mcp:8765',
      '# New chat → enable docs tool → "according to my docs, what does X say about Y?"'
@@ -840,17 +840,17 @@ const recipes = [
      'cd ~/ai-stack/ingestor && source .venv/bin/activate',
      'pip install arize-phoenix-evals',
      '# 1. Build eval dataset (deduped, last 200, kind=success only).',
-     '# 2. Replay through local-lfm2.',
-     '# 3. Score with local-heavy as judge.',
+     '# 2. Replay through local-gemma4 (zero-config candidate).',
+     '# 3. Score with local-qwen3.6 as judge (opt-in heavy model — needs LM Studio; falls back to local-gemma4).',
      '# Full Python in USER-GUIDE.md §Recipe 4.'
    ],
-   phoenix:'Filter on model=local-lfm2 (candidate) and model=local-heavy (judge); tag with a session name for bookmarking a baseline.'
+   phoenix:'Filter on model=local-gemma4 (candidate) and model=local-qwen3.6 (judge); tag with a session name for bookmarking a baseline.'
   },
   {id:'recipe5', num:5, title:'Research fleet', tag:'stretch', desc:'Hermes researcher + DeerFlow + docs ingestion + tracing. Heavy CPU; flip back off when done.',
    prereqs:'See USER-GUIDE.md §Recipe 5 for the full yq script.',
    steps:[
      '# Flip services per the research profile.',
-     'for svc in litellm qdrant honcho docs_mcp; do bash ~/ai-stack/bin/start-$svc.sh; done',
+     'for svc in litellm qdrant honcho docs_mcp; do vz-ai-stack.sh start $svc; done',
      'stack start deerflow',
      'open "http://localhost:${PORT:-2026}"',
      '# Watch Phoenix as the fleet works.',
@@ -862,9 +862,8 @@ const recipes = [
    prereqs:'See USER-GUIDE.md §Recipe 6 for the full apply script.',
    steps:[
      '# Apply paranoid profile services (yq flips).',
-     'for c in openwebui autofyn phoenix; do docker stop $c; done',
-     'stack stop deerflow',
-     'bash ~/ai-stack/bin/start-llm_guard.sh',
+     'for s in openwebui autofyn phoenix deerflow; do vz-ai-stack.sh stop $s; done',
+     'vz-ai-stack.sh start llm_guard',
      '# Use the stack via curl only with $LITELLM_MASTER_KEY.'
    ],
    phoenix:'None — Phoenix is off in paranoid mode.'
@@ -874,12 +873,12 @@ const recipes = [
    steps:[
      'open http://localhost:8898',
      '# Dataset import: traces/litellm.jsonl, mapping messages → response, filter kind=success.',
-     '# Pick base: LFM2.5-8B-A1B fits 24GB M4 for fine-tuning.',
+     '# Pick base: a small model like local-gemma4 (default) or LFM2.5-8B-A1B fits 24GB M4 for fine-tuning. (LFM2.5 is no longer auto-pulled — ollama pull it first if you want it.)',
      '# LoRA defaults: 3 epochs, rank=16. Watch GPU with powermetrics.',
      'ollama create local-tuned -f - <<EOF\nFROM ~/.unsloth/studio/runs/<id>/model.gguf\nEOF',
-     '# Add to litellm/config.yaml; bash bin/start-litellm.sh --recreate'
+     '# Add to litellm/config.yaml; then: vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm  (reload config)'
    ],
-   phoenix:'A/B against local-lfm2 with Recipe 4 to score the actual improvement numerically.'
+   phoenix:'A/B against local-gemma4 (the base) with Recipe 4 to score the actual improvement numerically.'
   },
   {id:'recipe8', num:8, title:'Sandboxed Hermes profile (end-to-end task)', tag:'core+', desc:'Dispatch hermes_backend_engineer to a code fix in hermes-fleet-v1. Pull results back.',
    prereqs:'Phases 04 + 04F complete. Sandbox upload/download works.',
@@ -970,10 +969,13 @@ const cheatsheet = [
     {cmd:'docker logs -f phoenix', desc:'raw container'},
     {cmd:'tail -f ~/ai-stack/installer/state/unsloth.log', desc:'host bg process'}
   ]},
-  {section:'Service start scripts', items:[
-    {cmd:'bash ~/ai-stack/bin/start-litellm.sh', desc:'canonical restart'},
-    {cmd:'bash ~/ai-stack/bin/start-litellm.sh --recreate', desc:'backup + recreate'},
-    {cmd:'bash ~/ai-stack/bin/start-{phoenix,honcho,qdrant,falkordb,openwebui,autofyn,paperclip,docs_mcp,llm_guard,unsloth,hermes_workspace}.sh', desc:'one per service'}
+  {section:'Run / stop any service (one uniform path)', items:[
+    {cmd:'vz-ai-stack.sh start <svc>', desc:'bring it up + print URL/Endpoint + Stop line; opens UIs (alias: run; reverse-form <svc> start)'},
+    {cmd:'vz-ai-stack.sh stop <svc>', desc:'bring it down (idempotent; alias: disable)'},
+    {cmd:'vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm', desc:'reload config (stop+start)'},
+    {cmd:'vz-ai-stack.sh start {litellm,phoenix,honcho,qdrant,falkordb,openwebui,autofyn,paperclip,docs_mcp,llm_guard,unsloth,hermes_workspace}', desc:'one per service'},
+    {cmd:'vz-ai-stack.sh start claw3d', desc:'health-gated composite (bridge→UI→open :4310)'},
+    {cmd:'vz-ai-stack.sh start lmstudio', desc:'opt-in LM Studio server (macOS/app-guarded)'}
   ]},
   {section:'Pi (sandboxed coding)', items:[
     {cmd:'bash ~/ai-stack/bin/pi', desc:'launch in pi-v1'},
@@ -1017,10 +1019,9 @@ const cheatsheet = [
     {cmd:'bash ~/ai-stack/vz-ai-stack.sh reset --confirm nuke', desc:'everything (re-download all)'}
   ]},
   {section:'⚠ Not implemented — use the workaround', items:[
-    {cmd:'stack profile <name>', desc:'manual yq + bin/start scripts (see USER-GUIDE.md §4)'},
-    {cmd:'stack enable/disable <svc>', desc:'yq -i ".services.<svc>.enabled = true/false" services.yml'},
+    {cmd:'stack profile <name>', desc:'manual yq + per-service stack start/stop (see USER-GUIDE.md §4)'},
     {cmd:'stack apply', desc:'re-run vz-ai-stack.sh install <phase> for the changed phase'},
-    {cmd:'stack restart <svc>', desc:'bash bin/start-<svc>.sh --recreate'}
+    {cmd:'stack restart <svc>', desc:'vz-ai-stack.sh stop <svc> && vz-ai-stack.sh start <svc> (idempotent)'}
   ]}
 ];
 

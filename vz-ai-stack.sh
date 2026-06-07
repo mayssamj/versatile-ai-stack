@@ -196,9 +196,16 @@ ai-stack-installer — usage:
     vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
-    vz-ai-stack.sh start <service>          start a service (bin/start-<service>.sh, else brew services for ollama/openshell)
+    vz-ai-stack.sh start <service>          start a service; prints URL + Stop line; opens browser for UI
+                                        services (gated: interactive TTY, not NO_BROWSER/CI).
+                                        Special: `start lmstudio` — guards macOS + /Applications/LM Studio.app;
+                                        `start claw3d` — health-gated composite (bridge + UI).
+                                        Flags: --no-open (suppress browser), --open (force browser past CI gate).
+                                        Non-daemon types (cli-only, agent-pattern, etc.) print usage + exit 0.
+    vz-ai-stack.sh run <service>            alias for start
     vz-ai-stack.sh stop <service>           stop a service (bin/stop-<service>.sh, docker stop, else brew services for ollama/openshell)
     vz-ai-stack.sh <service> start          shortcut for: vz-ai-stack.sh start <service>
+    vz-ai-stack.sh <service> run            shortcut for: vz-ai-stack.sh start <service>
     vz-ai-stack.sh <service> stop           shortcut for: vz-ai-stack.sh stop <service>
                                         (enable/disable are accepted as aliases for start/stop)
 
@@ -236,7 +243,7 @@ is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
     setup|keys|verify|adopt|apply-restarts|logs|history|gc|migrate-v2|upgrade|\
-    tutorial-serve|reset|start|enable|stop|disable|help) return 0 ;;
+    tutorial-serve|reset|start|run|enable|stop|disable|help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -599,26 +606,211 @@ _is_brew_service() {
     | awk -v s="$1" 'NR>1 && $1==s {f=1} END{exit !f}'
 }
 
+# _report_started <svc> — print the authoritative reach line (URL or Endpoint)
+# plus the Stop command. Reads open_url / alias / host_port from services.yml.
+_report_started() {
+  local svc="$1"
+  local open_url alias_val host_port
+  open_url="$(SVC="$svc" yq -r '.services[strenv(SVC)].open_url // ""' "$SERVICES_YML" 2>/dev/null || true)"
+  alias_val="$(SVC="$svc" yq -r '.services[strenv(SVC)].alias // ""'  "$SERVICES_YML" 2>/dev/null || true)"
+  host_port="$(SVC="$svc" yq -r '.services[strenv(SVC)].host_port // ""' "$SERVICES_YML" 2>/dev/null || true)"
+  if [[ -n "$open_url" ]]; then
+    ok "URL: $open_url"
+  elif [[ -n "$alias_val" && -n "$host_port" ]]; then
+    ok "Endpoint: http://${alias_val}:${host_port}"
+  elif [[ -n "$host_port" ]]; then
+    ok "Endpoint: http://localhost:${host_port}"
+  fi
+  note "Stop:  vz-ai-stack.sh stop $svc"
+}
+
+# _browser_open <svc> <url> — best-effort browser open, gated on TTY/CI/flags.
+# Always prints the URL even when it cannot open a browser. Never fails the command.
+# Caller must set _START_FRESH=1 (fresh start) or 0 (idempotent / already running)
+# and _NO_OPEN / _FORCE_OPEN (parsed from --no-open / --open flags) before calling.
+_browser_open() {
+  local svc="$1" url="$2"
+  [[ -z "$url" ]] && return 0
+  # Suppress if explicitly disabled
+  [[ "${_NO_OPEN:-0}" == "1" ]] && return 0
+  # Only browser-open on a FRESH start (not "already running")
+  [[ "${_START_FRESH:-1}" == "0" ]] && return 0
+  # Determine launcher
+  local launcher=""
+  if [[ "$(uname)" == Darwin ]] && command -v open >/dev/null 2>&1; then
+    launcher="open"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    launcher="xdg-open"
+  fi
+  # Gate: interactive TTY AND not NO_BROWSER/CI — unless --open forces it
+  local can_open=0
+  if [[ "${_FORCE_OPEN:-0}" == "1" && -n "$launcher" ]]; then
+    can_open=1
+  elif [[ -n "$launcher" ]] && [[ -t 1 ]] && [[ -z "${NO_BROWSER:-}" && -z "${CI:-}" ]]; then
+    can_open=1
+  fi
+  if (( can_open )); then
+    "$launcher" "$url" 2>/dev/null || true
+  else
+    note "(no browser opened — headless/CI; open it yourself: $url)"
+  fi
+}
+
+# _ensure_setup <svc> — enumerated pre-flight check for services that need a
+# one-time setup step before they can start (claw3d, lmstudio). If the prereq
+# path exists, returns 0 immediately. Otherwise: interactive TTY (and not
+# NO_PROMPT/CI) → prompt to install now; non-interactive → print the command
+# and exit non-zero.
+_ensure_setup() {
+  local svc="$1"
+  local prereq=""
+  local phase=""
+  case "$svc" in
+    claw3d)   prereq="$AI_STACK/claw3d/node_modules"; phase="19" ;;
+    lmstudio) prereq="/Applications/LM Studio.app";   phase="25" ;;
+    *)        return 0 ;;  # not enumerated — no prereq check
+  esac
+  [[ -e "$prereq" ]] && return 0
+  # Prereq missing — decide whether to prompt or bail
+  if [[ -t 0 && -z "${NO_PROMPT:-}" && -z "${CI:-}" ]]; then
+    local answer
+    # -t 30: a live-but-unattended TTY must not block forever; timeout/EOF → "n".
+    read -r -t 30 -p "$svc isn't set up yet — set it up now? (~2 min) [y/N] " answer || answer="n"
+    case "${answer,,}" in
+      y|yes)
+        # Continue to start ONLY if setup succeeded — a partial install must not
+        # fall through to a confusing "node_modules missing" start error.
+        if ! cmd_install "$svc"; then
+          err "$svc setup failed — fix the above, then: vz-ai-stack.sh install $svc"
+          exit 1
+        fi
+        return 0
+        ;;
+    esac
+  fi
+  err "$svc isn't set up — run: vz-ai-stack.sh install $svc"
+  exit 1
+}
+
 cmd_start() {
-  local svc="${1:-}"
+  local svc=""
+  # Parse --no-open / --open flags and strip them before svc resolution.
+  # These are stored in variables that _browser_open reads.
+  _NO_OPEN=0
+  _FORCE_OPEN=0
+  _START_FRESH=0   # default: suppress browser-open; flip to 1 only on a confirmed fresh start
+  local -a passthrough=()
+  for arg in "$@"; do
+    case "$arg" in
+      --no-open) _NO_OPEN=1 ;;
+      --open)    _FORCE_OPEN=1 ;;
+      *)         passthrough+=("$arg") ;;
+    esac
+  done
+  set -- "${passthrough[@]+"${passthrough[@]}"}"
+  svc="${1:-}"
   if [[ -z "$svc" ]]; then
     err "Usage: vz-ai-stack.sh start <service>"
     _list_startable_services
     exit 2
   fi
+
+  # Step 1: enumerated pre-flight setup check (claw3d, lmstudio).
+  _ensure_setup "$svc"
+
+  # Read the declared type once (drives the docker idempotency pre-check below
+  # and the non-daemon dispatch in Step 4).
+  local svc_type
+  svc_type="$(SVC="$svc" yq -r '.services[strenv(SVC)].type // ""' "$SERVICES_YML" 2>/dev/null || true)"
+
   local script="$AI_STACK/bin/start-${svc}.sh"
-  if [[ -x "$script" ]]; then
-    exec bash "$script" "${@:2}"
+  # Gate on -f (exists), not -x: we invoke via `bash "$script"`, so the +x bit is
+  # irrelevant — and gating on -x silently mis-routes a present-but-non-executable
+  # script (e.g. a perms slip in an edit) to the "no start script" error path.
+  if [[ -f "$script" ]]; then
+    # Idempotency for single-container docker services (type == docker, where the
+    # container name == svc): the docker start scripts call recreate_guard, which
+    # exits non-zero on an already-existing container ("Container 'x' already
+    # exists" → suggests --recreate). The start contract requires "already running
+    # = success". So if the container is already RUNNING, short-circuit to an
+    # idempotent success + report (no re-open). Scoped to type==docker ONLY:
+    # node-bg/python-bg host services and compose services (container name != svc)
+    # must NOT be matched here — a stale unrelated container named e.g. "claw3d"
+    # would otherwise wrongly suppress their real start. They self-handle idempotency.
+    if [[ "$svc_type" == "docker" ]] \
+       && [[ "$(docker inspect -f '{{.State.Running}}' "$svc" 2>/dev/null)" == "true" ]]; then
+      ok "$svc already running."
+      _START_FRESH=0
+      _report_started "$svc"
+      return 0
+    fi
+    # Step 2: run the start script WITHOUT exec so post-start actions
+    # (_report_started, _browser_open) run after it returns. Preserve the exit code.
+    #
+    # `... | tee "$tmp_out" || rc=$?` : tee streams the script's combined output to
+    # OUR stdout (visible interactively AND capturable via `start x >log`) while also
+    # writing a copy to the temp file for idempotency detection. The `|| rc=$?`
+    # suppresses errexit on a non-zero start and captures the pipeline status
+    # (pipefail ⇒ the start script's true exit code, not tee's). Verified: a script
+    # that exits 7 yields rc=7 here and does NOT abort cmd_start.
+    local rc=0 tmp_out captured
+    tmp_out="$(mktemp)"
+    bash "$script" "${@:2}" 2>&1 | tee "$tmp_out" || rc=$?
+    captured="$(cat "$tmp_out")"
+    rm -f "$tmp_out"
+    if (( rc != 0 )); then
+      return "$rc"
+    fi
+    # Fresh vs idempotent: start scripts print `ok "... already running ..."` on an
+    # idempotent re-run. Default is suppressed (_START_FRESH=0); flip to fresh only
+    # when the script did NOT report "already running".
+    if printf '%s' "$captured" | grep -qi "already running"; then
+      _START_FRESH=0
+    else
+      _START_FRESH=1
+    fi
+    _report_started "$svc"
+    local open_url
+    open_url="$(SVC="$svc" yq -r '.services[strenv(SVC)].open_url // ""' "$SERVICES_YML" 2>/dev/null || true)"
+    _browser_open "$svc" "$open_url"
+    return 0
   fi
-  # No start script — a brew-managed service (ollama/openshell)? Use brew services.
+
+  # Step 3: brew-managed service (ollama/openshell)?
   if _is_brew_service "$svc"; then
     [[ "$svc" == openshell ]] && warn "Note: this starts only the OpenShell GATEWAY daemon. Sandboxes (hermes-fleet-v1/pi-v1) are separate — recreate them with 'vz-ai-stack.sh install 04 04f 15' if needed."
     log "No bin/start-${svc}.sh — '$svc' is a brew service; using 'brew services start $svc'"
-    exec brew services start "$svc"
+    brew services start "$svc"
+    _report_started "$svc"
+    return 0
   fi
+
+  # Step 4: non-daemon type? Print honest categorical message + help.usage, exit 0.
+  # Non-daemon types never have a start script and should not get the generic error.
+  # ($svc_type was read once above.) `openshell` covers sandbox-resident agents like
+  # `pi` (invoked via bin/pi / bin/pi-as), which must get a categorical message —
+  # NOT the misleading "no start script" error. (The brew SERVICE `openshell` itself
+  # hits the brew branch above first, so it never reaches here.)
+  case "$svc_type" in
+    cli-only|clone-only|pip-package|npm-global|agent-pattern|\
+    litellm-feature|litellm-virtual-key|paperclip-plugin|\
+    hermes-profiles|sandbox-daemon|openshell)
+      local usage_prose
+      usage_prose="$(SVC="$svc" yq -r '.services[strenv(SVC)].help.usage // ""' "$SERVICES_YML" 2>/dev/null || true)"
+      note "$svc is a ${svc_type//-/ }; it doesn't run as a daemon. To use it:"
+      if [[ -n "$usage_prose" ]]; then
+        printf '%s\n' "$usage_prose"
+      else
+        note "  (no usage prose in services.yml — run: vz-ai-stack.sh help $svc)"
+      fi
+      return 0
+      ;;
+  esac
+
+  # Step 5: nothing matched — existing error path.
   err "No start script: $script"
   _list_startable_services
-  exit 1
+  return 1
 }
 
 # cmd_stop <svc> — prefer bin/stop-<svc>.sh; fall back to `docker stop <svc>`
@@ -631,12 +823,48 @@ cmd_stop() {
     exit 2
   fi
   local script="$AI_STACK/bin/stop-${svc}.sh"
-  if [[ -x "$script" ]]; then
+  if [[ -f "$script" ]]; then   # -f not -x: invoked via `bash`, +x is irrelevant
     exec bash "$script"
   fi
   if docker inspect "$svc" >/dev/null 2>&1; then
     log "No bin/stop-${svc}.sh — using 'docker stop $svc'"
     exec docker stop "$svc"
+  fi
+  # Host-process (PID-file) service? The node-bg / python-bg start scripts
+  # (claw3d, claw3d-bridge, paperclip, docs_mcp, unsloth, …) daemonize a host
+  # process and record its pid at $STATE_DIR/<svc>.pid. Stop it gracefully
+  # (TERM → wait → KILL). Idempotent: a stale/dead pidfile is cleaned, missing
+  # is "already stopped". This backs the `Stop:` line cmd_start advertises.
+  local pidfile="$STATE_DIR/${svc}.pid"
+  if [[ -f "$pidfile" ]]; then
+    local pid; pid="$(cat "$pidfile" 2>/dev/null || echo "")"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      # OWNERSHIP CHECK (fail-safe): kill -0 proves the pid is alive, NOT that it
+      # is still OUR process — a crashed service's pid can be recycled by the OS to
+      # an unrelated process. Refuse to kill unless `ps args` identifies it as ours
+      # (the svc name in either hyphen/underscore form, or a path under $AI_STACK).
+      # The 2026-06-03 watchdog incident was exactly an unguarded kill — never again.
+      local pargs svc_h svc_u
+      pargs="$(ps -p "$pid" -o args= 2>/dev/null || echo "")"
+      svc_h="${svc//_/-}"; svc_u="${svc//-/_}"
+      if [[ "$pargs" != *"$svc"* && "$pargs" != *"$svc_h"* && "$pargs" != *"$svc_u"* && "$pargs" != *"$AI_STACK"* ]]; then
+        warn "pid $pid (from $pidfile) doesn't look like '$svc' (args: ${pargs:-<none>}) — NOT killing it."
+        warn "Treating the pidfile as stale and removing it."
+        rm -f "$pidfile"
+        return 0
+      fi
+      log "No bin/stop-${svc}.sh — stopping host process pid $pid (from $pidfile)"
+      kill "$pid" 2>/dev/null || true
+      local _w=0
+      while (( _w < 10 )) && kill -0 "$pid" 2>/dev/null; do sleep 0.5; _w=$(( _w + 1 )); done
+      kill -0 "$pid" 2>/dev/null && { warn "pid $pid still alive after TERM — sending KILL"; kill -9 "$pid" 2>/dev/null || true; }
+      rm -f "$pidfile"
+      ok "Stopped $svc (pid $pid)."
+      return 0
+    fi
+    rm -f "$pidfile"
+    note "$svc not running (cleaned stale pidfile)."
+    return 0
   fi
   # Brew-managed service (ollama/openshell)? Stop it via brew services.
   if _is_brew_service "$svc"; then
@@ -810,7 +1038,7 @@ main() {
     upgrade)           cmd_upgrade "$@" ;;
     tutorial-serve)    cmd_tutorial_serve "$@" ;;
     reset)             cmd_reset "$@" ;;
-    start|enable)      cmd_start "$@" ;;
+    run|start|enable)  cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;
     -h|--help)         usage ;;
     help)              cmd_help "$@" ;;   # help · help services · help <svc> · help regen
@@ -820,8 +1048,8 @@ main() {
       # stop/enable/disable. Only triggers when the first token is NOT a
       # known subcommand AND the second token is a known action verb.
       case "${1:-}" in
-        start|enable)  cmd_start "$cmd" ;;
-        stop|disable)  cmd_stop "$cmd" ;;
+        run|start|enable)  cmd_start "$cmd" ;;
+        stop|disable)      cmd_stop "$cmd" ;;
         *)             err "Unknown command: $cmd"; usage; exit 2 ;;
       esac
       ;;

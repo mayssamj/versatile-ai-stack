@@ -255,23 +255,24 @@ idle-spins **~0.8–1 core even with no model loaded and the server stopped**. O
 box that's a real liability. So:
 
 - Run LM Studio **only when you want its MLX models** — the two big agent models
-  `local-qwen3.6` + `local-qwen3-coder` (~17 GB each). `install lmstudio` is
-  **assignment-driven**: it loads only MLX models assigned to an agent in `models.yml`.
-  The `local-lfm2-mlx` demo (LFM2.5, working tool-calling the Ollama GGUF can't do) is
-  **opt-in** — set it up with `LMS_LOAD_LFM2=1 bash vz-ai-stack.sh install lmstudio`.
+  `local-qwen3.6` + `local-qwen3-coder` (~17 GB each). Start the server with
+  `vz-ai-stack.sh start lmstudio` (idempotent). `install lmstudio` is the one-time
+  **assignment-driven** setup: it loads only MLX models assigned to an agent in
+  `models.yml`. (The retired `local-lfm2-mlx` demo, LFM2.5, is no longer wired by
+  default; it stays an `LMS_LOAD_LFM2=1 bash vz-ai-stack.sh install lmstudio` opt-in.)
   `local-gemma4` stays on Ollama, which remains the default runtime.
 - **QUIT LM Studio when done:**
   ```bash
-  ~/.lmstudio/bin/lms server stop     # stop the OpenAI server on :1234
+  vz-ai-stack.sh stop lmstudio        # stop the OpenAI server on :1234
   # then quit the LM Studio app itself (Cmd-Q) — stopping the server is not enough
   ```
 - Want MLX without the app idle-cost? Use the **headless** alternative:
   `pip install mlx-lm` then `mlx_lm.server` (then point `litellm/config.yaml` at it the
   same way Phase 25 wires the LM Studio server).
 
-If you opted into `local-lfm2-mlx` (`LMS_LOAD_LFM2=1`) and its calls fail after you quit
-LM Studio, that's why — restart the server (`lms server start`) or remove the model from
-`litellm/config.yaml` while it's off.
+If you opted into the retired `local-lfm2-mlx` (`LMS_LOAD_LFM2=1`) and its calls fail
+after you quit LM Studio, that's why — restart the server (`vz-ai-stack.sh start
+lmstudio`) or remove the model from `litellm/config.yaml` while it's off.
 The same availability-gating protects subscription-assigned agents: the nine Hermes
 profiles (e.g. `hermes_backend_engineer` → `claude-sonnet-4.6-sub-high`), `pi`, and
 `deerflow` don't 404 when the Meridian host daemon is down — `vz-ai-stack.sh model sync`

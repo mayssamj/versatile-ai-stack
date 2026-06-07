@@ -147,9 +147,9 @@ why we don't use port 80 anymore).
 Use any model from `~/ai-stack/services.yml` (or `curl /v1/models | jq`).
 Verified models: `local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`,
 `claude-sonnet`, `claude-opus`, `openai-gpt-5.5`, `openrouter-claude-opus-4.7`,
-`google-gemini-3.1-pro`, plus more (the legacy `local` / `local-heavy` /
-`local-lfm2` slugs still resolve). Run `vz-ai-stack.sh model list` for the live
-per-agent matrix.
+`google-gemini-3.1-pro`, plus more (the retired `local` / `local-heavy` /
+`local-lfm2` slugs still resolve for old keys but aren't auto-pulled — use
+`local-gemma4`). Run `vz-ai-stack.sh model list` for the live per-agent matrix.
 
 ### Watch traces stream
 
@@ -218,7 +218,7 @@ docker stop openwebui
 
 # Re-enable
 yq -i '.services.openwebui.enabled = true' ~/ai-stack/services.yml
-bash ~/ai-stack/bin/start-openwebui.sh
+vz-ai-stack.sh start openwebui
 ```
 
 ### Recreate one container (drift detected)
@@ -244,8 +244,8 @@ cd ~/ai-stack/ingestor
 source .venv/bin/activate
 python ingest.py
 
-# Or serve the MCP server for agents
-python mcp_server.py        # binds :8765
+# Or serve the MCP server for agents (cohesive way; binds :8765)
+vz-ai-stack.sh start docs_mcp        # (low-level: python mcp_server.py)
 ```
 
 The MCP server exposes a `search_documents(query, top_k)` tool that Hermes
@@ -397,13 +397,18 @@ and the server stopped**. Run it only when you need MLX, and quit it afterward.
 
 `install lmstudio` is **assignment-driven**: it loads ONLY the MLX models you've
 assigned to an agent in `models.yml` (`model assign <agent> local-qwen3.6`) — it does
-**not** auto-load anything otherwise. The LFM2.5 demo model (`local-lfm2-mlx`, working
-tool-calling) is **opt-in** via `LMS_LOAD_LFM2=1`.
+**not** auto-load anything otherwise. (The retired LFM2.5 demo `local-lfm2-mlx` is no
+longer wired by default; it remains an `LMS_LOAD_LFM2=1` install-time opt-in.)
+
+Run the server with `vz-ai-stack.sh start lmstudio` (idempotent; macOS-guarded). It
+prints the endpoint, warns the app idle-spins ~0.8 core (quit when done), and reminds
+you **no model auto-loads** — assign one in `models.yml` + `vz-ai-stack.sh model sync`.
+`vz-ai-stack.sh stop lmstudio` stops the `:1234` server.
 
 ```bash
-stack install lmstudio                          # assignment-driven: loads only assigned MLX models
-LMS_LOAD_LFM2=1 stack install lmstudio          # also set up the LFM2.5 demo (local-lfm2-mlx, ~5GB)
-~/.lmstudio/bin/lms server stop                 # stop the :1234 server when done…
+stack install lmstudio                          # one-time setup: loads only assigned MLX models
+vz-ai-stack.sh start lmstudio                   # start the :1234 server (idempotent)
+vz-ai-stack.sh stop lmstudio                    # stop the server when done…
 #   …then Cmd-Q the LM Studio app (stopping the server alone is not enough)
 ```
 

@@ -6,26 +6,35 @@ in fifteen minutes.
 
 ---
 
-## ⏭ NEXT — APPROVED, PENDING EXECUTION (2026-06-07): service run/lifecycle cohesion
+## ✅ SHIPPED (2026-06-07): service run/lifecycle cohesion
 
-A large change is **designed + approved + decomposed but NOT yet implemented**. If you are
-resuming with a fresh context, this is the active task. Read, in order:
-1. **Design (approved):** `doc/specs/2026-06-07-service-run-cohesion.md`
-2. **Execution plan (multi-agent decomposition):** `doc/specs/2026-06-07-service-run-cohesion-PLAN.md`
+Design + plan + interface contract + doc-sweep contract: `doc/specs/2026-06-07-service-run-cohesion*.md`.
+Built by orchestrated multi-agent run (4 parallel code workstreams → GATE 1 live-verify → 2 adversarial
+reviews + 3-way debate → GATE 2 → 5 parallel doc agents → 2 doc audits → full doctor). See CHANGELOG
+2026-06-07 for the full entry.
 
-**What it does:** makes `vz-ai-stack.sh start <svc>` / `run <svc>` (run = alias) a single cohesive
-funnel that prints a uniform URL + `stop` line and **auto-opens UIs in the browser** (gated for
-headless/CI); `start claw3d` = health-gated **bridge→UI→open**; new **`bin/start-lmstudio.sh`** so
-`start lmstudio` just works; honest per-`type` behavior for non-daemons; then a **full doc sweep**
-(incl. retiring the deprecated `local-lfm2` Ollama GGUF everywhere + regen `TUTORIAL.html`) and a
-**2-agent doc audit**. Orchestrated as parallel, file-disjoint subagent workstreams.
+**What changed (user-facing):**
+- **`vz-ai-stack.sh start <svc>`** is the one way to run anything; **`run <svc>`** is a pure alias
+  (also `enable`/`disable`, and reverse-form `<svc> start|run|stop`). It prints a uniform `URL:`
+  (UIs) / `Endpoint:` (APIs) + `Stop:` line and **auto-opens UI services in the browser** — gated:
+  skipped on headless/no-TTY, `NO_BROWSER`/`CI`, or `--no-open`; `--open` forces; URL always printed.
+  Idempotent. Non-daemon types print an honest categorical message (never "no start script").
+- **`start claw3d`** = health-gated composite (bridge → `/health` → UI :4310 → browser); `stop claw3d`
+  stops both. **`start lmstudio`** / **`stop lmstudio`** manage the LM Studio server (`LMS_AUTOSTART`/
+  `lms server start` are no longer the run path). `install claw3d`/`install lmstudio` remain SETUP.
+- **`stop <svc>`** now works for every startable service (docker / brew / PID-file host-process /
+  compose), incl. new `stop-claw3d|paperclip|honcho|autofyn|hermes_workspace|lmstudio.sh`. The
+  PID-file stop verifies ownership before killing (recycled-PID safety).
+- Deprecated models retired in all docs: `local-lfm2` (LFM2.5 GGUF) + `local-heavy` (Ollama
+  qwen3.6:27b) — runnable examples use `local-gemma4`; heavy model is `local-qwen3.6` (LM Studio,
+  opt-in). The code-asserted `LEGACY_SUPERSET` slugs (doctor 40) are kept on purpose.
 
-**Locked decisions:** (1) start-when-not-set-up = **prompt-then-auto-setup** interactively /
-fail-with-exact-command in CI; (2) **claw3d stays provisioned by `install all`** (install=setup,
-start=run+open). Do not re-litigate.
+**Locked decisions (honored):** (1) start-when-not-set-up = prompt-then-auto-setup interactively /
+fail-with-exact-command in CI; (2) claw3d stays provisioned by `install all` (doctor 32 unchanged).
 
-**Execution discipline:** orchestrate per the PLAN's phases + GATEs; ≥2 code reviews + 2 doc audits
-+ debate before done; verify live between gates; commit→pull→push only at the end (orchestrator).
+**Known minors (not bugs, documented):** a 2nd `start` of a compose UI service (autofyn/
+hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is an edge name — use
+`start claw3d` (or `start claw3d-bridge`, hyphen). doctor count unchanged at **45**; services **40**.
 
 ---
 

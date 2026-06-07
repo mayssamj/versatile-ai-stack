@@ -78,7 +78,7 @@ services:
       "why": 'Reach for it always: every agent, UI, and script that needs an LLM dials http://litellm:4000/v1 so the call gets virtual-key auth, guardrails, budget caps, and a Phoenix trace. Direct provider calls bypass the audit trail.'
       "usage":
         - 'source ~/ai-stack/.env && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://litellm:4000/v1/models | jq ''.data[].id'' && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H ''Content-Type: application/json'' http://litellm:4000/v1/chat/completions -d ''{"model":"local","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'' | jq -r ''.choices[0].message.content'''
-        - 'source ~/ai-stack/.env && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H ''Content-Type: application/json'' -X POST http://litellm:4000/key/generate -d ''{"models":["local","local-heavy"],"max_budget":2.0,"budget_duration":"1d","key_alias":"teammate-bob"}'' | jq ''{key, models, max_budget}'''
+        - 'source ~/ai-stack/.env && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H ''Content-Type: application/json'' -X POST http://litellm:4000/key/generate -d ''{"models":["local","local-gemma4"],"max_budget":2.0,"budget_duration":"1d","key_alias":"teammate-bob"}'' | jq ''{key, models, max_budget}'''
         - curl -s http://127.0.0.1:4000/health
         - 'source ~/ai-stack/.env && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://litellm:4000/v1/models | jq ''.data[].id'''
         - bash ~/ai-stack/bin/start-litellm.sh
@@ -98,6 +98,7 @@ services:
     bind: 127.0.0.1
     health: http://127.0.0.1:6006/healthz
     phase: "01h"
+    open_url: http://phoenix:6006
     alias: phoenix
     host_ip: 127.0.10.2
     host_port: 6006
@@ -135,6 +136,7 @@ services:
     ports: [6379, 3010] # 3010 on host → 3000 in container (DEPRECATED: see alias falkordb-ui)
     bind: 127.0.0.1
     phase: "02"
+    open_url: http://falkordb-ui:3000
     alias: falkordb
     host_ip: 127.0.10.7
     host_port: 6379
@@ -171,6 +173,7 @@ services:
     bind: 127.0.0.1
     health: http://127.0.0.1:6333/collections
     phase: "02"
+    open_url: http://qdrant:6333/dashboard
     alias: qdrant
     host_ip: 127.0.10.5
     host_port: 6333
@@ -381,6 +384,7 @@ services:
     port: 3000
     bind: 127.0.0.1
     phase: "05"
+    open_url: http://workspace:3000
     alias: workspace
     host_ip: 127.0.10.10
     host_port: 3000
@@ -411,6 +415,7 @@ services:
     # endpoint; liveness is covered by the alias-routability checks (doctor 17/20).
     bind: 127.0.0.1
     phase: "05"
+    open_url: http://openwebui:8080
     alias: openwebui
     host_ip: 127.0.10.9
     host_port: 8080
@@ -502,6 +507,7 @@ services:
     port: 3400
     bind: 127.0.0.1
     phase: "07"
+    open_url: http://autofyn:3400
     alias: autofyn
     host_ip: 127.0.10.13
     host_port: 3400
@@ -528,6 +534,7 @@ services:
     port: 3100
     bind: 127.0.0.1
     phase: "08"
+    open_url: http://paperclip:3100
     alias: paperclip
     host_ip: 127.0.10.14
     host_port: 3100
@@ -638,6 +645,7 @@ services:
     # can find them. 2-agent root cause 2026-05-29.
     project: deer-flow
     phase: "10"
+    open_url: http://localhost:2026
     network: ai-stack
     help:
       "what": A multi-step deep-research agent (LangGraph) cloned from bytedance/deer-flow that plans, web-searches, and writes a cited report, with a browser UI.
@@ -665,7 +673,7 @@ services:
         - bin/halo ~/ai-stack/traces/litellm.jsonl -p "Find the most common failure"
         - bin/halo --help
         - bin/halo ~/ai-stack/traces/litellm.jsonl -p "..."
-        - bin/halo <trace> -p "..." -m local-heavy
+        - bin/halo <trace> -p "..." -m local-gemma4
         - uv tool list | grep halo-engine
       "config_notes": The real package is `halo-engine` (the old phase installed a coincidentally-named `halo-cli` Swagger-codegen squatter with an unsolvable click pin). bin/halo deliberately resolves ~/.local/bin/halo by absolute path — never via `command -v halo`, because $AI_STACK/bin is on PATH and the wrapper is also named `halo`, which would self-exec infinitely. Install is fail-soft, so HALO may be absent even after `install all`.
       "_gen":
@@ -726,9 +734,9 @@ services:
       "why": Reach for it when a prompt/context is too large to fit a single model call (e.g. summarize a 500-page log) — RLM recursively decomposes it and can spawn sub-calls, instead of truncating; it is the substrate HALO is built on.
       "usage":
         - 'bin/rlm "Summarize this 500-page log into 5 bullets: <paste/path>"'
-        - bin/rlm "Use the REPL to compute the 20th Fibonacci number." -m local-heavy --max-depth 2
+        - bin/rlm "Use the REPL to compute the 20th Fibonacci number." -m local-gemma4 --max-depth 2
         - bin/rlm --help
-        - bin/rlm "..." -m local-heavy --max-depth 2
+        - bin/rlm "..." -m local-gemma4 --max-depth 2
         - bash ~/ai-stack/bin/sample-rlm-usage.sh
       "config_notes": The model-generated REPL code runs in a Docker sandbox (python:3.11-slim), NOT on the host — so Docker/OrbStack must be up or `--env docker` calls fail. Default --max-depth is 1 (single level of recursion); bump it for deeper decomposition.
       "_gen":
@@ -764,6 +772,7 @@ services:
     type: node-bg
     desc: "Next.js 3D virtual-office UI to visualize and chat with stack agents"
     phase: "19"
+    open_url: http://localhost:4310
     process_pattern: claw3d/server/index.js
     network: host
     # Next.js UI at http://localhost:4310; points at claw3d_bridge (adapterType=custom).
@@ -773,11 +782,11 @@ services:
       "what": A vendored Next.js 3D 'virtual office' UI (github.com/iamlukethedev/claw3d) that visualizes the stack's agents and lets you chat with each one in-scene, pointed at the claw3d-bridge custom HTTP runtime.
       "why": Reach for it when you want a single visual surface that shows all 11 isolated agents (the 9-role Hermes team + Pi + DeerFlow) at once and chat with any of them without remembering each one's CLI.
       "usage":
+        - vz-ai-stack.sh start claw3d
         - open http://localhost:4310
-        - bash ~/ai-stack/bin/start-claw3d.sh
         - curl -s -o /dev/null -w '%{http_code}' http://localhost:4310/
         - tail -f ~/ai-stack/installer/state/claw3d.log
-      "config_notes": It is http://localhost:4310 - NOT a named alias and NOT a container; claw3d is a host Node daemon that binds 127.0.0.1 only (it refuses a public host without STUDIO_ACCESS_TOKEN). Hermes/Pi chats need a live OpenShell relay or the agent shows '[<name> unavailable]'.
+      "config_notes": "Start with `vz-ai-stack.sh start claw3d` — this health-gates the bridge (:7780) before the UI (:4310) and opens the browser automatically. `install claw3d` (or `install 19`) is SETUP only (clone + npm install + config); run it once before first use. The UI is http://localhost:4310 — NOT a named alias and NOT a container; claw3d is a host Node daemon that binds 127.0.0.1 only. Hermes/Pi chats need a live OpenShell relay or the agent shows '[<name> unavailable]'."
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -827,6 +836,7 @@ services:
     port: 8898
     bind: 0.0.0.0
     phase: "14"
+    open_url: http://localhost:8898
     alias: unsloth
     help:
       "what": A local fine-tuning + training web UI from unslothai/unsloth (LoRA/QLoRA, MLX-accelerated on Apple Silicon, GGUF export) served as a host Python background process on :8898.
@@ -1021,13 +1031,14 @@ services:
       "what": LM Studio's Apple-MLX engine added as a SECOND OpenAI-compatible local runtime behind LiteLLM (server on :1234), home of the two big MLX models local-qwen3.6 / local-qwen3-coder. install lmstudio is ASSIGNMENT-DRIVEN — it loads ONLY MLX models assigned to an agent in models.yml and does NOT auto-load otherwise; the local-lfm2-mlx demo (LFM2.5 with working tool-calling the Ollama GGUF can't do) is OPT-IN via LMS_LOAD_LFM2=1.
       "why": Reach for it when you want MLX speed/tool-calling on Apple Silicon or to actually run the heavy/coder MLX models; Ollama stays the default and lmstudio-assigned agents fall back to local-gemma4 when LM Studio is down.
       "usage":
-        - bash vz-ai-stack.sh install lmstudio
+        - vz-ai-stack.sh start lmstudio
+        - vz-ai-stack.sh install lmstudio
         - ~/.lmstudio/bin/lms ps
         - ~/.lmstudio/bin/lms server status
         - curl http://127.0.0.1:1234/v1/models
         - ~/.lmstudio/bin/lms server stop
         - 'stack doctor lmstudio   # doctor check 38 (pass-as-skip)'
-      "config_notes": The LM Studio DESKTOP APP idle-spins ~0.8-1 core even with no model loaded and the server stopped — so stopping the :1234 server alone is NOT enough; you must also Cmd-Q the app. It has no lo0 alias because it's reached from the LiteLLM container via host.docker.internal:1234 (host loopback isn't container-reachable), and the server binds 0.0.0.0 with no auth, exposing the LLM to your LAN.
+      "config_notes": "Start the LM Studio server with `vz-ai-stack.sh start lmstudio` — this is the documented run path (NOT `lms server start` directly or LMS_AUTOSTART, which is an install-time convenience only). `install lmstudio` is SETUP only (app + CLI + model assignment). The LM Studio DESKTOP APP idle-spins ~0.8-1 core even with no model loaded and the server stopped — so stopping the :1234 server alone is NOT enough; you must also Cmd-Q the app. It has no lo0 alias because it's reached from the LiteLLM container via host.docker.internal:1234 (host loopback isn't container-reachable), and the server binds 0.0.0.0 with no auth, exposing the LLM to your LAN."
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed

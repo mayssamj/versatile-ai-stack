@@ -289,7 +289,7 @@ print_inference_hint() {
   cli="$(lms_cli 2>/dev/null || true)"; [[ -n "$cli" ]] || cli="$HOME/.lmstudio/bin/lms"
   printf '\nInference runtimes (activate at least one — local models route through LiteLLM :4000):\n'
   printf '  Ollama    [%s]  default = local-gemma4.  start: brew services start ollama\n' "$ol"
-  printf '  LM Studio [%s]  opt-in MLX = local-qwen3.6 / local-qwen3-coder.  start: %s server start -p %s --bind 0.0.0.0\n' "$lm" "$cli" "$LMS_PORT"
+  printf '  LM Studio [%s]  opt-in MLX = local-qwen3.6 / local-qwen3-coder.  start: vz-ai-stack.sh start lmstudio\n' "$lm"
   if [[ "$lm" == "down" ]]; then
     printf '            (LM Studio-bound agents fall back to the ollama default until it is up)\n'
   fi
