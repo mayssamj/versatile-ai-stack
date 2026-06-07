@@ -6,6 +6,29 @@ in fifteen minutes.
 
 ---
 
+## ⏭ NEXT — APPROVED, PENDING EXECUTION (2026-06-07): service run/lifecycle cohesion
+
+A large change is **designed + approved + decomposed but NOT yet implemented**. If you are
+resuming with a fresh context, this is the active task. Read, in order:
+1. **Design (approved):** `doc/specs/2026-06-07-service-run-cohesion.md`
+2. **Execution plan (multi-agent decomposition):** `doc/specs/2026-06-07-service-run-cohesion-PLAN.md`
+
+**What it does:** makes `vz-ai-stack.sh start <svc>` / `run <svc>` (run = alias) a single cohesive
+funnel that prints a uniform URL + `stop` line and **auto-opens UIs in the browser** (gated for
+headless/CI); `start claw3d` = health-gated **bridge→UI→open**; new **`bin/start-lmstudio.sh`** so
+`start lmstudio` just works; honest per-`type` behavior for non-daemons; then a **full doc sweep**
+(incl. retiring the deprecated `local-lfm2` Ollama GGUF everywhere + regen `TUTORIAL.html`) and a
+**2-agent doc audit**. Orchestrated as parallel, file-disjoint subagent workstreams.
+
+**Locked decisions:** (1) start-when-not-set-up = **prompt-then-auto-setup** interactively /
+fail-with-exact-command in CI; (2) **claw3d stays provisioned by `install all`** (install=setup,
+start=run+open). Do not re-litigate.
+
+**Execution discipline:** orchestrate per the PLAN's phases + GATEs; ≥2 code reviews + 2 doc audits
++ debate before done; verify live between gates; commit→pull→push only at the end (orchestrator).
+
+---
+
 ## 0. Snapshot — state as of 2026-06-05
 
 | Property | Value |
