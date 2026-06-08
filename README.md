@@ -190,7 +190,8 @@ bash vz-ai-stack.sh deps
 # 2. (Optional, recommended) Enter API keys interactively — runs as your normal
 #    user. EVERY key is skippable — a local-only or Claude-subscription (-sub, incl.
 #    opus) setup needs NONE of them: local gemma + the subscription models work on
-#    the generated baseline. (Skip this and `install all` offers it on first run.)
+#    the generated baseline. (Skip this — ANY `install` (all or single-phase) makes
+#    the .env baseline its first step and offers this on the first interactive run.)
 bash vz-ai-stack.sh setup
 
 # 3. The ONE sudo step (first time only).
@@ -208,8 +209,8 @@ bash vz-ai-stack.sh install all
 bash vz-ai-stack.sh doctor
 ```
 
-> No cloud keys? You're done — `setup` (or the first-run offer) just generates the
-> local secrets and you proceed. Cloud providers, GitHub, Blaxel and the Telegram
+> No cloud keys? You're done — `setup` (or the first-step baseline that every
+> `install` now ensures) just generates the local secrets and you proceed. Cloud providers, GitHub, Blaxel and the Telegram
 > bot are all opt-in and can be added later by re-running `setup`. Steps 1–2 (`deps`
 > and `setup`) are optional-but-recommended and both run as your normal user; only
 > `prepare-sudo` needs `sudo`.

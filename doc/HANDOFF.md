@@ -59,6 +59,12 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
    verified backend/frontend/qa = sonnet), which are a SEPARATE binding from the all-Opus
    models.yml fleet. `models.yml` is the authoritative source for hermes/pi/deerflow/ace/rlm.
 
+4. **Install populates `.env` first** (this commit): `cmd_install` now runs `env_ensure_baseline`
+   + the first-run `setup_maybe_offer` (skippable API-key prompt) as the FIRST step for BOTH
+   `install all` AND a standalone `install <phase>` (was `install all`-only). `--dry-run` unaffected;
+   CI/non-TTY never blocks; local/-sub still need zero keys. 2 reviews + debate; `setup_maybe_offer`
+   now `mkdir -p`s its stamp dir.
+
 **State: `vz-ai-stack.sh doctor` = 45/45, 0 failed** (verified live, incl. a real `local-gemma4` chat).
 
 ---

@@ -136,13 +136,18 @@ setup_run() {
 }
 
 # setup_maybe_offer — first-run, TTY-only, skippable offer to run setup, invoked
-# from `cmd_install all`. Stays silent under NO_PROMPT / --yes / non-TTY, once a
-# cloud key is already set, or once already offered (stamp). Never blocks CI.
+# from `cmd_install` (any target — `all` OR a single `install <phase>`). Stays
+# silent under NO_PROMPT / --yes / non-TTY, once a cloud key is already set, or
+# once already offered (stamp). Never blocks CI.
 setup_maybe_offer() {
   [[ -t 0 ]] || return 0
   [[ "${NO_PROMPT:-0}" == "1" ]] && return 0
   [[ "${AI_STACK_ASSUME_YES:-0}" == "1" ]] && return 0
   [[ -f "$SETUP_OFFERED_STAMP" ]] && return 0
+  # Ensure the stamp's dir exists — on a fresh clone a standalone `install <phase>`
+  # may reach here before Phase 00 has created installer/state/, so the stamp write
+  # below would silently fail and the offer would repeat. (Review finding.)
+  mkdir -p "$(dirname "$SETUP_OFFERED_STAMP")" 2>/dev/null || true
   local k
   for k in "${_SETUP_CLOUD_KEYS[@]}"; do
     if [[ -n "$(get_env "$k" "")" ]]; then

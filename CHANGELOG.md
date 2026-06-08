@@ -4,6 +4,20 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-07 (install UX) — populate `.env` as the FIRST step of every install + first-run key offer
+
+`cmd_install` now runs `env_ensure_baseline` (idempotent, prompt-free — creates `.env` @ 0600,
+generates `LITELLM_MASTER_KEY`/`PHOENIX_SECRET` once, leaves cloud keys empty) **and** the first-run
+`setup_maybe_offer` (TTY-only, skippable: "Run interactive key setup now?") as the FIRST step for
+**both** `install all` AND a standalone `install <phase>` — previously the key offer was `install
+all`-only and a single-phase install never guaranteed the `.env` baseline. Runs after `preflight`/
+`lock_acquire`, before any phase; `--dry-run` is unaffected. Non-interactive/CI never blocks (the
+offer no-ops under non-TTY/`NO_PROMPT`/`--yes`); local-only / Claude-subscription still needs ZERO
+keys. 2 adversarial reviews + debate: hardened `setup_maybe_offer` to `mkdir -p` its stamp dir
+(fresh-clone single-phase installs hadn't created `installer/state/` yet) + added a framing note;
+docs broadened (README, INSTALL, OPERATIONS, USER-GUIDE). Verified in an isolated worktree (real
+`.env` byte-unchanged throughout, C6).
+
 ## 2026-06-07 (doc cohesion) — propagate the all-Opus model assignments into every doc
 
 A single-agent cohesion audit (parity: every md/html ↔ each other ↔ code ↔ setup) found the

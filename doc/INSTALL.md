@@ -85,8 +85,9 @@ bash vz-ai-stack.sh deps
 # Ensures the non-interactive baseline (generates LITELLM_MASTER_KEY +
 # PHOENIX_SECRET, service-URL defaults), then offers each OPTIONAL external
 # secret — every prompt skippable. A local-only / Claude-subscription (-sub)
-# setup needs ZERO keys. Alias: `keys`. (Skip it and `install all` offers it
-# on first interactive run anyway.)
+# setup needs ZERO keys. Alias: `keys`. (Skip it — ANY `install` (all or a single
+# `install <phase>`) ensures this .env baseline as its first step and offers `setup`
+# on the first interactive run anyway.)
 bash vz-ai-stack.sh setup
 
 # Step 3 — one-time host-system setup (sudo).

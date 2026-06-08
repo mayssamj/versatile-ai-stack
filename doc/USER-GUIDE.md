@@ -54,8 +54,8 @@ Every prompt is skippable; values are written atomically (0600) and never echoed
 bash ~/ai-stack/vz-ai-stack.sh setup        # or: keys
 ```
 
-A first `install all` offers `setup` automatically on a TTY, so you usually don't run it
-by hand. It writes nothing harmful — if an older run ever corrupted `.env` (e.g. catalog
+Any first `install` (all or a single `install <phase>`) ensures the `.env` baseline as its
+first step and offers `setup` automatically on a TTY, so you usually don't run it by hand. It writes nothing harmful — if an older run ever corrupted `.env` (e.g. catalog
 text landed in a value), just re-run `setup` and it self-heals the file.
 
 ---

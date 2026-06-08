@@ -408,11 +408,20 @@ cmd_install() {
   preflight
   lock_acquire
 
+  # FIRST STEP of ANY install (`install all` OR `install <phase>`): make `.env`
+  # install-ready, then — first-run, interactively — offer to populate optional
+  # API keys BEFORE any phase runs, so a phase that registers cloud models sees
+  # them. env_ensure_baseline is idempotent + prompt-free (also called by Phase
+  # 00; generates LITELLM_MASTER_KEY/PHOENIX_SECRET once, leaves cloud keys empty
+  # — a local-only / Claude-subscription user needs nothing more). setup_maybe_offer
+  # is TTY-only + stamp-gated (offered once; no-op under NO_PROMPT/--yes/non-TTY or
+  # once a cloud key is set). This guarantees `.env` is populated even for a
+  # standalone `install <phase>` that never runs Phase 00.
+  note "Preparing .env baseline (first step of every install)…"
+  env_ensure_baseline
+  setup_maybe_offer
+
   if [[ "$target" == "all" ]]; then
-    # First-run, TTY-only, skippable offer to set optional API keys before the
-    # phases run (so a phase that registers cloud models sees them). No-op under
-    # NO_PROMPT / --yes / non-TTY, once a cloud key is set, or once already offered.
-    setup_maybe_offer
     # Run in order; stop at first failure (with a clear resume hint).
     # 00v runs AFTER 00n so the network is up before we probe it; AFTER 00s
     # so docker is reachable; and BEFORE 01 so we catch routing failures

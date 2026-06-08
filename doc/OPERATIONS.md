@@ -105,8 +105,10 @@ stack install --help             # per-command usage (same as `stack help instal
   *optional* external secret (cloud LLM keys, Helicone, GitHub, Blaxel, Telegram) —
   every prompt is skippable (Enter = keep/skip), written `0600`, never echoed. A
   **local-only or Claude-subscription (`-sub`) setup needs ZERO keys** — skip every
-  prompt and you still reach `doctor`. `install all` auto-offers it on first run only
-  when interactive (TTY) and no cloud key is set yet; non-interactive/CI never blocks.
+  prompt and you still reach `doctor`. ANY `install` (whether `install all` or a single
+  `install <phase>`) makes ensuring this `.env` baseline its **first step**, then
+  auto-offers `setup` on first run only when interactive (TTY) and no cloud key is set
+  yet; non-interactive/CI never blocks.
 - **`install … --dry-run`** (alias **`--plan`**) is a read-only preview: it prints the
   host-dependency status plus every phase in run-order marked `✓ already-complete` vs
   `• would-run`. It makes **no** changes — never runs preflight, never takes the lock,
