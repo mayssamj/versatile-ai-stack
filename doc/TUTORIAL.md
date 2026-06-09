@@ -75,7 +75,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 open doc/EXPLORE.html
 ```
 
-**Expected.** `doc/EXPLORE.html` opens in your browser: a searchable card for every service (47 cards across 7 color-coded tiers — more cards than services by design, since Hermes expands into its profiles), each with what it is, why you'd reach for it, and a copy-paste demo. Nothing on the page phones home.
+**Expected.** `doc/EXPLORE.html` opens in your browser: a searchable card for every service (50 cards across 7 color-coded tiers — more cards than services by design, since Hermes expands into its profiles), each with what it is, why you'd reach for it, and a copy-paste demo. Nothing on the page phones home.
 
 **Lesson.** One endpoint (`litellm:4000`), local-first, services grouped in layers. Hold that picture and the rest of the install is just bringing those layers up in order.
 
@@ -266,7 +266,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 
 **Lesson.** One endpoint, one auth header, every model — the `model` field is the only thing that changes between a 9.6GB local Gemma and a Claude subscription. The model strategy is deliberate: `local-gemma4` (Ollama, ~9.6GB) stays resident-free and always answers; `local-qwen3.6` / `local-qwen3-coder` are big MLX models (~17GB each) on LM Studio that **cannot coexist on a 24GB box**; the `claude-*-sub-*` routes spend no local RAM at all (the work happens on Anthropic's side via Meridian). That RAM reality is why the default is the small local model and everything heavy is opt-in.
 
-**Go deeper.** [doc/models.md](../doc/models.md) (the four runtimes, the base-URL-by-caller table), [doc/OPERATIONS.md](../doc/OPERATIONS.md).
+**Go deeper.** For a *persistent* ChatGPT-style chat UI (not just this lesson's panel), bring up **Open WebUI**: `vz-ai-stack.sh start openwebui`, then open `http://openwebui:8080`. Its model picker lists the same `claude-*-sub-*` subscription routes (they need the Meridian daemon up — `bash bin/start-meridian.sh`) right alongside the local models. Also: [doc/models.md](../doc/models.md) (the four runtimes, the base-URL-by-caller table), [doc/OPERATIONS.md](../doc/OPERATIONS.md).
 
 ---
 
@@ -302,7 +302,7 @@ Reconcile everything from `models.yml` — the crash-safe 6-phase pass (validate
 bash ~/ai-stack/vz-ai-stack.sh model sync
 ```
 
-**Expected.** `model list` shows the 13 agents (the 9 Hermes profiles plus `pi`, `deerflow`, `ace`, `rlm`), each with its assigned model and whether the render is **gated** (fell back to the default). The 9 Hermes profiles target Claude-subscription routes; `ace`/`rlm` target `local-gemma4`. `superset` prints the sorted-unique allowlist (the legacy `local*` names plus every `models.yml` model). `assign` reports it re-pointed one agent; `sync` walks its phases and only restarts LiteLLM if `config.yaml` actually changed.
+**Expected.** `model list` shows the 13 agents (the 9 Hermes profiles plus `pi`, `deerflow`, `ace`, `rlm`), each with its assigned model and whether the render is **gated** (fell back to the default). By default the 9 Hermes profiles plus `pi`, `deerflow`, and `rlm` target Claude-subscription routes (Opus 4.8 via Meridian) — but you just re-pointed `ace` to `local-qwen3-coder`, so it now renders that (gated to `local-gemma4` if LM Studio is down). `local-gemma4` is the default for an unassigned agent and the fallback when Meridian is down. `superset` prints the sorted-unique allowlist (the legacy `local*` names plus every `models.yml` model). `assign` reports it re-pointed one agent; `sync` walks its phases and only restarts LiteLLM if `config.yaml` actually changed.
 
 **Try it live.** Read-only in the HTML page — there is no browser button that mutates `models.yml`. Treat the panel as a viewer for the binding matrix; run `assign`/`sync` from a terminal.
 
@@ -555,7 +555,7 @@ A single generic chatbot is mediocre at most things. A *team* — each member wi
 
 **The framework-agnostic idea first.** "An agent" here is three things bolted together:
 1. **A persona** (its `SOUL.md` / `SYSTEM.md`) — mandate, access boundary, when-to-invoke, definition-of-done, gate behavior.
-2. **A model tier** — the cognitively heavy roles get Opus; the executors get Sonnet.
+2. **A model tier** — every role runs Claude Opus 4.8 over the subscription (via Meridian), with the orchestration-heavy roles at higher reasoning effort (xhigh) and the rest at max effort.
 3. **A shared protocol** (the `team-protocol` skill) — so the nine behave as a team, not nine monologues.
 
 #### The roster
@@ -563,14 +563,14 @@ A single generic chatbot is mediocre at most things. A *team* — each member wi
 | Role | Speciality | Use it when… | Model tier | Access |
 |---|---|---|---|---|
 | **manager** | Eng manager **+ product intake**: turns a raw request into a SPEC with testable acceptance criteria, decomposes, delegates, orchestrates the gate order + turn budget | You have a *goal*, not a task — something that needs framing, breaking down, and routing across people | opus-sub-xhigh | **operator** (executes directly when fastest; defers architecture to techlead) |
-| **techlead** | Architecture & direction: ADRs, interface contracts, standards, design review; co-designs ML work | A change needs a design decision, an interface defined, a technology chosen, or trade-offs weighed | opus-sub-high | read-mostly (writes ADRs/design docs only) |
-| **frontend-engineer** | Accessible (WCAG 2.1 AA), performant (Core Web Vitals) UI against the contract + design system | Building/changing a UI component, styling, client state, browser data-fetching | sonnet-sub-high | writes UI code + its tests |
-| **backend-engineer** | Server-side APIs, services, business logic, data access; security basics (parameterized queries, authz, OWASP) | Designing/implementing an API, business logic, a schema/query, authn/authz, an integration | sonnet-sub-high | writes app/server/data code + tests |
-| **ml-engineer** | Model selection, eval harnesses, data/feature pipelines, finetuning, RAG/prompt design, inference wiring; **metric-driven, guards against overkill models** | A task needs an eval/benchmark, model choice, a data pipeline, finetuning, or RAG design | opus-sub-high | writes ML code/pipelines/notebooks |
-| **qa-test-engineer** | Test strategy + automation; **the green-bar quality gate** | A change needs a test strategy, tests written, behavior verified against acceptance criteria, or flaky tests triaged | sonnet-sub-high | **tests only** (never source/prod/infra) |
-| **reviewing-engineer** | Independent adversarial review **+ the security pass** (authz, secrets, injection, PII, crypto) | A QA-passed DIFF is ready for review, or any change is flagged for a security pass | sonnet-sub-high | **read-only** (findings only — never fixes) |
-| **sre-engineer** | Reliability, IaC, observability, CI/CD, progressive rollout + verified rollback | Changing infra, defining SLOs/alerts, deploying, verifying rollback, hardening reliability | sonnet-sub-high | writes IaC/pipeline/config; **only prod-credentialed role** |
-| **incident-manager** | Incident command + blameless postmortems; coordinates the response | An incident is active and needs coordination, or a resolved one needs a postmortem; **activates out-of-band** | sonnet-sub-high | **read-only** (drives mitigation *through* the SREs) |
+| **techlead** | Architecture & direction: ADRs, interface contracts, standards, design review; co-designs ML work | A change needs a design decision, an interface defined, a technology chosen, or trade-offs weighed | opus-sub-max | read-mostly (writes ADRs/design docs only) |
+| **frontend-engineer** | Accessible (WCAG 2.1 AA), performant (Core Web Vitals) UI against the contract + design system | Building/changing a UI component, styling, client state, browser data-fetching | opus-sub-max | writes UI code + its tests |
+| **backend-engineer** | Server-side APIs, services, business logic, data access; security basics (parameterized queries, authz, OWASP) | Designing/implementing an API, business logic, a schema/query, authn/authz, an integration | opus-sub-max | writes app/server/data code + tests |
+| **ml-engineer** | Model selection, eval harnesses, data/feature pipelines, finetuning, RAG/prompt design, inference wiring; **metric-driven, guards against overkill models** | A task needs an eval/benchmark, model choice, a data pipeline, finetuning, or RAG design | opus-sub-max | writes ML code/pipelines/notebooks |
+| **qa-test-engineer** | Test strategy + automation; **the green-bar quality gate** | A change needs a test strategy, tests written, behavior verified against acceptance criteria, or flaky tests triaged | opus-sub-xhigh | **tests only** (never source/prod/infra) |
+| **reviewing-engineer** | Independent adversarial review **+ the security pass** (authz, secrets, injection, PII, crypto) | A QA-passed DIFF is ready for review, or any change is flagged for a security pass | opus-sub-max | **read-only** (findings only — never fixes) |
+| **sre-engineer** | Reliability, IaC, observability, CI/CD, progressive rollout + verified rollback | Changing infra, defining SLOs/alerts, deploying, verifying rollback, hardening reliability | opus-sub-xhigh | writes IaC/pipeline/config; **only prod-credentialed role** |
+| **incident-manager** | Incident command + blameless postmortems; coordinates the response | An incident is active and needs coordination, or a resolved one needs a postmortem; **activates out-of-band** | opus-sub-xhigh | **read-only** (drives mitigation *through* the SREs) |
 
 > Tip: the same persona lives in three places — `agent-profiles/hermes/profiles/<role>/SOUL.md`, `agent-profiles/pi/agents/<role>/SYSTEM.md`, and `agent-profiles/claude-code/.claude/agents/<role>.md`. Diff any two to see how one canonical role is wrapped per platform. (The HTML edition adds live chat/model demos via `vz-ai-stack.sh tutorial-serve`.)
 
@@ -711,7 +711,9 @@ skills: [team-protocol, tdd, hypothesis-debugging, verification-gates, reversibl
 ---
 ```
 
-**The permissionMode caveat (important).** A subagent's `permissionMode` is **not reliably honored at runtime**, so read-only roles enforce read-only the only way that's robust: by **omitting `Edit` and `Write` from `tools`**. The `reviewing-engineer`, `incident-manager`, and `manager` simply have no write tools — they physically cannot edit, regardless of permission mode.
+**Native model aliases.** Claude Code subagents use native aliases (`opus`/`sonnet`) — a different axis from the Meridian roster table above. Here the three heavy roles (manager, techlead, ml-engineer) use `opus` and the six executors use `sonnet` (the standard subagent default). The Meridian Hermes/Pi fleet is all-Opus because reasoning *effort* is its only knob; on Claude Code the model itself is the knob.
+
+**The permissionMode caveat (important).** A subagent's `permissionMode` is **not reliably honored at runtime**, so read-only roles enforce read-only the only way that's robust: by **omitting `Edit` and `Write` from `tools`**. The `reviewing-engineer` and `incident-manager` simply have no write tools — they physically cannot edit, regardless of permission mode. The `manager` keeps `Edit`/`Write` (it is the operator) but defaults to orchestration.
 
 > For peer-to-peer teamwork between subagents, enable Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`); otherwise the manager orchestrates. Remove the fleet with `rm ~/.claude/agents/{manager,techlead,…}.md` and the skill dirs.
 
@@ -771,7 +773,7 @@ docker ps --filter 'label=com.docker.compose.project=deer-flow' --filter 'status
 # 3. In the UI (opened by step 1, or reach it at http://localhost:2026),
 #    ask a research question; the LangGraph agent plans, searches, and
 #    produces a cited report. Calls route through LiteLLM
-#    (DeerFlow assigned local-qwen3.6, gated back to local-gemma4).
+#    (DeerFlow's reasoning tier is assigned claude-opus-4.8-sub-max, gated back to local-gemma4 when Meridian is down).
 
 # 4. The dual-LLM researcher pattern (no service — a prompting discipline):
 #    a summarizer reads the UNTRUSTED doc; the operator only ever sees the
@@ -792,7 +794,7 @@ vz-ai-stack.sh stop deerflow
 
 **Lesson.** Research is a *graph*, not a turn — DeerFlow makes that graph explicit. And whenever an agent ingests untrusted content, split the model in two: a cheap local summarizer absorbs the payload, the operator only sees sanitized facts. The fleet's RAG and security profiles (`hermes_ml_engineer`, `hermes_reviewing_engineer`) already apply this.
 
-**Go deeper.** DeerFlow is NOT aliased — `start deerflow` opens it at `http://localhost:2026` (upstream default `PORT`), not via an `/etc/hosts` name. Its two-tier `models:` block (`local-gemma4` / `local-qwen3.6`) is rendered from `installer/models.yml`; re-render with `vz-ai-stack.sh model sync`. (`local-qwen3.6` is the opt-in LM Studio MLX heavy model — start it with `vz-ai-stack.sh start lmstudio`; without it, calls gate back to `local-gemma4`.)
+**Go deeper.** DeerFlow is NOT aliased — `start deerflow` opens it at `http://localhost:2026` (upstream default `PORT`), not via an `/etc/hosts` name. Its two-tier `models:` block (basic `local-gemma4` / reasoning `claude-opus-4.8-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local-gemma4` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
 
 ---
 

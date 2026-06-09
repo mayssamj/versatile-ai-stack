@@ -22,6 +22,8 @@ lives in *skills* attached on demand, not as extra standing agents.
 - **incident-manager** — incident command + postmortems; coordinates, READ-ONLY on systems; activates
   out-of-band. (Sonnet)
 
+> **Models.** These are Claude Code's NATIVE model aliases: the three orchestration/design-heavy roles (manager, techlead, ml-engineer) run **Opus**; the six executor roles run **Sonnet** — the standard subagent default (lower subscription-quota draw for high-volume, well-scoped work). This native axis differs deliberately from the Meridian-routed Hermes/Pi fleet, where every role is **Opus 4.8** over the subscription with reasoning *effort* (xhigh/max) as the only knob (see `installer/models.yml`).
+
 ## Shared skills (attached to every role)
 **team-protocol** · hypothesis-debugging · verification-gates · reversible-changes · tdd · brainstorming.
 `team-protocol` is the keystone — it encodes the **definition-of-done, typed handoff contract, review-gate

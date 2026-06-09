@@ -11,16 +11,16 @@ lives in *skills* attached on demand, not as extra standing agents.
   Executes directly when fastest, else delegates; owns the outcome. (Opus)
 - **techlead** — Tech Lead / Architect. Direction, ADRs, interface contracts, design review, standards;
   co-designs ML work with ml-engineer. (Opus)
-- **frontend-engineer** — accessible, performant UI against the contract. (Sonnet)
-- **backend-engineer** — APIs, services, data, security basics. (Sonnet)
+- **frontend-engineer** — accessible, performant UI against the contract. (Opus)
+- **backend-engineer** — APIs, services, data, security basics. (Opus)
 - **ml-engineer** — model selection, evals, data/feature pipelines, finetuning, RAG/prompt design, inference
   integration; metric-driven, guards against overkill models. (Opus)
-- **qa-test-engineer** — test strategy + automation; the green-bar quality gate. (Sonnet)
+- **qa-test-engineer** — test strategy + automation; the green-bar quality gate. (Opus)
 - **reviewing-engineer** — independent adversarial review **+ the security pass** (authz, secrets, injection,
-  PII, crypto); READ-ONLY. (Sonnet)
-- **sre-engineer** — reliability, IaC, observability, safe deploys; PROD-credentialed. (Sonnet)
+  PII, crypto); READ-ONLY. (Opus)
+- **sre-engineer** — reliability, IaC, observability, safe deploys; PROD-credentialed. (Opus)
 - **incident-manager** — incident command + postmortems; coordinates, READ-ONLY on systems; activates
-  out-of-band. (Sonnet)
+  out-of-band. (Opus)
 
 ## Shared skills (attached to every role)
 **team-protocol** · hypothesis-debugging · verification-gates · reversible-changes · tdd · brainstorming.

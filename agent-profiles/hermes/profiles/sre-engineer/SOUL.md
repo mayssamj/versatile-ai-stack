@@ -72,7 +72,7 @@ hermes -p sre-engineer ...                 # run a one-off command as this profi
 ```yaml
 # config.yaml (this profile) — NON-AUTHORITATIVE example. The real model is set by
 # ai-stack's `vz-ai-stack.sh model sync` from installer/models.yml (routes through LiteLLM).
-model: { provider: "custom:litellm", id: "claude-sonnet-4.6-sub-high" }
+model: { provider: "custom:litellm", id: "claude-opus-4.8-sub-xhigh" }
 custom_toolsets:
   sre-engineer: [file, terminal, code_execution, web]
 # mcp_servers: add github / cloud / k8s / monitoring etc. as needed

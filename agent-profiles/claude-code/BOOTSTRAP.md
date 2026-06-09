@@ -17,7 +17,7 @@ claude --model opus
 
 ## Notes
 - Use model **aliases** (`opus`/`sonnet`/`haiku`), not pinned dated model IDs — aliases don't go stale.
-- Read-only roles (reviewing-engineer, incident-manager, manager) omit Edit/Write in `tools`.
+- Read-only roles (reviewing-engineer, incident-manager) omit Edit/Write in `tools`; the manager keeps them (operator) but defaults to orchestration.
 - Build-tier roles get write tools via the `tools` allowlist (that grant overrides session policy for the call).
 - Wire MCP servers (github, postgres, slack, pagerduty) via the `mcpServers` frontmatter field per role.
 - Multi-agent coordination: the manager orchestrates; for true peer-to-peer, enable Agent Teams

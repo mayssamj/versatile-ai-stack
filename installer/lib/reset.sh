@@ -38,7 +38,7 @@ EOF
     hard)
       cat <<EOF
 hard reset — blast radius:
-  WILL clear:  installer/state/*.done, CHANGELOG.d/*
+  WILL clear:  installer/state/*.done, *.alert, CHANGELOG.d/*
   WILL remove: OpenShell sandboxes (hermes-fleet-v1, pi-v1, ...)
   WILL remove: compose projects honcho/deerflow/autofyn/hermes-workspace
                (their containers + named volumes incl. honcho_redis-data)
@@ -51,7 +51,7 @@ EOF
     nuke)
       cat <<EOF
 NUKE reset — blast radius:
-  WILL clear:  installer/state/*.done, CHANGELOG.d/*
+  WILL clear:  installer/state/*.done, *.alert, CHANGELOG.d/*
   WILL remove: OpenShell sandboxes + compose projects (containers + volumes)
   WILL remove: all containers labeled ai-stack.managed=true
   WILL remove: ai-stack docker network
@@ -328,6 +328,10 @@ case "$TIER" in
     # stopped by now, so any surviving .pid is stale.
     rm -f "$AI_STACK"/installer/state/*.pid
     rm -f "$AI_STACK"/installer/state/models-pending*.txt   # stale model-binding intents
+    # The OpenShell watchdog alert names a sandbox that teardown_openshell_sandboxes
+    # just deleted — clear it so a stale storm/destroy alert can't survive the wipe
+    # and fail doctor check 43 after the next install.
+    rm -f "$AI_STACK"/installer/state/*.alert
     rm -rf "$AI_STACK"/CHANGELOG.d/*
     rm -rf "$AI_STACK"/data/{phoenix,falkor,qdrant,honcho,openwebui}/*
     ok "hard reset complete. Backups under data.bak-${ts}/"
@@ -384,6 +388,7 @@ case "$TIER" in
     # stopped by now, so any surviving .pid is stale.
     rm -f "$AI_STACK"/installer/state/*.pid
     rm -f "$AI_STACK"/installer/state/models-pending*.txt   # stale model-binding intents
+    rm -f "$AI_STACK"/installer/state/*.alert   # watchdog alert names a now-deleted sandbox (check 43)
     rm -rf "$AI_STACK"/CHANGELOG.d/*
     rm -rf "$AI_STACK"/data/{phoenix,falkor,qdrant,honcho,openwebui}/*
     rm -f "$AI_STACK"/.env

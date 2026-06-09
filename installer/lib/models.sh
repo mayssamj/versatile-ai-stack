@@ -678,13 +678,13 @@ PYEOF
 
   hdr "Model catalog (installer/models.yml)"
   local m rt sv big
-  printf '  %-20s %-10s %-34s %s\n' MODEL RUNTIME SERVED FLAGS
+  printf '  %-30s %-10s %-34s %s\n' MODEL RUNTIME SERVED FLAGS
   while IFS= read -r m; do
     [[ -z "$m" ]] && continue
     rt="$(model_runtime "$m")"; sv="$(model_served "$m")"; big="$(my_q ".models.\"$m\".big")"
     local flags=""; [[ "$big" == "true" ]] && flags="big"
     [[ "$m" == "$(default_model)" ]] && flags="${flags:+$flags,}DEFAULT"
-    printf '  %-20s %-10s %-34s %s\n' "$m" "$rt" "$sv" "$flags"
+    printf '  %-30s %-10s %-34s %s\n' "$m" "$rt" "$sv" "$flags"
   done < <(my_q '.models | keys | .[]')
 
   if (( ! lms_up )); then
@@ -695,7 +695,7 @@ PYEOF
   fi
 
   hdr "Agent matrix"
-  printf '  %-26s %-18s %-9s %-7s %-8s %-6s %s\n' AGENT ASSIGNED LITELLM SERVED KEY-OK DRIFT EFFECTIVE
+  printf '  %-26s %-26s %-9s %-7s %-8s %-6s %s\n' AGENT ASSIGNED LITELLM SERVED KEY-OK DRIFT EFFECTIVE
   local a assigned kind keyenv eff in_cfg served_ok key_ok drift rendered
   while IFS= read -r a; do
     [[ -z "$a" ]] && continue
@@ -735,7 +735,7 @@ PYEOF
     local effdisp="$eff"
     [[ "$kind" == "ace" ]] && effdisp="$eff (allowlist-only)"
 
-    printf '  %-26s %-18s %-9s %-7s %-8s %-6s %s\n' "$a" "$assigned" "$in_cfg" "$served_ok" "$key_ok" "$drift" "$effdisp"
+    printf '  %-26s %-26s %-9s %-7s %-8s %-6s %s\n' "$a" "$assigned" "$in_cfg" "$served_ok" "$key_ok" "$drift" "$effdisp"
   done < <(agents)
 
   printf '\n  default: %s\n' "$(default_model)"
@@ -743,7 +743,7 @@ PYEOF
     warn "pending (availability-gated) — see $PENDING_FILE:"
     while IFS=$'\t' read -r pa pd pf ps pt; do
       [[ -z "$pa" ]] && continue
-      printf '    %-26s wants %-18s -> rendered %s\n' "$pa" "$pd" "$pf"
+      printf '    %-26s wants %-26s -> rendered %s\n' "$pa" "$pd" "$pf"
     done < "$PENDING_FILE"
   fi
   return 0
@@ -1210,12 +1210,12 @@ _dry_run() {
 
   note "P3 allowlist widening plan: scoped keys -> [$(superset_members | paste -sd' ' - 2>/dev/null || true)]"
   note "P4 per-agent render plan:"
-  printf '    %-26s %-18s %s\n' AGENT ASSIGNED 'EFFECTIVE (gated)'
+  printf '    %-26s %-26s %s\n' AGENT ASSIGNED 'EFFECTIVE (gated)'
   local ag eff
   for ag in $({ [[ -n "$only" ]] && echo "$only" || agents; }); do
     eff="$(resolve_effective "$ag")"
     local tag=""; is_gated "$ag" "$eff" && tag="  (gated: LM Studio down/slug not served)"
-    printf '    %-26s %-18s %s%s\n' "$ag" "$(agent_assigned "$ag")" "$eff" "$tag"
+    printf '    %-26s %-26s %s%s\n' "$ag" "$(agent_assigned "$ag")" "$eff" "$tag"
   done
   ok "dry-run complete — nothing written"
 }
