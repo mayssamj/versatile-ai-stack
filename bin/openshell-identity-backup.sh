@@ -85,6 +85,7 @@ cmd_backup() {
   fi
 
   mkdir -p "$out"
+  chmod 700 "$out" 2>/dev/null || true   # the Ed25519 signing key lands here — never world-readable
 
   # Consistent online backup (sqlite3 .backup handles journal_mode=delete safely;
   # a plain cp can produce a torn read when the journal is active).
@@ -101,6 +102,7 @@ cmd_backup() {
     local src="$JWT_DIR/$f"
     if [[ -f "$src" ]]; then
       cp -p "$src" "$out/$f"
+      chmod 600 "$out/$f" 2>/dev/null || true   # signing.pem/key must not be world-readable
       key_copied=1
     else
       _log "WARNING: key file missing: $src (may not exist yet)"
@@ -221,9 +223,12 @@ cmd_guard_regen() {
       printf '\n'
     fi
   else
-    _log "guard-regen: openshell binary not found; skipping live-sandbox check (conservative)"
-    # Conservative: if we cannot check, don't block — but warn.
-    _log "guard-regen: WARNING — could not verify sandbox list; proceeding cautiously"
+    # FAIL-SAFE (audit 2026-06-08): if we CANNOT verify live sandboxes (openshell not
+    # found / PATH-only and unresolved), we must NOT report SAFE — regenerating the key
+    # while any sandbox exists is catastrophic. Treat unverifiable as UNSAFE; the explicit
+    # AI_STACK_ALLOW_KEY_REGEN=1 override (handled at the top) is the only way through.
+    unsafe=1
+    _log "guard-regen: openshell not found — CANNOT verify live sandboxes; REFUSING (fail-safe). Set AI_STACK_ALLOW_KEY_REGEN=1 to override."
   fi
 
   if (( unsafe == 1 )); then

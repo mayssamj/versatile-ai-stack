@@ -50,16 +50,17 @@ _iso() { date '+%Y-%m-%dT%H:%M:%S%z'; }
 # ---------------------------------------------------------------------------
 # _event <event> <sandbox> [k=v ...]
 # ---------------------------------------------------------------------------
+_esc() { printf '%s' "${1:-}" | sed 's/\\/\\\\/g; s/"/\\"/g'; }  # JSON-escape (audit 2026-06-08)
 _event() {
   local ev="$1" sandbox="$2"; shift 2 || true
   local extra="" kv k v
   for kv in "$@"; do
     k="${kv%%=*}"; v="${kv#*=}"
-    extra="$extra,\"$k\":\"$v\""
+    extra="$extra,\"$(_esc "$k")\":\"$(_esc "$v")\""
   done
   mkdir -p "$(dirname "$EVENT_LOG")" 2>/dev/null || true
   printf '{"ts":"%s","component":"state-restore","event":"%s","sandbox":"%s"%s}\n' \
-    "$(_iso)" "$ev" "$sandbox" "$extra" >> "$EVENT_LOG" 2>/dev/null || true
+    "$(_iso)" "$(_esc "$ev")" "$(_esc "$sandbox")" "$extra" >> "$EVENT_LOG" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------

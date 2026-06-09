@@ -42,6 +42,9 @@ DOCKER="$(_find /opt/homebrew/bin/docker "$HOME/.orbstack/bin/docker" /usr/local
 
 _ts()  { date '+%Y%m%d-%H%M%S'; }
 _iso() { date '+%Y-%m-%dT%H:%M:%S%z'; }
+# JSON-escape a value (backslash + double-quote) so a crafted sandbox name/reason can
+# never break the JSONL lifecycle log or inject fields (audit 2026-06-08).
+_esc() { printf '%s' "${1:-}" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
 # _event <event> <name> <k=v>... — append one structured JSONL lifecycle record.
 # Best-effort and never fails the caller (the checkpoint itself is what matters).
@@ -50,11 +53,11 @@ _event() {
   local extra="" kv k v
   for kv in "$@"; do
     k="${kv%%=*}"; v="${kv#*=}"
-    extra="$extra,\"$k\":\"$v\""
+    extra="$extra,\"$(_esc "$k")\":\"$(_esc "$v")\""
   done
   mkdir -p "$(dirname "$EVENT_LOG")" 2>/dev/null || true
   printf '{"ts":"%s","component":"checkpoint","event":"%s","sandbox":"%s"%s}\n' \
-    "$(_iso)" "$ev" "$name" "$extra" >> "$EVENT_LOG" 2>/dev/null || true
+    "$(_iso)" "$(_esc "$ev")" "$(_esc "$name")" "$extra" >> "$EVENT_LOG" 2>/dev/null || true
 }
 
 _resolve_cid() {  # echo the container id (running OR exited) for a sandbox name

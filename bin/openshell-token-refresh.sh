@@ -44,8 +44,10 @@ CONFIRM="${AI_STACK_CONFIRM_REMINT:-0}"
 TOKEN_TTL="${AI_STACK_TOKEN_TTL:-3600}"
 
 # Gateway state paths (host-side, read-only in this script).
-GATEWAY_STATE="$HOME/.local/state/openshell/gateway"
-JWT_SIGN_DIR="$GATEWAY_STATE/homebrew/tls/jwt"
+GATEWAY_STATE="$HOME/.local/state/openshell/gateway"            # gateway sqlite DB lives here
+# Signing material is NOT under gateway/ — it's at openshell/homebrew/tls/jwt (verified path,
+# matches bin/openshell-identity-backup.sh; the earlier '$GATEWAY_STATE/homebrew/...' was wrong).
+JWT_SIGN_DIR="$HOME/.local/state/openshell/homebrew/tls/jwt"
 SIGNING_PEM="$JWT_SIGN_DIR/signing.pem"   # Ed25519 private key (PEM)
 KID_FILE="$JWT_SIGN_DIR/kid"              # key-id string
 TOKEN_BASE="$HOME/.local/state/openshell/docker-sandbox-tokens/default"
@@ -369,8 +371,21 @@ main() {
     return 0
   fi
 
+  # ⚠ SECURITY GATE (audit 2026-06-08): the live mint path below interpolated untrusted
+  # JWT payload/claims into a Python heredoc + JSON string (code + claim injection) while
+  # holding the gateway Ed25519 signing key. It is DISABLED in this release pending a
+  # security review + rewrite (decode/sign in ONE hardened python program; ZERO shell
+  # interpolation of token data). The dry-run plan above is unaffected. Do NOT remove this
+  # gate or run the code below until that rewrite lands. See the spec doc → residual risks.
+  echo "✗ live re-mint is DISABLED pending security review (audit 2026-06-08: injection in the mint path)." >&2
+  echo "  The dry-run plan above is safe; host-side re-mint is a tracked, security-gated follow-up." >&2
+  echo "  doc/specs/2026-06-08-fleet-durability-hardening.md → residual risks." >&2
+  _event "remint_blocked" "$name" "cause=pending-security-review"
+  return 2
+
   # ------------------------------------------------------------------
-  # CONFIRMED — actually mint the token.
+  # CONFIRMED — actually mint the token.   [UNREACHABLE — gated above; do not re-enable
+  #   without the injection-safe rewrite. Kept only to document the intended sequence.]
   # ------------------------------------------------------------------
   echo "AI_STACK_CONFIRM_REMINT=1 — proceeding with re-mint ..."
   echo ""

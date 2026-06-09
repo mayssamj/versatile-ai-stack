@@ -239,8 +239,12 @@ openshell_sandbox_ensure() {
   openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
   [[ $rc -eq 0 ]] && return 0
 
-  # Tier 2: delete + one retry.
-  warn "create attempt 1 failed (rc=$rc) — deleting + retrying once"
+  # Tier 2: delete + one retry. Best-effort checkpoint first — these deletes normally hit
+  # a freshly-FAILED create (empty), but a re-entrant ensure could find prior state; capture
+  # it if present (non-blocking — don't wedge mid-recovery; the storm/Phase=Error branches
+  # above already fail-closed-checkpoint a pre-existing sandbox before we ever reach Tier 1).
+  warn "create attempt 1 failed (rc=$rc) — checkpointing (best-effort) + deleting + retrying once"
+  bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" tier2-retry >/dev/null 2>&1 || true
   openshell_sandbox_delete "$osh" "$name"
   openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
   [[ $rc -eq 0 ]] && return 0
@@ -259,6 +263,7 @@ openshell_sandbox_ensure() {
       warn "escalating recovery: 'brew services restart openshell' (errors ALL sandboxes; each recovers on its next phase run)"
       brew services restart openshell >/dev/null 2>&1 || true
       local i=0; while (( i < 60 )); do port_listening 17670 && break; sleep 1; i=$((i+1)); done
+      bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" tier3-retry >/dev/null 2>&1 || true
       openshell_sandbox_delete "$osh" "$name"
       openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
       [[ $rc -eq 0 ]] && return 0
