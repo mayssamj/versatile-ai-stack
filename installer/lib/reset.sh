@@ -102,9 +102,9 @@ teardown_compose_projects() {
       fi
       docker volume rm "$v" >/dev/null 2>&1 && ok "removed volume $v" || true
     done < <(docker volume ls -q --filter "label=com.docker.compose.project=$proj" 2>/dev/null)
-    docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$proj" 2>/dev/null | while IFS= read -r n; do
+    while IFS= read -r n; do
       [[ -n "$n" ]] && docker network rm "$n" >/dev/null 2>&1 && ok "removed network $n" || true
-    done
+    done < <(docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$proj" 2>/dev/null)
   done
 }
 
@@ -306,8 +306,8 @@ case "$TIER" in
     teardown_compose_projects
     # (3) Single-container managed services (litellm, phoenix, qdrant, ...).
     log "Stopping + removing managed ai-stack containers..."
-    docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}' \
-      | while IFS= read -r c; do docker rm -f "$c" >/dev/null && ok "removed $c"; done
+    while IFS= read -r c; do docker rm -f "$c" >/dev/null && ok "removed $c"; done \
+      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
     # (4) Host-side daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)
     #     — NOT containers, so nothing above stops them; they'd keep their ports
     #     and break the next install. Free the ports + clear stale pidfiles.
@@ -365,8 +365,8 @@ case "$TIER" in
     log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace)..."
     teardown_compose_projects
     log "Stopping + removing managed ai-stack containers..."
-    docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}' \
-      | while IFS= read -r c; do docker rm -f "$c" >/dev/null; done
+    while IFS= read -r c; do docker rm -f "$c" >/dev/null; done \
+      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
     log "Stopping host daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)..."
     teardown_host_daemons
     log "Removing ai-stack docker network..."

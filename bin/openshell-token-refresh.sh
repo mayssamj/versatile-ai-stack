@@ -65,16 +65,17 @@ _iso() { date '+%Y-%m-%dT%H:%M:%S%z'; }
 # ---------------------------------------------------------------------------
 # _event <event> <sandbox> [k=v ...]
 # ---------------------------------------------------------------------------
+_esc() { printf '%s' "${1:-}" | sed 's/\\/\\\\/g; s/"/\\"/g'; }  # JSON-escape (audit 2026-06-08)
 _event() {
   local ev="$1" sandbox="$2"; shift 2 || true
   local extra="" kv k v
   for kv in "$@"; do
     k="${kv%%=*}"; v="${kv#*=}"
-    extra="$extra,\"$k\":\"$v\""
+    extra="$extra,\"$(_esc "$k")\":\"$(_esc "$v")\""
   done
   mkdir -p "$(dirname "$EVENT_LOG")" 2>/dev/null || true
   printf '{"ts":"%s","component":"token-refresh","event":"%s","sandbox":"%s"%s}\n' \
-    "$(_iso)" "$ev" "$sandbox" "$extra" >> "$EVENT_LOG" 2>/dev/null || true
+    "$(_iso)" "$(_esc "$ev")" "$(_esc "$sandbox")" "$extra" >> "$EVENT_LOG" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -114,28 +115,34 @@ _inspect_jwt() {
   echo "  JWT file : $file"
   if command -v python3 >/dev/null 2>&1 || [[ -n "$PYTHON3" ]]; then
     local py="${PYTHON3:-python3}"
-    "$py" - <<PYEOF 2>/dev/null || echo "  (python decode failed — raw payload: $payload)"
+    # SECURITY (audit 2026-06-08): pass the UNTRUSTED payload via STDIN to a FIXED -c
+    # program — never interpolate it into the Python source (the old heredoc
+    # json.loads("""$payload""") allowed code execution via a crafted token claim).
+    printf '%s' "$payload" | "$py" -c '
 import json, sys, datetime
-p = json.loads("""$payload""")
-for k,v in p.items():
-    if k in ('iat','exp','nbf'):
+try:
+    p = json.loads(sys.stdin.read())
+except Exception:
+    print("  (payload not valid JSON)"); sys.exit(0)
+for k, v in p.items():
+    if k in ("iat", "exp", "nbf"):
         try:
-            dt = datetime.datetime.utcfromtimestamp(int(v)).strftime('%Y-%m-%dT%H:%M:%SZ')
-            print(f"  {k:15s}: {v}  ({dt})")
+            dt = datetime.datetime.utcfromtimestamp(int(v)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            print(f"  {str(k):15s}: {v}  ({dt})")
         except Exception:
-            print(f"  {k:15s}: {v}")
+            print(f"  {str(k):15s}: {v}")
     else:
-        print(f"  {k:15s}: {v}")
+        print(f"  {str(k):15s}: {v}")
 now = int(datetime.datetime.utcnow().timestamp())
-exp = p.get('exp', 0)
-remaining = int(exp) - now
-if remaining > 0:
-    print(f"  -- token expires in {remaining}s ({remaining//60} min) --")
-else:
-    print(f"  -- token EXPIRED {-remaining}s ago --")
-PYEOF
+try:
+    remaining = int(p.get("exp", 0)) - now
+    print(f"  -- token expires in {remaining}s ({remaining//60} min) --" if remaining > 0
+          else f"  -- token EXPIRED {-remaining}s ago --")
+except Exception:
+    pass
+' 2>/dev/null || echo "  (python decode failed)"
   else
-    echo "  payload  : $payload"
+    echo "  payload  : (python3 not available to decode; raw payload omitted for safety)"
   fi
 }
 
