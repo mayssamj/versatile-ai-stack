@@ -242,14 +242,24 @@ openshell_sandbox_ensure() {
   openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
   [[ $rc -eq 0 ]] && return 0
 
-  # Tier 3: gateway restart (heavy — errors all sandboxes).
+  # Tier 3: gateway restart (heavy — errors ALL sandboxes). H10 — guard the blast radius:
+  # (a) REFUSE if any OTHER sandbox is Ready (don't knock out a healthy sandbox to fix a
+  # dead one) unless OPENSHELL_FORCE_GATEWAY_RESTART=1; (b) snapshot the identity plane
+  # FIRST (a restart can rotate the signing kid, bricking other sandboxes' tokens).
   if [[ "$allow_restart" == "1" ]] && command -v brew >/dev/null 2>&1; then
-    warn "escalating recovery: 'brew services restart openshell' (this errors ALL sandboxes; each recovers on its phase's next run)"
-    brew services restart openshell >/dev/null 2>&1 || true
-    local i=0; while (( i < 60 )); do port_listening 17670 && break; sleep 1; i=$((i+1)); done
-    openshell_sandbox_delete "$osh" "$name"
-    openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
-    [[ $rc -eq 0 ]] && return 0
+    local _others
+    _others="$("$osh" sandbox list 2>/dev/null | _osh_strip_ansi | awk -v n="$name" 'NR>1 && $1!=n && $NF=="Ready"{print $1}' | tr '\n' ' ')"
+    if [[ -n "${_others// }" && "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
+      warn "Tier-3 gateway restart SKIPPED: other healthy sandbox(es) present [${_others% }] — a restart errors them ALL. Set OPENSHELL_FORCE_GATEWAY_RESTART=1 to override; '$name' will recover on its next phase run or via checkpoint-restore."
+    else
+      [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
+      warn "escalating recovery: 'brew services restart openshell' (errors ALL sandboxes; each recovers on its next phase run)"
+      brew services restart openshell >/dev/null 2>&1 || true
+      local i=0; while (( i < 60 )); do port_listening 17670 && break; sleep 1; i=$((i+1)); done
+      openshell_sandbox_delete "$osh" "$name"
+      openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
+      [[ $rc -eq 0 ]] && return 0
+    fi
   fi
 
   warn "sandbox '$name' could not reach Ready after all recovery tiers"
