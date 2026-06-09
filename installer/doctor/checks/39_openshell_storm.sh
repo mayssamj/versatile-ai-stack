@@ -1,6 +1,6 @@
 # OpenShell sandboxes are not in an expired-token CPU storm (+ watchdog installed).
 #
-# Guards the failure that has hit twice: a sandbox's gateway token expires (~8h),
+# Guards the failure that has hit twice: a sandbox's gateway token expires (1h, verified 2026-06-08),
 # the in-sandbox agent retries log-push with NO backoff (hundreds/sec) →
 # "ExpiredSignature" / "reconnecting" storm pegging ~36% CPU per sandbox. This
 # check FAILS if a live storm is detected, and notes whether the auto-healing
@@ -34,20 +34,36 @@ openshell_storm_diagnose() {
     fi
   done
 
+  # H10 — surface prune-vulnerable stopped sandboxes: a `docker container prune` would
+  # wipe their writable layer (all in-sandbox state). Non-failing note.
+  local stopped
+  stopped="$("$docker" ps -aq --filter "name=openshell-" --filter "status=exited" 2>/dev/null | wc -l | tr -d ' ')"
+
+  # H4 migration — warn if the watchdog plist is STALE (predates the HALT/RECREATE env
+  # keys); a stale plist runs warn-only regardless of code defaults. Re-install fixes it.
+  local plist="$HOME/Library/LaunchAgents/com.ai-stack.openshell-watchdog.plist"
+  local stale_plist=""
+  [[ "$wd" == "loaded" && -f "$plist" ]] && ! grep -q 'AI_STACK_WATCHDOG_HALT' "$plist" 2>/dev/null && stale_plist=1
+
   if [[ -n "$storming" ]]; then
     echo "STORM: sandbox(es) [${storming% }] are in an expired-token retry loop (high CPU)."
-    echo "  Heal now: bash $AI_STACK/bin/openshell-watchdog.sh run   (watchdog: $wd)"
+    echo "  Heal now (HALT-by-default, non-destructive): bash $AI_STACK/bin/openshell-watchdog.sh run   (watchdog: $wd)"
     return 1
   fi
   echo "  (no token-storm on the sandboxes; auto-healing watchdog: $wd)"
+  [[ "${stopped:-0}" != "0" ]] && echo "  note: $stopped stopped OpenShell container(s) on disk — checkpoint before any 'docker container prune': bash $AI_STACK/bin/openshell-checkpoint.sh <name>"
+  [[ -n "$stale_plist" ]] && echo "  note: watchdog plist is STALE (no HALT env) → runs warn-only. Refresh: bash $AI_STACK/bin/openshell-watchdog.sh install"
   return 0
 }
 
 openshell_storm_fix() {
-  warn "Run the watchdog to detect + auto-recreate any storming sandbox:"
+  warn "Run the watchdog to detect + (HALT-by-default, non-destructive) bound any storming sandbox:"
   warn "    bash $AI_STACK/bin/openshell-watchdog.sh run"
-  warn "Ensure the periodic guard is installed:"
+  warn "Ensure the periodic guard is installed (regenerates the plist with the HALT/RECREATE env):"
   warn "    bash $AI_STACK/bin/openshell-watchdog.sh install"
-  bash "$AI_STACK/bin/openshell-watchdog.sh" run >/dev/null 2>&1 || true
+  # H6 — HARD-PIN RECREATE=0 so 'doctor --fix' can NEVER inherit an ambient
+  # AI_STACK_WATCHDOG_RECREATE=1 and silently delete sandboxes without a checkpoint
+  # (the 2026-06-03 repeat vector). The watchdog caps + halts the storm — data-safe.
+  AI_STACK_WATCHDOG_RECREATE=0 bash "$AI_STACK/bin/openshell-watchdog.sh" run >/dev/null 2>&1 || true
   return 1
 }
