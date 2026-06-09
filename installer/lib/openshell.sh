@@ -142,12 +142,15 @@ openshell_sandbox_create_watchdog() {
   local extra=( "$@" )
   local logf="$AI_STACK/installer/state/openshell-create-${name}.log"
   : > "$logf" 2>/dev/null || true
-  # H1 — native, gateway-honored resource caps + prune-safe labels at create time.
-  # Caps BOUND a token-expiry storm so it can never starve the host again (incident
-  # 2026-06-08: two uncapped sandboxes pegged the host into a hard reboot). Labels
-  # bring the container under ai-stack tooling and make it survive `docker container
-  # prune`. Set OPENSHELL_SANDBOX_CPU=0 / OPENSHELL_SANDBOX_MEM=0 to omit a cap. These
-  # are TOP-LEVEL `sandbox create` flags and MUST precede "${extra[@]}" (post-`--`
+  # H1 — native, gateway-honored resource caps + labels at create time. Caps BOUND a
+  # token-expiry storm so it can never starve the host again (incident 2026-06-08: two
+  # UNCAPPED sandboxes pegged the host into a hard reboot). Verified live: the gateway
+  # honors --cpu/--memory on the container (NanoCpus/Memory set). NOTE: it does NOT
+  # propagate --label to the docker CONTAINER (only openshell.ai/* labels land there),
+  # so container-level `docker container prune` is guarded instead by H5 restart=no +
+  # the doctor stopped-sandbox warning; the keep label DOES protect checkpoint/forensic
+  # IMAGES (set via docker commit -c). Set OPENSHELL_SANDBOX_CPU=0 / _MEM=0 to omit a cap.
+  # These are TOP-LEVEL `sandbox create` flags and MUST precede "${extra[@]}" (post-`--`
   # args, e.g. Phase 15's `--policy <file> -- /bin/true`).
   local cap_args=( --label ai-stack.managed=true --label ai-stack.keep=true )
   local _cpu="${OPENSHELL_SANDBOX_CPU:-1.5}" _mem="${OPENSHELL_SANDBOX_MEM:-3Gi}"

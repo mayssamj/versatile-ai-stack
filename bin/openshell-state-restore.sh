@@ -159,7 +159,11 @@ cmd_extract() {
       return 2
     }
     echo "  temporary container: ${tmp_cid:0:12}" >&2
-    if ! "$DOCKER" cp "${tmp_cid}:/sandbox" "$dest/"; then
+    # Copy the CONTENTS of /sandbox: the trailing '/.' includes DOTFILES/dotdirs
+    # (.hermes/.agents/.claude/.pi — where the real fleet state lives). Copying
+    # '/sandbox' (no '/.') nests under dest/sandbox, and a subsequent '*' hoist
+    # SKIPS dotfiles — the bug that stranded .hermes on the first round-trip test.
+    if ! "$DOCKER" cp "${tmp_cid}:/sandbox/." "$dest/"; then
       echo "✗ extract: docker cp from image container FAILED" >&2
       "$DOCKER" rm "$tmp_cid" >/dev/null 2>&1 || true
       _event "extract_failed" "$ref" "cause=docker-cp-failed" "cid=${tmp_cid:0:12}"
@@ -169,11 +173,6 @@ cmd_extract() {
       && echo "  temporary container removed" >&2 \
       || echo "  (warning: docker rm of temp container failed — manual cleanup may be needed)" >&2
     tmp_cid=""  # cleared so trap does not attempt a second rm
-    # Normalize: docker cp may place it as dest/sandbox — hoist to dest
-    if [[ -d "$dest/sandbox" ]]; then
-      mv "$dest/sandbox/"* "$dest/" 2>/dev/null || true
-      rmdir "$dest/sandbox" 2>/dev/null || true
-    fi
     _event "extract_ok" "$ref" "source=image" "dest=$dest"
   else
     # --- sandbox name: cp from the live/exited container ---
@@ -185,15 +184,12 @@ cmd_extract() {
     fi
     local status; status="$(_container_status "$cid")"
     echo "· extract($ref): container ${cid:0:12} status=$status" >&2
-    if ! "$DOCKER" cp "${cid}:/sandbox" "$dest/"; then
+    # Copy CONTENTS of /sandbox: trailing '/.' includes dotfiles/dotdirs
+    # (.hermes/.agents/.claude/.pi — the real fleet state); a '*' hoist skips them.
+    if ! "$DOCKER" cp "${cid}:/sandbox/." "$dest/"; then
       echo "✗ extract($ref): docker cp from container FAILED" >&2
       _event "extract_failed" "$ref" "cause=docker-cp-failed" "cid=${cid:0:12}" "status=$status"
       return 2
-    fi
-    # Normalize: hoist sandbox/ sub-dir if docker cp created it
-    if [[ -d "$dest/sandbox" ]]; then
-      mv "$dest/sandbox/"* "$dest/" 2>/dev/null || true
-      rmdir "$dest/sandbox" 2>/dev/null || true
     fi
     _event "extract_ok" "$ref" "source=container" "cid=${cid:0:12}" "status=$status" "dest=$dest"
   fi
