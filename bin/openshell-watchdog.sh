@@ -39,15 +39,17 @@ INSTALL_LOCK="$STATE/.lock"               # vz-ai-stack.sh's lock dir
 THROTTLE_FILE="$STATE/openshell-watchdog.last"
 THROTTLE_SECS="${AI_STACK_WATCHDOG_THROTTLE:-1800}"   # don't recreate the same thing more than once / 30min
 CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshold (%)
-# SAFETY (2026-06-03 — after the watchdog destroyed both sandboxes without rebuild):
-# DEFAULT IS WARN-ONLY. The watchdog NEVER auto-deletes a sandbox by default —
-# deletion is destructive (loses any in-sandbox runtime state). On a storm it logs
-# + desktop-notifies + writes a RED marker that `doctor` surfaces; YOU recreate when
-# ready. Opt into auto-recreate (delete+rebuild, capability-checked + Ready-verified
-# + fails LOUD) with AI_STACK_WATCHDOG_RECREATE=1. Opt into a non-destructive CPU-burn
-# halt (docker stop, sandbox preserved) with AI_STACK_WATCHDOG_HALT=1.
+# SAFETY (2026-06-03 + 2026-06-08 incidents):
+#  • NEVER auto-DELETE by default — deletion is destructive (loses in-sandbox state).
+#    Auto-recreate (delete+rebuild, capability-checked, Ready-verified, CHECKPOINT-FIRST,
+#    fails LOUD) stays OPT-IN via AI_STACK_WATCHDOG_RECREATE=1.
+#  • HALT-BY-DEFAULT (2026-06-08): a detected storm is on an already-DEAD sandbox, so a
+#    cgroup cap + `docker stop` loses NOTHING and is reversible (docker start) — whereas
+#    a host hang requiring a hard reboot is NOT. When warn-only, the overnight storm
+#    pegged the host into a forced reboot. So on a storm we now CAP cpu/mem then stop the
+#    container to kill the CPU burn immediately. Set AI_STACK_WATCHDOG_HALT=0 to revert.
 RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
-HALT="${AI_STACK_WATCHDOG_HALT:-0}"
+HALT="${AI_STACK_WATCHDOG_HALT:-1}"
 FAILMARK="$STATE/openshell-watchdog.alert"            # RED marker → doctor check 43
 SANDBOXES=(hermes-fleet-v1 pi-v1)
 
@@ -64,7 +66,7 @@ notify() { /usr/bin/osascript -e "display notification \"$1\" with title \"ai-st
 # --- subcommands: manage the launchd timer (install/uninstall/status) ---------
 PLIST="$HOME/Library/LaunchAgents/com.ai-stack.openshell-watchdog.plist"
 LABEL="com.ai-stack.openshell-watchdog"
-INTERVAL="${AI_STACK_WATCHDOG_INTERVAL:-600}"   # check every 10 min
+INTERVAL="${AI_STACK_WATCHDOG_INTERVAL:-180}"   # check every 3 min (was 600; bounds a storm faster)
 case "${1:-run}" in
   install)
     mkdir -p "$HOME/Library/LaunchAgents"
@@ -80,6 +82,8 @@ case "${1:-run}" in
   <key>RunAtLoad</key><false/>
   <key>EnvironmentVariables</key><dict>
     <key>AI_STACK</key><string>$AI_STACK</string>
+    <key>AI_STACK_WATCHDOG_HALT</key><string>${HALT}</string>
+    <key>AI_STACK_WATCHDOG_RECREATE</key><string>${RECREATE}</string>
     <key>PATH</key><string>${DOCKER:+$(dirname "$DOCKER"):}${OPENSHELL:+$(dirname "$OPENSHELL"):}/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key><string>$STATE/openshell-watchdog.launchd.log</string>
@@ -170,16 +174,30 @@ handle_storm() {  # handle_storm <name> <cid>
     *)     phases="" ;;
   esac
 
-  # DEFAULT: WARN ONLY — never auto-destroy (would lose in-sandbox state).
+  # DEFAULT (RECREATE!=1): NEVER auto-destroy. With HALT=1 (now default) cap + stop the
+  # storming container to kill the CPU burn — non-destructive (writable layer preserved;
+  # docker start re-runs it), and the host hang it prevents is NOT recoverable.
   if [[ "$RECREATE" != "1" ]]; then
-    log "ALERT: $name has an expired-token storm (cid ${cid:0:12}). NOT auto-deleting (would discard in-sandbox state)."
-    log "  Heal when ready (recreate mints a fresh token but DISCARDS in-sandbox runtime data):  bash $AI_STACK/vz-ai-stack.sh install $phases"
+    log "ALERT: $name has an expired-token storm (cid ${cid:0:12}). NOT auto-deleting (state preserved)."
+    log "  Heal when ready (state is checkpointed first; restore via bin/openshell-state-restore.sh):  bash $AI_STACK/vz-ai-stack.sh install $phases"
     if [[ "$HALT" == "1" ]]; then
-      "$DOCKER" stop "$cid" >>"$LOG" 2>&1 && log "  halted the container to stop the CPU burn (sandbox record preserved; recreate to use it)" || log "  (docker stop failed)"
+      # Cap CPU/mem on the LIVE container first so even the detection window cannot
+      # starve the host (best-effort: OrbStack may not honor a live cgroup edit — never
+      # let that block the stop).
+      "$DOCKER" update --cpus 0.5 --memory 2g "$cid" >>"$LOG" 2>&1 \
+        && log "  capped storming container to 0.5cpu/2g (bounds the burn)" || true
+      # Best-effort checkpoint before halting (halt is non-destructive; this also
+      # protects the state as a keep-labeled image against a later prune). Never blocks.
+      bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" storm-halt >>"$LOG" 2>&1 \
+        && log "  checkpointed $name before halt (keep-labeled image)" \
+        || log "  (pre-halt checkpoint skipped/failed — halt is still non-destructive)"
+      "$DOCKER" stop "$cid" >>"$LOG" 2>&1 \
+        && log "  halted the container to stop the CPU burn (record preserved; restart/recreate to use it)" \
+        || log "  (docker stop failed)"
     fi
-    printf '%s expired-token storm at %s — auto-recreate is OFF (data-safe). Heal: vz-ai-stack.sh install %s\n' \
+    printf '%s expired-token storm at %s — auto-recreate OFF (data-safe; halted+checkpointed). Heal: vz-ai-stack.sh install %s\n' \
       "$name" "$(date '+%F %T')" "$phases" > "$FAILMARK"
-    notify "$name token storm — recreate manually (auto-recreate OFF)"
+    notify "$name token storm — halted+checkpointed; recreate when ready (auto-recreate OFF)"
     return 0
   fi
 
@@ -192,8 +210,19 @@ handle_storm() {  # handle_storm <name> <cid>
     notify "⚠ $name storm — recreate aborted (rebuild prereqs missing); left intact"
     return 0
   fi
-  log "RECREATING $name (opt-in; capability-checked; delete+rebuild for a fresh token)"
-  notify "$name token expired — auto-recreating"
+  log "RECREATING $name (opt-in; capability-checked; CHECKPOINT-first; delete+rebuild for a fresh token)"
+  notify "$name token expired — checkpointing then auto-recreating"
+  # H3 — FAIL-CLOSED: checkpoint must succeed (rc 0) or report no-container (rc 1)
+  # before we delete. rc 2 = commit/verify failed → REFUSE to delete (this is exactly
+  # the 2026-06-03 'destroy-before-verify → rebuild fails → data lost' vector).
+  local _ck_rc=0
+  bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" recreate >>"$LOG" 2>&1 || _ck_rc=$?
+  if (( _ck_rc == 2 )); then
+    log "  REFUSING to recreate $name: pre-delete checkpoint FAILED — sandbox LEFT INTACT (never delete without a verified backup)."
+    printf '%s auto-recreate ABORTED: checkpoint failed at %s — sandbox left intact, needs manual repair\n' "$name" "$(date '+%F %T')" > "$FAILMARK"
+    notify "⚠ $name recreate aborted — checkpoint failed; left intact"
+    return 0
+  fi
   "$OPENSHELL" sandbox delete "$name" >>"$LOG" 2>&1 || log "  (delete returned non-zero — continuing)"
   local rc=0; _phase_install "$cpath" $phases || rc=1
   if (( rc == 0 )) && _verify_ready "$name"; then

@@ -82,26 +82,71 @@ teardown_compose_projects() {
       # shellcheck disable=SC2086  # intentional word-split of the id list
       docker rm -f $ids >/dev/null 2>&1 && ok "removed compose project '$proj' containers" || true
     fi
-    docker volume ls -q --filter "label=com.docker.compose.project=$proj" 2>/dev/null | while IFS= read -r v; do
-      [[ -n "$v" ]] && docker volume rm "$v" >/dev/null 2>&1 && ok "removed volume $v" || true
-    done
-    docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$proj" 2>/dev/null | while IFS= read -r n; do
+    # Loop in the CURRENT shell via process substitution (NOT a pipe) so a per-volume
+    # skip is never lost in a subshell; use `warn` (not `err`) so a skip can't abort the reset.
+    local v vbak
+    while IFS= read -r v; do
+      [[ -n "$v" ]] || continue
+      # H8 — BACK UP the named volume BEFORE removing it (honcho_redis-data, autofyn_*,
+      # hermes-workspace_* hold real DB/agent state with no other backup). Fail-CLOSED:
+      # if the backup can't be written+verified, REFUSE the rm unless AI_STACK_FORCE_WIPE=1.
+      vbak="$AI_STACK/data/volume-backups/${RESET_TS:-manual}"
+      mkdir -p "$vbak" 2>/dev/null || true
+      if docker run --rm -v "$v":/data:ro -v "$vbak":/out alpine \
+           tar czf "/out/${v}.tgz" -C /data . >/dev/null 2>&1 && [[ -s "$vbak/${v}.tgz" ]]; then
+        ok "backed up volume $v -> data/volume-backups/${RESET_TS:-manual}/${v}.tgz"
+      elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+        warn "volume $v backup FAILED but AI_STACK_FORCE_WIPE=1 — removing anyway"
+      else
+        warn "REFUSING to remove volume $v: backup failed (set AI_STACK_FORCE_WIPE=1 to wipe anyway)"; continue
+      fi
+      docker volume rm "$v" >/dev/null 2>&1 && ok "removed volume $v" || true
+    done < <(docker volume ls -q --filter "label=com.docker.compose.project=$proj" 2>/dev/null)
+    while IFS= read -r n; do
       [[ -n "$n" ]] && docker network rm "$n" >/dev/null 2>&1 && ok "removed network $n" || true
-    done
+    done < <(docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$proj" 2>/dev/null)
   done
 }
 
 # Delete every OpenShell sandbox (hermes-fleet-v1, pi-v1, ...) so a fresh install
 # recreates them cleanly. Best-effort; the gateway owns the actual containers.
 teardown_openshell_sandboxes() {
-  command -v openshell >/dev/null 2>&1 || return 0
-  local sb
-  openshell sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
-    | awk 'NR>1 && $1!="" {print $1}' | while IFS= read -r sb; do
+  # H8 — resolve the gateway-MATCHING brew binary first. A bare PATH `openshell` may be
+  # a version-skewed uv install that half-deletes (orphaning the gateway record).
+  local osh=""
+  if [[ -x /opt/homebrew/bin/openshell ]]; then osh=/opt/homebrew/bin/openshell
+  else osh="$(command -v openshell 2>/dev/null || true)"; fi
+  [[ -n "$osh" ]] || return 0
+  # Loop in the CURRENT shell via process substitution (NOT a pipe): the fail-closed
+  # _ck==2 guard + `continue` must execute in this shell, not a trapped pipe subshell.
+  local sb _ck
+  while IFS= read -r sb; do
     [[ -n "$sb" ]] || continue
-    openshell sandbox delete "$sb" >/dev/null 2>&1 && ok "deleted openshell sandbox $sb" \
+    # H3 — CHECKPOINT before delete (this loop also catches user `fleet new` sandboxes
+    # that hold real agent state). Fail-CLOSED: rc 2 = commit/verify failed → SKIP the
+    # delete (leave it intact) unless AI_STACK_FORCE_WIPE=1.
+    _ck=0; bash "$AI_STACK/bin/openshell-checkpoint.sh" "$sb" reset >/dev/null 2>&1 || _ck=$?
+    if (( _ck == 2 )) && [[ "${AI_STACK_FORCE_WIPE:-0}" != "1" ]]; then
+      warn "skipping delete of '$sb': pre-delete checkpoint FAILED (set AI_STACK_FORCE_WIPE=1 to delete anyway)"
+      continue
+    fi
+    "$osh" sandbox delete "$sb" >/dev/null 2>&1 && ok "deleted openshell sandbox $sb (checkpointed)" \
       || warn "could not delete sandbox $sb (delete it manually if it lingers)"
-  done
+  done < <("$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk 'NR>1 && $1!="" {print $1}')
+  # H8 — orphan-token sweep, GUARDED: only clear bootstrap-token dirs when NO sandbox
+  # remains. A silently-failed delete must NOT strip a still-running sandbox's token
+  # (that would brick it). If any sandbox still lists, skip the sweep entirely.
+  local remaining; remaining="$("$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk 'NR>1 && $1!="" {print $1}' | head -1)"
+  if [[ -n "$remaining" ]]; then
+    warn "orphan-token sweep SKIPPED: sandbox(es) still present (a failed delete must not strip a live token)"
+  else
+    local tokroot="$HOME/.local/state/openshell/docker-sandbox-tokens/default" d
+    if [[ -d "$tokroot" ]]; then
+      for d in "$tokroot"/*/; do
+        [[ -d "$d" ]] && rm -rf "$d" 2>/dev/null && ok "cleaned orphan token dir $(basename "$d" | cut -c1-8)" || true
+      done
+    fi
+  fi
 }
 
 # Stop every host-side daemon the stack starts via bin/start-<svc>.sh. These are
@@ -237,9 +282,19 @@ case "$TIER" in
     ;;
   hard)
     if ! confirm "Proceed with hard reset?" N; then exit 0; fi
-    ts="$(date +%Y%m%d-%H%M%S)"
-    log "Backing up data/ → data.bak-${ts}/"
-    cp -R "$AI_STACK/data" "$AI_STACK/data.bak-${ts}" || warn "data backup failed (continuing)"
+    RESET_TS="$(date +%Y%m%d-%H%M%S)"; ts="$RESET_TS"
+    log "Backing up data/ → data.bak-${ts}/ (H8: aborts the wipe if this fails)"
+    # H7 — snapshot the gateway identity plane FIRST (DB + signing key) so a kid rotation
+    # or torn DB stays recoverable (best-effort; non-fatal if the tool isn't present yet).
+    [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
+    if cp -R "$AI_STACK/data" "$AI_STACK/data.bak-${ts}" && [[ -d "$AI_STACK/data.bak-${ts}" ]]; then
+      ok "data/ backed up → data.bak-${ts}/"
+    elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+      warn "data/ backup FAILED but AI_STACK_FORCE_WIPE=1 — proceeding with the wipe"
+    else
+      err "ABORTING hard reset: data/ backup failed and AI_STACK_FORCE_WIPE!=1 — NOTHING wiped. Fix the cause or re-run with AI_STACK_FORCE_WIPE=1."
+      exit 1
+    fi
     # Tear everything down BEFORE removing the ai-stack network so nothing stays
     # attached (a dangling external-network ref breaks the next `compose up`).
     # (1) OpenShell sandboxes (gateway-managed containers on openshell-docker).
@@ -251,8 +306,8 @@ case "$TIER" in
     teardown_compose_projects
     # (3) Single-container managed services (litellm, phoenix, qdrant, ...).
     log "Stopping + removing managed ai-stack containers..."
-    docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}' \
-      | while IFS= read -r c; do docker rm -f "$c" >/dev/null && ok "removed $c"; done
+    while IFS= read -r c; do docker rm -f "$c" >/dev/null && ok "removed $c"; done \
+      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
     # (4) Host-side daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)
     #     — NOT containers, so nothing above stops them; they'd keep their ports
     #     and break the next install. Free the ports + clear stale pidfiles.
@@ -285,16 +340,33 @@ case "$TIER" in
       err "Confirmation did not match. Aborted."
       exit 1
     fi
-    ts="$(date +%Y%m%d-%H%M%S)"
-    cp -R "$AI_STACK/data" "$AI_STACK/data.bak-${ts}" 2>/dev/null || true
-    cp -p "$AI_STACK/.env" "$AI_STACK/.env.bak-${ts}" 2>/dev/null || true
+    RESET_TS="$(date +%Y%m%d-%H%M%S)"; ts="$RESET_TS"
+    log "NUKE: backing up data/ + .env + gateway identity (H8: abort if a backup fails)"
+    [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
+    if cp -R "$AI_STACK/data" "$AI_STACK/data.bak-${ts}" 2>/dev/null && [[ -d "$AI_STACK/data.bak-${ts}" ]]; then
+      ok "data/ backed up → data.bak-${ts}/"
+    elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+      warn "data/ backup FAILED but AI_STACK_FORCE_WIPE=1 — proceeding with the nuke"
+    else
+      err "ABORTING nuke: data/ backup failed and AI_STACK_FORCE_WIPE!=1 — NOTHING removed."; exit 1
+    fi
+    if [[ -f "$AI_STACK/.env" ]]; then
+      if cp -p "$AI_STACK/.env" "$AI_STACK/.env.bak-${ts}" && [[ -s "$AI_STACK/.env.bak-${ts}" ]]; then
+        ok ".env backed up → .env.bak-${ts}"
+      elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+        warn ".env backup FAILED but AI_STACK_FORCE_WIPE=1 — proceeding (you may lose secrets/keys)"
+      else
+        err "ABORTING nuke: .env backup failed and AI_STACK_FORCE_WIPE!=1 — NOTHING removed (avoids the 2026-06-05 .env-loss class)."
+        exit 1
+      fi
+    fi
     log "Deleting OpenShell sandboxes..."
     teardown_openshell_sandboxes
     log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace)..."
     teardown_compose_projects
     log "Stopping + removing managed ai-stack containers..."
-    docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}' \
-      | while IFS= read -r c; do docker rm -f "$c" >/dev/null; done
+    while IFS= read -r c; do docker rm -f "$c" >/dev/null; done \
+      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
     log "Stopping host daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)..."
     teardown_host_daemons
     log "Removing ai-stack docker network..."

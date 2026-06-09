@@ -677,8 +677,17 @@ cmd_fleet_destroy() {
   fi
 
   [[ -n "$osh" ]] || { err "openshell binary not found"; exit 1; }
+  # H3 — CHECKPOINT before destroy (user fleet sandboxes hold real agent state and are
+  # NOT covered by doctor checks 30/33). Fail-CLOSED: rc 2 = commit/verify failed → ABORT
+  # unless AI_STACK_FORCE_WIPE=1. Restore later via bin/openshell-state-restore.sh.
+  local _ck=0
+  bash "$AI_STACK/bin/openshell-checkpoint.sh" "$sb" destroy >/dev/null || _ck=$?
+  if (( _ck == 2 )) && [[ "${AI_STACK_FORCE_WIPE:-0}" != "1" ]]; then
+    err "ABORTING destroy of '$sb': pre-delete checkpoint FAILED (would lose agent state). Set AI_STACK_FORCE_WIPE=1 to force."
+    exit 1
+  fi
   openshell_sandbox_delete "$osh" "$sb"
-  ok "deleted sandbox $sb (best-effort)"
+  ok "deleted sandbox $sb (checkpointed; best-effort delete)"
   rm -f "$POLICY"
   ok "removed policy $POLICY"
   note "FLEET_<NAME>_LITELLM_KEY (if minted) left in .env; LiteLLM key NOT revoked (manual /key/delete)."
