@@ -112,6 +112,24 @@ _osh_kill() {
   wait "$pid" 2>/dev/null || true
 }
 
+# _osh_harden_container <name> — H5: pin RestartPolicy=no on the freshly-created
+# sandbox container so a host reboot / self-exit does NOT auto-restart it straight
+# back into an expired-token storm (incident 2026-06-08; the gateway sets
+# unless-stopped by default, which RESURRECTED the storm post-reboot). A
+# credential-bound container must be (re)started only after a valid token is
+# confirmed — recovery becomes a conscious refresh/recreate. Best-effort + NON-fatal:
+# a sandbox that is up + Ready must never be failed by this hardening step.
+_osh_harden_container() {
+  local name="$1" docker_bin cid
+  docker_bin="$(command -v docker 2>/dev/null || true)"
+  [[ -n "$docker_bin" ]] || return 0
+  cid="$("$docker_bin" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
+  [[ -n "$cid" ]] || return 0
+  "$docker_bin" update --restart=no "$cid" >/dev/null 2>&1 \
+    && log "  hardened '$name': RestartPolicy=no (won't self-resurrect a storm on reboot)" \
+    || warn "  could not set RestartPolicy=no on '$name' (non-fatal)"
+}
+
 # openshell_sandbox_create_watchdog <OSH> <name> <from> <timeout_s> [-- EXTRA_CREATE_ARGS...]
 # Runs create in the background and polls Phase. Any args after a literal `--`
 # are appended to the create command verbatim (e.g. `--policy <file> -- /bin/true`
@@ -124,15 +142,26 @@ openshell_sandbox_create_watchdog() {
   local extra=( "$@" )
   local logf="$AI_STACK/installer/state/openshell-create-${name}.log"
   : > "$logf" 2>/dev/null || true
-  log "Creating sandbox '$name' (--from $from ${extra[*]:-}); watchdog polls Phase=Ready (<= ${timeout_s}s, log: $(basename "$logf"))..."
-  "$osh" sandbox create --name "$name" --from "$from" "${extra[@]}" >"$logf" 2>&1 &
+  # H1 — native, gateway-honored resource caps + prune-safe labels at create time.
+  # Caps BOUND a token-expiry storm so it can never starve the host again (incident
+  # 2026-06-08: two uncapped sandboxes pegged the host into a hard reboot). Labels
+  # bring the container under ai-stack tooling and make it survive `docker container
+  # prune`. Set OPENSHELL_SANDBOX_CPU=0 / OPENSHELL_SANDBOX_MEM=0 to omit a cap. These
+  # are TOP-LEVEL `sandbox create` flags and MUST precede "${extra[@]}" (post-`--`
+  # args, e.g. Phase 15's `--policy <file> -- /bin/true`).
+  local cap_args=( --label ai-stack.managed=true --label ai-stack.keep=true )
+  local _cpu="${OPENSHELL_SANDBOX_CPU:-1.5}" _mem="${OPENSHELL_SANDBOX_MEM:-3Gi}"
+  [[ "$_cpu" != "0" ]] && cap_args+=( --cpu "$_cpu" )
+  [[ "$_mem" != "0" ]] && cap_args+=( --memory "$_mem" )
+  log "Creating sandbox '$name' (--from $from; caps cpu=${_cpu} mem=${_mem}; ${extra[*]:-}); watchdog polls Phase=Ready (<= ${timeout_s}s, log: $(basename "$logf"))..."
+  "$osh" sandbox create --name "$name" --from "$from" "${cap_args[@]}" "${extra[@]}" >"$logf" 2>&1 &
   local cpid=$! waited=0 phase=""
   while (( waited < timeout_s )); do
     # CLI returned on its own? Stop polling and trust the final phase read.
     if ! kill -0 "$cpid" 2>/dev/null; then wait "$cpid" 2>/dev/null || true; break; fi
     phase="$(openshell_sandbox_phase "$osh" "$name")"
     case "$phase" in
-      Ready)        _osh_kill "$cpid"; ok "sandbox '$name' reached Ready (freed hung create CLI)"; return 0 ;;
+      Ready)        _osh_kill "$cpid"; ok "sandbox '$name' reached Ready (freed hung create CLI)"; _osh_harden_container "$name"; return 0 ;;
       Error|Failed) _osh_kill "$cpid"; warn "sandbox '$name' entered Phase=$phase (see $logf)"; return 1 ;;
     esac
     sleep 3; waited=$((waited+3))
@@ -140,7 +169,7 @@ openshell_sandbox_create_watchdog() {
   phase="$(openshell_sandbox_phase "$osh" "$name")"
   _osh_kill "$cpid"
   case "$phase" in
-    Ready)        ok "sandbox '$name' Ready"; return 0 ;;
+    Ready)        ok "sandbox '$name' Ready"; _osh_harden_container "$name"; return 0 ;;
     Error|Failed) warn "sandbox '$name' Phase=$phase after ${timeout_s}s (see $logf)"; return 1 ;;
     *)            warn "sandbox '$name' not Ready after ${timeout_s}s (phase='${phase:-none}', see $logf)"; return 2 ;;
   esac
@@ -178,13 +207,28 @@ openshell_sandbox_ensure() {
     # can't self-refresh, so recreate to mint a fresh one (re-running the phase
     # reconstitutes in-sandbox state). On a clean Ready, trust it.
     if openshell_token_storm "$name"; then
-      warn "sandbox '$name' reports Ready but its gateway token EXPIRED (ExpiredSignature in container logs) — recreating to mint a fresh token (discards in-sandbox /sandbox + /tmp scratch state)"
+      # H3/H6 — the 1h token can't self-refresh via the CLI; recreate mints a fresh
+      # one. The delete discards in-sandbox state, so CHECKPOINT FIRST and FAIL-CLOSED:
+      # if the snapshot can't be taken+verified, REFUSE to delete (a lingering sandbox
+      # is recoverable; a deleted-without-backup one is not). Restore later via
+      # bin/openshell-state-restore.sh. (Reframed from the old 'discards state — by design'.)
+      warn "sandbox '$name' reports Ready but its gateway token EXPIRED — checkpointing state, then recreating to mint a fresh token"
+      local _ck_rc=0
+      bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" storm >/dev/null || _ck_rc=$?
+      if (( _ck_rc == 2 )); then
+        err "REFUSING to recreate '$name': pre-delete checkpoint FAILED (would lose in-sandbox state). Free disk / fix docker, then re-run. Manual reclaim: docker cp openshell-${name}-*:/sandbox ./reclaimed/"
+        return 1
+      fi
       openshell_sandbox_delete "$osh" "$name"
     else
       ok "sandbox '$name' already Ready"; return 0
     fi
   elif [[ -n "$phase" ]]; then
-    warn "sandbox '$name' present in Phase=$phase; deleting before recreate"
+    # H3 — a pre-existing non-Ready sandbox may still hold real state; checkpoint
+    # best-effort before deleting (don't hard-block recovery of an already-broken
+    # sandbox, but capture whatever is there).
+    warn "sandbox '$name' present in Phase=$phase; checkpointing (best-effort) then deleting before recreate"
+    bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" recreate-nonready >/dev/null || true
     openshell_sandbox_delete "$osh" "$name"
   fi
 
