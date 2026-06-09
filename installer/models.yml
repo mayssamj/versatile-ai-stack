@@ -54,7 +54,7 @@ assignments:
   ace: claude-opus-4.8-sub-xhigh
   rlm: claude-opus-4.8-sub-xhigh
 kinds:
-  hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; writes no code"}
+  hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates"}
   hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}
   hermes_frontend_engineer: {kind: hermes-profile, profile: hermes_frontend_engineer, key_env: HERMES_LITELLM_KEY, desc: "frontend engineer — accessible, performant UI against the design contract"}
   hermes_backend_engineer: {kind: hermes-profile, profile: hermes_backend_engineer, key_env: HERMES_LITELLM_KEY, desc: "backend engineer — APIs, services, data and security basics against the contract"}

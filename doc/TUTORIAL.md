@@ -562,7 +562,7 @@ A single generic chatbot is mediocre at most things. A *team* — each member wi
 
 | Role | Speciality | Use it when… | Model tier | Access |
 |---|---|---|---|---|
-| **manager** | Eng manager **+ product intake**: turns a raw request into a SPEC with testable acceptance criteria, decomposes, delegates, orchestrates the gate order + turn budget | You have a *goal*, not a task — something that needs framing, breaking down, and routing across people | opus-sub-high | **read-only** (writes no code, makes no arch decisions) |
+| **manager** | Eng manager **+ product intake**: turns a raw request into a SPEC with testable acceptance criteria, decomposes, delegates, orchestrates the gate order + turn budget | You have a *goal*, not a task — something that needs framing, breaking down, and routing across people | opus-sub-xhigh | **operator** (executes directly when fastest; defers architecture to techlead) |
 | **techlead** | Architecture & direction: ADRs, interface contracts, standards, design review; co-designs ML work | A change needs a design decision, an interface defined, a technology chosen, or trade-offs weighed | opus-sub-high | read-mostly (writes ADRs/design docs only) |
 | **frontend-engineer** | Accessible (WCAG 2.1 AA), performant (Core Web Vitals) UI against the contract + design system | Building/changing a UI component, styling, client state, browser data-fetching | sonnet-sub-high | writes UI code + its tests |
 | **backend-engineer** | Server-side APIs, services, business logic, data access; security basics (parameterized queries, authz, OWASP) | Designing/implementing an API, business logic, a schema/query, authn/authz, an integration | sonnet-sub-high | writes app/server/data code + tests |
@@ -600,7 +600,7 @@ Five more shared skills back the protocol: `tdd`, `hypothesis-debugging`, `verif
 
 #### The safety model (baked in, not optional)
 
-- `reviewing-engineer` and `incident-manager` are **read-only**; `manager` writes **no code**.
+- `reviewing-engineer` and `incident-manager` are **read-only**; `manager` orchestrates and executes directly when fastest.
 - `reviewing-engineer` owns the **security pass** — there is no separate security role; a security hole is a **BLOCK**.
 - `sre-engineer` is the **only prod-credentialed role**; `incident-manager` coordinates but never touches prod.
 - On Claude Code, read-only is enforced by **omitting `Edit`/`Write` from the subagent's `tools`** (a subagent's `permissionMode` is not reliably honored at runtime).
@@ -661,7 +661,7 @@ What you should see, in order:
 
 The `sre-engineer` DEPLOY stage and the `incident-manager` are *not* exercised by a dry feature request — the SRE only deploys a merged, reviewed change, and the incident manager activates out-of-band. That's by design.
 
-> The manager is **read-only** — it never edits code to "unblock" a gate; it only frames, routes, and tracks. The real edits come from the implementer roles. Keep the request small for your first run; the pipeline's value is the *discipline*, and that's most visible on a task you can read end-to-end.
+> The manager is an **operator-orchestrator** — it frames, routes, and tracks, and executes directly when that's fastest; its own edits still pass the review + verification gates (it never edits to *skip* a gate). Keep the request small for your first run; the pipeline's value is the *discipline*, and that's most visible on a task you can read end-to-end.
 
 ---
 

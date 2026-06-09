@@ -4,6 +4,43 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-08 — operator-manager + shared Ethos + methodology gap-fill (agent fleet)
+
+Council-designed (`doc/specs/2026-06-08-operator-manager-ethos.md`), built + 3-lens adversarial review
+(persona / regression / cohesion) + fixes. Across all 3 fleets (hermes/pi/claude-code):
+
+- **Shared Ethos** — a `## Ethos` section in `team-protocol/SKILL.md` (the keystone every role loads)
+  + a 2-line attitude couplet in every soul's "Operating discipline (always)" block (27 souls):
+  direct/opinionated, useful>agreeable, **earn pushback with evidence**, motion-not-graveyard.
+- **The manager IS the operator** — its read-only framing is removed: it now **executes directly when
+  that's fastest** and delegates otherwise, owns the outcome, surfaces/closes loops; it still
+  **defers architecture to techlead** and **its own edits pass the same review+verification gates**
+  (high agency never skips the pipeline). claude-code `manager.md` frontmatter: `tools` += Edit/Write/
+  Bash, `disallowedTools` removed. team-protocol §3 notes the manager may IMPLEMENT directly (DIFF
+  re-enters QA→REVIEW). `reviewing-engineer` + `incident-manager` stay read-only (unchanged).
+- **Autonomy hard line** → `team-protocol §5` (no destructive/irreversible/credential/secret/external-
+  publish without human approval), inherited by all roles.
+- **Methodology gap-fill (no new skill)** — folded the genuinely-missing parts of the operating
+  constitution into existing skills: `verification-gates` (+runtime/filesystem invariants, +reporting
+  discipline), `hypothesis-debugging` (+separate-diagnosis-from-repair, don't-invent-APIs,
+  read-before-write, stale-state), `reversible-changes` (+git discipline, +script-complex-commands).
+  The 6 skills are authored once in hermes then `cp`-propagated byte-identical to pi + claude-code.
+- **New lint** `installer/lib/check_fleet_parity.sh` — asserts the 6 skills are byte-identical across
+  the 3 fleets + all 27 souls carry the Ethos couplet. A standalone lint, NOT a doctor check (doctor
+  stays 45). `HANDOFF.md` §0 gains a cross-reference noting the two methodology layers (portable fleet
+  skills vs the ai-stack-specific C1–C9) so they don't fork.
+- Doc tail swept to operator framing: READMEs ×3, STACK-GUIDE, USER-GUIDE, TUTORIAL.md→regen
+  TUTORIAL.html, EXPLORE.html (hermes_manager card), `models.yml` desc. Also corrected a lone stale
+  `claude-opus-4.8-sub-high` → `-sub-xhigh` straggler in the manager SOUL config example + TUTORIAL
+  roster (the authoritative `models.yml` assignment was already `-sub-xhigh`).
+
+**Caveat (pre-existing):** `agent-profiles/claude-code/.claude/` is gitignored (`.gitignore:62`
+`.claude/`), so the claude-code persona/skill edits live in the working tree + `~/.claude` only and are
+NOT committed; a fresh clone can't install the claude-code arm of the fleet from the repo. Flagged for a
+decision (un-ignore the claude-code source vs leave as local-only). The hermes + pi source-of-truth IS
+tracked + committed. Live re-sync (`vz-ai-stack.sh install agent_fleet` → `~/.claude`, pi-v1,
+hermes-fleet-v1) deferred — run it once the host is confirmed healthy after the hard-restart.
+
 ## 2026-06-07 (install UX) — populate `.env` as the FIRST step of every install + first-run key offer
 
 `cmd_install` now runs `env_ensure_baseline` (idempotent, prompt-free — creates `.env` @ 0600,

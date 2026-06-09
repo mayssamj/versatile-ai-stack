@@ -602,7 +602,7 @@ subscription via Meridian**. The bindings as shipped:
 
 | Profile                     | Bound model                  | When you'd dispatch one                                          |
 |-----------------------------|------------------------------|------------------------------------------------------------------|
-| `hermes_manager`            | `claude-opus-4.8-sub-xhigh`  | Frame a goal into a spec, decompose, delegate, orchestrate gates (read-only) |
+| `hermes_manager`            | `claude-opus-4.8-sub-xhigh`  | Frame a goal into a spec, decompose, delegate, orchestrate gates; executes directly when fastest |
 | `hermes_techlead`           | `claude-opus-4.8-sub-max`    | Architecture decisions, ADRs, interface contracts, design review |
 | `hermes_frontend_engineer`  | `claude-opus-4.8-sub-max`    | Accessible, performant UI against the design contract            |
 | `hermes_backend_engineer`   | `claude-opus-4.8-sub-max`    | APIs, services, data access, security basics against the contract|
@@ -642,7 +642,7 @@ cat ~/ai-stack/openshell/fleet-souls/hermes_backend_engineer.md | head -30
 openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c \
   'hermes hermes_backend_engineer "refactor the function fib in /workspace/main.py for memoization"'
 
-# 3. Have the manager frame and route a goal (read-only orchestrator).
+# 3. Have the manager frame and route a goal (operator-orchestrator).
 openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c \
   'hermes hermes_manager "Add rate-limiting to the API. Write the spec, acceptance criteria, and the delivery plan."'
 ```

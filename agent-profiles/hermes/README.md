@@ -8,7 +8,7 @@ lives in *skills* attached on demand, not as extra standing agents.
 ## Roster
 - **manager** — Engineering Manager / orchestrator **+ product intake**. Turns a request into a spec with
   testable acceptance criteria, then plans, delegates, tracks, and enforces the gate order + turn budget.
-  Writes no code. (Opus)
+  Executes directly when fastest, else delegates; owns the outcome. (Opus)
 - **techlead** — Tech Lead / Architect. Direction, ADRs, interface contracts, design review, standards;
   co-designs ML work with ml-engineer. (Opus)
 - **frontend-engineer** — accessible, performant UI against the contract. (Sonnet)
@@ -39,7 +39,7 @@ Every handoff is a typed artifact; executors don't self-delegate; a global turn 
 per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
 
 ## Key safety decisions (baked in)
-- **reviewing-engineer** and **incident-manager** are read-only; **manager** writes no code.
+- **reviewing-engineer** and **incident-manager** are read-only; **manager** orchestrates and executes directly when fastest.
 - **reviewing-engineer** owns the security pass (no separate security role); a security hole = BLOCK.
 - **sre-engineer** is the only prod-credentialed role; incident-manager coordinates but never touches prod.
 - Risky/irreversible actions (deploys, broadcasts) require explicit confirmation; mark their skills

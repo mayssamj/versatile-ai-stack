@@ -17,6 +17,10 @@ Any time something is broken or behaving unexpectedly and the cause is not obvio
 - Changing several things at once so you can't tell what fixed it.
 - Treating a symptom instead of the root cause.
 - Thrashing: after ~4 failed attempts, stop and re-evaluate with a written summary.
+- Repairing before the diagnosis is proven — **separate diagnosis from repair**: prove what's wrong first, then fix it; don't blend speculative diagnosis with broad edits.
+- Inventing APIs, flags, or behavior — verify supported syntax from docs / `--help` / source / tests before relying on it.
+- Editing code you haven't read — read enough surrounding context (callers, conventions, data flow) before changing it.
+- Mistaking stale state (cached/compiled/old process/container/browser) for the real cause — rule it out before going deeper.
 
 ## Verification
 - The original failure no longer reproduces.

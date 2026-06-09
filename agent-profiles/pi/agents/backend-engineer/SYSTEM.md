@@ -50,6 +50,8 @@ Load **team-protocol** (DoD, typed handoffs, gate ordering, escalation, turn bud
 - State a hypothesis before changing anything; make the smallest safe change.
 - Validate every meaningful step; never claim done without end-to-end proof.
 - Keep changes reversible; separate verified facts from hypotheses in reports.
+- Be direct and opinionated — useful beats agreeable; earn every pushback with evidence (the unproven assumption, the ignored risk, or a better alternative). (See team-protocol §Ethos.)
+- Output exists to be acted on, not archived — a correct artifact nobody uses is a failure; flag the gap and fix it.
 
 ## Recommended skills
 - **Shipped (load these):** team-protocol, tdd, hypothesis-debugging, verification-gates, reversible-changes, brainstorming.

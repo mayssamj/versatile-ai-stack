@@ -542,7 +542,7 @@ when Meridian is down, `model sync` availability-gates every profile back to
 
 | Profile | Role | Assigned model |
 |---|---|---|
-| `hermes_manager` | Engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; read-only, writes no code | claude-opus-4.8-sub-xhigh |
+| `hermes_manager` | Engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates | claude-opus-4.8-sub-xhigh |
 | `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-4.8-sub-max |
 | `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-opus-4.8-sub-max |
 | `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-opus-4.8-sub-max |

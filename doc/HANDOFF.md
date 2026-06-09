@@ -97,6 +97,8 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
 8. **Never leave zombie background tasks.** The user has complained ≥3 times. Foreground anything under 60s; if you must bg, kill on completion.
 9. **OrbStack `*:80` collision is permanent.** Don't try port-free aliases (`http://litellm/`) — it was investigated 2026-05-28 and reverted. Stay on `http://litellm:4000`.
 
+> **Two methodology layers (don't fork them).** These C1–C9 are the **ai-stack-specific** rules for the Claude Code *main* agent operating on this repo. The **generic, portable engineering methodology** (verify-don't-assume, hypothesis-first, E2E verification, reversibility, multi-agent contract, runtime invariants, reporting) lives in the fleet's **shared skills** (`agent-profiles/*/skills/`: `team-protocol` keystone + `verification-gates` · `hypothesis-debugging` · `reversible-changes` · `tdd` · `brainstorming`) and the shared **Ethos** (team-protocol §Ethos + a couplet in every soul's "Operating discipline" block). The 6 skills are byte-identical across the 3 fleets; **edit hermes then `cp` to pi + claude-code**, and run `bash installer/lib/check_fleet_parity.sh` (a lint, not a doctor check) to assert parity. (See `doc/specs/2026-06-08-operator-manager-ethos.md`.)
+
 **Memory pointers** (auto-loaded in this user's Claude sessions, see `~/.claude/projects/-Users-mayssam-sayyadian-ai-stack/memory/MEMORY.md`):
 - `feedback_autonomous_execution.md`, `feedback_background_tasks.md`, `feedback_upgrade_fleet_prefs.md`
 - `project_doctor_count.md` (now **45** checks — update if you add checks)
