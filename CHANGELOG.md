@@ -4,6 +4,19 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-08
+
+### Features
+
+- openshell-checkpoint/restore/identity-backup + fleet lifecycle tracing
+
+### Incidents
+
+- Fleet token-storm P0: capped+checkpointed sandboxes, hardened heal/reset paths
+
+---
+
+
 ## 2026-06-08 — operator-manager + shared Ethos + methodology gap-fill (agent fleet)
 
 Council-designed (`doc/specs/2026-06-08-operator-manager-ethos.md`), built + 3-lens adversarial review
