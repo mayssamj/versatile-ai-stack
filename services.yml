@@ -96,7 +96,7 @@ services:
     image: arizephoenix/phoenix:latest
     ports: [6006, 4317]
     bind: 127.0.0.1
-    health: http://127.0.0.1:6006/healthz
+    health: http://phoenix:6006/healthz
     phase: "01h"
     open_url: http://phoenix:6006
     alias: phoenix
@@ -118,7 +118,7 @@ services:
       "why": Always-on for forensics and observability. Reach for it whenever you wonder 'what did the model actually receive?', 'why was that slow?', or 'how much did this session cost?'. It also has a phoenix.evals Python API for LLM-as-judge evaluation runs.
       "usage":
         - 'open http://phoenix:6006 && source ~/ai-stack/.env && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H ''Content-Type: application/json'' -H ''x-trace-tag: my-experiment-2026-05-29'' http://litellm:4000/v1/chat/completions -d ''{"model":"local","messages":[{"role":"user","content":"tag me"}],"max_tokens":5}'' >/dev/null && curl -s -H "Authorization: Bearer $PHOENIX_API_KEY" "http://phoenix:6006/v1/spans?project=ai-stack&start=$(date -v-1H -u +%FT%TZ)" | jq -c ''.[]'' | wc -l'
-        - curl -s http://127.0.0.1:6006/healthz
+        - curl -s http://phoenix:6006/healthz
         - open http://phoenix:6006
         - bash ~/ai-stack/bin/start-phoenix.sh
         - docker logs -f phoenix
@@ -171,7 +171,7 @@ services:
     image: qdrant/qdrant
     port: 6333
     bind: 127.0.0.1
-    health: http://127.0.0.1:6333/collections
+    health: http://qdrant:6333/collections
     phase: "02"
     open_url: http://qdrant:6333/dashboard
     alias: qdrant
@@ -185,7 +185,7 @@ services:
       "why": This is the RAG store. Every embed-local (or embed-openai-*) vector that comes out of LiteLLM lands here; docs_ingestor (Phase 06) writes the ai-stack-docs collection and docs-mcp reads from it. Reach for it whenever you need semantic retrieval.
       "usage":
         - 'curl -s http://qdrant:6333/collections | jq && curl -s -X PUT http://qdrant:6333/collections/demo -H ''Content-Type: application/json'' -d ''{"vectors":{"size":4,"distance":"Cosine"}}'' && curl -s -X PUT http://qdrant:6333/collections/demo/points -H ''Content-Type: application/json'' -d ''{"points":[{"id":1,"vector":[0.1,0.2,0.3,0.4],"payload":{"text":"hello"}},{"id":2,"vector":[0.9,0.8,0.7,0.6],"payload":{"text":"world"}}]}'' && curl -s -X POST http://qdrant:6333/collections/demo/points/search -H ''Content-Type: application/json'' -d ''{"vector":[0.15,0.25,0.35,0.45],"limit":1}'' | jq'
-        - curl -s http://127.0.0.1:6333/collections | jq
+        - curl -s http://qdrant:6333/collections | jq
         - curl -s http://qdrant:6333/collections/ai-stack-docs | jq '.result.points_count'
         - open http://qdrant:6333/dashboard
         - bash ~/ai-stack/bin/start-qdrant.sh
@@ -252,10 +252,19 @@ services:
   hermes_fleet:
     enabled: true
     type: hermes-profiles
-    desc: "The 7-profile Hermes agent fleet in the hermes-fleet-v1 OpenShell sandbox"
-    profiles: [hermes_cos, hermes_software_engineer, hermes_researcher, hermes_creator, hermes_reviewer, hermes_data_analyst, hermes_ops]
+    desc: "The 9-role Hermes engineering-team fleet in the hermes-fleet-v1 OpenShell sandbox"
+    profiles: [hermes_manager, hermes_techlead, hermes_frontend_engineer, hermes_backend_engineer, hermes_ml_engineer, hermes_qa_test_engineer, hermes_reviewing_engineer, hermes_sre_engineer, hermes_incident_manager]
     phase: "04f"
     network: openshell
+    help:
+      "what": The 9-role Hermes engineering-team fleet -- manager, techlead, frontend/backend/ml engineers, qa-test, reviewing, sre, incident-manager -- running as OpenShell profiles in the hermes-fleet-v1 sandbox.
+      "why": This is the multi-agent software team. Reach for it when a goal needs framing, decomposition, and routing across specialist roles with typed handoffs and review gates. The manager is the operator (executes directly when fastest, else delegates); reviewing-engineer and incident-manager stay read-only.
+      "usage":
+        - vz-ai-stack.sh fleet list
+        - vz-ai-stack.sh fleet list --json
+        - vz-ai-stack.sh model list
+        - vz-ai-stack.sh help fleet
+      "config_notes": Roster and per-role model are declared in installer/models.yml (kinds.*.kind=hermes-profile and assignments.hermes_*); all 9 roles route to Claude Opus 4.8 over the subscription via Meridian (manager/qa/sre/incident=sub-xhigh; techlead/ml/frontend/backend/reviewing=sub-max). Souls live in agent-profiles/hermes/profiles/<role>/SOUL.md and are staged into the sandbox by Phase 04f. Add or remove a specialist with `fleet add|remove`; spin up a separate isolated fleet with `fleet new <name>`.
   hermes_telegram:
     enabled: true # Phase 20 — native hermes gateway → Telegram (@vz_hermes_controller_bot)
     type: sandbox-daemon

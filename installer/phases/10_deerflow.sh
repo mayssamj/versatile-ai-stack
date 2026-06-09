@@ -115,8 +115,8 @@ fi
 # Resolve the deerflow reasoning-tier model from installer/models.yml,
 # availability-gated. DeerFlow's two-tier `models:` block is: a "basic" entry
 # (name: local) pinned to the default local-gemma4, and a "reasoning" entry
-# (name: local-heavy) pointed at the deerflow assignment (local-qwen3.6) — but
-# gated DOWN to the default when LM Studio is down / the slug isn't in
+# (name: local-heavy) pointed at the deerflow assignment (claude-opus-4.8-sub-max via Meridian) — but
+# gated DOWN to the default when the assigned runtime is down / the slug isn't in
 # config.yaml, so DeerFlow never gets a model_name LiteLLM can't serve. We map
 # BOTH tiers, never silently rewrite only one. DeerFlow uses the MASTER key, so
 # there is NO scoped-key allowlist to widen.

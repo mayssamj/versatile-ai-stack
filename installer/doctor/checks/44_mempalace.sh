@@ -18,11 +18,21 @@ mempalace_diagnose() {
   local mp_bin
   mp_bin="$(command -v mempalace 2>/dev/null || echo "$HOME/.local/bin/mempalace")"
 
-  # Not installed at all → Phase 26 not selected; skip green.
-  if [[ ! -x "$mp_bin" ]] && ! command -v mempalace >/dev/null 2>&1 && [[ ! -x "$wrapper" ]]; then
-    echo "mempalace not installed — Phase 26 not selected (skipping)"
+  # Phase 26 is OPT-IN and NOT part of `install all`. Its footprint — the tracked
+  # bin/mempalace wrapper, the uv-installed tool in ~/.local, ~/.mempalace/config.json,
+  # and MEMPALACE_LITELLM_KEY in .env — ALL survive `reset --hard`; only the LiteLLM
+  # virtual key is invalidated when the key store is wiped. So footprint presence alone
+  # falsely reports "installed" after a reset (and on a fresh clone, where the wrapper
+  # ships tracked but the tool/key do not). The phase stamp is the one signal `reset`
+  # clears, so gate on it: no phase-26 stamp ⇒ Phase 26 not part of THIS stack ⇒ skip green.
+  # NB: use compgen -G (not `ls <glob>`): doctor.sh runs under `shopt -s nullglob`, where an
+  # unmatched glob word is REMOVED, making `ls` list the cwd and falsely succeed. compgen -G
+  # returns 0 iff ≥1 file matches, regardless of nullglob/failglob.
+  if ! compgen -G "$AI_STACK/installer/state/phase_26*.done" >/dev/null 2>&1; then
+    echo "mempalace not installed in this stack — Phase 26 not run (opt-in; skipping)"
     return 0
   fi
+
   if [[ ! -x "$mp_bin" ]] && ! command -v mempalace >/dev/null 2>&1; then
     echo "bin/mempalace wrapper present but the mempalace tool is missing — re-run Phase 26 (uv tool install drift)"
     return 1

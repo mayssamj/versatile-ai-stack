@@ -128,7 +128,7 @@
 
 <div class="layout">
   <aside>
-    <h3>Sections (16 diagrams)</h3>
+    <h3>Sections (20 diagrams)</h3>
     <ul id="toc">
       <li><a href="#sec-1-1-system-overview-what-talks-to-what">1. System overview — what talks to what</a></li>
 <li><a href="#sec-2-2-layer-boundary-diagram">2. Layer / boundary diagram</a></li>
@@ -488,6 +488,60 @@ sequenceDiagram
 <p>LM Studio (MLX) model but LiteLLM isn&#x27;t currently serving it (LM Studio</p>
 <p>is opt-in and may be off), the agent is rendered against the default</p>
 <p><code>local-gemma4</code> instead — never left pointing at a dead route.</p>
+<h3 id="sec-5a">5a. Per-agent model selection pipeline (assignment → gate → effective → rendered)</h3>
+<p>Zooms into §5&#x27;s per-agent step: the per-<code>kind</code> dispatch and the
+rendered-vs-effective <strong>drift</strong> readback that §5 omits. <code>render_deerflow</code>
+writes <strong>two tiers</strong> — <code>basic</code> is <strong>always</strong> <code>local-gemma4</code>, <code>reasoning</code> is the
+gated effective model — and uses the <strong>master key</strong>, so the P3 superset-widening
+does not apply to it (and its basic tier does not "flip" to gemma4 on gate-down,
+it already <em>is</em> gemma4).</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-5a" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-5a" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-5a" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-5a" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-5a" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-5a-viewport">
+    <div class="mermaid" id="diag-5a">flowchart TB
+  A["agent (e.g. hermes_ml_engineer)"] --> ASG["assignment in models.yml<br/>(agent_assigned)"]
+  ASG --> RT{runtime of<br/>assigned model?}
+
+  RT -- ollama --> EFF["effective = assigned<br/>(render as-is)"]
+
+  RT -- lmstudio --> G1{LM Studio server<br/>up on :LMS_PORT?}
+  G1 -- no --> FB
+  G1 -- yes --> G2{slug present in<br/>litellm/config.yaml?}
+  G2 -- no --> FB
+  G2 -- yes --> G3{LiteLLM /v1/models<br/>lists the slug?}
+  G3 -- no --> FB
+  G3 -- yes --> EFF
+
+  FB["availability-gated:<br/>effective = local-gemma4<br/>+ record pending"] --> EFF
+
+  EFF --> DISP{dispatch by kind}
+  DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]
+  DISP -- pi --> RP["render_pi<br/>(PI_DEFAULT_MODEL in .env)"]
+  DISP -- deerflow --> RD["render_deerflow<br/>(two tiers; master key)"]
+  DISP -- ace --> RA["render_ace<br/>(.env, allowlist-only)"]
+  DISP -- rlm --> RR["render_rlm<br/>(RLM_MODEL in .env)"]
+
+  RH --> RDR["rendered model<br/>(what is actually wired)"]
+  RP --> RDR
+  RD --> RDR
+  RA --> RDR
+  RR --> RDR
+
+  RDR --> DR{rendered == effective?}
+  DR -- yes --> OK["consistent"]
+  DR -- no --> DRIFT["DRIFT - re-run model sync agent"]</div>
+  </div>
+</div>
+<h3 id="sec-5b">5b. Multi-engine inference topology — one hub, three runtimes</h3>
+<p>Provider keys live <strong>only</strong> in LiteLLM&#x27;s env — no agent, sandbox, or scoped key
+carries one. LM Studio&#x27;s <code>api_base</code> is rendered with <code>${LMS_PORT}</code> (default
+<code>1234</code>), never a bare literal.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-5b" data-action="out" title="Zoom out">−</button>
@@ -526,6 +580,113 @@ sequenceDiagram
 
   Bind --> Agents["9 Hermes profiles · pi · deerflow · ace · rlm"]
   Fall --> Agents</div>
+  </div>
+</div>
+<h3 id="sec-5c">5c. Model discovery / add / sync lifecycle (LM Studio library → models.yml → LiteLLM)</h3>
+<p>Adds the READ-ONLY catalog → <code>models.yml</code> story §5 omits: <code>discover</code> and <code>add</code>
+read the on-disk LM Studio library (server may be down) and <strong>load nothing</strong>;
+only <code>sync</code> touches LiteLLM.</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-5c" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-5c" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-5c" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-5c" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-5c" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-5c-viewport">
+    <div class="mermaid" id="diag-5c">sequenceDiagram
+  autonumber
+  participant U as You
+  participant M as vz-ai-stack.sh model
+  participant LMS as LM Studio library (lms ls --json)
+  participant YML as installer/models.yml
+  participant CFG as litellm/config.yaml
+  participant LL as litellm :4000
+
+  U->>M: model discover
+  M->>LMS: read on-disk catalog (READ-ONLY, server may be down)
+  LMS-->>M: LLMs + embeddings + sizes
+  M-->>U: table, marks DECLARED (exact served-id match) - loads nothing
+
+  U->>M: model add &lt;slug&gt; [as local-name]
+  M->>LMS: verify slug exists + read sizeBytes
+  M->>YML: declare runtime=lmstudio, served, big (size>=MODEL_BIG_GB), ttl=1800
+  Note over M: never loads the model
+
+  M->>M: model sync (P0 validate)
+  M->>CFG: P1 register model_list (ADD-ONLY, atomic)
+  M->>LL: P2 restart ONCE iff config.yaml changed
+  M->>LL: P3 widen scoped keys to the DERIVED superset
+  M->>M: P4 render agents (availability-gated)
+  M->>LL: P5 verify (drift + key coverage; advisory)
+  M-->>U: synced - slug servable once LM Studio loads it</div>
+  </div>
+</div>
+<h3 id="sec-5d">5d. RAM-budget preflight — the overkill guard that refuses an over-commit</h3>
+<p>Constants (see <code>installer/lib/lmstudio.sh</code>): headroom <strong>5 GiB</strong>
+(<code>5368709120</code> B), unknown-size fallback <strong>18 GiB</strong> (<code>19327352832</code> B), resident
+pad <strong>+15%</strong>. Refuses with the <strong>strict</strong> <code>&gt; total</code> (equality loads); degrades
+<strong>OPEN</strong> on any measurement failure.</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-5d" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-5d" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-5d" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-5d" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-5d" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-5d-viewport">
+    <div class="mermaid" id="diag-5d">flowchart TB
+  L["lms_load_big(served, ttl)"] --> SV{already served?}
+  SV -- yes --> IDEM["return 0 (idempotent)"]
+  SV -- no --> SKIP{LMS_SKIP_RAM_PREFLIGHT set?}
+  SKIP -- yes --> LOAD
+  SKIP -- no --> MEAS["measure:<br/>total = hw.memsize<br/>cap = OrbStack memory_mib (~/.orbstack/vmconfig.json)<br/>size = LM Studio on-disk bytes"]
+  MEAS --> FAIL{total &lt;= 0 /<br/>cannot measure?}
+  FAIL -- yes --> OPEN["degrade OPEN -> allow (note)"]
+  OPEN --> LOAD
+  FAIL -- no --> PAD["padded = size + 15%<br/>(size unknown -> 18 GiB fallback)<br/>headroom = 5 GiB"]
+  PAD --> CHK{cap + padded + headroom<br/>&gt; total RAM?}
+  CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local-gemma4<br/>fix: lower OrbStack cap or smaller model"]
+  CHK -- no --> LOAD["unload OTHER MLX models (one-big-at-a-time)<br/>lms load --ttl -> verify in /v1/models"]</div>
+  </div>
+</div>
+<h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM</h3>
+<p>Not to be confused with <a href="#sec-11-11-memory-profiles-what-runs-in-each-mode">§11 Memory profiles</a>
+(RAM modes). The deriver uses the stack default model (<code>local-gemma4</code>/gemma4:e4b)
+like every other service, overridable via the <code>HONCHO_DERIVER_MODEL</code> env var.</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-5e" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-5e" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-5e" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-5e" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-5e" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-5e-viewport">
+    <div class="mermaid" id="diag-5e">sequenceDiagram
+  autonumber
+  participant AG as Agent (peer namespace)
+  participant HO as honcho :8000 (api)
+  participant DR as honcho deriver
+  participant LL as litellm.ai-stack:4000
+  participant LH as local-gemma4 (Ollama gemma4:e4b, default)
+  participant PG as Postgres (data/honcho)
+
+  AG->>HO: write message (session, peer-scoped)
+  HO->>PG: persist raw message
+  HO->>DR: enqueue derivation
+  DR->>LL: extract user representation (model=local-gemma4, override via HONCHO_DERIVER_MODEL)
+  LL->>LH: forward
+  Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
+  LH-->>LL: derived facts
+  LL-->>DR: derived facts (also traced to Phoenix)
+  DR->>PG: persist derived representation (namespace-isolated)
+  AG->>HO: later - query peer memory
+  HO->>PG: read peer-scoped facts
+  PG-->>HO: facts
+  HO-->>AG: context (never leaves the machine)</div>
   </div>
 </div>
 <p>What the assignments look like (from <code>models.yml</code>, see</p>
