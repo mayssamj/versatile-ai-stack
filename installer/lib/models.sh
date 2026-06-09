@@ -155,6 +155,12 @@ validate() {
   if [[ "$(my_q ".models.\"$default\".runtime")" != "ollama" ]]; then
     err "models.yml: default '$default' must be an ollama-runtime model (the always-on fallback)"; return 2
   fi
+  # `primary` (optional) — the model an UNASSIGNED agent renders. Any runtime is
+  # allowed (it availability-gates to the ollama `default` when its runtime is down).
+  local primary; primary="$(my_q '.primary')"
+  if [[ -n "$primary" && "$primary" != "null" ]] && ! model_exists "$primary"; then
+    err "models.yml: primary '$primary' is not a declared model"; return 2
+  fi
 
   # Every model entry must declare a runtime + served, and runtime in {ollama,lmstudio}.
   local m rt sv
@@ -168,8 +174,8 @@ validate() {
         # Claude subscription via Meridian. Must declare a valid effort level.
         local ef; ef="$(my_q ".models.\"$m\".effort")"
         case "$ef" in
-          low|medium|high|xhigh|max) : ;;
-          *) err "models.yml: meridian model '$m' has invalid effort '$ef' (want low|medium|high|xhigh|max)"; return 2 ;;
+          low|medium|high|xhigh|max|ultracode) : ;;
+          *) err "models.yml: meridian model '$m' has invalid effort '$ef' (want low|medium|high|xhigh|max|ultracode)"; return 2 ;;
         esac ;;
       *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian)"; return 2 ;;
     esac
@@ -208,6 +214,7 @@ model_served()   { my_q ".models.\"$1\".served"; }
 model_effort()   { my_q ".models.\"$1\".effort"; }
 model_ttl()      { local t; t="$(my_q ".models.\"$1\".ttl")"; [[ "$t" == "null" || -z "$t" ]] && echo 1800 || echo "$t"; }
 default_model()  { my_q '.default'; }
+primary_model()  { local p; p="$(my_q '.primary')"; [[ -z "$p" || "$p" == "null" ]] && p="$(my_q '.default')"; echo "$p"; }
 
 # ---------------------------------------------------------------------------
 # 1. Availability gate (constraint 2)
@@ -255,6 +262,9 @@ resolve_effective() {
   local agent="$1" declared rt default
   declared="$(agent_assigned "$agent")"
   default="$(default_model)"
+  # Unassigned agent -> the `primary` default model (availability-gated to `default`,
+  # the always-on ollama fallback, exactly like an assigned model would be).
+  [[ -z "$declared" || "$declared" == "null" ]] && declared="$(primary_model)"
   rt="$(model_runtime "$declared")"
   _GATED=0
   case "$rt" in
@@ -287,8 +297,12 @@ resolve_effective() {
 # reaches the caller. Gated == the assigned model is lmstudio but we rendered
 # something else (the availability fallback).
 is_gated() {
-  local rt; rt="$(model_runtime "$(agent_assigned "$1")")"
-  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" ) && "$2" != "$(agent_assigned "$1")" ]]
+  # Mirror resolve_effective's declared resolution: an UNASSIGNED agent routes through
+  # `primary`, so gating (and its pending/warning observability) must resolve it too.
+  local declared; declared="$(agent_assigned "$1")"
+  [[ -z "$declared" || "$declared" == "null" ]] && declared="$(primary_model)"
+  local rt; rt="$(model_runtime "$declared")"
+  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" ) && "$2" != "$declared" ]]
 }
 
 _record_pending() {
@@ -605,7 +619,10 @@ render_agent() {
   eff="$(resolve_effective "$agent")"
   if is_gated "$agent" "$eff"; then
     # resolve_effective (in its subshell) already wrote the pending line; keep it.
-    warn "$agent: assigned '$(agent_assigned "$agent")' (lmstudio) not servable — rendering '$eff' (availability-gated)"
+    local _decl _drt; _decl="$(agent_assigned "$agent")"
+    [[ -z "$_decl" || "$_decl" == "null" ]] && _decl="$(primary_model)"
+    _drt="$(model_runtime "$_decl")"
+    warn "$agent: assigned '$_decl' ($_drt) not servable — rendering '$eff' (availability-gated)"
   else
     _clear_pending "$agent"
   fi
@@ -1214,7 +1231,7 @@ _dry_run() {
   local ag eff
   for ag in $({ [[ -n "$only" ]] && echo "$only" || agents; }); do
     eff="$(resolve_effective "$ag")"
-    local tag=""; is_gated "$ag" "$eff" && tag="  (gated: LM Studio down/slug not served)"
+    local tag=""; is_gated "$ag" "$eff" && tag="  (gated: assigned runtime down — rendering the fallback)"
     printf '    %-26s %-26s %s%s\n' "$ag" "$(agent_assigned "$ag")" "$eff" "$tag"
   done
   ok "dry-run complete — nothing written"

@@ -128,49 +128,32 @@
 
 <div class="layout">
   <aside>
-    <h3>Sections (20 diagrams)</h3>
+    <h3>Sections (21 diagrams)</h3>
     <ul id="toc">
-      <li><a href="#sec-1-1-system-overview-what-talks-to-what">1. System overview — what talks to what</a></li>
-<li><a href="#sec-2-2-layer-boundary-diagram">2. Layer / boundary diagram</a></li>
-<li><a href="#sec-3-3-user-story-chatting-with-a-model-via-open-webui">3. User story: chatting with a model via Open WebUI</a></li>
-<li><a href="#sec-4-4-user-story-hermes-researcher-answers-a-question-using-local-cloud">4. User story: Hermes researcher answers a question using local + cloud</a></li>
-<li><a href="#sec-5-5-model-agent-binding-and-availability-gating">5. Model ↔ agent binding and availability-gating</a></li>
-<li><a href="#sec-6-6-user-story-ingesting-a-new-pdf-into-rag">6. User story: ingesting a new PDF into RAG</a></li>
-<li><a href="#sec-7-7-user-story-an-agent-runs-a-shell-command-sandbox-in-action">7. User story: an agent runs a shell command (sandbox in action)</a></li>
-<li><a href="#sec-8-8-security-and-sandbox-boundaries">8. Security and sandbox boundaries</a></li>
-<li><a href="#sec-9-9-where-your-data-goes-privacy-story">9. Where your data goes (privacy story)</a></li>
-<li><a href="#sec-10-10-per-call-observability-where-a-trace-lives">10. Per-call observability: where a trace lives</a></li>
-<li><a href="#sec-11-11-memory-profiles-what-runs-in-each-mode">11. Memory profiles — what runs in each mode</a></li>
-<li><a href="#sec-12-12-network-topology-host-vs-ai-stack-vs-openshell">12. Network topology — host vs ai-stack vs OpenShell</a></li>
+      <li><a href="#sec-1-system-overview--what-talks-to-what">1. System overview — what talks to what</a></li>
+<li><a href="#sec-2-layer--boundary-diagram">2. Layer / boundary diagram</a></li>
+<li><a href="#sec-3-user-story-chatting-with-a-model-via-open-webui">3. User story: chatting with a model via Open WebUI</a></li>
+<li><a href="#sec-4-user-story-hermes-researcher-answers-a-question-using-local--cloud">4. User story: Hermes researcher answers a question using local + cloud</a></li>
+<li><a href="#sec-5-model--agent-binding-and-availability-gating">5. Model ↔ agent binding and availability-gating</a></li>
+<li><a href="#sec-6-user-story-ingesting-a-new-pdf-into-rag">6. User story: ingesting a new PDF into RAG</a></li>
+<li><a href="#sec-7-user-story-an-agent-runs-a-shell-command-sandbox-in-action">7. User story: an agent runs a shell command (sandbox in action)</a></li>
+<li><a href="#sec-8-security-and-sandbox-boundaries">8. Security and sandbox boundaries</a></li>
+<li><a href="#sec-9-where-your-data-goes-privacy-story">9. Where your data goes (privacy story)</a></li>
+<li><a href="#sec-10-per-call-observability-where-a-trace-lives">10. Per-call observability: where a trace lives</a></li>
+<li><a href="#sec-11-memory-profiles--what-runs-in-each-mode">11. Memory profiles — what runs in each mode</a></li>
+<li><a href="#sec-12-network-topology--host-vs-ai-stack-vs-openshell">12. Network topology — host vs ai-stack vs OpenShell</a></li>
     </ul>
   </aside>
 
   <main id="top">
     <h1>Diagrams</h1>
-    <p>System-level architecture diagrams for <code>~/ai-stack</code>. Mermaid renders</p>
-<p>natively in GitHub and most editors. If a diagram looks busy in raw</p>
-<p>markdown, paste it into <a href="https://mermaid.live">mermaid.live</a> to render.</p>
+<p>System-level architecture diagrams for <code>~/ai-stack</code>. Mermaid renders natively in GitHub and most editors.</p>
+<blockquote><p><strong>Tip — if your editor's preview pane renders these too small to read</strong> (text shrinks, boxes pack in, zoom only enlarges proportionally instead of letting you pan): open <strong><a href="DIAGRAMS.html">DIAGRAMS.html</a></strong> instead. It's a single-file companion that renders the same diagrams via mermaid v11 (much sharper than the older mermaid 9.x most preview tools embed), gives each diagram a per-card zoom + pan + full-screen button, and has a sticky table of contents on the left. Open it directly in any browser: <code>open ~/ai-stack/DIAGRAMS.html</code>.</p></blockquote>
+<p>This document is the visual companion to <a href="STACK-GUIDE.md">STACK-GUIDE.md</a> (what each service does) and <a href="ALTERNATIVES.md">ALTERNATIVES.md</a> (what else you could use). Read those for prose; read this for shape.</p>
+<blockquote><p><strong>Footnote on labels.</strong> Boxes use alias names (e.g., <code>litellm</code>, <code>phoenix</code>). All edges — Mac-side and container-to-container — use the alias plus native port: <code>http://litellm:4000</code>, <code>http://phoenix:6006</code>, <code>http://openwebui:8080</code>. Ollama is the one host-gateway exception — its port <code>:11434</code> is just its native listener port, same as the others. (The 2026-05-27 design originally dropped the port on Mac-side dials but the OrbStack <code>*:80</code> wildcard listener forced us to native ports; see <a href="../CHANGELOG.md">CHANGELOG.md 2026-05-28 entry</a>.)</p></blockquote>
 
-<p>This document is the visual companion to <a href="STACK-GUIDE.md">STACK-GUIDE.md</a></p>
-<p>(what each service does) and <a href="ALTERNATIVES.md">ALTERNATIVES.md</a> (what</p>
-<p>else you could use). Read those for prose; read this for shape.</p>
-
-<blockquote>
-<p><strong>Footnote on labels.</strong> Boxes use alias names (e.g., <code>litellm</code>,</p>
-<p><code>phoenix</code>). All edges — Mac-side and container-to-container — use the</p>
-<p>alias plus native port: <code>http://litellm:4000</code>, <code>http://phoenix:6006</code>,</p>
-<p><code>http://openwebui:8080</code>. Ollama is the one host-gateway exception —</p>
-<p>its port <code>:11434</code> is just its native listener port, same as the</p>
-<p>others. (The 2026-05-27 design originally dropped the port on</p>
-<p>Mac-side dials but the OrbStack <code>*:80</code> wildcard listener forced us to</p>
-<p>native ports; see <a href="CHANGELOG.md">CHANGELOG.md 2026-05-28 entry</a>.)</p>
-</blockquote>
-
-<hr>
-<section id="sec-1-1-system-overview-what-talks-to-what"><h2>1. System overview — what talks to what</h2>
-<p>The 10,000-foot view. Boxes are services, arrows are &quot;calls&quot; (not</p>
-<p>necessarily bidirectional traffic — most return values flow back along</p>
-<p>the same edge).</p>
+<section id="sec-1-system-overview--what-talks-to-what"><h2>1. System overview — what talks to what</h2>
+<p>The 10,000-foot view. Boxes are services, arrows are "calls" (not necessarily bidirectional traffic — most return values flow back along the same edge).</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-1" data-action="out" title="Zoom out">−</button>
@@ -254,29 +237,17 @@
   </div>
 </div>
 <p>Key things to notice:</p>
-<ul>
-<li>Every LLM call funnels through LiteLLM. It fronts two local runtimes —</li>
-</ul>
-<p>  Ollama (default, serves <code>local-gemma4</code>) and, when you opt into Phase 25,</p>
-<p>  LM Studio&#x27;s MLX server (<code>:1234</code>, serves the heavy <code>local-qwen3.6</code> /</p>
-<p>  <code>local-qwen3-coder</code> MLX models) — plus the cloud APIs.</p>
-<ul>
-<li>Phoenix only receives; it never sits in the request path.</li>
-<li>Honcho and Qdrant are the long-term state. Everything else is</li>
-</ul>
-<p>  ephemeral.</p>
-<ul>
-<li>MemPalace (Phase 26, opt-in) is <strong>CLI-only</strong> verbatim conversation</li>
-</ul>
-<p>  memory: its embeddings are computed <strong>on-device</strong> (local ONNX), so it</p>
-<p>  touches LiteLLM <em>only</em> for the optional refiner LLM — and not at all</p>
-<p>  otherwise.</p>
+<ul><li>Every LLM call funnels through LiteLLM. It fronts two local runtimes —</li></ul>
+<p>Ollama (default, serves <code>local-gemma4</code>) and, when you opt into Phase 25, LM Studio's MLX server (<code>:1234</code>, serves the heavy <code>local-qwen3.6</code> / <code>local-qwen3-coder</code> MLX models) — plus the cloud APIs.</p>
+<ul><li>Phoenix only receives; it never sits in the request path.</li><li>Honcho and Qdrant are the long-term state. Everything else is</li></ul>
+<p>ephemeral.</p>
+<ul><li>MemPalace (Phase 26, opt-in) is <strong>CLI-only</strong> verbatim conversation</li></ul>
+<p>memory: its embeddings are computed <strong>on-device</strong> (local ONNX), so it touches LiteLLM <em>only</em> for the optional refiner LLM — and not at all otherwise.</p>
+</section>
 
 <hr>
-<section id="sec-2-2-layer-boundary-diagram"><h2>2. Layer / boundary diagram</h2>
-<p>The same services grouped by responsibility. Useful when you want to</p>
-<p>talk about, say, &quot;the security layer&quot; without listing four containers</p>
-<p>by name.</p>
+<section id="sec-2-layer--boundary-diagram"><h2>2. Layer / boundary diagram</h2>
+<p>The same services grouped by responsibility. Useful when you want to talk about, say, "the security layer" without listing four containers by name.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-2" data-action="out" title="Zoom out">−</button>
@@ -358,11 +329,11 @@
   L6 -.runs on.-> L8</div>
   </div>
 </div>
-<p>The boundary that matters most is <strong>L7 wraps L2</strong>. Every agent runs</p>
-<p>inside the OpenShell sandbox; the rest of the stack does not.</p>
+<p>The boundary that matters most is <strong>L7 wraps L2</strong>. Every agent runs inside the OpenShell sandbox; the rest of the stack does not.</p>
+</section>
 
 <hr>
-<section id="sec-3-3-user-story-chatting-with-a-model-via-open-webui"><h2>3. User story: chatting with a model via Open WebUI</h2>
+<section id="sec-3-user-story-chatting-with-a-model-via-open-webui"><h2>3. User story: chatting with a model via Open WebUI</h2>
 <p>The simplest path through the stack. You type, you get an answer back.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
@@ -397,14 +368,12 @@ sequenceDiagram
   L->>L: append to traces/litellm.jsonl</div>
   </div>
 </div>
-<p>The guardrail checks are roughly 1 ms each — invisible to the user.</p>
-<p>The trace ship to Phoenix is fully async; if Phoenix is down, the</p>
-<p>response still arrives, you just lose the trace.</p>
+<p>The guardrail checks are roughly 1 ms each — invisible to the user. The trace ship to Phoenix is fully async; if Phoenix is down, the response still arrives, you just lose the trace.</p>
+</section>
 
 <hr>
-<section id="sec-4-4-user-story-hermes-researcher-answers-a-question-using-local-cloud"><h2>4. User story: Hermes researcher answers a question using local + cloud</h2>
-<p>The interesting path — combining local and cloud models, querying</p>
-<p>internal docs, and running inside the OpenShell sandbox.</p>
+<section id="sec-4-user-story-hermes-researcher-answers-a-question-using-local--cloud"><h2>4. User story: Hermes researcher answers a question using local + cloud</h2>
+<p>The interesting path — combining local and cloud models, querying internal docs, and running inside the OpenShell sandbox.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-4" data-action="out" title="Zoom out">−</button>
@@ -461,97 +430,27 @@ sequenceDiagram
   </div>
 </div>
 <p>Three things this shows:</p>
-<ul>
-<li>The researcher (assigned <strong>local-qwen3.6</strong>, see <a href="models.md">models.md</a>) uses a</li>
-</ul>
-<p>  local model for cheap summarization and <strong>claude-opus</strong> for the high-stakes</p>
-<p>  synthesis. Mixed cost discipline.</p>
-<ul>
-<li>Every external call goes via <code>inference.local</code>, the OpenShell L7</li>
-</ul>
-<p>  proxy. The agent never sees a real API key — the proxy injects the</p>
-<p>  fleet&#x27;s scoped <code>HERMES_LITELLM_KEY</code>, and LiteLLM checks every model</p>
-<p>  against that key&#x27;s allowlist (the canonical superset, so re-assigning</p>
-<p>  a model never needs a key re-mint). Each call also lands in Phoenix</p>
-<p>  project <code>ai-stack</code> for free.</p>
-<ul>
-<li>The researcher both reads and writes Honcho, so a follow-up question</li>
-</ul>
-<p>  next week starts with the conclusions from today.</p>
+<ul><li>The researcher (assigned <strong>local-qwen3.6</strong>, see <a href="models.md">models.md</a>) uses a</li></ul>
+<p>local model for cheap summarization and <strong>claude-opus</strong> for the high-stakes synthesis. Mixed cost discipline.</p>
+<ul><li>Every external call goes via <code>inference.local</code>, the OpenShell L7</li></ul>
+<p>proxy. The agent never sees a real API key — the proxy injects the fleet's scoped <code>HERMES_LITELLM_KEY</code>, and LiteLLM checks every model against that key's allowlist (the derived superset, so re-assigning a model never needs a key re-mint). Each call also lands in Phoenix project <code>ai-stack</code> for free.</p>
+<ul><li>The researcher both reads and writes Honcho, so a follow-up question</li></ul>
+<p>next week starts with the conclusions from today.</p>
+</section>
 
 <hr>
-<section id="sec-5-5-model-agent-binding-and-availability-gating"><h2>5. Model ↔ agent binding and availability-gating</h2>
-<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is</p>
-<p>the canonical source of truth for the binding; <code>vz-ai-stack.sh model sync</code></p>
-<p>reconciles it into LiteLLM and re-renders each agent. The interesting</p>
-<p>wrinkle is <strong>availability-gating</strong>: if an agent is assigned an</p>
-<p>LM Studio (MLX) model but LiteLLM isn&#x27;t currently serving it (LM Studio</p>
-<p>is opt-in and may be off), the agent is rendered against the default</p>
-<p><code>local-gemma4</code> instead — never left pointing at a dead route.</p>
-<h3 id="sec-5a">5a. Per-agent model selection pipeline (assignment → gate → effective → rendered)</h3>
-<p>Zooms into §5&#x27;s per-agent step: the per-<code>kind</code> dispatch and the
-rendered-vs-effective <strong>drift</strong> readback that §5 omits. <code>render_deerflow</code>
-writes <strong>two tiers</strong> — <code>basic</code> is <strong>always</strong> <code>local-gemma4</code>, <code>reasoning</code> is the
-gated effective model — and uses the <strong>master key</strong>, so the P3 superset-widening
-does not apply to it (and its basic tier does not "flip" to gemma4 on gate-down,
-it already <em>is</em> gemma4).</p>
+<section id="sec-5-model--agent-binding-and-availability-gating"><h2>5. Model ↔ agent binding and availability-gating</h2>
+<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is the canonical source of truth for the binding; <code>vz-ai-stack.sh model sync</code> reconciles it into LiteLLM and re-renders each agent. The interesting wrinkle is <strong>availability-gating</strong>: if an agent is assigned an LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio is opt-in and may be off), the agent is rendered against the always-on fallback <code>local-gemma4</code> instead — never left pointing at a dead route.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-5a" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-5a" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-5a" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-5a" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-5a" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-5" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-5" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-5" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-5" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-5" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-5a-viewport">
-    <div class="mermaid" id="diag-5a">flowchart TB
-  A["agent (e.g. hermes_ml_engineer)"] --> ASG["assignment in models.yml<br/>(agent_assigned)"]
-  ASG --> RT{runtime of<br/>assigned model?}
-
-  RT -- ollama --> EFF["effective = assigned<br/>(render as-is)"]
-
-  RT -- lmstudio --> G1{LM Studio server<br/>up on :LMS_PORT?}
-  G1 -- no --> FB
-  G1 -- yes --> G2{slug present in<br/>litellm/config.yaml?}
-  G2 -- no --> FB
-  G2 -- yes --> G3{LiteLLM /v1/models<br/>lists the slug?}
-  G3 -- no --> FB
-  G3 -- yes --> EFF
-
-  FB["availability-gated:<br/>effective = local-gemma4<br/>+ record pending"] --> EFF
-
-  EFF --> DISP{dispatch by kind}
-  DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]
-  DISP -- pi --> RP["render_pi<br/>(PI_DEFAULT_MODEL in .env)"]
-  DISP -- deerflow --> RD["render_deerflow<br/>(two tiers; master key)"]
-  DISP -- ace --> RA["render_ace<br/>(.env, allowlist-only)"]
-  DISP -- rlm --> RR["render_rlm<br/>(RLM_MODEL in .env)"]
-
-  RH --> RDR["rendered model<br/>(what is actually wired)"]
-  RP --> RDR
-  RD --> RDR
-  RA --> RDR
-  RR --> RDR
-
-  RDR --> DR{rendered == effective?}
-  DR -- yes --> OK["consistent"]
-  DR -- no --> DRIFT["DRIFT - re-run model sync agent"]</div>
-  </div>
-</div>
-<h3 id="sec-5b">5b. Multi-engine inference topology — one hub, three runtimes</h3>
-<p>Provider keys live <strong>only</strong> in LiteLLM&#x27;s env — no agent, sandbox, or scoped key
-carries one. LM Studio&#x27;s <code>api_base</code> is rendered with <code>${LMS_PORT}</code> (default
-<code>1234</code>), never a bare literal.</p>
-<div class="diagram-card">
-  <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-5b" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-5b" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-5b" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-5b" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-5b" data-action="copy" title="Copy mermaid source">📋</button>
-  </div>
-  <div class="diagram-viewport" id="diag-5b-viewport">
-    <div class="mermaid" id="diag-5b">flowchart TB
+  <div class="diagram-viewport" id="diag-5-viewport">
+    <div class="mermaid" id="diag-5">flowchart TB
   subgraph SoT[Source of truth]
     MY["installer/models.yml — 3 canonical models + per-agent assignments"]
   end
@@ -582,20 +481,127 @@ carries one. LM Studio&#x27;s <code>api_base</code> is rendered with <code>${LMS
   Fall --> Agents</div>
   </div>
 </div>
-<h3 id="sec-5c">5c. Model discovery / add / sync lifecycle (LM Studio library → models.yml → LiteLLM)</h3>
-<p>Adds the READ-ONLY catalog → <code>models.yml</code> story §5 omits: <code>discover</code> and <code>add</code>
-read the on-disk LM Studio library (server may be down) and <strong>load nothing</strong>;
-only <code>sync</code> touches LiteLLM.</p>
+<p>What the assignments look like (from <code>models.yml</code>, see <a href="models.md">models.md</a>):</p>
+<ul><li><strong>claude-opus-4.8-sub-xhigh</strong> (subscription via Meridian) — <code>hermes_manager</code>,</li></ul>
+<p><code>hermes_qa_test_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>ace</code>, <code>rlm</code>.</p>
+<ul><li><strong>claude-opus-4.8-sub-max</strong> (subscription via Meridian) — <code>hermes_techlead</code>,</li></ul>
+<p><code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>pi</code>, <code>deerflow</code>.</p>
+<ul><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
+<p>LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime is down. An UNASSIGNED agent renders the <code>primary</code> (<code>claude-opus-4.8-sub-max</code>) and gates to this. (<code>default:</code> in models.yml names this fallback; it must be an Ollama model.)</p>
+<p>Notes:</p>
+<ul><li>The Hermes fleet now routes to a Claude subscription via the Meridian host</li></ul>
+<p>daemon; availability-gating means when <strong>Meridian is down</strong> all nine profiles render against <code>local-gemma4</code> and keep working. (The heavy MLX models <code>local-qwen3.6</code> ~17.5GB and <code>local-qwen3-coder</code> ~17.2GB still exist as legacy slugs and cannot coexist on a 24GB box, but no agent is bound to them by default any more.)</p>
+<ul><li><code>model sync</code> is opt-in and crash-safe; it is <strong>not</strong> run by</li></ul>
+<p><code>install all</code>. Phase 1 only ever adds to LiteLLM's <code>model_list</code> (ADD-ONLY), and LiteLLM is restarted at most once.</p>
+<ul><li>Because every scoped key (<code>HERMES_LITELLM_KEY</code>, <code>PI_LITELLM_KEY</code>,</li></ul>
+<p><code>ACE_LITELLM_KEY</code>, <code>RLM_LITELLM_KEY</code>) is minted against the DERIVED <code>model superset</code> (<code>vz-ai-stack.sh model superset</code> — a sorted-unique union, not a hardcoded list), <code>model assign &lt;agent&gt; &lt;model&gt;</code> (or <code>model assign all &lt;model&gt;</code> for every agent) re-points agents without ever re-minting a key.</p>
+<ul><li>The four diagrams below (§5a–§5e) zoom into this pipeline: §5a the</li></ul>
+<p>per-agent selection (assignment → gate → effective → rendered + drift), §5b the multi-engine topology, §5c the discover/add/sync lifecycle, §5d the RAM-budget preflight, §5e Honcho agent memory.</p>
+<h3 id="sec-5a">5a. Per-agent model selection pipeline (assignment -&gt; gate -&gt; effective -&gt; rendered)</h3>
+<p>Zooms into §5's per-agent step: the per-<code>kind</code> dispatch and the rendered-vs-effective <strong>drift</strong> readback that §5 omits. <code>render_deerflow</code> writes <strong>two tiers</strong> — <code>basic</code> is <strong>always</strong> <code>local-gemma4</code>, <code>reasoning</code> is the gated effective model — and uses the <strong>master key</strong>, so the P3 superset-widening does not apply to it (and its basic tier does not "flip" to gemma4 on gate-down, it already <em>is</em> gemma4).</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-5c" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-5c" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-5c" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-5c" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-5c" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-6" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-6" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-6" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-6" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-6" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-5c-viewport">
-    <div class="mermaid" id="diag-5c">sequenceDiagram
+  <div class="diagram-viewport" id="diag-6-viewport">
+    <div class="mermaid" id="diag-6">flowchart TB
+  A["agent (e.g. hermes_ml_engineer)"] --> ASG{assigned in<br/>models.yml?}
+  ASG -- yes --> DECL["declared = assignment<br/>(agent_assigned)"]
+  ASG -- no --> PRI["declared = primary<br/>(claude-opus-4.8-sub-max)"]
+  DECL --> RT{runtime of<br/>declared model?}
+  PRI --> RT
+
+  RT -- ollama --> EFF["effective = declared<br/>(render as-is)"]
+
+  RT -- lmstudio --> G1{LM Studio server<br/>up on :LMS_PORT?}
+  G1 -- no --> FB
+  G1 -- yes --> G2{slug present in<br/>litellm/config.yaml?}
+  G2 -- no --> FB
+  G2 -- yes --> G3{LiteLLM /v1/models<br/>lists the slug?}
+  G3 -- no --> FB
+  G3 -- yes --> EFF
+
+  RT -- meridian --> M1{Meridian daemon up<br/>AND slug in config.yaml?}
+  M1 -- no --> FB
+  M1 -- yes --> EFF
+
+  FB["availability-gated:<br/>effective = local-gemma4<br/>(the ollama fallback) + record pending"] --> EFF
+
+  EFF --> DISP{dispatch by kind}
+  DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]
+  DISP -- pi --> RP["render_pi<br/>(PI_DEFAULT_MODEL in .env)"]
+  DISP -- deerflow --> RD["render_deerflow<br/>(two tiers; master key)"]
+  DISP -- ace --> RA["render_ace<br/>(.env, allowlist-only)"]
+  DISP -- rlm --> RR["render_rlm<br/>(RLM_MODEL in .env)"]
+
+  RH --> RDR["rendered model<br/>(what is actually wired)"]
+  RP --> RDR
+  RD --> RDR
+  RA --> RDR
+  RR --> RDR
+
+  RDR --> DR{rendered == effective?}
+  DR -- yes --> OK["consistent"]
+  DR -- no --> DRIFT["DRIFT - re-run model sync agent"]</div>
+  </div>
+</div>
+<h3 id="sec-5b">5b. Multi-engine inference topology — one hub, three runtimes</h3>
+<p>Provider keys live <strong>only</strong> in LiteLLM's env — no agent, sandbox, or scoped key carries one. LM Studio's <code>api_base</code> is rendered with <code>${LMS_PORT}</code> (default <code>1234</code>), never a bare literal.</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-7" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-7" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-7" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-7" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-7" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-7-viewport">
+    <div class="mermaid" id="diag-7">flowchart LR
+  subgraph Callers[Callers]
+    HF["Hermes profiles (sandbox)"]
+    PI["pi (sandbox)"]
+    DF["deerflow / ace / rlm"]
+    OWU["openwebui :8080"]
+    HO["honcho deriver"]
+  end
+
+  HUB["litellm :4000<br/>(single egress + scoped-key allowlist + tracing)"]
+
+  HF -- "hermes-gw injects HERMES_LITELLM_KEY" --> HUB
+  PI -- "host.docker.internal:4000 + PI_LITELLM_KEY" --> HUB
+  DF --> HUB
+  OWU --> HUB
+  HO -- "litellm.ai-stack:4000" --> HUB
+
+  subgraph Runtimes[Runtimes]
+    OL["ollama :11434 (host, lazy, KEEP_ALIVE=0)<br/>local-gemma4 = default"]
+    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local-qwen3.6 / local-qwen3-coder"]
+    CLOUD["Cloud APIs - only if you pick a non-local model<br/>Anthropic / OpenAI / OpenRouter / Gemini"]
+  end
+
+  HUB -- "ollama_chat/<served> @ ollama:11434" --> OL
+  HUB -. "openai/<served> @ host.docker.internal:LMS_PORT/v1" .-> LMS
+  HUB -. "provider key from LiteLLM env only" .-> CLOUD
+
+  HUB --> PX["phoenix :6006 (trace, async)"]</div>
+  </div>
+</div>
+<h3 id="sec-5c">5c. Model discovery / add / sync lifecycle (LM Studio library -&gt; models.yml -&gt; LiteLLM)</h3>
+<p>Adds the READ-ONLY catalog → <code>models.yml</code> story §5 omits: <code>discover</code> and <code>add</code> read the on-disk LM Studio library (server may be down) and <strong>load nothing</strong>; only <code>sync</code> touches LiteLLM.</p>
+<div class="diagram-card">
+  <div class="diagram-controls">
+    <button class="zoom-btn" data-target="diag-8" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-8" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-8" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-8" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-8" data-action="copy" title="Copy mermaid source">📋</button>
+  </div>
+  <div class="diagram-viewport" id="diag-8-viewport">
+    <div class="mermaid" id="diag-8">sequenceDiagram
   autonumber
   participant U as You
   participant M as vz-ai-stack.sh model
@@ -609,7 +615,7 @@ only <code>sync</code> touches LiteLLM.</p>
   LMS-->>M: LLMs + embeddings + sizes
   M-->>U: table, marks DECLARED (exact served-id match) - loads nothing
 
-  U->>M: model add &lt;slug&gt; [as local-name]
+  U->>M: model add <slug> [as local-name]
   M->>LMS: verify slug exists + read sizeBytes
   M->>YML: declare runtime=lmstudio, served, big (size>=MODEL_BIG_GB), ttl=1800
   Note over M: never loads the model
@@ -624,48 +630,43 @@ only <code>sync</code> touches LiteLLM.</p>
   </div>
 </div>
 <h3 id="sec-5d">5d. RAM-budget preflight — the overkill guard that refuses an over-commit</h3>
-<p>Constants (see <code>installer/lib/lmstudio.sh</code>): headroom <strong>5 GiB</strong>
-(<code>5368709120</code> B), unknown-size fallback <strong>18 GiB</strong> (<code>19327352832</code> B), resident
-pad <strong>+15%</strong>. Refuses with the <strong>strict</strong> <code>&gt; total</code> (equality loads); degrades
-<strong>OPEN</strong> on any measurement failure.</p>
+<p>Constants (see <code>installer/lib/lmstudio.sh</code>): headroom <strong>5 GiB</strong> (<code>5368709120</code> B), unknown-size fallback <strong>18 GiB</strong> (<code>19327352832</code> B), resident pad <strong>+15%</strong>. Refuses with the <strong>strict</strong> <code>&gt; total</code> (equality loads); degrades <strong>OPEN</strong> on any measurement failure.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-5d" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-5d" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-5d" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-5d" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-5d" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-9" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-9" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-9" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-9" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-9" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-5d-viewport">
-    <div class="mermaid" id="diag-5d">flowchart TB
+  <div class="diagram-viewport" id="diag-9-viewport">
+    <div class="mermaid" id="diag-9">flowchart TB
   L["lms_load_big(served, ttl)"] --> SV{already served?}
   SV -- yes --> IDEM["return 0 (idempotent)"]
   SV -- no --> SKIP{LMS_SKIP_RAM_PREFLIGHT set?}
   SKIP -- yes --> LOAD
   SKIP -- no --> MEAS["measure:<br/>total = hw.memsize<br/>cap = OrbStack memory_mib (~/.orbstack/vmconfig.json)<br/>size = LM Studio on-disk bytes"]
-  MEAS --> FAIL{total &lt;= 0 /<br/>cannot measure?}
+  MEAS --> FAIL{total <= 0 /<br/>cannot measure?}
   FAIL -- yes --> OPEN["degrade OPEN -> allow (note)"]
   OPEN --> LOAD
   FAIL -- no --> PAD["padded = size + 15%<br/>(size unknown -> 18 GiB fallback)<br/>headroom = 5 GiB"]
-  PAD --> CHK{cap + padded + headroom<br/>&gt; total RAM?}
+  PAD --> CHK{cap + padded + headroom<br/>> total RAM?}
   CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local-gemma4<br/>fix: lower OrbStack cap or smaller model"]
   CHK -- no --> LOAD["unload OTHER MLX models (one-big-at-a-time)<br/>lms load --ttl -> verify in /v1/models"]</div>
   </div>
 </div>
-<h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM</h3>
-<p>Not to be confused with <a href="#sec-11-11-memory-profiles-what-runs-in-each-mode">§11 Memory profiles</a>
-(RAM modes). The deriver uses the stack default model (<code>local-gemma4</code>/gemma4:e4b)
-like every other service, overridable via the <code>HONCHO_DERIVER_MODEL</code> env var.</p>
+<h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)</h3>
+<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). The deriver uses the stack default model (<code>local-gemma4</code>/gemma4:e4b) like every other service, overridable via the <code>HONCHO_DERIVER_MODEL</code> env var.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-5e" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-5e" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-5e" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-5e" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-5e" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-10" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-10" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-10" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-10" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-10" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-5e-viewport">
-    <div class="mermaid" id="diag-5e">sequenceDiagram
+  <div class="diagram-viewport" id="diag-10-viewport">
+    <div class="mermaid" id="diag-10">sequenceDiagram
   autonumber
   participant AG as Agent (peer namespace)
   participant HO as honcho :8000 (api)
@@ -689,42 +690,21 @@ like every other service, overridable via the <code>HONCHO_DERIVER_MODEL</code> 
   HO-->>AG: context (never leaves the machine)</div>
   </div>
 </div>
-<p>What the assignments look like (from <code>models.yml</code>, see</p>
-<p><a href="models.md">models.md</a>):</p>
-<ul>
-<li><strong>claude-opus-4.8-sub-xhigh</strong> (subscription via Meridian) — <code>hermes_manager</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>ace</code>, <code>rlm</code>.</li>
-<li><strong>claude-opus-4.8-sub-max</strong> (subscription via Meridian) — <code>hermes_techlead</code>, <code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>pi</code>, <code>deerflow</code>.</li>
-<li><strong>local-gemma4</strong> (the default) — the availability-gated fallback for every subscription-assigned agent (incl. all nine Hermes profiles) when Meridian is down.</li>
-</ul>
-<p>Notes:</p>
-<ul>
-<li>The Hermes fleet now routes to a Claude subscription via the Meridian host daemon; when <strong>Meridian is down</strong> all nine profiles render against <code>local-gemma4</code> and keep working. (The heavy MLX models <code>local-qwen3.6</code> ~17.5GB and <code>local-qwen3-coder</code> ~17.2GB still exist as legacy slugs and cannot coexist on a 24GB box, but no agent is bound to them by default any more.)</li>
-</ul>
-<ul>
-<li><code>model sync</code> is opt-in and crash-safe; it is <strong>not</strong> run by</li>
-</ul>
-<p>  <code>install all</code>. Phase 1 only ever adds to LiteLLM&#x27;s <code>model_list</code></p>
-<p>  (ADD-ONLY), and LiteLLM is restarted at most once.</p>
-<ul>
-<li>Because every scoped key (<code>HERMES_LITELLM_KEY</code>, <code>PI_LITELLM_KEY</code>,</li>
-</ul>
-<p>  <code>ACE_LITELLM_KEY</code>, <code>RLM_LITELLM_KEY</code>) is minted against the fixed</p>
-<p>  <code>model superset</code>, <code>model assign &lt;agent&gt; &lt;model&gt;</code> re-points an agent</p>
-<p>  without ever re-minting a key.</p>
+</section>
 
 <hr>
-<section id="sec-6-6-user-story-ingesting-a-new-pdf-into-rag"><h2>6. User story: ingesting a new PDF into RAG</h2>
+<section id="sec-6-user-story-ingesting-a-new-pdf-into-rag"><h2>6. User story: ingesting a new PDF into RAG</h2>
 <p>You drop a file in <code>ingestor/inbox/</code>. Eventually agents can search it.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-5" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-5" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-5" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-5" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-5" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-11" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-11" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-11" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-11" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-11" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-5-viewport">
-    <div class="mermaid" id="diag-5">  %%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+  <div class="diagram-viewport" id="diag-11-viewport">
+    <div class="mermaid" id="diag-11">  %%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
 sequenceDiagram
   autonumber
   participant U as You
@@ -755,31 +735,24 @@ sequenceDiagram
   ING-->>U: "N docs ingested"</div>
   </div>
 </div>
-<p>After this, <code>mcp_server.py</code> can serve <code>search_documents</code> queries</p>
-<p>against the new chunks immediately — the MCP server opens the same</p>
-<p>Qdrant collection.</p>
+<p>After this, <code>mcp_server.py</code> can serve <code>search_documents</code> queries against the new chunks immediately — the MCP server opens the same Qdrant collection.</p>
+</section>
 
 <hr>
-<section id="sec-7-7-user-story-an-agent-runs-a-shell-command-sandbox-in-action"><h2>7. User story: an agent runs a shell command (sandbox in action)</h2>
-<p>The path that justifies OpenShell&#x27;s existence. The agent wants to `pip</p>
-<p>install something`. We let it install from pypi but not write to</p>
-<p><code>~/.ssh/</code>.</p>
-
-<p>This is the threat model. The agent does not need to be trustworthy</p>
-<p>because the sandbox is not. Five distinct scenarios — one per diagram so</p>
-<p>each stays legible.</p>
-
+<section id="sec-7-user-story-an-agent-runs-a-shell-command-sandbox-in-action"><h2>7. User story: an agent runs a shell command (sandbox in action)</h2>
+<p>The path that justifies OpenShell's existence. The agent wants to <code>pip install something</code>. We let it install from pypi but not write to <code>~/.ssh/</code>.</p>
+<p>This is the threat model. The agent does not need to be trustworthy because the sandbox is not. Five distinct scenarios — one per diagram so each stays legible.</p>
 <p><strong>7.1 Allowed write inside the sandbox.</strong></p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-6" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-6" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-6" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-6" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-6" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-12" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-12" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-12" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-12" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-12" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-6-viewport">
-    <div class="mermaid" id="diag-6">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+  <div class="diagram-viewport" id="diag-12-viewport">
+    <div class="mermaid" id="diag-12">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
 sequenceDiagram
   autonumber
   participant A as Agent inside sandbox
@@ -788,18 +761,17 @@ sequenceDiagram
   FS-->>A: ok (path in allow list)</div>
   </div>
 </div>
-<p><strong>7.2 Denied read of host secrets.</strong> The agent asks for an SSH key; the</p>
-<p>FS layer checks with the policy engine and refuses.</p>
+<p><strong>7.2 Denied read of host secrets.</strong> The agent asks for an SSH key; the FS layer checks with the policy engine and refuses.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-7" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-7" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-7" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-7" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-7" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-13" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-13" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-13" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-13" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-13" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-7-viewport">
-    <div class="mermaid" id="diag-7">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+  <div class="diagram-viewport" id="diag-13-viewport">
+    <div class="mermaid" id="diag-13">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
 sequenceDiagram
   autonumber
   participant A as Agent inside sandbox
@@ -811,18 +783,17 @@ sequenceDiagram
   FS-->>A: permission denied</div>
   </div>
 </div>
-<p><strong>7.3 Allowed network egress to an allowlisted host.</strong> `pip install</p>
-<p>requests` goes to pypi.org via the L4 firewall and L7 proxy.</p>
+<p><strong>7.3 Allowed network egress to an allowlisted host.</strong> <code>pip install requests</code> goes to pypi.org via the L4 firewall and L7 proxy.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-8" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-8" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-8" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-8" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-8" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-14" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-14" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-14" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-14" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-14" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-8-viewport">
-    <div class="mermaid" id="diag-8">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+  <div class="diagram-viewport" id="diag-14-viewport">
+    <div class="mermaid" id="diag-14">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
 sequenceDiagram
   autonumber
   participant A as Agent inside sandbox
@@ -840,18 +811,17 @@ sequenceDiagram
   NET-->>A: install done</div>
   </div>
 </div>
-<p><strong>7.4 Denied network egress to a non-allowlisted host.</strong> The agent tries</p>
-<p>to exfil to <code>attacker.com</code>; the L4 firewall rejects.</p>
+<p><strong>7.4 Denied network egress to a non-allowlisted host.</strong> The agent tries to exfil to <code>attacker.com</code>; the L4 firewall rejects.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-9" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-9" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-9" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-9" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-9" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-15" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-15" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-15" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-15" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-15" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-9-viewport">
-    <div class="mermaid" id="diag-9">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+  <div class="diagram-viewport" id="diag-15-viewport">
+    <div class="mermaid" id="diag-15">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
 sequenceDiagram
   autonumber
   participant A as Agent inside sandbox
@@ -863,20 +833,17 @@ sequenceDiagram
   NET-->>A: connection refused</div>
   </div>
 </div>
-<p><strong>7.5 Inference call through <code>inference.local</code>.</strong> The agent dials the</p>
-<p>sandbox-internal endpoint; the L7 proxy rewrites to <code>litellm:4000</code> on the</p>
-<p>ai-stack network and injects the real bearer token server-side. The</p>
-<p>agent never sees the master key.</p>
+<p><strong>7.5 Inference call through <code>inference.local</code>.</strong> The agent dials the sandbox-internal endpoint; the L7 proxy rewrites to <code>litellm:4000</code> on the ai-stack network and injects the real bearer token server-side. The agent never sees the master key.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-10" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-10" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-10" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-10" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-10" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-16" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-16" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-16" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-16" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-16" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-10-viewport">
-    <div class="mermaid" id="diag-10">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
+  <div class="diagram-viewport" id="diag-16-viewport">
+    <div class="mermaid" id="diag-16">%%{init: { "theme": "default", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorMargin": 80, "messageMargin": 40, "wrap": true} }}%%
 sequenceDiagram
   autonumber
   participant A as Agent inside sandbox
@@ -888,20 +855,21 @@ sequenceDiagram
   PROXY-->>A: response (real API key never seen)</div>
   </div>
 </div>
+</section>
+
 <hr>
-<section id="sec-8-8-security-and-sandbox-boundaries"><h2>8. Security and sandbox boundaries</h2>
-<p>A different view of the same story — who can talk to whom, drawn as</p>
-<p>trust boundaries instead of as a sequence.</p>
+<section id="sec-8-security-and-sandbox-boundaries"><h2>8. Security and sandbox boundaries</h2>
+<p>A different view of the same story — who can talk to whom, drawn as trust boundaries instead of as a sequence.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-11" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-11" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-11" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-11" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-11" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-17" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-17" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-17" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-17" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-17" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-11-viewport">
-    <div class="mermaid" id="diag-11">flowchart TB
+  <div class="diagram-viewport" id="diag-17-viewport">
+    <div class="mermaid" id="diag-17">flowchart TB
   subgraph Internet[Open internet]
     PyPI[pypi.org]
     GH[github.com]
@@ -953,36 +921,26 @@ sequenceDiagram
   </div>
 </div>
 <p>Trust tiers:</p>
-<p>1. <strong>Host</strong> — full trust. Has your SSH keys, browser data, <code>.env</code>.</p>
-<p>2. <strong>Containers</strong> — semi-trusted. Bound to <code>127.0.10.x</code> loopback only, so</p>
-<p>   nothing on your network can reach them. They hold service state but no</p>
-<p>   personal data. Inter-container traffic stays on the <code>ai-stack</code> bridge.</p>
-<p>3. <strong>Sandboxes</strong> — untrusted. There are two: <code>hermes-fleet-v1</code> (the</p>
-<p>   9-role Hermes fleet plus the Telegram gateway) and <code>pi-v1</code> (the Pi</p>
-<p>   coding agent). Both are network deny-by-default with a tight egress</p>
-<p>   allowlist; filesystem locked to <code>/sandbox/</code> and <code>/tmp/</code>. The fleet</p>
-<p>   reaches LiteLLM through the <code>hermes-gw</code> L7 proxy (which injects</p>
-<p>   <code>HERMES_LITELLM_KEY</code>); Pi dials <code>host.docker.internal:4000</code> with its</p>
-<p>   own minted <code>PI_LITELLM_KEY</code>. Neither agent ever sees a real provider</p>
-<p>   key.</p>
-
-<p>The arrows that <strong>don&#x27;t exist</strong> matter as much as the ones that do.</p>
+<ol><li><strong>Host</strong> — full trust. Has your SSH keys, browser data, <code>.env</code>.</li><li><strong>Containers</strong> — semi-trusted. Bound to <code>127.0.10.x</code> loopback only, so</li></ol>
+<p>nothing on your network can reach them. They hold service state but no personal data. Inter-container traffic stays on the <code>ai-stack</code> bridge.</p>
+<ol><li><strong>Sandboxes</strong> — untrusted. There are two: <code>hermes-fleet-v1</code> (the</li></ol>
+<p>9-role Hermes fleet plus the Telegram gateway) and <code>pi-v1</code> (the Pi coding agent). Both are network deny-by-default with a tight egress allowlist; filesystem locked to <code>/sandbox/</code> and <code>/tmp/</code>. The fleet reaches LiteLLM through the <code>hermes-gw</code> L7 proxy (which injects <code>HERMES_LITELLM_KEY</code>); Pi dials <code>host.docker.internal:4000</code> with its own minted <code>PI_LITELLM_KEY</code>. Neither agent ever sees a real provider key.</p>
+<p>The arrows that <strong>don't exist</strong> matter as much as the ones that do.</p>
+</section>
 
 <hr>
-<section id="sec-9-9-where-your-data-goes-privacy-story"><h2>9. Where your data goes (privacy story)</h2>
-<p>The most important diagram for anyone deciding whether to use this</p>
-<p>stack. Color and direction tell you what stays on your machine and what</p>
-<p>leaves it.</p>
+<section id="sec-9-where-your-data-goes-privacy-story"><h2>9. Where your data goes (privacy story)</h2>
+<p>The most important diagram for anyone deciding whether to use this stack. Color and direction tell you what stays on your machine and what leaves it.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-12" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-12" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-12" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-12" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-12" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-18" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-18" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-18" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-18" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-18" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-12-viewport">
-    <div class="mermaid" id="diag-12">flowchart LR
+  <div class="diagram-viewport" id="diag-18-viewport">
+    <div class="mermaid" id="diag-18">flowchart LR
   You((You))
 
   subgraph Local[Your MacBook — stays here]
@@ -1028,56 +986,34 @@ sequenceDiagram
   </div>
 </div>
 <p>The rules:</p>
-<ul>
-<li><strong>Your prompts</strong> only leave the machine if you pick a cloud model</li>
-</ul>
-<p>  (anything not a <code>local-*</code> model).</p>
-<ul>
-<li><strong>Your documents</strong> never leave the machine. Docling parses locally;</li>
-</ul>
-<p>  embeddings are computed via LiteLLM. If you pick <code>embed-local</code> (Ollama</p>
-<p>  nomic-embed) instead of <code>embed-openai-small</code>, even the embeddings</p>
-<p>  stay local.</p>
-<ul>
-<li><strong>Your memory (Honcho)</strong> never leaves the machine. The derivations</li>
-</ul>
-<p>  run via LiteLLM, so if Honcho calls a cloud model, the message</p>
-<p>  content is sent to that model — but the derived facts stay in your</p>
-<p>  Postgres.</p>
-<ul>
-<li><strong>MemPalace</strong> (Phase 26, opt-in) verbatim conversation memory is</li>
-</ul>
-<p>  local-by-design: its embeddings are computed <strong>on-device</strong> (local</p>
-<p>  ONNX), and its store (local ChromaDB) never leaves the machine. The</p>
-<p>  only thing that can leave is the <em>optional</em> refiner LLM — and only via</p>
-<p>  LiteLLM, only if you enable it and point it at a cloud model.</p>
-<ul>
-<li><strong>Traces</strong> are written to <code>traces/</code> on disk and into Phoenix&#x27;s local</li>
-</ul>
-<p>  SQLite. Neither sink is internet-connected.</p>
-<ul>
-<li><strong>Blaxel</strong> is the only piece that is cloud-by-design. The CLI is</li>
-</ul>
-<p>  installed but nothing deploys until you run <code>bl deploy</code>.</p>
-
-<p>If you want fully air-gapped operation: use the <code>paranoid</code> profile</p>
-<p>(<code>stack profile paranoid</code>), set every model to a <code>local-*</code> model</p>
-<p>(<code>local-gemma4</code>, or the LM Studio MLX models), disable cloud API keys in <code>.env</code>.</p>
+<ul><li><strong>Your prompts</strong> only leave the machine if you pick a cloud model</li></ul>
+<p>(anything not a <code>local-*</code> model).</p>
+<ul><li><strong>Your documents</strong> never leave the machine. Docling parses locally;</li></ul>
+<p>embeddings are computed via LiteLLM. If you pick <code>embed-local</code> (Ollama nomic-embed) instead of <code>embed-openai-small</code>, even the embeddings stay local.</p>
+<ul><li><strong>Your memory (Honcho)</strong> never leaves the machine. The derivations</li></ul>
+<p>run via LiteLLM, so if Honcho calls a cloud model, the message content is sent to that model — but the derived facts stay in your Postgres.</p>
+<ul><li><strong>MemPalace</strong> (Phase 26, opt-in) verbatim conversation memory is</li></ul>
+<p>local-by-design: its embeddings are computed <strong>on-device</strong> (local ONNX), and its store (local ChromaDB) never leaves the machine. The only thing that can leave is the <em>optional</em> refiner LLM — and only via LiteLLM, only if you enable it and point it at a cloud model.</p>
+<ul><li><strong>Traces</strong> are written to <code>traces/</code> on disk and into Phoenix's local</li></ul>
+<p>SQLite. Neither sink is internet-connected.</p>
+<ul><li><strong>Blaxel</strong> is the only piece that is cloud-by-design. The CLI is</li></ul>
+<p>installed but nothing deploys until you run <code>bl deploy</code>.</p>
+<p>If you want fully air-gapped operation: use the <code>paranoid</code> profile (<code>stack profile paranoid</code>), set every model to a <code>local-*</code> model (<code>local-gemma4</code>, or the LM Studio MLX models), disable cloud API keys in <code>.env</code>.</p>
+</section>
 
 <hr>
-<section id="sec-10-10-per-call-observability-where-a-trace-lives"><h2>10. Per-call observability: where a trace lives</h2>
-<p>Every LiteLLM call produces traces in three places. This helps when</p>
-<p>you want to figure out where to look for what.</p>
+<section id="sec-10-per-call-observability-where-a-trace-lives"><h2>10. Per-call observability: where a trace lives</h2>
+<p>Every LiteLLM call produces traces in three places. This helps when you want to figure out where to look for what.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-13" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-13" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-13" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-13" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-13" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-19" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-19" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-19" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-19" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-19" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-13-viewport">
-    <div class="mermaid" id="diag-13">flowchart LR
+  <div class="diagram-viewport" id="diag-19-viewport">
+    <div class="mermaid" id="diag-19">flowchart LR
   Call[Single chat completion] --> LL[litellm :4000]
   LL --> Cb1[trace_to_file.handler]
   LL --> Cb2[arize_phoenix]
@@ -1087,37 +1023,30 @@ sequenceDiagram
   Cb2 -- "http://phoenix:6006/v1/traces (OTLP HTTP)" --> Phoenix[phoenix :6006 SQLite + UI]
   Cb3 --> Audit[traces/guardrails.jsonl]
 
-  Phoenix -.OTel traces read by.-> HALO["halo (bin/halo)"]
+  Phoenix -.read by.-> HALO["halo (CLI)"]
   Audit -.read by.-> Audit_sh[bin/audit.sh]
   Phoenix -.read by.-> Browser[Browser UI]</div>
   </div>
 </div>
 <p>So:</p>
-<ul>
-<li><strong>What broke this morning?</strong> → Phoenix UI.</li>
-<li><strong>Why did this prompt get blocked?</strong> → grep <code>traces/guardrails.jsonl</code>.</li>
-<li><strong>What patterns are failing across 1000 runs?</strong> → <code>halo</code> over</li>
-</ul>
-<p>  Phoenix&#x27;s OTel traces (experimental on local models). For the raw log,</p>
-<p>  grep <code>traces/litellm.jsonl</code> directly.</p>
-<ul>
-<li><strong>Hot debugging right now?</strong> → <code>tail -f traces/litellm.jsonl</code>.</li>
-</ul>
+<ul><li><strong>What broke this morning?</strong> → Phoenix UI.</li><li><strong>Why did this prompt get blocked?</strong> → grep <code>traces/guardrails.jsonl</code>.</li><li><strong>What patterns are failing across 1000 runs?</strong> → <code>halo</code> over the</li></ul>
+<p>OTel traces in Phoenix (it reads OTel-format spans, not <code>traces/litellm.jsonl</code>).</p>
+<ul><li><strong>Hot debugging right now?</strong> → <code>tail -f traces/litellm.jsonl</code>.</li></ul>
+</section>
 
 <hr>
-<section id="sec-11-11-memory-profiles-what-runs-in-each-mode"><h2>11. Memory profiles — what runs in each mode</h2>
-<p><code>stack profile &lt;name&gt;</code> flips a curated set of services on or off.</p>
-<p>This diagram shows the four built-in profiles side by side.</p>
+<section id="sec-11-memory-profiles--what-runs-in-each-mode"><h2>11. Memory profiles — what runs in each mode</h2>
+<p><code>stack profile &lt;name&gt;</code> flips a curated set of services on or off. This diagram shows the four built-in profiles side by side.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-14" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-14" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-14" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-14" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-14" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-20" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-20" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-20" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-20" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-20" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-14-viewport">
-    <div class="mermaid" id="diag-14">flowchart LR
+  <div class="diagram-viewport" id="diag-20-viewport">
+    <div class="mermaid" id="diag-20">flowchart LR
   subgraph F[fleet — default research+chat]
     F1[ollama :11434] & F2[litellm :4000] & F3[phoenix :6006] & F4[falkordb :6379]
     F5[qdrant :6333] & F6[honcho :8000] & F7[openshell] & F8["hermes-fleet-v1 (sandbox)"]
@@ -1138,24 +1067,22 @@ sequenceDiagram
   end</div>
   </div>
 </div>
-<p>The profiles disagree only on the top tier. The inference plane</p>
-<p>(LiteLLM + Ollama) is in every profile because nothing works without</p>
-<p>it.</p>
+<p>The profiles disagree only on the top tier. The inference plane (LiteLLM + Ollama) is in every profile because nothing works without it.</p>
+</section>
 
 <hr>
-<section id="sec-12-12-network-topology-host-vs-ai-stack-vs-openshell"><h2>12. Network topology — host vs ai-stack vs OpenShell</h2>
-<p>Three distinct networks; the bridge points are where the interesting</p>
-<p>traffic crosses.</p>
+<section id="sec-12-network-topology--host-vs-ai-stack-vs-openshell"><h2>12. Network topology — host vs ai-stack vs OpenShell</h2>
+<p>Three distinct networks; the bridge points are where the interesting traffic crosses.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
-    <button class="zoom-btn" data-target="diag-15" data-action="out" title="Zoom out">−</button>
-    <button class="zoom-btn" data-target="diag-15" data-action="reset" title="Reset">⟲</button>
-    <button class="zoom-btn" data-target="diag-15" data-action="in" title="Zoom in">+</button>
-    <button class="zoom-btn" data-target="diag-15" data-action="fullscreen" title="Full screen">⛶</button>
-    <button class="zoom-btn" data-target="diag-15" data-action="copy" title="Copy mermaid source">📋</button>
+    <button class="zoom-btn" data-target="diag-21" data-action="out" title="Zoom out">−</button>
+    <button class="zoom-btn" data-target="diag-21" data-action="reset" title="Reset">⟲</button>
+    <button class="zoom-btn" data-target="diag-21" data-action="in" title="Zoom in">+</button>
+    <button class="zoom-btn" data-target="diag-21" data-action="fullscreen" title="Full screen">⛶</button>
+    <button class="zoom-btn" data-target="diag-21" data-action="copy" title="Copy mermaid source">📋</button>
   </div>
-  <div class="diagram-viewport" id="diag-15-viewport">
-    <div class="mermaid" id="diag-15">flowchart TB
+  <div class="diagram-viewport" id="diag-21-viewport">
+    <div class="mermaid" id="diag-21">flowchart TB
   subgraph Mac[macOS host - 127.0.10.x via /etc/hosts]
     direction TB
     Shell["Mac shell / browser"]
@@ -1212,37 +1139,22 @@ sequenceDiagram
   </div>
 </div>
 <p>Reading it:</p>
-<ul>
-<li><strong>Bridge point #1</strong>: <code>/etc/hosts</code> block on the Mac — gives the Mac</li>
-</ul>
-<p>  shell, browser, and host-side Python processes name-resolution into</p>
-<p>  the <code>127.0.10.x</code> range. Phase 00·N owns this.</p>
-<ul>
-<li><strong>Bridge point #2</strong>: the <code>ai-stack</code> Docker network — every managed</li>
-</ul>
-<p>  container joins it; Docker&#x27;s embedded DNS handles intra-network bare</p>
-<p>  names.</p>
-<ul>
-<li><strong>Bridge point #3</strong>: <code>--add-host=ollama:host-gateway</code> on each Ollama</li>
-</ul>
-<p>  consumer — the single allowed container-to-host alias. Port <code>:11434</code></p>
-<p>  stays in the URL.</p>
-<ul>
-<li><strong>Multi-network containers</strong> (honcho-api, honcho-deriver) sit on both</li>
-</ul>
-<p>  <code>ai-stack</code> and <code>honcho_default</code>. Cross-network calls use</p>
-<p>  fully-qualified <code>&lt;service&gt;.&lt;network&gt;</code> to avoid bare-name ambiguity.</p>
-<ul>
-<li><strong>Sandbox does not join <code>ai-stack</code>.</strong> Its egress is policy-controlled</li>
-</ul>
-<p>  (deny by default); it reaches <code>litellm</code> only via the <code>hermes-gw</code> L7</p>
-<p>  proxy.</p>
+<ul><li><strong>Bridge point #1</strong>: <code>/etc/hosts</code> block on the Mac — gives the Mac</li></ul>
+<p>shell, browser, and host-side Python processes name-resolution into the <code>127.0.10.x</code> range. Phase 00·N owns this.</p>
+<ul><li><strong>Bridge point #2</strong>: the <code>ai-stack</code> Docker network — every managed</li></ul>
+<p>container joins it; Docker's embedded DNS handles intra-network bare names.</p>
+<ul><li><strong>Bridge point #3</strong>: <code>--add-host=ollama:host-gateway</code> on each Ollama</li></ul>
+<p>consumer — the single allowed container-to-host alias. Port <code>:11434</code> stays in the URL.</p>
+<ul><li><strong>Multi-network containers</strong> (honcho-api, honcho-deriver) sit on both</li></ul>
+<p><code>ai-stack</code> and <code>honcho_default</code>. Cross-network calls use fully-qualified <code>&lt;service&gt;.&lt;network&gt;</code> to avoid bare-name ambiguity.</p>
+<ul><li><strong>Sandbox does not join <code>ai-stack</code>.</strong> Its egress is policy-controlled</li></ul>
+<p>(deny by default); it reaches <code>litellm</code> only via the <code>hermes-gw</code> L7 proxy.</p>
 </section>
   </main>
 </div>
 
 <footer>
-  Generated from <a href="DIAGRAMS.md">DIAGRAMS.md</a> on 2026-05-31. Mermaid v11.4.1 + pure CSS-transform zoom/pan (no svg-pan-zoom dependency).
+  Generated from <a href="DIAGRAMS.md">DIAGRAMS.md</a> by installer/lib/build_diagrams_html.py. Mermaid v11.4.1 + pure CSS-transform zoom/pan (no svg-pan-zoom dependency).
   Companions: <a href="USER-GUIDE.html">USER-GUIDE.html</a> · <a href="USER-GUIDE.md">USER-GUIDE.md</a> · <a href="STACK-GUIDE.md">STACK-GUIDE.md</a>
 </footer>
 

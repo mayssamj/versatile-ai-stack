@@ -152,8 +152,8 @@ A plain-language tour of the headline pieces (the full inventory is in the table
   same local model hub.
 - **Open WebUI — chat in your browser.** A familiar ChatGPT-style UI wired to your
   local models, at `http://openwebui:8080`.
-- **Three local models.** `local-gemma4` (Ollama `gemma4:e4b`, the lightweight
-  default for any unassigned agent), `local-qwen3.6` (LM Studio MLX, heavy
+- **Three local models.** `local-gemma4` (Ollama `gemma4:e4b`, the always-on
+  fallback every agent gates to when its runtime is down), `local-qwen3.6` (LM Studio MLX, heavy
   reasoning, opt-in), and `local-qwen3-coder` (LM Studio MLX, coding, opt-in). See [models.md](doc/models.md).
 
 Plus storage (FalkorDB + Qdrant), cross-agent memory (Honcho), a docs RAG pipeline,
@@ -607,10 +607,10 @@ snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
   the 6 opt-in extras' checks (34–38, 44) pass-as-skip when not installed, check 39
   (`openshell_storm`) reports the watchdog status, and check 45 (`tutorial`, always-on)
-  asserts `doc/TUTORIAL.html` is self-contained and in sync with its markdown source.
+  asserts `doc/TUTORIAL.html` and `doc/DIAGRAMS.html` are self-contained and in sync with their markdown sources.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
   of truth) and rendered by `vz-ai-stack.sh model {list,assign,sync,superset}`. Three local
-  models: `local-gemma4` (Ollama gemma4:e4b — the default for any unassigned agent),
+  models: `local-gemma4` (Ollama gemma4:e4b — the always-on fallback agents gate to when their runtime is down),
   `local-qwen3.6` (LM Studio MLX, heavy reasoning), `local-qwen3-coder` (LM Studio MLX,
   coding). lmstudio-assigned agents auto-fall-back to `local-gemma4` when LM Studio (:1234)
   is down, so a plain `install all` works with no LM Studio. See [doc/models.md](doc/models.md).

@@ -304,6 +304,20 @@ model_list:
       api_key: meridian
       extra_body:
         effort: max
+  - model_name: claude-opus-4.8-sub-ultracode
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: ultracode
+  - model_name: claude-sonnet-4.6-sub-ultracode
+    litellm_params:
+      model: openai/claude-sonnet-4-6
+      api_base: http://host.docker.internal:3456/v1
+      api_key: meridian
+      extra_body:
+        effort: ultracode
 litellm_settings:
   # Custom callback writes each call to /traces/litellm.jsonl
   # (mounted to ~/ai-stack/traces on host).

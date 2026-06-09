@@ -190,8 +190,8 @@ researcher Hermes profile can chew on long documents using `local-qwen3.6`
 (a 27B Qwen, served by LM Studio MLX) without burning credits.
 
 **What does it do for us?** Phase 01 now pins only two Ollama models:
-`gemma4:e4b` (small, fast, 9.6 GB) as `local-gemma4` — the default for any
-unassigned agent — and `nomic-embed-text` for local embeddings. The heavy
+`gemma4:e4b` (small, fast, 9.6 GB) as `local-gemma4` — the always-on Ollama
+fallback agents gate to when their runtime is down — and `nomic-embed-text` for local embeddings. The heavy
 general-reasoning (`local-qwen3.6`) and coding (`local-qwen3-coder`) models
 moved to LM Studio MLX (~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b`
 (`local-heavy`) is no longer auto-pulled. Which model each agent uses is now

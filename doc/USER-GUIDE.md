@@ -176,7 +176,7 @@ canonical local models** are declared per-agent in `installer/models.yml`
 
 | Name                | Backend                                       | Size   | When to use                                  |
 |---------------------|-----------------------------------------------|--------|----------------------------------------------|
-| `local-gemma4`      | Gemma 4 E4B (Ollama)                          | 9.6GB  | **Default** for any unassigned agent — fast, cheap, always available |
+| `local-gemma4`      | Gemma 4 E4B (Ollama)                          | 9.6GB  | The always-on Ollama **fallback** (`default`) — what every agent gates to when its runtime is down; fast, cheap, always available |
 | `local-qwen3.6`     | Qwen 3.6 27B (LM Studio MLX)                  | 17.5GB | Heavy general reasoning (opt-in — needs LM Studio) |
 | `local-qwen3-coder` | qwen3-coder-30b-a3b-instruct (LM Studio MLX)  | 17.2GB | Coding specialist (opt-in — needs LM Studio) |
 | `embed-local`       | nomic-embed-text (Ollama)                     | 274MB  | Local embeddings (768-dim)                   |
@@ -185,8 +185,8 @@ canonical local models** are declared per-agent in `installer/models.yml`
 | `openai-gpt-5.5*`   | OpenAI GPT-5.5 family                         | API    | Cloud baseline                               |
 | `openrouter-*`      | Various via OpenRouter (~10)                  | API    | Fallbacks / unusual models                   |
 | `google-gemini-3.1-pro` | Gemini 3.1 Pro                            | API    | Long-context cloud                           |
-| `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` | claude-opus-4-8 via **subscription** (Meridian), one model per effort level | sub | **no API key**. `-max` is the Open WebUI default; use `-low/-medium` for simple work |
-| `claude-sonnet-4.6-sub-{low,medium,high,max}` | claude-sonnet-4-6 via subscription (Meridian) | sub | Everyday subscription chat + coding (no `xhigh` — ≡ `high` on Sonnet) |
+| `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` | claude-opus-4-8 via **subscription** (Meridian), one model per effort level | sub | **no API key**. `-max` is the Open WebUI default; use `-low/-medium` for simple work, `-ultracode` for the coding-focused highest tier (above `max`) |
+| `claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` | claude-sonnet-4-6 via subscription (Meridian) | sub | Everyday subscription chat + coding (no `xhigh` — ≡ `high` on Sonnet); `-ultracode` is the highest tier |
 
 `local-gemma4` is the only local model `install all` pre-pulls (alongside
 `nomic-embed-text`); the two big MLX models are opt-in (see §2.16 "Enabling the
@@ -277,9 +277,10 @@ bundled claude-code 2.1.160, so 4.8 works.)
 
 **Effort / reasoning level — pick by picking the model.** Per-chat effort can't
 be sent from Open WebUI (LiteLLM's `drop_params` strips it), so each effort level
-is its own model: `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` and
-`claude-sonnet-4.6-sub-{low,medium,high,max}` (Sonnet has no `xhigh` — it falls
-back to `high`). Use `-low`/`-medium` for simple work, `-max` for hard problems.
+is its own model: `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` and
+`claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` (Sonnet has no `xhigh` — it falls
+back to `high`). `ultracode` is the coding-focused highest effort tier (above
+`max`). Use `-low`/`-medium` for simple work, `-max` for hard problems.
 Effort is `output_config.effort` (NOT a token budget — `budget_tokens` is rejected
 on 4.7+); each model injects `extra_body: { effort: <level> }`, and it's
 **verified on the wire** that LiteLLM forwards it as `body.effort` → Meridian →

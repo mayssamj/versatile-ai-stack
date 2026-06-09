@@ -198,7 +198,7 @@ actually serves.
 
 | key | runtime | served id | notes |
 |---|---|---|---|
-| `local-gemma4` | ollama | `gemma4:e4b` | **Default** for any unassigned agent (~9.6 GB, stays on Ollama). |
+| `local-gemma4` | ollama | `gemma4:e4b` | The always-on Ollama **fallback** (`default`) — what every agent gates to when its runtime is down; an unassigned agent renders the `primary` (`claude-opus-4.8-sub-max`) and gates to this (~9.6 GB, stays on Ollama). |
 | `local-qwen3.6` | lmstudio | `qwen/qwen3.6-27b` | ~17.5 GB MLX. Cannot coexist with `local-qwen3-coder` on 24 GB. |
 | `local-qwen3-coder` | lmstudio | `qwen3-coder-30b-a3b-instruct-mlx` | ~17.2 GB MLX. Cannot coexist with `local-qwen3.6` on 24 GB. |
 

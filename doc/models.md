@@ -20,17 +20,19 @@ renders it all from this file.
 
 | LiteLLM model_name  | runtime    | served id                          | flags | notes |
 |---------------------|------------|------------------------------------|-------|-------|
-| `local-gemma4`      | ollama     | `gemma4:e4b`                       | **default**, `big: false` | for any unassigned agent. ~9.6GB, stays on Ollama. |
+| `local-gemma4`      | ollama     | `gemma4:e4b`                       | **default**, `big: false` | the always-on Ollama FALLBACK (`default`) — what every agent gates to when its runtime is down. ~9.6GB, stays on Ollama. |
 | `local-qwen3.6`     | lmstudio   | `qwen/qwen3.6-27b`                 | `big: true`, `ttl: 1800`  | ~17.5GB MLX. Cannot coexist with `local-qwen3-coder` on 24GB. |
 | `local-qwen3-coder` | lmstudio   | `qwen3-coder-30b-a3b-instruct-mlx` | `big: true`, `ttl: 1800`  | ~17.2GB MLX. Cannot coexist with `local-qwen3.6` on 24GB. |
 
-### The 14 agents (assignments + kinds)
+### The 13 agents (assignments + kinds)
 
-`models.yml` binds **14 agents** — the 9 Hermes profiles (a full
-software-engineering team) plus `pi`, `deerflow`, `ace`, `rlm`, and `mempalace`
+`models.yml` binds **13 agents** — the 9 Hermes profiles (a full
+software-engineering team) plus `pi`, `deerflow`, `ace`, and `rlm`
 — each via an `assignments:` line (the model) and a `kinds:` entry (the renderer
-+ scoped-key env). Any agent with no assignment falls back to the `default`
-(`local-gemma4`). The nine Hermes profiles all route to a **Claude
++ scoped-key env). Any agent with no assignment now renders the **`primary`**
+(`claude-opus-4.8-sub-max`), which availability-gates to the `default`
+(`local-gemma4`, the always-on Ollama fallback) when Meridian is down. The
+nine Hermes profiles all route to a **Claude
 subscription via Meridian** and are availability-gated to `local-gemma4` when
 Meridian is down. The same 9-role team is also realized as **Pi personas**
 (`bin/pi-as <role>`) and **Claude Code subagents** (`~/.claude/agents`),
@@ -123,9 +125,10 @@ the start command for each.
   subscription** rather than a metered API key.
   Install: `npm install -g @rynfar/meridian && bash bin/start-meridian.sh install`.
   - **Effort ladder (one model per level):**
-    `claude-opus-4.8-sub-{low,medium,high,xhigh,max}` and
-    `claude-sonnet-4.6-sub-{low,medium,high,max}` (Sonnet omits `xhigh` — it
-    falls back to `high`). Open WebUI's default is `claude-opus-4.8-sub-max`
+    `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` and
+    `claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` (Sonnet omits `xhigh` — it
+    falls back to `high`). `ultracode` is the coding-focused highest effort tier
+    (above `max`). Open WebUI's default is `claude-opus-4.8-sub-max`
     (`DEFAULT_MODELS` in `bin/start-openwebui.sh`). Pick effort by picking the
     model — per-chat effort can't be sent from Open WebUI (`drop_params`).
   - **How effort is wired:** Opus 4.8 depth is `output_config.effort`
@@ -210,7 +213,10 @@ the model, and re-run `model sync` to promote the pending agents.
 See [DIAGRAMS.md §5a](DIAGRAMS.md#5a-per-agent-model-selection-pipeline-assignment---gate---effective---rendered).
 Each agent's live model is resolved in four stages:
 
-1. **assignment** — the model named for the agent in `models.yml`.
+1. **assignment** — the model named for the agent in `models.yml`. An agent with
+   **no** assignment renders the **`primary`** (`models.yml .primary` =
+   `claude-opus-4.8-sub-max`), which then flows through the availability-gate
+   below; only `default` (`local-gemma4`) is the always-on Ollama fallback.
 2. **availability-gate** — an `lmstudio` model is kept only when LM Studio is up
    on `:${LMS_PORT}` **and** its slug is in `litellm/config.yaml` **and** LiteLLM's
    `/v1/models` lists it; otherwise it gates down to `local-gemma4` and records a

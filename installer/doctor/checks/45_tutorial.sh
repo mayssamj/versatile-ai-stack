@@ -1,24 +1,26 @@
-# Tutorial integrity — doc/TUTORIAL.html is a new user's FIRST interface, so it
-# must stay self-contained and link-clean. Guards the regression fixed 2026-06-04:
-# the Act nav/cards pointed at TUTORIAL.md#… which the tutorial-serve loopback proxy
-# 404'd — so clicking "Arrival" dead-ended on a JSON error. The 7 acts now live
-# IN the page (generated from doc/TUTORIAL.md by installer/lib/build_tutorial_html.py).
+# Tutorial + Diagrams integrity — both HTML pages are generated from their .md sources
+# and must never drift. Guards:
+#   doc/TUTORIAL.html: the 7-act self-contained tutorial page (installer/lib/build_tutorial_html.py)
+#   doc/DIAGRAMS.html: the mermaid diagram viewer (installer/lib/build_diagrams_html.py)
 #
-# Unconditional: these are in-repo artifacts, always present (unlike the opt-in
-# service checks). Validates, with NO network:
+# Tutorial checks (with NO network):
 #   - exactly 7 in-page <section id="act-…"> sections
 #   - zero external "TUTORIAL.md#…" anchored nav links (they 404 under serve)
 #   - every in-page #anchor resolves to an element id; no duplicate ids
 #   - the HTML is in sync with a fresh build of doc/TUTORIAL.md (no drift)
+# Diagrams check:
+#   - doc/DIAGRAMS.html is in sync with a fresh build of doc/DIAGRAMS.md (no drift)
 CHECKS+=(tutorial)
-CHECK_TITLE[tutorial]="Tutorial page self-contained, link-clean & in sync (doc/TUTORIAL.html)"
+CHECK_TITLE[tutorial]="Tutorial + Diagrams pages in sync with their .md sources (doc/TUTORIAL.html, doc/DIAGRAMS.html)"
 
 tutorial_diagnose() {
   local html="$AI_STACK/doc/TUTORIAL.html"
   local gen="$AI_STACK/installer/lib/build_tutorial_html.py"
+  local diag_html="$AI_STACK/doc/DIAGRAMS.html"
+  local diag_gen="$AI_STACK/installer/lib/build_diagrams_html.py"
   [[ -f "$html" ]] || { echo "doc/TUTORIAL.html missing — generate it: python3 installer/lib/build_tutorial_html.py"; return 1; }
   command -v python3 >/dev/null 2>&1 || { echo "python3 not found — cannot validate the tutorial page"; return 1; }
-  python3 - "$html" "$gen" <<'PY'
+  python3 - "$html" "$gen" "$diag_gen" <<'PY'
 import subprocess, sys
 from html.parser import HTMLParser
 html_path, gen = sys.argv[1], sys.argv[2]
@@ -65,23 +67,43 @@ try:
         issues.append("HTML out of sync with doc/TUTORIAL.md — run: python3 installer/lib/build_tutorial_html.py")
 except Exception as e:
     issues.append(f"could not run converter --check: {e}")
+# Diagrams drift check (skip cleanly if the generator is absent — partial checkout)
+import os
+diag_gen = sys.argv[3]
+if os.path.exists(diag_gen):
+    try:
+        r = subprocess.run([sys.executable, diag_gen, "--check"], capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            issues.append("doc/DIAGRAMS.html out of sync with doc/DIAGRAMS.md — run: python3 installer/lib/build_diagrams_html.py")
+    except Exception as e:
+        issues.append(f"could not run diagrams converter --check: {e}")
 if issues:
     for i in issues:
         print("  - " + i)
-    print("  Fix: python3 installer/lib/build_tutorial_html.py  (regenerates the acts from doc/TUTORIAL.md)")
+    print("  Fix: python3 installer/lib/build_tutorial_html.py && python3 installer/lib/build_diagrams_html.py")
     sys.exit(1)
-print(f"({s.act_sections} acts in-page, {len(set(s.in_anchors))} anchors all resolve, no dupes, in sync with the .md)")
+print(f"({s.act_sections} acts in-page, {len(set(s.in_anchors))} anchors all resolve, no dupes, tutorial in sync, diagrams in sync)")
 sys.exit(0)
 PY
 }
 
 tutorial_fix() {
-  # Safe + idempotent: regenerate the acts from doc/TUTORIAL.md (single source).
+  # Safe + idempotent: regenerate both HTML pages from their .md sources.
+  local ok=0
   warn "Regenerating doc/TUTORIAL.html from doc/TUTORIAL.md…"
   if python3 "$AI_STACK/installer/lib/build_tutorial_html.py" >/dev/null 2>&1; then
-    warn "tutorial regenerated — re-run doctor to confirm"
-    return 0
+    warn "doc/TUTORIAL.html regenerated"
+  else
+    warn "tutorial regeneration failed — run manually: python3 $AI_STACK/installer/lib/build_tutorial_html.py"
+    ok=1
   fi
-  warn "tutorial regeneration failed — run manually: python3 $AI_STACK/installer/lib/build_tutorial_html.py"
-  return 1
+  warn "Regenerating doc/DIAGRAMS.html from doc/DIAGRAMS.md…"
+  if python3 "$AI_STACK/installer/lib/build_diagrams_html.py" >/dev/null 2>&1; then
+    warn "doc/DIAGRAMS.html regenerated"
+  else
+    warn "diagrams regeneration failed — run manually: python3 $AI_STACK/installer/lib/build_diagrams_html.py"
+    ok=1
+  fi
+  [[ $ok -eq 0 ]] && warn "both pages regenerated — re-run doctor to confirm"
+  return $ok
 }

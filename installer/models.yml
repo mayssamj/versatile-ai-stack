@@ -32,11 +32,17 @@ models:
   claude-opus-4.8-sub-high: {runtime: meridian, served: claude-opus-4-8, effort: high, big: false, note: "Claude subscription (Opus 4.8), high effort (model default)."}
   claude-opus-4.8-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort."}
   claude-opus-4.8-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort."}
+  claude-opus-4.8-sub-ultracode: {runtime: meridian, served: claude-opus-4-8, effort: ultracode, big: false, note: "Claude subscription (Opus 4.8), ultracode effort (coding-focused, highest tier)."}
   claude-sonnet-4.6-sub-low: {runtime: meridian, served: claude-sonnet-4-6, effort: low, big: false, note: "Claude subscription (Sonnet 4.6), low effort."}
   claude-sonnet-4.6-sub-medium: {runtime: meridian, served: claude-sonnet-4-6, effort: medium, big: false, note: "Claude subscription (Sonnet 4.6), medium effort."}
   claude-sonnet-4.6-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
   claude-sonnet-4.6-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
+  claude-sonnet-4.6-sub-ultracode: {runtime: meridian, served: claude-sonnet-4-6, effort: ultracode, big: false, note: "Claude subscription (Sonnet 4.6), ultracode effort (coding-focused, highest tier)."}
 default: local-gemma4
+# primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
+# availability-gates to `default` (the always-on ollama fallback) when its
+# runtime is down — so the local safety net is preserved. `default` stays ollama.
+primary: claude-opus-4.8-sub-max
 assignments:
   # AI software-engineering team (9 roles). All Claude Opus subscription:
   # manager/qa/sre/incident -> sub-xhigh; techlead/ml/frontend/backend/reviewing -> sub-max.

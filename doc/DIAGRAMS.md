@@ -315,8 +315,8 @@ the canonical source of truth for the binding; `vz-ai-stack.sh model sync`
 reconciles it into LiteLLM and re-renders each agent. The interesting
 wrinkle is **availability-gating**: if an agent is assigned an
 LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio
-is opt-in and may be off), the agent is rendered against the default
-`local-gemma4` instead — never left pointing at a dead route.
+is opt-in and may be off), the agent is rendered against the always-on
+fallback `local-gemma4` instead — never left pointing at a dead route.
 
 ```mermaid
 flowchart TB
@@ -358,8 +358,10 @@ What the assignments look like (from `models.yml`, see
 - **claude-opus-4.8-sub-max** (subscription via Meridian) — `hermes_techlead`,
   `hermes_ml_engineer`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
   `hermes_reviewing_engineer`, `pi`, `deerflow`.
-- **local-gemma4** (the default) — the availability-gated fallback for every
-  subscription-assigned agent (incl. all nine Hermes profiles) when Meridian is down.
+- **local-gemma4** (the always-on Ollama fallback) — what every subscription- or
+  LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime
+  is down. An UNASSIGNED agent renders the `primary` (`claude-opus-4.8-sub-max`) and
+  gates to this. (`default:` in models.yml names this fallback; it must be an Ollama model.)
 
 Notes:
 - The Hermes fleet now routes to a Claude subscription via the Meridian host
@@ -394,10 +396,13 @@ it already *is* gemma4).
 
 ```mermaid
 flowchart TB
-  A["agent (e.g. hermes_ml_engineer)"] --> ASG["assignment in models.yml<br/>(agent_assigned)"]
-  ASG --> RT{runtime of<br/>assigned model?}
+  A["agent (e.g. hermes_ml_engineer)"] --> ASG{assigned in<br/>models.yml?}
+  ASG -- yes --> DECL["declared = assignment<br/>(agent_assigned)"]
+  ASG -- no --> PRI["declared = primary<br/>(claude-opus-4.8-sub-max)"]
+  DECL --> RT{runtime of<br/>declared model?}
+  PRI --> RT
 
-  RT -- ollama --> EFF["effective = assigned<br/>(render as-is)"]
+  RT -- ollama --> EFF["effective = declared<br/>(render as-is)"]
 
   RT -- lmstudio --> G1{LM Studio server<br/>up on :LMS_PORT?}
   G1 -- no --> FB
@@ -407,7 +412,11 @@ flowchart TB
   G3 -- no --> FB
   G3 -- yes --> EFF
 
-  FB["availability-gated:<br/>effective = local-gemma4<br/>+ record pending"] --> EFF
+  RT -- meridian --> M1{Meridian daemon up<br/>AND slug in config.yaml?}
+  M1 -- no --> FB
+  M1 -- yes --> EFF
+
+  FB["availability-gated:<br/>effective = local-gemma4<br/>(the ollama fallback) + record pending"] --> EFF
 
   EFF --> DISP{dispatch by kind}
   DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]

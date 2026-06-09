@@ -330,7 +330,7 @@ See [models.md](models.md) for the full reference. Three local models:
 
 | model | runtime | role |
 |---|---|---|
-| `local-gemma4` (`gemma4:e4b`, ~9.6 GB) | Ollama | **default** for any unassigned agent; light + fast |
+| `local-gemma4` (`gemma4:e4b`, ~9.6 GB) | Ollama | the always-on fallback every agent gates to when its runtime is down; light + fast |
 | `local-qwen3.6` (`qwen/qwen3.6-27b`, ~17.5 GB) | LM Studio MLX | heavy general reasoning (opt-in) |
 | `local-qwen3-coder` (`qwen3-coder-30b-a3b-instruct-mlx`, ~17.2 GB) | LM Studio MLX | coding specialist (opt-in) |
 

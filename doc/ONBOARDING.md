@@ -93,8 +93,8 @@ host-gateway / routing). See [TROUBLESHOOTING.md § Connection refused](TROUBLES
 
 All agents call local models through LiteLLM. Which model each agent uses is
 **declared per-agent** in `installer/models.yml` and rendered by `vz-ai-stack.sh model
-sync` (see [models.md](models.md)). Unassigned agents default to `local-gemma4`
-(gemma4:e4b, fast on the 24 GB box); the coder profiles + Pi use `local-qwen3-coder`
+sync` (see [models.md](models.md)). Unassigned agents now render the primary `claude-opus-4.8-sub-max`, gated to
+`local-gemma4` (gemma4:e4b — the always-on Ollama fallback) when Meridian is down; the coder profiles + Pi use `local-qwen3-coder`
 and the reasoning-heavy profiles + DeerFlow use `local-qwen3.6` (both LM Studio MLX,
 opt-in). lmstudio-assigned agents fall back to `local-gemma4` automatically when LM
 Studio is down, so a plain `install all` works with no LM Studio.

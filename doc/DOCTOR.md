@@ -553,7 +553,7 @@ isn't Ready — both are required to verify bindings end-to-end. See
 
 | | |
 |---|---|
-| Asserts | When Meridian is enabled (`bin/start-meridian.sh`), its launchd job is loaded, the local endpoint (`127.0.0.1:3456/v1/models`) is healthy, the `*-sub` models (`claude-opus-4.8-sub-*`, `claude-sonnet-4.6-sub-*`) are served through LiteLLM, and each model's `extra_body.effort` in `config.yaml` matches the declared effort in `models.yml` (the `…-sub-{low,medium,high,xhigh,max}` ladder isn't flattened). Lets Open WebUI (and anything behind LiteLLM) chat/code on your `claude login` OAuth with **no API key**. |
+| Asserts | When Meridian is enabled (`bin/start-meridian.sh`), its launchd job is loaded, the local endpoint (`127.0.0.1:3456/v1/models`) is healthy, the `*-sub` models (`claude-opus-4.8-sub-*`, `claude-sonnet-4.6-sub-*`) are served through LiteLLM, and each model's `extra_body.effort` in `config.yaml` matches the declared effort in `models.yml` (the `…-sub-{low,medium,high,xhigh,max,ultracode}` ladder isn't flattened). Lets Open WebUI (and anything behind LiteLLM) chat/code on your `claude login` OAuth with **no API key**. |
 | Fails when | The launchd job is loaded but the endpoint is unhealthy, or the endpoint is healthy but the `*-sub` models aren't served / their effort drifts. |
 | Advisory-green | Meridian not installed, or installed but the daemon wasn't enabled (no launchd job, port closed) — it's opt-in. Never prints a token. |
 
@@ -604,15 +604,15 @@ into the mempalace tool env (so the doctor never adds it). See
 
 ---
 
-## 45 · TUTORIAL.html is self-contained, link-clean, and in sync
+## 45 · TUTORIAL.html and DIAGRAMS.html are in sync with their .md sources
 
 | | |
 |---|---|
-| Asserts | `doc/TUTORIAL.html` is a valid in-repo artifact: exactly 7 in-page `<section id="act-…">` sections (the page is self-contained — no chapter lives off-page); zero external `TUTORIAL.md#…` nav links (they 404 under `tutorial-serve`); every in-page `#anchor` resolves to an element `id` with no duplicate ids; and the HTML is in sync with `doc/TUTORIAL.md` (`installer/lib/build_tutorial_html.py --check`). |
-| Fails when | The HTML drifted from the markdown source (someone edited `TUTORIAL.md` without regenerating), a section/anchor was dropped or duplicated, or an external `TUTORIAL.md#…` link crept back in. |
-| Auto-fix | Regenerates the page from the markdown source via `installer/lib/build_tutorial_html.py` (overwriting `doc/TUTORIAL.html`). |
+| Asserts | **Tutorial:** `doc/TUTORIAL.html` is a valid in-repo artifact: exactly 7 in-page `<section id="act-…">` sections (self-contained — no chapter lives off-page); zero external `TUTORIAL.md#…` nav links (they 404 under `tutorial-serve`); every in-page `#anchor` resolves to an element `id` with no duplicate ids; and the HTML is in sync with `doc/TUTORIAL.md` (`installer/lib/build_tutorial_html.py --check`). **Diagrams:** `doc/DIAGRAMS.html` is in sync with `doc/DIAGRAMS.md` (`installer/lib/build_diagrams_html.py --check`). |
+| Fails when | Either HTML page drifted from its markdown source (someone edited `.md` without regenerating), a tutorial section/anchor was dropped or duplicated, or an external `TUTORIAL.md#…` link crept back in. |
+| Auto-fix | Regenerates both pages from their markdown sources: `installer/lib/build_tutorial_html.py` (overwrites `doc/TUTORIAL.html`) and `installer/lib/build_diagrams_html.py` (overwrites `doc/DIAGRAMS.html`). |
 
-This check is **always-on** (unlike the opt-in service checks 34–38/44): the tutorial is an in-repo artifact that ships with the stack, so its integrity is a hard invariant. The validator parses real element attributes via `HTMLParser` (not a regex over the page text), so `id="…"` substrings inside code examples (e.g. `workspace_id="tutorial"`) and attrs like `*_id` never false-positive. See [project_tutorial](../doc/TUTORIAL.md) / `installer/lib/tutorial-serve.sh` for the live ephemeral-proxy serve path.
+This check is **always-on** (unlike the opt-in service checks 34–38/44): both HTML pages are in-repo artifacts that ship with the stack, so their integrity is a hard invariant. The tutorial validator parses real element attributes via `HTMLParser` (not a regex over the page text), so `id="…"` substrings inside code examples and attrs like `*_id` never false-positive. See [project_tutorial](../doc/TUTORIAL.md) / `installer/lib/tutorial-serve.sh` for the live ephemeral-proxy serve path. The diagrams generator (`installer/lib/build_diagrams_html.py`) parses `doc/DIAGRAMS.md` from scratch on every run — edit the `.md` and re-run to update the viewer.
 
 ---
 
