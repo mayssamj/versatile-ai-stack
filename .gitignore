@@ -69,3 +69,7 @@ __pycache__/
 *.swp
 *~
 installer/models.yml.bak
+
+# ── Local-only host diagnostics (contain serial/hostname/home-path PII — never commit) ──
+ORBSTACK_EDR_EXCLUSION_REQUEST.md
+ORBSTACK_CPU_BASELINE_*.md
