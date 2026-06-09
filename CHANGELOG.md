@@ -4,6 +4,21 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-09
+
+### Validation
+
+- Full E2E from-scratch reinstall (`reset --hard` -> `install all`): doctor 45/45, `verify` PASSED, 21 containers incl. both OpenShell sandboxes. A 4-finder multi-agent workflow + 2 adversarial reviews + a 3-way debate surfaced and fixed 23 drift/correctness issues.
+
+### Fixes
+
+- reset (hard/nuke) now clears `installer/state/*.alert` -- a stale watchdog alert survived reset and falsely failed doctor check 43 after the next install (soft keeps sandboxes, so it correctly does not).
+- doctor check 44 (mempalace) gates on the `phase_26` stamp via `compgen -G` (nullglob-safe; `ls <glob>` falsely succeeds under `shopt -s nullglob`) -- fixes a false failure after reset and on a fresh clone.
+- services.yml: qdrant/phoenix `health:`/usage URLs -> loopback-alias form (the 127.0.0.1 URLs were dead); hermes_fleet desc/profiles 7->9 + help block; `model list` column alignment.
+- Docs: propagated the all-Opus model assignments to hermes SOUL frontmatter + hermes/pi READMEs + TUTORIAL/USER-GUIDE/HANDOFF; counts 30->31 lessons, 47->50 Explorer cards; manager operator framing (not read-only); DIAGRAMS.html model sub-diagrams 5a/5c/5d/5e. Claude Code kept on its NATIVE opus/sonnet split (3 heavy roles Opus, 6 executors Sonnet) -- distinct from the Meridian effort axis -- with the divergence documented.
+
+---
+
 ## 2026-06-08
 
 ### Features
