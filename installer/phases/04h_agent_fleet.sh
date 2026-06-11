@@ -50,7 +50,9 @@ sandbox_ready() {
 }
 
 precheck() {
-  [[ -f "$CLAUDE_DIR/agents/manager.md" ]] || return 1
+  # Manager is the MAIN agent now (CLAUDE.md @-import), not a subagent. Check that + a specialist.
+  [[ -f "$CLAUDE_DIR/fleet/manager.md" ]] && grep -qF "BEGIN ai-stack fleet manager" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null || return 1
+  [[ -f "$CLAUDE_DIR/agents/techlead.md" ]] || return 1
   sandbox_ready "$PI_SANDBOX" || return 1
   "$OSH" sandbox exec -n "$PI_SANDBOX" --no-tty -- /bin/sh -c \
     'test -f /sandbox/agents/manager/SYSTEM.md' >/dev/null 2>&1 || return 1
@@ -91,12 +93,44 @@ install_file() {  # <src> <dst>
     warn "$dst exists and differs — wrote $dst.ai-stack-new (review/merge; not overwritten)"
   fi
 }
-log "Claude Code: installing 9 agents + ${#SKILLS[@]} skills into $CLAUDE_DIR (GLOBAL)..."
+# The manager is the MAIN agent: a Claude Code subagent CANNOT dispatch other subagents
+# (Task is main-agent-only), so "single entrance orchestrates the 8" requires the manager to be
+# the main session. It installs as a managed CLAUDE.md @-import (NOT a peer subagent); the other
+# 8 install as subagents. CLAUDE.md is auto-loaded GUIDANCE (not a system-prompt override).
+install_main_agent() {  # manager persona -> ~/.claude/fleet/manager.md + clobber-safe @-import
+  local src="$CLAUDE_AGENTS_SRC/manager.md"
+  local managed="$CLAUDE_DIR/fleet/manager.md" claudemd="$CLAUDE_DIR/CLAUDE.md"
+  local begin="<!-- BEGIN ai-stack fleet manager (managed) -->" end="<!-- END ai-stack fleet manager (managed) -->"
+  [[ -f "$src" ]] || { warn "missing manager source $src"; return; }
+  mkdir -p "$CLAUDE_DIR/fleet"
+  # The managed persona file is OURS: strip the YAML frontmatter, overwrite freely on update.
+  # Robust YAML-frontmatter strip: fence-toggle (only before the body starts, so the body's own
+  # '---' rules survive) + drop leading blanks. Tolerant of a leading blank/comment before the fence.
+  awk '/^---$/ && !started && !fmclosed { if (fmopen) fmclosed=1; else fmopen=1; next }
+       fmopen && !fmclosed { next }
+       !started && NF==0 { next }
+       { started=1; print }' "$src" > "$managed"
+  ok "wrote $managed (manager persona — the main-agent instruction)"
+  # @-import it from CLAUDE.md, NEVER clobbering the user's own content.
+  if [[ ! -f "$claudemd" ]]; then
+    printf '%s\n@fleet/manager.md\n%s\n' "$begin" "$end" > "$claudemd"
+    ok "created $claudemd importing the fleet manager"
+  elif grep -qF "$begin" "$claudemd"; then
+    note "$claudemd already imports the fleet manager (managed block present; persona refreshed in place)"
+  else
+    printf '\n%s\n@fleet/manager.md\n%s\n' "$begin" "$end" >> "$claudemd"
+    ok "appended the managed manager import to your existing $claudemd (your content untouched)"
+  fi
+  [[ -f "$CLAUDE_DIR/agents/manager.md" ]] && warn "superseded: $CLAUDE_DIR/agents/manager.md (manager is now the MAIN agent) — you may remove it"
+  return 0
+}
+log "Claude Code: installing 8 specialist subagents + ${#SKILLS[@]} skills + the manager (main agent) into $CLAUDE_DIR (GLOBAL)..."
 mkdir -p "$CLAUDE_DIR/agents" "$CLAUDE_DIR/skills"
-for r in "${ROLES[@]}"; do install_file "$CLAUDE_AGENTS_SRC/$r.md" "$CLAUDE_DIR/agents/$r.md"; done
+for r in "${ROLES[@]}"; do [[ "$r" == manager ]] && continue; install_file "$CLAUDE_AGENTS_SRC/$r.md" "$CLAUDE_DIR/agents/$r.md"; done
 for sk in "${SKILLS[@]}"; do install_file "$CLAUDE_SKILLS_SRC/$sk/SKILL.md" "$CLAUDE_DIR/skills/$sk/SKILL.md"; done
-ok "Claude Code: ${#CLAUDE_WRITTEN[@]} file(s) newly written under $CLAUDE_DIR (existing user edits preserved)"
-note "These are GLOBAL — they appear in every Claude Code session on this machine. Remove with: rm ~/.claude/agents/{manager,techlead,...}.md and the skill dirs."
+install_main_agent
+ok "Claude Code: ${#CLAUDE_WRITTEN[@]} subagent/skill file(s) newly written; manager installed as the main-agent persona (existing user edits preserved)"
+note "GLOBAL — active in every Claude Code session on this Mac. Remove with: rm the 8 ~/.claude/agents/*.md, the skill dirs, ~/.claude/fleet/manager.md, and the managed block in ~/.claude/CLAUDE.md."
 
 # --- 3) Pi: upload the 9 SYSTEM.md (+ skills) into the pi-v1 sandbox ----------
 if sandbox_ready "$PI_SANDBOX"; then
