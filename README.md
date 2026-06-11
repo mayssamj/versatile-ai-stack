@@ -144,7 +144,8 @@ A plain-language tour of the headline pieces (the full inventory is in the table
   security), an SRE, and an incident manager — running a spec→deploy pipeline under a
   shared `team-protocol`, isolated inside an OpenShell sandbox. The same team is also
   realized as Pi personas (`bin/pi-as <role>`) and Claude Code subagents. You can even
-  chat with them from your phone via a Telegram bot.
+  chat with them from your phone via a Telegram bot. Review and edit every persona,
+  skill and bootstrap file in one page with `vz-ai-stack.sh fleet-studio` (`doc/FLEET.html`).
 - **Pi — sandboxed coding agent.** A coding agent locked in its own `pi-v1` sandbox
   with a tight egress allowlist — it can reach local models, memory, and your docs,
   but not Phoenix, Qdrant, the master key, or the open internet. Launch it with `bin/pi`.

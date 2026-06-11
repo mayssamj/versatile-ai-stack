@@ -4,6 +4,15 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-11
+
+### Features
+
+- fleet-studio: doc/FLEET.html — single self-contained page to review+edit all 51 agent-profiles files (9 personas x 3 frameworks + shared skills + docs) live on disk via the File System Access API; launched by 'vz-ai-stack.sh fleet-studio' (loopback static serve of doc/). Edit-only, git-as-undo, Chrome/Edge read+write with Safari/FF read-only fallback. 2 subagent reviews + 3-way debate; 0 console errors; Semgrep clean.
+
+---
+
+
 ## 2026-06-09
 
 ### Validation

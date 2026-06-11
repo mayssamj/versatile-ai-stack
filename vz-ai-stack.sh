@@ -193,6 +193,8 @@ ai-stack-installer — usage:
                                         (or all enabled), type-dispatched
     vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]   serve doc/TUTORIAL.html
                                         + safe 'Try it live' proxy (ephemeral local-only key)
+    vz-ai-stack.sh fleet-studio [--port N] [--no-open]   review+edit agent-profiles/ in a
+                                        browser (live read+write via File System Access API)
     vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
@@ -243,7 +245,7 @@ is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
     setup|keys|verify|adopt|apply-restarts|logs|history|gc|migrate-v2|upgrade|\
-    tutorial-serve|reset|start|run|enable|stop|disable|help) return 0 ;;
+    tutorial-serve|fleet-studio|reset|start|run|enable|stop|disable|help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -597,6 +599,8 @@ cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 cmd_upgrade() { bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }
 # Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
 cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
+# Serves doc/FLEET.html on loopback to review+edit agent-profiles/ in a browser.
+cmd_fleet_studio() { bash "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
 
 # cmd_start <svc> — invoke bin/start-<svc>.sh (the canonical per-service
 # launcher). All managed services have one. For docker-compose services
@@ -1044,6 +1048,7 @@ main() {
     migrate-v2)        cmd_migrate_v2 ;;
     upgrade)           cmd_upgrade "$@" ;;
     tutorial-serve)    cmd_tutorial_serve "$@" ;;
+    fleet-studio)      cmd_fleet_studio "$@" ;;
     reset)             cmd_reset "$@" ;;
     run|start|enable)  cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;

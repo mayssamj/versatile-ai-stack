@@ -53,6 +53,12 @@ per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
 - **Pi** — phase-1 personas uploaded into the `pi-v1` sandbox; switch with `bin/pi-as <role>`.
 - **Claude Code** — the 9 agents + 6 skills are copied into `~/.claude/{agents,skills}/` (global).
 
+## Review & edit (Fleet Studio)
+Open **`vz-ai-stack.sh fleet-studio`** (serves `doc/FLEET.html` on `127.0.0.1`) to review and edit every
+file here — all 9 personas × 3 frameworks, the shared skill pack, and these docs — live on disk via the
+browser's File System Access API. Chrome/Edge get read+write; Safari/Firefox open read-only. Saves go
+straight to the real files (`agent-profiles/` is git-tracked, so git is your undo).
+
 ## Honest caveats (verify before you ship)
 - **Pi has no native subagents** — its personas are per-project `SYSTEM.md`; a *live* fleet is a phase-2 Pi-SDK build.
 - **Claude Code:** a subagent's `permissionMode` isn't reliably honored — read-only roles omit Edit/Write from `tools`.

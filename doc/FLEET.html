@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Fleet Studio — agent-profiles review &amp; edit</title>
+<!--
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  FLEET STUDIO  ·  doc/FLEET.html                                           │
+  │                                                                            │
+  │  A single self-contained page to REVIEW and EDIT every file in the agent  │
+  │  fleet (agent-profiles/): 9 role personas × 3 frameworks + a shared skill │
+  │  pack + per-fleet docs.                                                    │
+  │                                                                            │
+  │  DESIGN RATIONALE (the durable record — see doc/specs/2026-06-10-fleet-   │
+  │  studio.md for the full spec):                                            │
+  │   • Reads files LIVE via the File System Access API (showDirectoryPicker) │
+  │     so it can NEVER go stale — no embedded snapshot, no generator, no     │
+  │     --check drift guard, no doctor check needed.                          │
+  │   • Saves edits straight to the real files (createWritable). Chrome/Edge  │
+  │     get full read+write; Safari/Firefox fall back to directory-upload     │
+  │     (read) + Download/Copy (save), stated honestly — never a fake "Saved".│
+  │   • Best launched via `vz-ai-stack.sh fleet-studio` (serves doc/ on       │
+  │     http://127.0.0.1 — an unambiguous secure context so the save API is   │
+  │     guaranteed). A plain file:// double-click also works in Chrome.       │
+  │                                                                            │
+  │  SAFETY: writes happen ONLY on explicit Save. Each file keeps its loaded  │
+  │  original in memory (dirty-tracking + Revert). beforeunload guards unsaved │
+  │  work. No create / rename / delete. agent-profiles/ is git-tracked, so a  │
+  │  bad save is `git checkout`-recoverable — git is the undo.                 │
+  │                                                                            │
+  │  The pure logic (classify / extractMeta / renderMarkdown) is exposed on   │
+  │  window.__fleet for automated verification.                               │
+  └──────────────────────────────────────────────────────────────────────────┘
+-->
+<style>
+  /* ── Fleet Command Deck · dark aerospace console ─────────────────────────── */
+  :root {
+    --bg:        #0c0f16;
+    --bg-2:      #0f131c;
+    --panel:     #121826;
+    --panel-2:   #161d2d;
+    --line:      #232c3d;
+    --line-2:    #2d384c;
+    --ink:       #d9dfea;
+    --ink-dim:   #97a1b4;
+    --ink-faint: #7a8699;
+
+    /* fleet identity hues (functional: tells you which framework at a glance) */
+    --cc:    #f5a623;   /* claude-code → amber  */
+    --cc-d:  #5a4420;
+    --herm:  #7aa2f7;   /* hermes      → indigo */
+    --herm-d:#28344f;
+    --pi:    #5fd39b;   /* pi          → phosphor green */
+    --pi-d:  #234539;
+
+    /* semantic states (kept distinct from fleet hues) */
+    --dirty: #ff8a8a;
+    --saved: #7ee787;
+    --danger:#ff6b6b;
+
+    --mono: "SF Mono", "SFMono-Regular", "Menlo", "Monaco", ui-monospace, monospace;
+    --display: "Futura", "Avenir Next Condensed", "Avenir Next", sans-serif;
+    --body: "Avenir Next", "Avenir", -apple-system, BlinkMacSystemFont, sans-serif;
+
+    --r: 7px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 78% -8%, #15203320, transparent 60%),
+      radial-gradient(900px 500px at 8% 108%, #1a142410, transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  /* faint HUD grid texture */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(#ffffff05 1px, transparent 1px),
+      linear-gradient(90deg, #ffffff05 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(circle at 50% 35%, #000 0%, transparent 85%);
+    opacity: .5;
+  }
+
+  .app { position: relative; z-index: 1; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+  /* ── command bar ─────────────────────────────────────────────────────────── */
+  header.bar {
+    display: flex; align-items: center; gap: 18px;
+    padding: 11px 18px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--bg-2), #0c0f16);
+  }
+  .wordmark { display: flex; align-items: baseline; gap: 10px; }
+  .wordmark .mk {
+    font-family: var(--display); font-weight: 600; letter-spacing: .26em;
+    text-transform: uppercase; font-size: 16px; color: var(--ink);
+  }
+  .wordmark .mk b { color: var(--cc); font-weight: 600; }
+  .wordmark .sub {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint);
+    letter-spacing: .04em;
+  }
+  .bar .spacer { flex: 1; }
+
+  .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
+  .seg button {
+    font-family: var(--display); text-transform: uppercase; letter-spacing: .12em;
+    font-size: 10.5px; padding: 7px 13px; background: transparent; color: var(--ink-dim);
+    border: 0; cursor: pointer; transition: background .15s, color .15s;
+  }
+  .seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--ink); }
+  .seg button + button { border-left: 1px solid var(--line); }
+
+  .search {
+    display: flex; align-items: center; gap: 7px; background: var(--panel);
+    border: 1px solid var(--line-2); border-radius: var(--r); padding: 6px 11px; min-width: 210px;
+  }
+  .search svg { width: 13px; height: 13px; opacity: .5; flex: none; }
+  .search input {
+    background: transparent; border: 0; outline: 0; color: var(--ink);
+    font-family: var(--mono); font-size: 12px; width: 100%;
+  }
+  .search input::placeholder { color: var(--ink-faint); }
+
+  .btn {
+    font-family: var(--display); text-transform: uppercase; letter-spacing: .12em;
+    font-size: 10.5px; padding: 8px 14px; border-radius: var(--r); cursor: pointer;
+    border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink);
+    transition: border-color .15s, background .15s, transform .05s, opacity .15s;
+  }
+  .btn:hover { border-color: var(--cc); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--cc); color: #1a1206; border-color: var(--cc); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; border-color: var(--line-2); }
+  .btn.ghost { background: transparent; }
+
+  .status-pill {
+    font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 20px;
+    border: 1px solid var(--line-2); color: var(--ink-dim); display: inline-flex; align-items: center; gap: 7px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  .dot.live { background: var(--saved); box-shadow: 0 0 7px var(--saved); }
+  .dot.ro   { background: var(--cc); box-shadow: 0 0 7px var(--cc); }
+
+  /* ── main: two panes ───────────────────────────────────────────────────────*/
+  .main { display: grid; grid-template-columns: 312px 1fr; min-height: 0; }
+
+  /* roster rail */
+  .rail { border-right: 1px solid var(--line); background: linear-gradient(180deg,#0e131e,#0c0f16); overflow-y: auto; }
+  .rail .group { padding: 6px 0; }
+  .group-h {
+    display: flex; align-items: center; gap: 9px; padding: 9px 16px 6px;
+    font-family: var(--display); text-transform: uppercase; letter-spacing: .16em; font-size: 10px;
+    color: var(--ink-dim); cursor: pointer; user-select: none;
+  }
+  .group-h .chev { transition: transform .15s; opacity: .6; font-size: 9px; }
+  .group-h.collapsed .chev { transform: rotate(-90deg); }
+  .group-h .gcount { margin-left: auto; color: var(--ink-faint); font-family: var(--mono); letter-spacing: 0; }
+  .group-h .fleetbar { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+  .subgroup-h {
+    padding: 6px 16px 4px 26px; font-family: var(--mono); font-size: 10px; letter-spacing: .04em;
+    color: var(--ink-faint); text-transform: uppercase;
+  }
+
+  .row {
+    display: flex; align-items: center; gap: 9px; padding: 7px 16px 7px 26px; cursor: pointer;
+    border-left: 2px solid transparent; transition: background .12s, border-color .12s;
+  }
+  .row:hover { background: #ffffff06; }
+  .row.active { background: #ffffff0d; }
+  .row .fl { width: 3px; align-self: stretch; border-radius: 2px; margin: 1px 0; flex: none; }
+  .row .nm { font-family: var(--mono); font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .fw { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); margin-left: auto; padding-left: 8px; }
+  .row.active .nm { color: #fff; }
+  .row .ddot { width: 6px; height: 6px; border-radius: 50%; background: var(--dirty); box-shadow: 0 0 6px var(--dirty); flex: none; }
+  .row:focus-visible, .group-h:focus-visible { outline: 2px solid var(--cc); outline-offset: -2px; border-radius: 4px; }
+  .search:focus-within, .doc-wrap:focus-within { border-color: var(--cc); }
+  .btn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--cc); outline-offset: 2px; }
+  .reader li.task { list-style: none; margin-left: -1.2em; }
+
+  /* content pane */
+  .content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+  /* connect hero */
+  .hero { margin: auto; max-width: 560px; padding: 48px 28px; text-align: center; }
+  .hero .ring {
+    width: 92px; height: 92px; margin: 0 auto 26px; border-radius: 50%;
+    border: 1px solid var(--line-2);
+    display: grid; place-items: center;
+    background: radial-gradient(circle at 50% 35%, #1a2336, #0d111a);
+    box-shadow: inset 0 0 40px #0008, 0 0 0 6px #ffffff04;
+  }
+  .hero .ring span { font-family: var(--display); font-size: 30px; letter-spacing: .12em; color: var(--cc); }
+  .hero .htitle { font-family: var(--display); letter-spacing: .2em; text-transform: uppercase; font-weight: 600; font-size: 20px; margin: 0 0 10px; }
+  .hero p { color: var(--ink-dim); margin: 0 auto 20px; max-width: 460px; }
+  .hero .legend { display: flex; gap: 16px; justify-content: center; margin: 22px 0 26px; flex-wrap: wrap; }
+  .hero .legend span { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); display: inline-flex; align-items: center; gap: 6px; }
+  .hero .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .hero .note { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 22px; line-height: 1.7; }
+
+  /* file header / breadcrumb */
+  .fhead { padding: 14px 22px 0; }
+  .crumb { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .crumb b { color: var(--ink); }
+  .crumb .chip {
+    font-family: var(--display); text-transform: uppercase; letter-spacing: .1em; font-size: 9.5px;
+    padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line-2); color: var(--ink);
+  }
+
+  /* meta card */
+  .card {
+    margin: 12px 22px 0; border: 1px solid var(--line); border-radius: var(--r);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel)); overflow: hidden;
+  }
+  .card .ctop { display: flex; align-items: stretch; }
+  .card .accent { width: 4px; flex: none; }
+  .card .cbody { padding: 13px 16px; flex: 1; min-width: 0; }
+  .card .ttl { font-family: var(--display); font-size: 16px; letter-spacing: .02em; margin: 0 0 3px; color: #fff; }
+  .card .desc { color: var(--ink-dim); font-size: 12.5px; margin: 0 0 11px; }
+  .meta-grid { display: flex; flex-wrap: wrap; gap: 7px 9px; }
+  .tag {
+    font-family: var(--mono); font-size: 11px; padding: 3px 9px; border-radius: 20px;
+    border: 1px solid var(--line-2); color: var(--ink-dim); background: #ffffff05;
+  }
+  .tag b { color: var(--ink); font-weight: 500; }
+  .tag.model { color: var(--cc); border-color: var(--cc-d); }
+  .tag.skill { color: var(--herm); border-color: var(--herm-d); }
+
+  /* read/edit toolbar */
+  .ftools { display: flex; align-items: center; gap: 12px; padding: 13px 22px 9px; }
+  .ftools .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .dirty-flag { font-family: var(--mono); font-size: 11px; color: var(--dirty); display: none; align-items: center; gap: 6px; }
+  .dirty-flag.on { display: inline-flex; }
+  .dirty-flag .ddot { width: 6px; height: 6px; border-radius: 50%; background: var(--dirty); box-shadow: 0 0 6px var(--dirty); }
+  .saved-flag { font-family: var(--mono); font-size: 11px; color: var(--saved); opacity: 0; transition: opacity .25s; }
+  .saved-flag.on { opacity: 1; }
+
+  /* the document area */
+  .doc-wrap { flex: 1; min-height: 0; margin: 0 22px 18px; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--bg-2); }
+  .reader { height: 100%; overflow: auto; padding: 22px 30px; }
+  textarea.editor {
+    height: 100%; width: 100%; resize: none; border: 0; outline: 0; padding: 20px 26px;
+    background: #0a0d14; color: #cdd6e6; font-family: var(--mono); font-size: 13px; line-height: 1.72;
+    tab-size: 2; white-space: pre; overflow: auto;
+  }
+
+  /* rendered markdown */
+  .reader h1, .reader h2, .reader h3, .reader h4 { font-family: var(--display); color: #fff; line-height: 1.25; margin: 1.4em 0 .5em; }
+  .reader h1 { font-size: 23px; letter-spacing: .02em; border-bottom: 1px solid var(--line); padding-bottom: .3em; }
+  .reader h2 { font-size: 18px; letter-spacing: .02em; }
+  .reader h3 { font-size: 15px; color: var(--cc); }
+  .reader h4 { font-size: 13px; color: var(--ink); text-transform: uppercase; letter-spacing: .08em; }
+  .reader h1:first-child, .reader h2:first-child { margin-top: 0; }
+  .reader p, .reader li { color: var(--ink); }
+  .reader a { color: var(--herm); text-decoration: none; border-bottom: 1px dotted var(--herm-d); }
+  .reader a:hover { border-bottom-style: solid; }
+  .reader code { font-family: var(--mono); font-size: 12px; background: #ffffff0e; padding: 1.5px 5px; border-radius: 4px; color: #ffd9a0; }
+  .reader pre { background: #0a0d14; border: 1px solid var(--line); border-radius: var(--r); padding: 13px 15px; overflow: auto; }
+  .reader pre code { background: transparent; padding: 0; color: #cdd6e6; }
+  .reader blockquote { margin: 1em 0; padding: 4px 16px; border-left: 3px solid var(--cc); color: var(--ink-dim); background: #ffffff05; }
+  .reader hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
+  .reader ul, .reader ol { padding-left: 1.4em; }
+  .reader li { margin: .25em 0; }
+  .reader table { border-collapse: collapse; margin: 1em 0; font-size: 13px; }
+  .reader th, .reader td { border: 1px solid var(--line); padding: 6px 11px; text-align: left; }
+  .reader th { background: #ffffff08; font-family: var(--display); letter-spacing: .04em; text-transform: uppercase; font-size: 11px; color: var(--ink-dim); }
+  .reader strong { color: #fff; }
+
+  /* footer status deck */
+  footer.deck {
+    display: flex; align-items: center; gap: 16px; padding: 9px 18px;
+    border-top: 1px solid var(--line); background: linear-gradient(0deg, var(--bg-2), #0c0f16);
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim);
+  }
+  footer .ct b { color: var(--ink); }
+  footer .ct .ddot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dirty); box-shadow: 0 0 6px var(--dirty); margin: 0 4px 0 12px; }
+  footer .spacer { flex: 1; }
+
+  /* toast */
+  .toast {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r);
+    padding: 11px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink);
+    box-shadow: 0 14px 40px #000a; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 50;
+    max-width: 460px;
+  }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  .toast b { color: var(--cc); }
+  .toast .x { color: var(--ink-dim); cursor: pointer; margin-left: 12px; background: none; border: 0; font: inherit; padding: 0; }
+
+  .empty { margin: auto; color: var(--ink-faint); font-family: var(--mono); font-size: 12px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  /* staggered reveal on connect */
+  @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+  .reveal { animation: rise .32s both; }
+
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: #2a3445; border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #36425a; background-clip: content-box; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <h1 class="sr-only">Fleet Studio — review and edit agent-profiles</h1>
+    <div class="wordmark">
+      <span class="mk">FLEET <b>STUDIO</b></span>
+      <span class="sub">agent-profiles · review &amp; edit</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="seg" id="groupSeg" hidden>
+      <button data-group="fleet" aria-pressed="true">By fleet</button>
+      <button data-group="role" aria-pressed="false">By role</button>
+    </div>
+    <label class="search" id="searchWrap" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="text" placeholder="filter files…" aria-label="Filter files" autocomplete="off" spellcheck="false">
+    </label>
+    <span class="status-pill" id="modePill"><span class="dot"></span><span id="modeText">not connected</span></span>
+    <button class="btn primary" id="connectBtn">Connect folder</button>
+  </header>
+
+  <div class="main">
+    <nav class="rail" id="rail" hidden></nav>
+    <section class="content" id="content">
+      <div class="hero" id="hero">
+        <div class="ring"><span>⌖</span></div>
+        <div class="htitle">Fleet Studio</div>
+        <p>Review and edit every file in your agent fleet — <b>9 role personas × 3 frameworks</b>, the shared skill pack, and the per-fleet docs — from one page that reads and writes the real files on disk.</p>
+        <div class="legend">
+          <span><i style="background:var(--cc)"></i>claude-code</span>
+          <span><i style="background:var(--herm)"></i>hermes</span>
+          <span><i style="background:var(--pi)"></i>pi</span>
+        </div>
+        <button class="btn primary" id="connectBtn2">Connect agent-profiles/ folder</button>
+        <div class="note" id="heroNote"></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="deck" hidden id="deck">
+    <span class="ct" id="counts">—</span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="revertBtn" disabled>Revert file</button>
+    <button class="btn ghost" id="saveAllBtn" disabled>Save all</button>
+    <button class="btn primary" id="saveBtn" disabled>Save</button>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* ════════════════════════════════════════════════════════════════════════════
+   PURE UNITS  (exposed on window.__fleet for automated verification)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+const FLEETS = {
+  "claude-code": { label: "claude-code", hue: "var(--cc)" },
+  "hermes":      { label: "hermes",      hue: "var(--herm)" },
+  "pi":          { label: "pi",          hue: "var(--pi)" },
+};
+
+/** classify(relPath) → { fleet, category, name, role, framework, label }
+ *  Pure path → typed file. No per-fleet hardcoding beyond these rules, so new
+ *  roles/skills appear automatically. See spec §"File discovery & classification". */
+function classify(relPath) {
+  const parts = relPath.split("/").filter(Boolean);
+  const fleet = parts[0] || "";
+  const base = parts[parts.length - 1] || "";
+  const parent = parts[parts.length - 2] || "";
+  let category = "other", name = base, role = "";
+
+  if (base === "SKILL.md")                              { category = "skill"; name = parent; }
+  else if (base === "BOOTSTRAP.md" || base === "README.md") { category = "doc"; name = base; }
+  else if (base === "SOUL.md" || base === "SYSTEM.md")  { category = "persona"; role = parent; name = parent; }
+  else if (parent.endsWith("agents") && base.endsWith(".md")) { category = "persona"; role = base.replace(/\.md$/, ""); name = role; }
+
+  return { fleet, category, name, role, framework: fleet, label: name, path: relPath, base };
+}
+
+/** Minimal YAML-ish frontmatter parser for the leading --- … --- block.
+ *  Handles scalars, inline lists [a, b], and dash lists. Enough for the agent
+ *  .md frontmatter (name/description/model/tools/skills) and SKILL.md. */
+function parseFrontmatter(text) {
+  const m = /^﻿?---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/.exec(text);
+  if (!m) return { data: {}, body: text };
+  const data = {}; let key = null;
+  for (const raw of m[1].split("\n")) {
+    if (!raw.trim()) continue;
+    const li = /^\s*-\s+(.*)$/.exec(raw);
+    if (li && key) { (Array.isArray(data[key]) ? data[key] : (data[key] = [])).push(strip(li[1])); continue; }
+    const kv = /^([A-Za-z0-9_.-]+):\s*(.*)$/.exec(raw);
+    if (kv) {
+      key = kv[1]; let v = kv[2].trim();
+      if (v === "") { data[key] = []; }                       // list follows on next lines
+      else if (v.startsWith("[") && v.endsWith("]")) data[key] = v.slice(1, -1).split(",").map(s => strip(s)).filter(Boolean);
+      else { data[key] = strip(v); }
+    }
+  }
+  return { data, body: text.slice(m[0].length) };
+  function strip(s) { return s.trim().replace(/^["']|["']$/g, ""); }
+}
+
+const firstH1NoMd = (text) => {
+  for (const line of (text || "").split("\n")) {
+    const h = /^#\s+(.*\S)\s*$/.exec(line);
+    if (h && !/\.md\b/.test(h[1])) return h[1].trim();
+  }
+  return "";
+};
+const afterMarker = (text, marker) => {
+  const re = new RegExp("\\*\\*" + marker + "\\*\\*\\s*([\\s\\S]*?)(?=\\n\\s*\\n|\\n\\s*\\*\\*|\\n#|$)");
+  const m = re.exec(text || "");
+  return m ? m[1].replace(/\s+/g, " ").trim() : "";
+};
+
+/** extractMeta(entry, text) → card fields. Best-effort & non-fatal; the full body
+ *  is always shown regardless of what this finds. */
+function extractMeta(entry, text) {
+  text = text || "";
+  const meta = { title: "", description: "", model: "", tools: [], skills: [], access: "", mandate: "" };
+  if (entry.framework === "claude-code" && entry.category === "persona") {
+    const { data } = parseFrontmatter(text);
+    meta.title = data.name || entry.role;
+    meta.description = data.description || "";
+    meta.model = data.model || "";
+    meta.tools = asList(data.tools);
+    meta.skills = asList(data.skills);
+  } else if (entry.category === "skill") {
+    const { data } = parseFrontmatter(text);
+    meta.title = data.name || entry.name;
+    meta.description = data.description || "";
+  } else if (entry.category === "persona") {           // hermes SOUL.md / pi SYSTEM.md
+    meta.title = firstH1NoMd(text) || entry.role;
+    meta.mandate = afterMarker(text, "Mandate\\.");
+    meta.access = afterMarker(text, "Access\\.");
+    meta.description = meta.mandate;
+    const id = /id:\s*["']([^"']+)["']/.exec(text);
+    meta.model = id ? id[1] : "";
+    const shipped = /\*\*Shipped \(load these\):\*\*\s*([^\n.]+)/.exec(text);
+    if (shipped) meta.skills = shipped[1].split(/[,·]/).map(s => s.trim()).filter(Boolean);
+  } else {                                              // doc (BOOTSTRAP / README)
+    meta.title = firstH1NoMd(text) || entry.name;
+    const p = /^(?!#)(.+\S)/m.exec(text.replace(/^#.*$/m, ""));
+    meta.description = p ? p[1].slice(0, 200) : "";
+  }
+  if (meta.description.length > 320) meta.description = meta.description.slice(0, 317) + "…";
+  return meta;
+  function asList(v) { return Array.isArray(v) ? v : (typeof v === "string" && v ? v.split(",").map(s => s.trim()).filter(Boolean) : []); }
+}
+
+const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/** renderMarkdown(text) → safe HTML. HTML-escaped FIRST, then a compact subset is
+ *  transformed. Enough for these files; no external library → offline & single-file. */
+function renderMarkdown(md) {
+  const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
+  let out = [], i = 0;
+  const inline = (t) => escapeHtml(t)
+    .replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\s][^*]*?)\*/g, "$1<em>$2</em>")
+    .replace(/(^|[\s(])_([^_\s][^_]*?)_(?![A-Za-z0-9])/g, "$1<em>$2</em>")  // boundary: don't italicise snake_case (key_alias)
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, href) =>
+      // allowlist: relative/anchor (no scheme) or http(s)/mailto only — drops javascript:/data:/file:/vbscript:/…
+      (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^(https?|mailto):/i.test(href)) ? txt
+        : '<a href="' + href.replace(/"/g, "%22") + '" target="_blank" rel="noopener noreferrer">' + txt + "</a>");
+
+  while (i < lines.length) {
+    let ln = lines[i];
+
+    if (/^```/.test(ln)) {                                   // fenced code
+      const lang = ln.slice(3).trim(); const buf = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      out.push('<pre><code data-lang="' + escapeHtml(lang) + '">' + escapeHtml(buf.join("\n")) + "</code></pre>");
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(ln);
+    if (h) { const lv = Math.min(h[1].length, 4); out.push("<h" + lv + ">" + inline(h[2]) + "</h" + lv + ">"); i++; continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) { out.push("<hr>"); i++; continue; }
+
+    if (/^\s*>/.test(ln)) {                                  // blockquote
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push("<blockquote>" + renderMarkdown(buf.join("\n")) + "</blockquote>");
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(ln) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes("-")) {
+      const rows = []; while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]);
+      const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const head = cells(rows[0]); let t = "<table><thead><tr>" + head.map(c => "<th>" + inline(c) + "</th>").join("") + "</tr></thead><tbody>";
+      for (let r = 2; r < rows.length; r++) t += "<tr>" + cells(rows[r]).map(c => "<td>" + inline(c) + "</td>").join("") + "</tr>";
+      out.push(t + "</tbody></table>"); continue;
+    }
+    const li = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(ln);
+    if (li) {
+      const ordered = /\d/.test(li[2]); const tag = ordered ? "ol" : "ul"; const items = [];
+      while (i < lines.length) {
+        const m2 = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(lines[i]);
+        if (!m2) break;
+        const tk = /^\[([ xX])\]\s+/.exec(m2[3]);   // GitHub task list: - [ ] / - [x]
+        if (tk) items.push('<li class="task">' + (/x/i.test(tk[1]) ? "☑" : "☐") + " " + inline(m2[3].slice(tk[0].length)) + "</li>");
+        else items.push("<li>" + inline(m2[3]) + "</li>");
+        i++;
+      }
+      out.push("<" + tag + ">" + items.join("") + "</" + tag + ">");
+      continue;
+    }
+    if (ln.trim() === "") { i++; continue; }
+
+    const buf = [];                                          // paragraph
+    while (i < lines.length && lines[i].trim() !== "" && !/^(#{1,6}\s|```|\s*>|\s*([-*+]|\d+\.)\s|\s*\|.*\|\s*$|\s*(-{3,}|\*{3,}|_{3,})\s*$)/.test(lines[i])) buf.push(lines[i++]);
+    out.push("<p>" + inline(buf.join(" ")) + "</p>");
+  }
+  return out.join("\n");
+}
+
+window.__fleet = { classify, parseFrontmatter, extractMeta, renderMarkdown, firstH1NoMd, afterMarker };
+
+/* ════════════════════════════════════════════════════════════════════════════
+   APP SHELL  (impure: File System Access I/O + DOM)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+const HAS_FSA = "showDirectoryPicker" in window;
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  rootHandle: null,            // FileSystemDirectoryHandle (live mode)
+  mode: HAS_FSA ? "live" : "fallback",
+  groupBy: "fleet",
+  files: new Map(),            // path → { entry, handle|file, text, original, loaded, dirty }
+  current: null,               // path
+  query: "",
+};
+
+/* ── connect ──────────────────────────────────────────────────────────────── */
+async function connectLive() {
+  let dir;
+  try { dir = await window.showDirectoryPicker({ id: "agent-profiles", mode: "readwrite" }); }
+  catch (e) { if (e && e.name === "AbortError") return; throw e; }
+  state.rootHandle = dir;
+  const entries = [];
+  for await (const rec of walk(dir, "")) entries.push(rec);
+  ingest(entries);
+}
+
+async function* walk(dirHandle, prefix) {
+  for await (const [name, handle] of dirHandle.entries()) {
+    const path = prefix ? prefix + "/" + name : name;
+    if (handle.kind === "directory") { yield* walk(handle, path); }
+    else if (name.toLowerCase().endsWith(".md")) { yield { path, handle }; }
+  }
+}
+
+function connectFallback(fileList) {
+  const entries = [];
+  for (const f of fileList) {
+    const rel = (f.webkitRelativePath || f.name).split("/").slice(1).join("/"); // drop the picked dir name
+    if (!rel.toLowerCase().endsWith(".md")) continue;
+    entries.push({ path: rel, file: f });
+  }
+  ingest(entries);
+}
+
+function ingest(entries) {
+  if ([...state.files.values()].some(r => r.dirty) &&
+      !confirm("You have unsaved edits. Re-connecting will discard them. Continue?")) return;
+  state.files.clear();
+  for (const e of entries) {
+    const entry = classify(e.path);
+    if (!FLEETS[entry.fleet]) continue;                // only the 3 known fleets
+    state.files.set(e.path, { entry, handle: e.handle || null, file: e.file || null, text: null, original: null, loaded: false, dirty: false });
+  }
+  if (!state.files.size) { toast("No <b>.md</b> files found — did you pick the <b>agent-profiles/</b> folder?"); return; }
+  $("hero")?.remove();
+  $("rail").hidden = false; $("deck").hidden = false; $("groupSeg").hidden = false; $("searchWrap").hidden = false;
+  $("connectBtn").textContent = "Reconnect";
+  setModePill();
+  renderTree();
+  // auto-select the manager persona of the first fleet, else first file
+  const first = [...state.files.keys()].sort().find(p => state.files.get(p).entry.role === "manager") || [...state.files.keys()].sort()[0];
+  selectFile(first);
+}
+
+/* ── tree ─────────────────────────────────────────────────────────────────── */
+const CAT_ORDER = { persona: 0, skill: 1, doc: 2, other: 3 };
+const CAT_LABEL = { persona: "personas", skill: "skills", doc: "docs", other: "other" };
+const collapsed = new Set();
+
+function matches(rec) {
+  if (!state.query) return true;
+  const q = state.query.toLowerCase();
+  const e = rec.entry;
+  return (e.path.toLowerCase().includes(q) || e.name.toLowerCase().includes(q) ||
+          e.fleet.toLowerCase().includes(q) || (rec.text || "").toLowerCase().includes(q));
+}
+
+function renderTree() {
+  const rail = $("rail"); rail.innerHTML = "";
+  const recs = [...state.files.values()].filter(matches);
+  const groups = state.groupBy === "fleet" ? groupByFleet(recs) : groupByRole(recs);
+  let gi = 0;
+  for (const g of groups) {
+    const total = g.items.reduce((n, s) => n + s.rows.length, 0);
+    if (!total) continue;
+    const gEl = document.createElement("div"); gEl.className = "group reveal"; gEl.style.animationDelay = (gi++ * 35) + "ms";
+    const gh = document.createElement("div"); gh.className = "group-h" + (collapsed.has(g.key) ? " collapsed" : "");
+    gh.tabIndex = 0; gh.setAttribute("role", "button"); gh.setAttribute("aria-expanded", String(!collapsed.has(g.key)));
+    gh.innerHTML = `<span class="chev">▾</span>` +
+      (g.hue ? `<span class="fleetbar" style="background:${g.hue}"></span>` : "") +
+      `<span>${escapeHtml(g.title)}</span><span class="gcount">${total}</span>`;
+    gh.onclick = () => { collapsed.has(g.key) ? collapsed.delete(g.key) : collapsed.add(g.key); renderTree(); };
+    gh.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); gh.click(); } };
+    gEl.appendChild(gh);
+    if (!collapsed.has(g.key)) {
+      for (const sub of g.items) {
+        if (!sub.rows.length) continue;
+        if (sub.title) { const sh = document.createElement("div"); sh.className = "subgroup-h"; sh.textContent = sub.title; gEl.appendChild(sh); }
+        for (const rec of sub.rows) gEl.appendChild(rowEl(rec));
+      }
+    }
+    rail.appendChild(gEl);
+  }
+  if (!rail.children.length) { const e = document.createElement("div"); e.className = "empty"; e.style.padding = "20px 16px"; e.textContent = "no files match “" + state.query + "”"; rail.appendChild(e); }
+  updateCounts();
+}
+
+function rowEl(rec) {
+  const r = document.createElement("div");
+  r.className = "row" + (state.current === rec.entry.path ? " active" : "");
+  const hue = FLEETS[rec.entry.fleet]?.hue || "var(--ink-faint)";
+  r.innerHTML = `<span class="fl" style="background:${hue}"></span>` +
+    `<span class="nm">${escapeHtml(state.groupBy === "role" ? rec.entry.fleet : rec.entry.name)}</span>` +
+    (rec.dirty ? `<span class="ddot" title="unsaved"></span>` : "") +
+    `<span class="fw">${escapeHtml(rec.entry.base)}</span>`;
+  r.tabIndex = 0; r.setAttribute("role", "button");
+  r.onclick = () => selectFile(rec.entry.path);
+  r.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectFile(rec.entry.path); } };
+  return r;
+}
+
+function groupByFleet(recs) {
+  return Object.keys(FLEETS).map(fleet => {
+    const fr = recs.filter(r => r.entry.fleet === fleet);
+    const subs = Object.keys(CAT_LABEL).map(cat => ({
+      title: CAT_LABEL[cat],
+      rows: fr.filter(r => r.entry.category === cat).sort(byName),
+    })).filter(s => s.rows.length);
+    return { key: "fleet:" + fleet, title: FLEETS[fleet].label, hue: FLEETS[fleet].hue, items: subs };
+  });
+}
+function groupByRole(recs) {
+  const roles = [...new Set(recs.filter(r => r.entry.category === "persona").map(r => r.entry.role))].sort();
+  const groups = roles.map(role => ({
+    key: "role:" + role, title: role, hue: null,
+    items: [{ title: "", rows: recs.filter(r => r.entry.category === "persona" && r.entry.role === role).sort((a, b) => a.entry.fleet.localeCompare(b.entry.fleet)) }],
+  }));
+  const skills = recs.filter(r => r.entry.category === "skill");
+  if (skills.length) {
+    const names = [...new Set(skills.map(r => r.entry.name))].sort();
+    groups.push({ key: "role:__skills", title: "shared skills", hue: null,
+      items: names.map(n => ({ title: n, rows: skills.filter(r => r.entry.name === n).sort((a, b) => a.entry.fleet.localeCompare(b.entry.fleet)) })) });
+  }
+  const docs = recs.filter(r => r.entry.category === "doc" || r.entry.category === "other");
+  if (docs.length) groups.push({ key: "role:__docs", title: "docs", hue: null, items: [{ title: "", rows: docs.sort(byName) }] });
+  return groups;
+}
+const byName = (a, b) => a.entry.fleet.localeCompare(b.entry.fleet) || a.entry.name.localeCompare(b.entry.name);
+
+/* ── selection / load ───────────────────────────────────────────────────────*/
+async function selectFile(path) {
+  if (!path || !state.files.has(path)) return;
+  state.current = path;
+  const rec = state.files.get(path);
+  if (!rec.loaded) {
+    try {
+      const file = rec.handle ? await rec.handle.getFile() : rec.file;
+      rec.text = rec.original = await file.text();
+      rec.loaded = true;
+    } catch (e) { toast("Could not read <b>" + escapeHtml(path) + "</b>: " + escapeHtml(e.message)); return; }
+  }
+  if (state.current !== path) return;   // selection moved while loading — don't render a stale/unloaded file
+  renderContent();
+  renderTree();
+}
+
+let viewMode = "read";
+function renderContent() {
+  const rec = state.files.get(state.current); if (!rec) return;
+  const e = rec.entry, meta = extractMeta(e, rec.text);
+  const hue = FLEETS[e.fleet]?.hue || "var(--ink-faint)";
+  const content = $("content");
+  content.innerHTML = `
+    <div class="fhead">
+      <div class="crumb">
+        <span class="chip" style="border-color:${hue};color:${hue}">${escapeHtml(e.fleet)}</span>
+        <span>${escapeHtml(catCrumb(e))}</span> ·
+        <b>${escapeHtml(e.path)}</b>
+      </div>
+    </div>
+    <div class="card reveal">
+      <div class="ctop"><div class="accent" style="background:${hue}"></div><div class="cbody">
+        <div class="ttl">${escapeHtml(meta.title || e.name)}</div>
+        ${meta.description ? `<div class="desc">${escapeHtml(meta.description)}</div>` : ""}
+        <div class="meta-grid">
+          <span class="tag"><b>${escapeHtml(e.category)}</b></span>
+          ${meta.model ? `<span class="tag model">model · <b>${escapeHtml(meta.model)}</b></span>` : ""}
+          ${meta.access ? `<span class="tag">access · ${escapeHtml(meta.access.slice(0, 60))}</span>` : ""}
+          ${(meta.tools || []).length ? `<span class="tag">tools · <b>${escapeHtml(meta.tools.join(", "))}</b></span>` : ""}
+          ${(meta.skills || []).map(s => `<span class="tag skill">${escapeHtml(s)}</span>`).join("")}
+        </div>
+      </div></div>
+    </div>
+    <div class="ftools">
+      <div class="seg" id="viewSeg">
+        <button data-view="read" aria-pressed="${viewMode === "read"}">Read</button>
+        <button data-view="edit" aria-pressed="${viewMode === "edit"}">Edit</button>
+      </div>
+      <div class="right">
+        <span class="dirty-flag ${rec.dirty ? "on" : ""}" id="dirtyFlag"><span class="ddot"></span>unsaved</span>
+        <span class="saved-flag" id="savedFlag">✓ saved to disk</span>
+        <button class="btn ghost" id="copyBtn" title="Copy this file's text to the clipboard">Copy</button>
+      </div>
+    </div>
+    <div class="doc-wrap" id="docWrap"></div>`;
+  $("viewSeg").querySelectorAll("button").forEach(b => b.onclick = () => { viewMode = b.dataset.view; renderContent(); document.querySelector('#viewSeg button[data-view="' + viewMode + '"]')?.focus(); });
+  $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(rec.text); toast("Copied <b>" + escapeHtml(rec.entry.base) + "</b> to clipboard."); } catch (e) { toast("Copy failed: " + escapeHtml(e.message)); } };
+  renderDoc(rec);
+  syncSaveButtons();
+}
+function catCrumb(e) {
+  if (e.category === "persona") return "persona · " + e.role;
+  if (e.category === "skill") return "skill · " + e.name;
+  return e.category;
+}
+function renderDoc(rec) {
+  const wrap = $("docWrap"); wrap.innerHTML = "";
+  if (viewMode === "read") {
+    const d = document.createElement("div"); d.className = "reader";
+    d.innerHTML = renderMarkdown(rec.text);
+    wrap.appendChild(d);
+  } else {
+    const ta = document.createElement("textarea"); ta.className = "editor"; ta.value = rec.text; ta.spellcheck = false;
+    ta.addEventListener("input", () => { rec.text = ta.value; rec.dirty = (rec.text !== rec.original); reflectDirty(rec); });
+    ta.addEventListener("keydown", (ev) => {
+      if (ev.key === "Tab") { ev.preventDefault(); const s = ta.selectionStart, e2 = ta.selectionEnd; ta.value = ta.value.slice(0, s) + "  " + ta.value.slice(e2); ta.selectionStart = ta.selectionEnd = s + 2; rec.text = ta.value; rec.dirty = (rec.text !== rec.original); reflectDirty(rec); }
+    });
+    wrap.appendChild(ta); ta.focus();
+  }
+}
+function reflectDirty(rec) {
+  const f = $("dirtyFlag"); if (f) f.classList.toggle("on", rec.dirty);
+  syncSaveButtons(); updateCounts();
+  // update the row dot without full re-render of content
+  renderTreeRowsDirty();
+}
+function renderTreeRowsDirty() { renderTree(); }
+
+/* ── save / revert ──────────────────────────────────────────────────────────*/
+async function ensureRW(handle) {
+  // Use query/requestPermission when present. If absent, we don't fail closed here —
+  // createWritable() will throw and saveFile()'s catch surfaces it (no silent success).
+  try {
+    if (handle.queryPermission && (await handle.queryPermission({ mode: "readwrite" })) === "granted") return true;
+    if (handle.requestPermission) return (await handle.requestPermission({ mode: "readwrite" })) === "granted";
+  } catch (_) {}
+  return true;
+}
+async function saveFile(path, quiet) {
+  const rec = state.files.get(path); if (!rec || !rec.dirty) return true;
+  if (state.mode === "live" && rec.handle) {
+    let w;
+    try {
+      if (!(await ensureRW(rec.handle))) { toast("Write permission denied for <b>" + escapeHtml(path) + "</b>"); return false; }
+      w = await rec.handle.createWritable();   // Chrome writes to a swap file; close() commits, abort() discards
+      await w.write(rec.text);
+      await w.close();
+    } catch (e) {
+      try { await w?.abort?.(); } catch (_) {}  // discard the swap file so the on-disk original is left intact
+      toast("Save failed for <b>" + escapeHtml(path) + "</b>: " + escapeHtml(e.message)); return false;
+    }
+  } else {
+    downloadFile(rec.entry.base, rec.text);
+  }
+  rec.original = rec.text; rec.dirty = false;
+  if (!quiet) { flashSaved(); maybeGitNote(); }
+  if (path === state.current) { const f = $("dirtyFlag"); if (f) f.classList.remove("on"); }
+  syncSaveButtons(); updateCounts(); renderTree();
+  return true;
+}
+async function saveAll() {
+  const dirty = [...state.files.keys()].filter(p => state.files.get(p).dirty);
+  let ok = 0; for (const p of dirty) { if (await saveFile(p, true)) ok++; }
+  const failed = dirty.length - ok;
+  if (ok && !failed) { flashSaved(); maybeGitNote(); }   // only celebrate a clean sweep
+  const where = state.mode === "fallback" ? " (downloaded)" : " to disk";
+  toast(failed
+    ? `Saved <b>${ok}</b> of <b>${dirty.length}</b>${where} — <b>${failed}</b> failed (see earlier error).`
+    : `Saved <b>${ok}</b> file${ok === 1 ? "" : "s"}${where}.`);
+}
+function revertCurrent() {
+  const rec = state.files.get(state.current); if (!rec || !rec.dirty) return;
+  rec.text = rec.original; rec.dirty = false; renderContent(); updateCounts(); renderTree();
+}
+function downloadFile(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ── chrome / status ────────────────────────────────────────────────────────*/
+function setModePill() {
+  const pill = $("modePill"), dot = pill.querySelector(".dot");
+  if (state.mode === "live") { dot.className = "dot live"; $("modeText").textContent = "live · read + write"; }
+  else { dot.className = "dot ro"; $("modeText").textContent = "read-only · export to save"; }
+}
+function syncSaveButtons() {
+  const rec = state.files.get(state.current);
+  const anyDirty = [...state.files.values()].some(r => r.dirty);
+  $("saveBtn").disabled = !(rec && rec.dirty);
+  $("saveAllBtn").disabled = !anyDirty;
+  $("revertBtn").disabled = !(rec && rec.dirty);
+}
+function updateCounts() {
+  const total = state.files.size, dirty = [...state.files.values()].filter(r => r.dirty).length;
+  $("counts").innerHTML = `<b>${total}</b> files · 3 fleets` + (dirty ? ` <span class="ddot"></span><b>${dirty}</b> unsaved` : " · all saved");
+  syncSaveButtons();
+}
+function flashSaved() { const f = $("savedFlag"); if (!f) return; f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 1600); }
+let gitNoted = false;
+function maybeGitNote() {
+  if (gitNoted || state.mode !== "live") return; gitNoted = true;
+  toast("Saved to disk. <b>git is your undo</b> — agent-profiles/ is tracked, so <code>git checkout</code> reverts any change.");
+}
+// NOTE: `html` is inserted via innerHTML — callers MUST escapeHtml() any dynamic/file-derived
+// content (all current callers do). Follow-up: split into toastText()/toastHtml() to enforce.
+function toast(html) {
+  const t = $("toast"); t.innerHTML = html + ' <button class="x" aria-label="Dismiss" onclick="this.parentElement.classList.remove(\'on\')">✕</button>';
+  t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 6000);
+}
+
+/* ── wiring ─────────────────────────────────────────────────────────────────*/
+function startConnect() {
+  if (state.mode === "live") { connectLive().catch(e => toast("Connect failed: " + escapeHtml(e.message))); }
+  else {
+    const inp = document.createElement("input"); inp.type = "file"; inp.webkitdirectory = true; inp.multiple = true;
+    inp.onchange = () => connectFallback(inp.files); inp.click();
+  }
+}
+$("connectBtn").onclick = startConnect;
+$("connectBtn2") && ($("connectBtn2").onclick = startConnect);
+$("groupSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+  state.groupBy = b.dataset.group;
+  $("groupSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  renderTree();
+});
+$("search").addEventListener("input", (e) => { state.query = e.target.value; renderTree(); });
+$("saveBtn").onclick = () => saveFile(state.current);
+$("saveAllBtn").onclick = saveAll;
+$("revertBtn").onclick = revertCurrent;
+
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    if (e.shiftKey) saveAll(); else saveFile(state.current);
+  }
+});
+window.addEventListener("beforeunload", (e) => {
+  if ([...state.files.values()].some(r => r.dirty)) { e.preventDefault(); e.returnValue = ""; }
+});
+
+$("heroNote").innerHTML = HAS_FSA
+  ? "Chrome / Edge detected — full live read &amp; write. Launch via <code>vz-ai-stack.sh fleet-studio</code> for the smoothest experience."
+  : "This browser has no File System Access API — Fleet Studio will open in <b>read-only</b> mode (edits export via Download/Copy). For live editing, use <b>Chrome</b> or <b>Edge</b>.";
+</script>
+</body>
+</html>
