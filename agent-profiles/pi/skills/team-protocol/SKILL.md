@@ -33,14 +33,17 @@ No DONE token ⇒ not done. "It should work" is not DONE.
 
 ```
 HANDOFF
-  from: <role>            to: <role>
+  from: <role>            to: <role | human | memory>
   artifact: <path>        type: SPEC | DESIGN | DIFF | TEST_REPORT | REVIEW | DEPLOY | INCIDENT | EVAL
+                                | PLAN | DECISION | STATUS | MEMORY-WRITE | MESSAGE | RETRIEVAL
   status: PASS | REJECT | BLOCK
   acceptance_refs: [AC-1, AC-3]      # which criteria this covers
   notes: <=3 lines
 ```
 
 **Executors do not self-delegate.** Routing is the manager's job (CrewAI's #1 reliability lesson). If you think another role must act, you ESCALATE the routing request to the manager — you do not spawn them yourself.
+
+The **manager** also emits the operator types (`PLAN` / `DECISION` / `STATUS` / `MEMORY-WRITE` / `MESSAGE` / `RETRIEVAL`), which may target `to: human` or `to: memory`. **`MESSAGE` carries `send_requires_approval:true`** — drafting is free, but an external send (Slack / email / etc. via a wired MCP surface) is a §5 action.
 
 ## 3. The review-gate pipeline (linear, with bounded back-edges)
 
@@ -83,7 +86,7 @@ Raise this when: the spec is ambiguous/infeasible, an interface is wrong, two ga
 - The manager enforces a **global turn budget N**; on exhaustion, hard-stop and ask the human (AutoGen's #1 failure mode is no termination).
 - A REJECT/BLOCK costs **one back-edge**; **max 2 back-edges per gate**, then ESCALATE to a human instead of looping.
 - Irreversible / production-affecting actions ALWAYS require explicit human confirmation, regardless of budget.
-- **Autonomy hard line.** Never without explicit human approval: destructive or irreversible changes; deleting important work; changing credentials, permissions, or security settings; exposing secrets or private data; publishing or posting externally. Everything else: if grounded and low-risk, move — state your assumptions and keep going; don't chase permission for low-risk work.
+- **Autonomy hard line.** Never without explicit human approval: destructive or irreversible changes; deleting important work; changing credentials, permissions, or security settings; exposing secrets or private data; publishing or posting externally; sending a message to a real person (e.g. via a wired Slack/email MCP surface). Everything else: if grounded and low-risk, move — state your assumptions and keep going; don't chase permission for low-risk work. The test is reversibility + blast radius (of the whole run, not one step), not task category; holding a tool is not authority to cross this line.
 
 ## Verification
 - Did I emit a typed HANDOFF (not prose)? Did I run + paste my verification? Did I respect the gate ordering and not self-delegate? If a loop is forming, did I ESCALATE rather than retry a third time?
