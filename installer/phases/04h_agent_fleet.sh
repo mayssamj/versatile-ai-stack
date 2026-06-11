@@ -104,7 +104,12 @@ install_main_agent() {  # manager persona -> ~/.claude/fleet/manager.md + clobbe
   [[ -f "$src" ]] || { warn "missing manager source $src"; return; }
   mkdir -p "$CLAUDE_DIR/fleet"
   # The managed persona file is OURS: strip the YAML frontmatter, overwrite freely on update.
-  awk 'NR==1 && /^---$/{fm=1; next} fm && /^---$/{fm=0; next} fm{next} NF==0 && !body{next} {body=1; print}' "$src" > "$managed"
+  # Robust YAML-frontmatter strip: fence-toggle (only before the body starts, so the body's own
+  # '---' rules survive) + drop leading blanks. Tolerant of a leading blank/comment before the fence.
+  awk '/^---$/ && !started && !fmclosed { if (fmopen) fmclosed=1; else fmopen=1; next }
+       fmopen && !fmclosed { next }
+       !started && NF==0 { next }
+       { started=1; print }' "$src" > "$managed"
   ok "wrote $managed (manager persona — the main-agent instruction)"
   # @-import it from CLAUDE.md, NEVER clobbering the user's own content.
   if [[ ! -f "$claudemd" ]]; then
