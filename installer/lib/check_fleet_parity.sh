@@ -46,6 +46,39 @@ for f in "${souls[@]}"; do
 done
 echo "  couplet present in $have/$total souls"
 
+echo "== Tier-1 universal discipline block — all 10 bullets byte-exact in every soul =="
+# Canonical Tier-1 = the universal bullets in the manager soul; every role must carry them verbatim.
+t1="$(awk '/Universal discipline \(every role carries these\)/{p=1;next} /Operator-specific/{p=0} p&&/^- /{print}' \
+  agent-profiles/hermes/profiles/manager/SOUL.md)"
+tn="$(printf '%s\n' "$t1" | grep -c '^- ' || true)"
+if (( tn < 10 )); then echo "  ✗ could not extract Tier-1 from manager ($tn bullets)"; fail=1; fi
+while IFS= read -r bl; do
+  [[ -n "$bl" ]] || continue
+  for f in "${souls[@]}"; do grep -Fxq -- "$bl" "$f" || { echo "  ✗ Tier-1 bullet missing/changed in $f: ${bl:0:50}…"; fail=1; }; done
+done <<< "$t1"
+echo "  Tier-1: $tn bullets checked × ${#souls[@]} souls"
+
+echo "== Each role's persona body identical across its 3 framework copies =="
+ROLES9=(manager techlead frontend-engineer backend-engineer ml-engineer qa-test-engineer reviewing-engineer sre-engineer incident-manager)
+extract_body() {  # strip cc frontmatter + framework tail; print the role H1..(before tail), trailing ---/blank trimmed
+  awk '
+    NR==1 && /^---$/ {fm=1; next}
+    fm && /^---$/ {fm=0; next}
+    fm {next}
+    /^## (Profile bootstrap|Setup \(Pi\)|Platform note)/ {exit}
+    !started && /^# / && index($0,".md")==0 {started=1}
+    started {print}
+  ' "$1" | awk '{a[NR]=$0} END{last=NR; while(last>0 && (a[last]=="" || a[last]=="---")) last--; for(i=1;i<=last;i++) print a[i]}'
+}
+for r in "${ROLES9[@]}"; do
+  h="agent-profiles/hermes/profiles/$r/SOUL.md"; p="agent-profiles/pi/agents/$r/SYSTEM.md"; c="agent-profiles/claude-code/.claude/agents/$r.md"
+  if diff -q <(extract_body "$h") <(extract_body "$p") >/dev/null && diff -q <(extract_body "$h") <(extract_body "$c") >/dev/null; then
+    echo "  ✓ $r body identical ×3"
+  else
+    echo "  ✗ $r body DRIFT: hermes-vs-pi $(diff -q <(extract_body "$h") <(extract_body "$p") >/dev/null && echo ok || echo DIFF); hermes-vs-claude $(diff -q <(extract_body "$h") <(extract_body "$c") >/dev/null && echo ok || echo DIFF)"; fail=1
+  fi
+done
+
 if (( fail )); then
   echo "FLEET PARITY: ✗ DRIFT DETECTED — re-sync the divergent copies (edit hermes, then cp to pi + claude-code)." >&2
   exit 1
