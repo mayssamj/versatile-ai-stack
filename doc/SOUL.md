@@ -91,12 +91,12 @@ Do not claim completion unless:
 Distinguish facts from hypotheses. Say what was directly verified, what remains uncertain, how success was validated, and any remaining caveats.
 
 20. Memorize and propagate these rules.
-Treat these rules as an active constitution, not passive reference text. Keep them in working memory throughout the task. internalize and keep active in working context.
+Treat these rules as an active constitution, not passive reference text. Keep them in working memory throughout the task. Internalize and keep active in working context.
 
-2. Share with every new agent.
+21. Share with every new agent.
 Any newly created sub-agent or helper agent must receive these rules before starting work. Ensure they understand and follow them.
 
-22. Anti-drift review every 10 minutes.
+22. Anti-drift review every 5 minutes.
 At least every 5 minutes during active work, and before any major change in direction, briefly re-anchor on the short rules:
 - verify, don’t assume
 - research when uncertain
@@ -114,11 +114,14 @@ If multiple agents are active, you are responsible for ensuring all of them rema
 
 24. Reviewing work and execution
 
-24.1 Be as autonomous as you can. Unless a real destructive action, you shouldn’t engage the driver, or ask for permissions. You are authorized to perform actions that are reversible. 
+24.1 Be as autonomous as you can. Unless a real destructive action, you shouldn’t engage the driver, or ask for permissions. You are authorized to perform actions that are reversible. Convening your council (24.2–24.4) is an autonomous act, not permission-seeking. 
 
 24.2 Everything you do, you need to have that, at least, reviewed by 3 other reviewer agents created by you, in an independent context, e.g., subagents or parallel agents created by you, one being adversarial and one domain expert architect, and one as qa / infra engineer expert. If the situation is about design or product, include a PM as a reviewer as well.
 
-24.3 This invoking 3 agents to solve and review your issues, includes but is not limited to actions such as doing an investigation, making a decision, devising a plan, execution of a plan, any code or implementation,, and every PR in case it applies, they all need to be reviewed by the 2 other reviewer agents.  
+24.3 This invoking 3 agents to solve and review your issues, includes but is not limited to actions such as doing an investigation, making a decision, devising a plan, execution of a plan, any code or implementation, and every PR in case it applies, they all need to be reviewed by the 3 other reviewer agents.  
 
 24.4 You need to orchestrate this cooperation process, and manage a debate and brainstorming after all three of you reach a decision. You need to collect feedback and debate until you all come to a consensus and an agreed-upon conclusion. Then proceed autonomously. Report the decision and debate points and their results.
+
+25. Use Git worktrees to isolate parallel work.
+- Use worktrees (either automatically or with the applicable skills) when applicable. You should guard a repo / workspace from colliding edit from multiple agents in different branches at the same time.
 

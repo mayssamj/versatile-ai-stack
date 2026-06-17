@@ -4,6 +4,17 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-17
+
+### Docs
+
+- SOUL.md constitution: **24 → 25 rules**. Added **Rule 25** ("Use Git worktrees to isolate parallel work" — guard a repo/workspace from colliding edits by multiple agents on different branches). Fixed pre-existing inconsistencies in `doc/SOUL.md`: Rule 21 was mislabeled "2."; Rule 22 cadence unified to "every 5 minutes" (title contradicted body); Rule 24.3 reviewer count "2" → "3" (now matches 24.2's enumeration of 3) + a stray double comma; "internalize" → "Internalize". The Rule 24.1 ↔ 24.2 autonomy-vs-universal-review tension was left UNCHANGED — flagged as an open design question, not a typo.
+- Doc-drift sync (24 → 25): hand-edited the canonical sources — `agent-profiles/SOUL-SUPERSET.md`, `agent-profiles/hermes/profiles/manager/SOUL.md`, `doc/specs/2026-06-11-manager-second-brain.md` (×2) — plus 2 project-memory files. Derived `pi/` + `claude-code/` copies and the installed `~/.claude/` files (incl. `~/.claude/fleet/manager.md`, still reading "24 rules") were deliberately NOT hand-edited, per the source→derived sync model guarded by `check_fleet_parity.sh`. **User step:** run `bash vz-ai-stack.sh install 04h` to regenerate the 3-fleet derived copies and refresh the live `~/.claude/` environment.
+- Process: the SOUL edit and the doc-sync each ran audit → propose → 3-reviewer (adversarial + architect + QA) review-to-consensus per Rule 24.2; every replacement string was verified against the live files before applying.
+
+---
+
+
 ## 2026-06-11
 
 ### Features

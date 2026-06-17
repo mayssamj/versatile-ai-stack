@@ -6,6 +6,14 @@ in fifteen minutes.
 
 ---
 
+## ✅ SHIPPED (2026-06-17): SOUL → 25-rule constitution + doc-sync
+
+`doc/SOUL.md` is the canonical constitution and now has **25 rules** (was 24). Added **Rule 25** (Git worktrees — guard a repo/workspace from colliding edits by parallel agents on different branches) and clarified **Rule 24.1** ("convening your council (24.2–24.4) is an autonomous act, not permission-seeking" — resolves the apparent 24.1↔24.2 tension: autonomy = no human-permission for reversible work; the 3-agent council is the internal method; both always apply). Also fixed pre-existing defects: Rule 21 was mislabeled "2.", Rule 22 cadence unified to 5 min, Rule 24.3 reviewer count 2→3 + a stray comma, Rule 20 "Internalize". Each change went through a §24.2 council (audit → propose → 3-reviewer consensus + debate).
+
+Propagated the 24→25 count to the **canonical sources** — `agent-profiles/SOUL-SUPERSET.md`, `agent-profiles/hermes/profiles/manager/SOUL.md`, `doc/specs/2026-06-11-manager-second-brain.md` — plus the two project-memory files. **NEXT STEP (user's):** the derived `pi/` + `claude-code/` + installed `~/.claude/` copies (incl. `~/.claude/fleet/manager.md`) still read "24 rules" until you run `bash vz-ai-stack.sh install 04h` (every-session ~/.claude blast radius = the user's step). See CHANGELOG 2026-06-17.
+
+---
+
 ## ✅ SHIPPED (2026-06-07): service run/lifecycle cohesion
 
 Design + plan + interface contract + doc-sweep contract: `doc/specs/2026-06-07-service-run-cohesion*.md`.
