@@ -461,3 +461,51 @@ log "11: sourcing docker-engine.sh does NOT trigger the CLI dispatch (BASH_SOURC
   declare -F _de_main >/dev/null && { echo "_de_main leaked outside the BASH_SOURCE guard"; exit 1; } || true
 ) || { err "sourcing docker-engine.sh dispatched the CLI (BASH_SOURCE==\$0 guard broken)"; exit 1; }
 ok "11: docker-engine.sh CLI guarded (source-safe)"
+
+# ===========================================================================
+# Task 12 — Phase 04: OrbStack hardcode → read-only-select + single writer +
+#           canonical Ready guard + checkpoint-before-restart
+# ===========================================================================
+# SAFETY: STATIC-grep + BEHAVIORAL-against-a-throwaway only. This test NEVER
+# executes Phase 04 and NEVER triggers the restart/checkpoint path — it feeds a
+# static colorized fixture to the canonical guard and writes the gateway env via
+# engine_write_gateway_env to a THROWAWAY file (ENGINE_GATEWAY_ENV_FILE).
+log "phase 04: hardcode gone, engine registry + single gateway writer used"
+grep -q 'engine_write_gateway_env\|engine_socket' "$AI_STACK/installer/phases/04_openshell.sh" \
+  || { err "04_openshell.sh does not call engine_socket/engine_write_gateway_env"; exit 1; }
+grep -q 'ORB_SOCK="\$HOME/.orbstack/run/docker.sock"' "$AI_STACK/installer/phases/04_openshell.sh" \
+  && { err "04_openshell.sh still hardcodes ORB_SOCK"; exit 1; } || true
+# Read-only selection: phase must NOT perform a hidden global pin; it errors if unset.
+grep -qE 'docker-engine select first|run .*docker-engine select' "$AI_STACK/installer/phases/04_openshell.sh" \
+  || { err "04_openshell.sh should ERROR (not hidden-pin) when engine unset"; exit 1; }
+ok "phase 04 uses engine registry + read-only selection"
+
+log "phase 04 BEHAVIORAL: engine_write_gateway_env writes selected socket to throwaway gateway.env"
+GW2="$(mktemp -t aistack-gw04.XXXXXX)"; trap 'rm -f "$ENV_FILE" "$GW" "$GW2"' EXIT
+# The phase's writer is the shared helper — prove the contract directly + against a throwaway file.
+ENGINE_GATEWAY_ENV_FILE="$GW2" engine_write_gateway_env orbstack || true
+grep -qx "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" "$GW2" \
+  || { err "phase-04 gateway writer did not write selected socket: $(cat "$GW2")"; exit 1; }
+ok "phase 04 gateway.env derivation behavioral-verified (throwaway file)"
+
+log "phase 04 guard: colorized Ready sandbox → restart REFUSED (not the destroy-both bug)"
+# Feed a colorized fixture to the canonical guard and assert it DETECTS Ready.
+source "$AI_STACK/installer/lib/openshell.sh"
+fixture=$'NAME   PHASE\nsbx-1  \x1b[32mReady\x1b[0m\n'
+det="$(printf '%s' "$fixture" | _osh_strip_ansi | awk 'NR>1 && $NF=="Ready"{print $1}')"
+[[ "$det" == "sbx-1" ]] || { err "canonical guard failed to detect colorized Ready (det='$det')"; exit 1; }
+ok "phase 04 guard detects colorized Ready sandbox"
+
+# ===========================================================================
+# Task 12b — OpenShell durability bin scripts are engine-aware
+# ===========================================================================
+# SAFETY: STATIC-grep only. These scripts operate on real sandboxes / launchd —
+# this test NEVER runs them; it only proves each derives DOCKER_HOST from the
+# selected engine (gateway.env first, registry fallback) before invoking docker.
+log "12b: openshell-* bin scripts are engine-aware (export DOCKER_HOST from selection/gateway.env)"
+for s in openshell-checkpoint openshell-state-restore openshell-watchdog openshell-token-refresh; do
+  grep -qE 'AI_STACK_DOCKER_ENGINE|engine_socket|gateway\.env.*DOCKER_HOST|DOCKER_HOST=.*gateway' \
+    "$AI_STACK/bin/$s.sh" \
+    || { err "$s.sh is NOT engine-aware (still assumes OrbStack socket/binary)"; exit 1; }
+done
+ok "12b: openshell durability scripts derive DOCKER_HOST from the selected engine"

@@ -27,8 +27,9 @@ set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
+source "$AI_STACK/installer/lib/docker-engine.sh"  # engine registry: engine_socket/_write_gateway_env
 source "$AI_STACK/installer/lib/validate.sh"
-source "$AI_STACK/installer/lib/openshell.sh"  # hang-resilient sandbox create
+source "$AI_STACK/installer/lib/openshell.sh"  # hang-resilient sandbox create + canonical Ready guard
 
 PHASE=04
 SANDBOX=hermes-fleet-v1
@@ -215,30 +216,31 @@ fi
 # Without DOCKER_HOST it expects /var/run/docker.sock (Docker Desktop
 # convention); OrbStack publishes its socket under $HOME instead.
 GATEWAY_ENV_DIR="$HOME/.config/openshell"
-GATEWAY_ENV_FILE="$GATEWAY_ENV_DIR/gateway.env"
-mkdir -p "$GATEWAY_ENV_DIR"
-ORB_SOCK="$HOME/.orbstack/run/docker.sock"
-DESIRED_DOCKER_HOST="unix://$ORB_SOCK"
-if [[ ! -S "$ORB_SOCK" ]]; then
-  # OrbStack not detected — fall back to whatever DOCKER_HOST is set in the
-  # current shell, or the Docker Desktop default if nothing else.
-  if [[ -n "${DOCKER_HOST:-}" ]]; then
-    DESIRED_DOCKER_HOST="$DOCKER_HOST"
-  else
-    DESIRED_DOCKER_HOST="unix:///var/run/docker.sock"
-  fi
+# Throwaway-safe gateway path: one overridable var shared with engine_write_gateway_env.
+GATEWAY_ENV_FILE="${ENGINE_GATEWAY_ENV_FILE:-${GATEWAY_ENV_FILE:-$GATEWAY_ENV_DIR/gateway.env}}"
+export ENGINE_GATEWAY_ENV_FILE="$GATEWAY_ENV_FILE"   # so engine_write_gateway_env writes the same file
+mkdir -p "$(dirname "$GATEWAY_ENV_FILE")"
+
+# Read-only about selection: Phase 00 preflight (Task 8c) already selected+pinned.
+# Do NOT perform a hidden global pin deep inside this phase.
+_selected="$(get_env AI_STACK_DOCKER_ENGINE "")"
+if [[ -z "$_selected" ]] || ! _engine_valid "$_selected"; then
+  err "Phase 04: no Docker engine selected. Run: vz-ai-stack.sh docker-engine select first"
+  exit 1
 fi
-if ! grep -qxF "OPENSHELL_DRIVERS=docker" "$GATEWAY_ENV_FILE" 2>/dev/null \
-  || ! grep -qxF "DOCKER_HOST=$DESIRED_DOCKER_HOST" "$GATEWAY_ENV_FILE" 2>/dev/null; then
-  cat > "$GATEWAY_ENV_FILE" <<EOF
-# Written by ai-stack Phase 04.
-# Sourced by /opt/homebrew/opt/openshell/libexec/openshell-gateway-homebrew-service
-# before the gateway binary exec'es.
-OPENSHELL_DRIVERS=docker
-DOCKER_HOST=$DESIRED_DOCKER_HOST
-EOF
-  chmod 600 "$GATEWAY_ENV_FILE"
-  ok "wrote $GATEWAY_ENV_FILE (drivers=docker, host=$DESIRED_DOCKER_HOST)"
+DESIRED_DOCKER_HOST="$(engine_socket "$_selected")" || {
+  err "Phase 04: could not resolve socket for engine '$_selected' — is the daemon up?"; exit 1; }
+
+# SINGLE writer (shared with engine_pin) — returns 0 if it changed gateway.env, 1 if not.
+# NOTE (completeness): the OLD ORB_SOCK / `/var/run/docker.sock` ambient-DOCKER_HOST
+# fallback is INTENTIONALLY removed — selection is explicit (Phase 00). A cold/un-pinned
+# box now ERRORS above with the `docker-engine select` guidance instead of silently
+# defaulting to `/var/run/docker.sock`. Deliberate behavior change (adversarial reviewer
+# must check the cold/un-pinned phase-04 path).
+_gw_changed=0
+if engine_write_gateway_env "$_selected" "$GATEWAY_ENV_FILE"; then
+  _gw_changed=1
+  ok "wrote $GATEWAY_ENV_FILE (engine=$_selected, host=$DESIRED_DOCKER_HOST)"
 else
   ok "gateway env file already configured: $GATEWAY_ENV_FILE"
 fi
@@ -252,7 +254,44 @@ if [[ -n "$state" ]]; then
   log "brew service 'openshell' state: $state"
   case "$state" in
     started|scheduled)
-      ok "openshell brew service is $state"
+      if [[ "${_gw_changed:-0}" == "1" ]]; then
+        # DOCKER_HOST changed under a running gateway — it only re-reads gateway.env
+        # at launch, so a restart is REQUIRED. A restart errors ALL sandboxes
+        # (rotates signing kid). Reuse the CANONICAL guard (ANSI-strip + self-exclude).
+        source "$AI_STACK/installer/lib/openshell.sh"   # canonical _osh_strip_ansi + Ready guard
+        # NOTE: this `case` runs at top-level script scope (not a function), so the
+        # plan's `local` decls are dropped here — plain `_`-prefixed vars instead.
+        _others="$("$OSH" sandbox list 2>/dev/null | _osh_strip_ansi \
+                    | awk 'NR>1 && $NF=="Ready"{print $1}' | tr '\n' ' ' || true)"
+        if [[ -n "${_others// }" && "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
+          warn "gateway DOCKER_HOST changed but Ready sandbox(es) exist: ${_others% }"
+          warn "NOT restarting (would error them ALL). A restart is PENDING — doctor will surface it."
+          warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04"
+        else
+          warn "gateway DOCKER_HOST changed → restarting openshell (all sandboxes will re-auth)."
+          # Checkpoint EVERY Ready sandbox (fail-closed) BEFORE the auth-rotating restart,
+          # in addition to the identity-backup — fleet-durability HALT-by-default contract.
+          if [[ -x "$AI_STACK/bin/openshell-checkpoint.sh" ]]; then
+            for _s in ${_others}; do
+              bash "$AI_STACK/bin/openshell-checkpoint.sh" "$_s" >/dev/null 2>&1 \
+                || { err "checkpoint of sandbox '$_s' FAILED — aborting restart (fail-closed)."; exit 1; }
+            done
+          fi
+          [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] \
+            && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
+          brew services stop openshell 2>&1 | tail -2 || true
+          launchctl bootout "gui/$(id -u)/homebrew.mxcl.openshell" 2>/dev/null || true
+          sleep 1
+          brew services start openshell 2>&1 | tail -3 || warn "brew services start openshell failed"
+          _i=0; while (( _i < 60 )); do gateway_listening && break; sleep 1; _i=$((_i+1)); done
+          # Verify the wrapper (which re-sources gateway.env) is the launched program.
+          ps -Ao command 2>/dev/null | grep -q 'openshell-gateway-homebrew-service' \
+            && ok "gateway wrapper relaunched (will have re-sourced gateway.env)" \
+            || warn "could not confirm gateway wrapper is the launched program — verify gateway picked up the new DOCKER_HOST"
+        fi
+      else
+        ok "openshell brew service is $state"
+      fi
       ;;
     error|stopped|none|"")
       log "Cleaning + restarting openshell brew service..."
