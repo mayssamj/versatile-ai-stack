@@ -88,7 +88,7 @@ engine_socket() {
       if [[ "$sock" == unix://* ]]; then printf '%s' "$sock"; return 0; fi
       local conv="$HOME/.colima/${COLIMA_PROFILE:-default}/docker.sock"
       if [[ -S "$conv" ]]; then printf '%s' "unix://$conv"; return 0; fi
-      log "engine_socket colima: socket path ASSUMED ($conv) — unverified on this host"
+      log "engine_socket colima: socket path ASSUMED ($conv) — unverified on this host" >&2
       return 1
       ;;
     podman)
@@ -98,7 +98,7 @@ engine_socket() {
       p="$(_engine_docker_timeout 6 podman machine inspect \
              --format '{{.ConnectionInfo.PodmanSocket.Path}}' 2>/dev/null || true)"
       if [[ -n "$p" && -S "$p" ]]; then printf '%s' "unix://$p"; return 0; fi
-      log "engine_socket podman: socket path ASSUMED via 'podman machine inspect' — unverified on this host"
+      log "engine_socket podman: socket path ASSUMED via 'podman machine inspect' — unverified on this host" >&2
       return 1
       ;;
   esac
@@ -186,6 +186,11 @@ engine_select() {
   # Interactive prompt — skipped under NO_PROMPT or no TTY.
   if [[ "${NO_PROMPT:-0}" != "1" && -t 0 ]]; then
     local installed; installed="$(engine_detect_installed)"
+    # Enter-default = first INSTALLED engine (same first-installed logic as the
+    # NO_PROMPT priority path), else the priority head if none detected.
+    # Slice the first line in-shell (no `| head` — SIGPIPE would trip pipefail).
+    local dflt="${installed%%$'\n'*}"
+    [[ -n "$dflt" ]] || dflt="${ENGINE_IDS%% *}"
     printf '  Multiple/zero engines detected. Choose a Docker engine:\n' >&2
     local e
     for e in $ENGINE_IDS; do
@@ -194,9 +199,9 @@ engine_select() {
       grep -qx "$e" <<<"$running"   && mark="$mark [running]"
       printf '    - %s (%s)%s\n' "$e" "$(engine_display "$e")" "$mark" >&2
     done
-    printf '  engine id [orbstack]: ' >&2
+    printf '  engine id [%s]: ' "$dflt" >&2
     local ans; read -r ans || true
-    ans="${ans:-orbstack}"
+    ans="${ans:-$dflt}"
     _engine_valid "$ans" || { err "engine_select: invalid choice '$ans'"; return 1; }
     log "engine: $ans (interactive choice)" >&2
     printf '%s' "$ans"; return 0
@@ -230,8 +235,16 @@ engine_install_cmd() {
 engine_install() {
   local id="$1"
   _engine_valid "$id" || { err "engine_install: unknown engine id: $id"; return 2; }
-  # Resolve the docker-desktop cask token BEFORE the prompt so the user consents
-  # to the EXACT command that runs (cask churned docker → docker-desktop).
+  # NO_PROMPT path is hands-off and MUST stay offline: hard-fail with the static
+  # remedy (engine_install_cmd) — never call `brew info` here (no network).
+  if [[ "${NO_PROMPT:-0}" == "1" ]]; then
+    err "$(engine_display "$id") not installed. Install it and re-run:"
+    err "    $(engine_install_cmd "$id")"
+    return 1
+  fi
+  # Interactive only: resolve the docker-desktop cask token BEFORE the prompt so the
+  # user consents to the EXACT command that runs (cask churned docker → docker-desktop).
+  # The `brew info` probe is intentionally lazy — it is reached only on the consent path.
   local -a cmd
   case "$id" in
     orbstack)       cmd=(brew install --cask orbstack) ;;
@@ -241,19 +254,16 @@ engine_install() {
     colima)         cmd=(brew install colima docker) ;;
     podman)         cmd=(brew install podman docker) ;;
   esac
-  if [[ "${NO_PROMPT:-0}" == "1" ]]; then
-    err "$(engine_display "$id") not installed. Install it and re-run:"
-    err "    ${cmd[*]}"
-    return 1
-  fi
   printf '  Install %s now via: %s ? [Y/n] ' "$(engine_display "$id")" "${cmd[*]}" >&2
   local ans; read -r ans || true
   case "${ans:-Y}" in
     [Nn]*) err "declined; install manually: ${cmd[*]}"; return 1 ;;
   esac
   log "Running: ${cmd[*]}"
-  # Array invocation — no eval. Pipe through tail without losing the install rc.
-  if ! "${cmd[@]}" 2>&1 | tail -8; then err "install failed: ${cmd[*]}"; return 1; fi
+  # Array invocation — no eval. Pipe through tail WITHOUT losing the install rc:
+  # `set -o pipefail` (in the subshell) makes the pipeline's status the brew rc,
+  # not tail's (which is always 0). Without it a failed `brew install` is invisible.
+  if ! ( set -o pipefail; "${cmd[@]}" 2>&1 | tail -8 ); then err "install failed: ${cmd[*]}"; return 1; fi
 }
 
 # engine_start <id> — start that engine's daemon (does not wait).
@@ -309,19 +319,20 @@ engine_write_gateway_env() {
   _engine_valid "$id" || { err "engine_write_gateway_env: unknown engine id: $id"; return 2; }
   local sock; sock="$(engine_socket "$id")" || {
     err "engine_write_gateway_env: cannot resolve socket for $id"; return 2; }
-  mkdir -p "$(dirname "$gw")"
+  mkdir -p "$(dirname "$gw")"   # atomic_write's mktemp needs the dir to exist
   if grep -qxF "OPENSHELL_DRIVERS=docker" "$gw" 2>/dev/null \
      && grep -qxF "DOCKER_HOST=$sock" "$gw" 2>/dev/null; then
     return 1   # already current — no change
   fi
-  cat > "$gw" <<EOF
+  # atomic_write (common.sh): mktemp → chmod 600 → write-from-stdin → mv -f.
+  # No partial/truncated file ever visible to a concurrent gateway read.
+  atomic_write "$gw" <<EOF
 # Written by ai-stack docker-engine (engine: $id).
 # Sourced by /opt/homebrew/opt/openshell/libexec/openshell-gateway-homebrew-service
 # before the gateway binary exec'es.
 OPENSHELL_DRIVERS=docker
 DOCKER_HOST=$sock
 EOF
-  chmod 600 "$gw"
   return 0   # wrote/changed
 }
 

@@ -151,10 +151,17 @@ sel="$(
 [[ "$sel" == colima ]] || { err "running-singleton rung failed (want colima, got '$sel')"; exit 1; }
 ok "running-singleton beats priority fallback"
 # 5) No flag, empty .env, NO_PROMPT, ZERO/MULTIPLE running → fixed priority (first INSTALLED, else first id).
+# Host-adaptive: derive the EXPECTED winner = first ENGINE_IDS that is actually
+# installed (via engine_detect_installed, which is priority-ordered), so the suite
+# passes on any host. Falls back to the priority head if nothing is installed.
 sel="$(NO_PROMPT=1 engine_select 2>/dev/null)"
-# orbstack is installed on this box → must win the priority fallback.
-[[ "$sel" == orbstack ]] || { err "NO_PROMPT priority did not pick orbstack: '$sel'"; exit 1; }
-ok "engine_select precedence correct (incl running-singleton)"
+# NB: capture-then-slice (no `| head`) — a SIGPIPE from head would trip pipefail+errexit.
+_inst_all="$(engine_detect_installed)"
+want_first_installed="${_inst_all%%$'\n'*}"
+[[ -n "$want_first_installed" ]] || want_first_installed="${ENGINE_IDS%% *}"
+[[ "$sel" == "$want_first_installed" ]] \
+  || { err "NO_PROMPT priority did not pick first-installed ('$want_first_installed'): got '$sel'"; exit 1; }
+ok "engine_select precedence correct (incl running-singleton; NO_PROMPT→$sel)"
 
 log "engine_ensure failure path: not installed + NO_PROMPT → hard fail with brew remedy"
 # Pick an engine that is NOT installed on this box (docker-desktop).
@@ -176,6 +183,52 @@ declare -F engine_install >/dev/null || { err "engine_install undefined"; exit 1
 declare -F engine_start   >/dev/null || { err "engine_start undefined"; exit 1; }
 ok "engine_install/engine_start defined"
 
+log "engine_install NO_PROMPT path is OFFLINE — hard-fails fast with static remedy, no 'brew info'"
+# Structural guarantee (Fix 3): the NO_PROMPT hard-fail MUST be reached BEFORE any
+# `brew info` cask probe, so the hands-off path never makes a network call. We assert
+# both behaviorally (fast + correct remedy, no brew) AND structurally (body shape).
+body="$(declare -f engine_install)"
+# The NO_PROMPT branch must appear BEFORE the first `brew info` in the function body.
+# `grep -m1` stops at the first hit (no SIGPIPE into a closed `head`); `cut` consumes it all.
+np_line="$(grep -m1 -n 'NO_PROMPT' <<<"$body" | cut -d: -f1 || true)"
+bi_line="$(grep -m1 -n 'brew info' <<<"$body" | cut -d: -f1 || true)"
+[[ -n "$np_line" ]] || { err "engine_install body lost its NO_PROMPT guard"; exit 1; }
+if [[ -n "$bi_line" ]]; then
+  (( np_line < bi_line )) || { err "engine_install: 'brew info' is reachable on the NO_PROMPT path (lazy-cask regression)"; exit 1; }
+fi
+# Behavioral: stub `brew` to FAIL LOUDLY if called — proves the NO_PROMPT path never shells out.
+out="$(
+  set -Eeuo pipefail
+  brew() { echo "FATAL: brew invoked on NO_PROMPT path: $*" >&2; return 99; }
+  start=$(date +%s)
+  NO_PROMPT=1 engine_install docker-desktop 2>&1
+  echo "RC=$?"
+  echo "ELAPSED=$(( $(date +%s) - start ))"
+)" || true
+grep -q 'FATAL: brew invoked' <<<"$out" && { err "engine_install NO_PROMPT path called brew: $out"; exit 1; }
+grep -q 'RC=1' <<<"$out" || { err "engine_install NO_PROMPT must return 1; got: $out"; exit 1; }
+# Must print the STATIC engine_install_cmd remedy (the cask-churned 'docker-desktop' string).
+grep -q "$(engine_install_cmd docker-desktop)" <<<"$out" \
+  || { err "engine_install NO_PROMPT must print static remedy '$(engine_install_cmd docker-desktop)'; got: $out"; exit 1; }
+elapsed="$(grep -oE 'ELAPSED=[0-9]+' <<<"$out" | cut -d= -f2)"
+(( ${elapsed:-99} <= 1 )) || { err "engine_install NO_PROMPT not fast (${elapsed}s) — likely hit network"; exit 1; }
+ok "engine_install NO_PROMPT offline + fast (${elapsed}s) + static remedy, no brew call"
+
+log "engine_install preserves the install rc (pipe-to-tail must NOT swallow a failed brew)"
+# Fix 1: the install pipeline runs under `set -o pipefail` so a failing brew → non-zero.
+# Drive the INTERACTIVE path offline: stub brew to fail, auto-confirm via stdin 'Y'.
+rc=0
+out="$(
+  set -Eeuo pipefail
+  brew() { echo "simulated brew failure" >&2; return 1; }
+  printf 'Y\n' | engine_install orbstack 2>&1
+)" || rc=$?
+[[ "$rc" -ne 0 ]] || { err "engine_install returned 0 despite a failing brew (rc swallowed by tail); out: $out"; exit 1; }
+grep -q 'install failed' <<<"$out" || { err "engine_install must report 'install failed' on a failed brew; got: $out"; exit 1; }
+# Structural backstop: the body must use pipefail-protected invocation.
+grep -q 'set -o pipefail' <<<"$body" || { err "engine_install body lost 'set -o pipefail' rc-capture (Fix 1 regression)"; exit 1; }
+ok "engine_install preserves install rc (set -o pipefail) — failed brew → non-zero + 'install failed'"
+
 log "engine_pin: persists .env, rewrites gateway.env, exports DOCKER_HOST"
 GW="$(mktemp -t aistack-gw.XXXXXX)"; trap 'rm -f "$ENV_FILE" "$GW"' EXIT
 # engine_pin must honor an injected GATEWAY_ENV_FILE override + skip docker context under NO_PROMPT.
@@ -185,7 +238,14 @@ GW="$(mktemp -t aistack-gw.XXXXXX)"; trap 'rm -f "$ENV_FILE" "$GW"' EXIT
 grep -qx "OPENSHELL_DRIVERS=docker" "$GW" || { err "gateway.env missing drivers line"; exit 1; }
 grep -qx "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" "$GW" \
   || { err "gateway.env DOCKER_HOST wrong: $(cat "$GW")"; exit 1; }
-ok "engine_pin persisted + rewrote gateway.env"
+# Fix 4: written via atomic_write (common.sh) → mode MUST be 600 (no world/group bits).
+mode="$(stat -f '%Lp' "$GW" 2>/dev/null || stat -c '%a' "$GW" 2>/dev/null)"
+[[ "$mode" == "600" ]] || { err "gateway.env mode is '$mode', want 600 (atomic_write chmod regression)"; exit 1; }
+# Structural backstop: the writer must go through atomic_write, not a bare cat>redirect.
+gwbody="$(declare -f engine_write_gateway_env)"
+grep -q 'atomic_write' <<<"$gwbody" || { err "engine_write_gateway_env no longer uses atomic_write (Fix 4 regression)"; exit 1; }
+grep -qE 'cat[[:space:]]*>[^&]' <<<"$gwbody" && { err "engine_write_gateway_env still uses a non-atomic 'cat >' write"; exit 1; } || true
+ok "engine_pin persisted + rewrote gateway.env via atomic_write (mode 600)"
 
 log "engine_write_gateway_env is the SINGLE writer + idempotent (no-op on 2nd call)"
 declare -F engine_write_gateway_env >/dev/null || { err "engine_write_gateway_env undefined (single-writer not extracted)"; exit 1; }
@@ -193,6 +253,11 @@ declare -F engine_write_gateway_env >/dev/null || { err "engine_write_gateway_en
 if ENGINE_GATEWAY_ENV_FILE="$GW" engine_write_gateway_env orbstack; then
   err "engine_write_gateway_env reported CHANGED on an already-current gateway.env (not idempotent)"; exit 1
 fi
-ok "engine_write_gateway_env idempotent (unchanged → return 1)"
+# The no-op MUST NOT disturb the file: content + mode 600 still intact after the idempotent call.
+grep -qx "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" "$GW" \
+  || { err "idempotent no-op corrupted gateway.env content: $(cat "$GW")"; exit 1; }
+mode2="$(stat -f '%Lp' "$GW" 2>/dev/null || stat -c '%a' "$GW" 2>/dev/null)"
+[[ "$mode2" == "600" ]] || { err "idempotent no-op changed gateway.env mode to '$mode2'"; exit 1; }
+ok "engine_write_gateway_env idempotent (unchanged → return 1; content+mode preserved)"
 
 ok "Task 1 registry-pure tests passed"
