@@ -82,4 +82,20 @@ if grep -rnE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\"?\$\(engine_' \
 fi
 ok "no unguarded engine_* command substitutions"
 
+log "engine_socket format contract"
+# orbstack: literal, stable path on this host.
+orb="$(engine_socket orbstack)" || true
+[[ "$orb" == "unix://$HOME/.orbstack/run/docker.sock" ]] \
+  || { err "orbstack socket wrong: '$orb'"; exit 1; }
+# all resolvable sockets are unix:// (or tcp://); unknown id returns non-zero + empty.
+engine_socket bogus >/dev/null 2>&1 && { err "engine_socket accepted bogus"; exit 1; }
+# docker-desktop / colima / podman: either resolve to a unix:// string OR fail cleanly (1),
+# NEVER hang and NEVER print a non-uri. (They are not installed on this box.)
+for e in docker-desktop colima podman; do
+  if s="$(engine_socket "$e" 2>/dev/null)"; then
+    [[ "$s" == unix://* || "$s" == tcp://* ]] || { err "$e socket not a uri: '$s'"; exit 1; }
+  fi
+done
+ok "engine_socket format contract holds"
+
 ok "Task 1 registry-pure tests passed"
