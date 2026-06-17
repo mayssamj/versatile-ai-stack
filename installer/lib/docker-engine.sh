@@ -103,3 +103,46 @@ engine_socket() {
       ;;
   esac
 }
+
+# engine_installed <id> — exit 0 if the engine's app/binary is present.
+engine_installed() {
+  local id="$1"
+  _engine_valid "$id" || { err "engine_installed: unknown engine id: $id"; return 2; }
+  case "$id" in
+    orbstack)
+      [[ -d /Applications/OrbStack.app ]] && return 0
+      brew list --cask orbstack >/dev/null 2>&1 && return 0
+      command -v orb >/dev/null 2>&1 && return 0
+      return 1 ;;
+    docker-desktop)
+      [[ -d /Applications/Docker.app ]] && return 0
+      brew list --cask docker-desktop >/dev/null 2>&1 && return 0
+      brew list --cask docker >/dev/null 2>&1 && return 0   # legacy cask name
+      return 1 ;;
+    colima)
+      command -v colima >/dev/null 2>&1 ;;
+    podman)
+      command -v podman >/dev/null 2>&1 ;;
+  esac
+}
+
+# engine_detect_installed — echo installed engine ids, one per line, priority order.
+engine_detect_installed() {
+  local e
+  for e in $ENGINE_IDS; do engine_installed "$e" && printf '%s\n' "$e"; done
+}
+
+# engine_running <id> — exit 0 if THAT engine's daemon answers (timeout-bounded).
+engine_running() {
+  local id="$1" sock
+  _engine_valid "$id" || { err "engine_running: unknown engine id: $id"; return 2; }
+  sock="$(engine_socket "$id" 2>/dev/null)" || return 1
+  [[ -n "$sock" ]] || return 1
+  _engine_docker_timeout 6 docker -H "$sock" info >/dev/null 2>&1
+}
+
+# engine_detect_running — echo running engine ids, one per line, priority order.
+engine_detect_running() {
+  local e
+  for e in $ENGINE_IDS; do engine_running "$e" && printf '%s\n' "$e"; done
+}

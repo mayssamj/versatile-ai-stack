@@ -98,4 +98,29 @@ for e in docker-desktop colima podman; do
 done
 ok "engine_socket format contract holds"
 
+log "engine_installed / engine_detect_installed (self-consistent, host-agnostic)"
+# engine_installed and engine_detect_installed must AGREE for every id (no fixed inventory).
+inst="$(engine_detect_installed)"
+for e in $ENGINE_IDS; do
+  if engine_installed "$e"; then
+    grep -qx "$e" <<<"$inst" || { err "detect_installed missing $e though engine_installed $e is true"; exit 1; }
+  else
+    grep -qx "$e" <<<"$inst" && { err "detect_installed wrongly listed $e"; exit 1; } || true
+  fi
+done
+# At least one engine must be installed on a real dev box (sanity, not inventory).
+[[ -n "$inst" ]] || { err "no docker engine installed at all"; exit 1; }
+ok "install detection self-consistent for all ids"
+
+log "engine_running is timeout-bounded (must not hang) — assert against a NOT-running engine"
+# Find an installed-but-not-running engine to time; if none, use a known-absent path:
+bounded_target=""
+for e in $ENGINE_IDS; do engine_installed "$e" && ! engine_running "$e" && { bounded_target="$e"; break; }; done
+[[ -n "$bounded_target" ]] || bounded_target=podman   # podman path is safe to time even if absent
+start=$(date +%s)
+engine_running "$bounded_target" && true   # don't care about result, only the wall-clock
+end=$(date +%s)
+(( end - start <= 8 )) || { err "engine_running not timeout-bounded ($((end-start))s for $bounded_target)"; exit 1; }
+ok "engine_running bounded (<=8s, target=$bounded_target)"
+
 ok "Task 1 registry-pure tests passed"
