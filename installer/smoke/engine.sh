@@ -293,3 +293,36 @@ log "8c: phase 00 preflight selects + pins the engine when unset"
 grep -qE 'engine_select|ensure_docker_engine' "$AI_STACK/installer/phases/00_host.sh" \
   || { err "00_host.sh does not run engine selection in preflight"; exit 1; }
 ok "8c: phase 00 wires selection-before-use"
+
+# ===========================================================================
+# Task 9 — deps.sh: ensure_orbstack=thin alias + deps_report engine status block
+# ===========================================================================
+# SAFETY: this test MUST stay READ-ONLY. We call `deps_report --check` (NOT bare
+# `deps_report`, which would call bootstrap_host_deps/ensure_*/engine_pin and
+# INSTALL brew/orbstack/ollama + WRITE the real ~/.config/openshell/gateway.env).
+# Defense-in-depth: NO_PROMPT=1 + a throwaway ENGINE_GATEWAY_ENV_FILE + throwaway
+# ENV_FILE, all inside a subshell, so nothing reaches real host state.
+log "deps wiring: ensure_orbstack is an alias + deps_report --check shows engine (READ-ONLY)"
+source "$AI_STACK/installer/lib/deps.sh"
+declare -F ensure_orbstack >/dev/null || { err "ensure_orbstack name removed (callers depend on it)"; exit 1; }
+declare -F ensure_docker_engine >/dev/null || { err "ensure_docker_engine undefined"; exit 1; }
+# Non-tautological: assert the UNIQUE sentinel the NEW block emits, NOT a broad
+# 'engine|socket' grep that the existing deps_report already satisfies. The block
+# prints `note "Docker engine: <id> ..."` and a `gateway.env socket == selected`
+# / `... != selected ...` comparison — match those exact labels.
+_t9_gw="$(mktemp -t aistack-t9-gw.XXXXXX)"; rm -f "$_t9_gw"   # path only; block must NOT write it
+_t9_env="$(mktemp -t aistack-t9-env.XXXXXX)"
+rep="$(AI_STACK_DOCKER_ENGINE=orbstack NO_PROMPT=1 \
+       ENGINE_GATEWAY_ENV_FILE="$_t9_gw" ENV_FILE="$_t9_env" bash -c '
+  set -Eeuo pipefail; AI_STACK="'"$AI_STACK"'"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker-engine.sh"; source "$AI_STACK/installer/lib/deps.sh"
+  set_env AI_STACK_DOCKER_ENGINE orbstack
+  deps_report --check 2>&1 || true
+')"
+rm -f "$_t9_env" "$_t9_gw"
+grep -q "Docker engine: orbstack" <<<"$rep" \
+  || { err "deps_report --check missing the 'Docker engine: orbstack' sentinel line"; exit 1; }
+grep -qE 'gateway\.env socket (==|!=) selected' <<<"$rep" \
+  || { err "deps_report --check missing the gateway.env socket comparison line"; exit 1; }
+ok "deps wiring present (unique sentinels, read-only --check path)"
