@@ -28,7 +28,7 @@ MODELS_YML="$AI_STACK/installer/models.yml"
 ROLES=(manager techlead frontend-engineer backend-engineer ml-engineer \
        qa-test-engineer reviewing-engineer sre-engineer incident-manager)
 # Shipped shared skills (the 6 that actually exist as SKILL.md).
-SKILLS=(team-protocol tdd hypothesis-debugging verification-gates reversible-changes brainstorming)
+SKILLS=(team-protocol tdd hypothesis-debugging verification-gates reversible-changes brainstorming memory-management)
 
 CLAUDE_DIR="$HOME/.claude"
 CLAUDE_AGENTS_SRC="$PROFILES/claude-code/.claude/agents"
