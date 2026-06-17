@@ -6,6 +6,10 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ## 2026-06-17
 
+### Fixes
+
+- 04f (hermes fleet) install abort `Expected 9 souls in /sandbox/fleet-souls, found 0`: `openshell sandbox upload` filters by `.gitignore` by default, and 04f uploads from the intentionally-gitignored *derived* staging dirs (`openshell/fleet-souls/` L78, `openshell/fleet-bootstrap/` L79). So every soul + the bootstrap matched 0 non-ignored files — upload printed "✓ Upload complete" yet landed nothing, and the SOUL_COUNT guard aborted. Added `--no-git-ignore` to both uploads (souls loop + bootstrap). Latent since the fleet-artifact gitignore landed in `537894a` (2026-06-10); 04f hadn't been re-run end-to-end through it. Verified E2E: `install 04f` → "✓ Uploaded 9 souls + bootstrap" → phase completes.
+
 ### Docs
 
 - SOUL.md constitution: **24 → 25 rules**. Added **Rule 25** ("Use Git worktrees to isolate parallel work" — guard a repo/workspace from colliding edits by multiple agents on different branches). Fixed pre-existing inconsistencies in `doc/SOUL.md`: Rule 21 was mislabeled "2."; Rule 22 cadence unified to "every 5 minutes" (title contradicted body); Rule 24.3 reviewer count "2" → "3" (now matches 24.2's enumeration of 3) + a stray double comma; "internalize" → "Internalize". The Rule 24.1 ↔ 24.2 autonomy-vs-universal-review tension was left UNCHANGED — flagged as an open design question, not a typo.
