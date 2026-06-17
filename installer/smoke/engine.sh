@@ -288,3 +288,8 @@ rm -f "$tmpenv"
 grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
   || { err "docker.sh source-time export not wired: $got"; exit 1; }
 ok "8b: standalone docker.sh chain exports DOCKER_HOST"
+
+log "8c: phase 00 preflight selects + pins the engine when unset"
+grep -qE 'engine_select|ensure_docker_engine' "$AI_STACK/installer/phases/00_host.sh" \
+  || { err "00_host.sh does not run engine selection in preflight"; exit 1; }
+ok "8c: phase 00 wires selection-before-use"
