@@ -408,6 +408,15 @@ grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
   || { err "global --engine flag not plumbed to AI_STACK_ENGINE_FLAG/engine_select: $got"; exit 1; }
 ok "11a: global --engine argv plumbed"
 
+log "11a-regression: --engine with no value errors clearly (exit 2, not silent)"
+# Was a silent exit 1 (the pre-scan consumed the last token, then the trailing
+# shift on an empty $@ tripped set -e before the ERR trap was installed). Now an
+# explicit arity check must error clearly AND exit 2 (never a silent exit 1).
+out="$(ENV_FILE="$(mktemp)" bash "$AI_STACK/vz-ai-stack.sh" --engine 2>&1; echo "rc=$?")"
+grep -q 'requires an <id>' <<<"$out" || { err "--engine missing-value did not error clearly: $out"; exit 1; }
+grep -q 'rc=2' <<<"$out" || { err "--engine missing-value should exit 2: $out"; exit 1; }
+ok "11a-regression: --engine missing-value handled"
+
 # ===========================================================================
 # Task 11 — docker-engine [status|select|set <id>] subcommand + help routing
 # ===========================================================================

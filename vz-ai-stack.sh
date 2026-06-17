@@ -107,8 +107,16 @@ source "$LIB/docker-engine.sh"
 # the central export so the flag is set when the export's engine resolution runs.
 _vz_args=(); while (( $# )); do
   case "$1" in
-    --engine) shift; export AI_STACK_ENGINE_FLAG="${1:-}";;
-    --engine=*) export AI_STACK_ENGINE_FLAG="${1#--engine=}";;
+    --engine)
+      if (( $# < 2 )); then
+        echo "vz-ai-stack.sh: --engine requires an <id> (orbstack|docker-desktop|colima|podman)" >&2
+        exit 2
+      fi
+      shift; export AI_STACK_ENGINE_FLAG="$1";;
+    --engine=*)
+      export AI_STACK_ENGINE_FLAG="${1#--engine=}"
+      [[ -n "$AI_STACK_ENGINE_FLAG" ]] || { echo "vz-ai-stack.sh: --engine= requires a value" >&2; exit 2; }
+      ;;
     *) _vz_args+=("$1");;
   esac
   shift

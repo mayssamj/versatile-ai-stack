@@ -14,7 +14,10 @@ if [[ -z "${AI_STACK:-}" ]]; then
 fi
 
 # Idempotent: a second source (e.g. vz-ai-stack.sh sources us, then docker.sh re-sources) is a no-op.
-[[ -n "${_AI_STACK_DOCKER_ENGINE_LOADED:-}" ]] && return 0
+# Guard the early-return on SOURCED context: on a DIRECT run a `return` is illegal
+# ("return: can only return from a function or sourced script"), so only short-circuit
+# when actually sourced (BASH_SOURCE[0] != $0) AND already loaded.
+[[ "${BASH_SOURCE[0]}" != "${0}" && -n "${_AI_STACK_DOCKER_ENGINE_LOADED:-}" ]] && return 0
 _AI_STACK_DOCKER_ENGINE_LOADED=1
 
 # Priority order is also the NO_PROMPT tie-break order (spec §key-decisions 3).
@@ -96,7 +99,11 @@ engine_socket() {
       local sock
       sock="$(_engine_docker_timeout 6 colima status 2>&1 | awk -F': *' '/[Ss]ocket:/{print $2; exit}' || true)"
       if [[ "$sock" == unix://* ]]; then printf '%s' "$sock"; return 0; fi
-      local conv="$HOME/.colima/${COLIMA_PROFILE:-default}/docker.sock"
+      # Sanitize COLIMA_PROFILE so it cannot escape $HOME/.colima/ (path traversal):
+      # a profile containing a slash or leading dot is rejected back to "default".
+      local _profile="${COLIMA_PROFILE:-default}"
+      [[ "$_profile" == */* || "$_profile" == .* ]] && _profile="default"
+      local conv="$HOME/.colima/$_profile/docker.sock"
       if [[ -S "$conv" ]]; then printf '%s' "unix://$conv"; return 0; fi
       log "engine_socket colima: socket path ASSUMED ($conv) — unverified on this host" >&2
       return 1
