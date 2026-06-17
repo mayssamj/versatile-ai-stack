@@ -299,3 +299,72 @@ engine_ensure() {
   done
   ok "$(engine_display "$id") daemon ready"
 }
+
+# engine_write_gateway_env <id> [gw_file] — the ONE place that authors gateway.env.
+# Idempotent: returns 0 if it (re)wrote the file, 1 if it was already current.
+# Honors ENGINE_GATEWAY_ENV_FILE (test override) when no explicit gw_file is given.
+engine_write_gateway_env() {
+  local id="$1"
+  local gw="${2:-${ENGINE_GATEWAY_ENV_FILE:-$HOME/.config/openshell/gateway.env}}"
+  _engine_valid "$id" || { err "engine_write_gateway_env: unknown engine id: $id"; return 2; }
+  local sock; sock="$(engine_socket "$id")" || {
+    err "engine_write_gateway_env: cannot resolve socket for $id"; return 2; }
+  mkdir -p "$(dirname "$gw")"
+  if grep -qxF "OPENSHELL_DRIVERS=docker" "$gw" 2>/dev/null \
+     && grep -qxF "DOCKER_HOST=$sock" "$gw" 2>/dev/null; then
+    return 1   # already current — no change
+  fi
+  cat > "$gw" <<EOF
+# Written by ai-stack docker-engine (engine: $id).
+# Sourced by /opt/homebrew/opt/openshell/libexec/openshell-gateway-homebrew-service
+# before the gateway binary exec'es.
+OPENSHELL_DRIVERS=docker
+DOCKER_HOST=$sock
+EOF
+  chmod 600 "$gw"
+  return 0   # wrote/changed
+}
+
+# engine_pin <id> — persist + propagate the selected engine everywhere.
+#   - set_env AI_STACK_DOCKER_ENGINE
+#   - export DOCKER_HOST (so the current process + children inherit it)
+#   - rewrite gateway.env via engine_write_gateway_env (single writer)
+#   - offer (consented; skipped under NO_PROMPT) `docker context use ai-stack-<id>`,
+#     RECORDING the prior context first so the user has an undo.
+# Returns 1 (caller-recoverable) on socket/persist failure.
+engine_pin() {
+  local id="$1"
+  _engine_valid "$id" || { err "engine_pin: unknown engine id: $id"; return 2; }
+  local sock; sock="$(engine_socket "$id")" || {
+    err "engine_pin: cannot resolve socket for $id — is the daemon up?"; return 1; }
+
+  set_env AI_STACK_DOCKER_ENGINE "$id" || return 1
+  export DOCKER_HOST="$sock"
+  ok "pinned AI_STACK_DOCKER_ENGINE=$id (DOCKER_HOST=$sock)"
+
+  if engine_write_gateway_env "$id"; then
+    ok "wrote gateway.env (DOCKER_HOST=$sock) — restart the gateway for it to take effect"
+  fi
+
+  # Offer to switch the global docker context (invasive; consented). Record the
+  # PRIOR context first and print the exact undo (reversibility).
+  if [[ "${NO_PROMPT:-0}" != "1" && -t 0 ]] && command -v docker >/dev/null 2>&1; then
+    local ctx="ai-stack-$id" prior
+    prior="$(docker context show 2>/dev/null || echo default)"
+    printf '  Also point your global `docker context` at %s (ctx: %s)? [y/N]\n' "$(engine_display "$id")" "$ctx" >&2
+    printf '    (your current context is "%s"; undo later with: docker context use %s) ' "$prior" "$prior" >&2
+    local ans; read -r ans || true
+    case "${ans:-N}" in
+      [Yy]*)
+        docker context inspect "$ctx" >/dev/null 2>&1 \
+          || docker context create "$ctx" --docker "host=$sock" --description "ai-stack $id" >/dev/null 2>&1 \
+          || docker context update "$ctx" --docker "host=$sock" >/dev/null 2>&1 || true
+        if docker context use "$ctx" >/dev/null 2>&1; then
+          ok "docker context → $ctx (previous: $prior; undo: docker context use $prior)"
+        else
+          warn "could not switch docker context"
+        fi
+        ;;
+    esac
+  fi
+}

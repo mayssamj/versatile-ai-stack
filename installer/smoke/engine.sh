@@ -176,4 +176,23 @@ declare -F engine_install >/dev/null || { err "engine_install undefined"; exit 1
 declare -F engine_start   >/dev/null || { err "engine_start undefined"; exit 1; }
 ok "engine_install/engine_start defined"
 
+log "engine_pin: persists .env, rewrites gateway.env, exports DOCKER_HOST"
+GW="$(mktemp -t aistack-gw.XXXXXX)"; trap 'rm -f "$ENV_FILE" "$GW"' EXIT
+# engine_pin must honor an injected GATEWAY_ENV_FILE override + skip docker context under NO_PROMPT.
+( NO_PROMPT=1 ENGINE_GATEWAY_ENV_FILE="$GW" engine_pin orbstack ) >/dev/null 2>&1 \
+  || { err "engine_pin orbstack failed"; exit 1; }
+[[ "$(get_env AI_STACK_DOCKER_ENGINE "")" == orbstack ]] || { err ".env not pinned"; exit 1; }
+grep -qx "OPENSHELL_DRIVERS=docker" "$GW" || { err "gateway.env missing drivers line"; exit 1; }
+grep -qx "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" "$GW" \
+  || { err "gateway.env DOCKER_HOST wrong: $(cat "$GW")"; exit 1; }
+ok "engine_pin persisted + rewrote gateway.env"
+
+log "engine_write_gateway_env is the SINGLE writer + idempotent (no-op on 2nd call)"
+declare -F engine_write_gateway_env >/dev/null || { err "engine_write_gateway_env undefined (single-writer not extracted)"; exit 1; }
+# First call already happened via engine_pin → file matches → second call must be a NO-OP (return 1=unchanged).
+if ENGINE_GATEWAY_ENV_FILE="$GW" engine_write_gateway_env orbstack; then
+  err "engine_write_gateway_env reported CHANGED on an already-current gateway.env (not idempotent)"; exit 1
+fi
+ok "engine_write_gateway_env idempotent (unchanged → return 1)"
+
 ok "Task 1 registry-pure tests passed"
