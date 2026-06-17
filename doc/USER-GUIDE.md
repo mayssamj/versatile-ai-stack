@@ -614,8 +614,11 @@ subscription via Meridian**. The bindings as shipped:
 | `hermes_incident_manager`   | `claude-opus-4.8-sub-xhigh`  | Incident command + blameless postmortems (read-only)            |
 
 **Same team, three platforms.** This identical 9-role team is also realized as
-**Pi personas** (`bin/pi-as <role>`) and **Claude Code subagents**
-(`~/.claude/agents`, global). All three share the keystone **team-protocol**
+**Pi personas** (`bin/pi-as <role>`) and **Claude Code agents** (the
+manager is the MAIN agent — a `~/.claude/CLAUDE.md` @-import of
+`~/.claude/fleet/manager.md` — since a Claude Code subagent can't dispatch
+others; the other 8 roles install as subagents at `~/.claude/agents/`, global).
+All three share the keystone **team-protocol**
 skill — definition-of-done, typed handoffs, the review-gate pipeline,
 escalation, and a global turn budget. Install via `vz-ai-stack.sh install
 agent_fleet` (phase 04h / 04f).
@@ -643,7 +646,7 @@ cat ~/ai-stack/openshell/fleet-souls/hermes_backend_engineer.md | head -30
 openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c \
   'hermes hermes_backend_engineer "refactor the function fib in /workspace/main.py for memoization"'
 
-# 3. Have the manager frame and route a goal (operator-orchestrator).
+# 3. Have the manager frame and route a goal (chief-of-staff / single-entrance operator).
 openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c \
   'hermes hermes_manager "Add rate-limiting to the API. Write the spec, acceptance criteria, and the delivery plan."'
 ```

@@ -9,6 +9,13 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 ### Features
 
 - fleet-studio: doc/FLEET.html — single self-contained page to review+edit all 51 agent-profiles files (9 personas x 3 frameworks + shared skills + docs) live on disk via the File System Access API; launched by 'vz-ai-stack.sh fleet-studio' (loopback static serve of doc/). Edit-only, git-as-undo, Chrome/Edge read+write with Safari/FF read-only fallback. 2 subagent reviews + 3-way debate; 0 console errors; Semgrep clean.
+- manager = second brain / chief-of-staff / single entrance: redesigned the manager persona from "delivery orchestrator" into the operator's sole interface to the fleet — it mirrors an EM's whole job (people, process & execution, knowledge/memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape the task needs, with full platform access bounded only by team-protocol §5. Installs as the Claude Code MAIN agent (a clobber-safe `~/.claude/CLAUDE.md` @-import of `~/.claude/fleet/manager.md`), NOT a subagent, since a Claude Code subagent can't dispatch subagents. Operating principles re-spiked across all 9 roles (Tier-1 universal block byte-identical ×27 + per-role deltas). 2 co-creator subagents + §24 panel + debate-to-consensus.
+- doctor check 46 (`agent_fleet_parity`, ALWAYS-ON): wraps `check_fleet_parity.sh` — asserts all shared skills + the Tier-1 block + each role's body are byte-identical across the 3 frameworks; doc 45→46 count sweep.
+- memory-management skill (7th skill, manager-only): the second-brain retrieve/write protocol — ships byte-identical across all 3 frameworks (parity asserts 7) but referenced only by the manager profile.
+
+### Docs
+
+- Fleet doc-sync (avoid drift): propagated the second-brain manager identity, the main-agent install mechanism (manager = `~/.claude/CLAUDE.md` @-import + 8 subagents in `~/.claude/agents`), and the 6→7 skill count across 16 files — TUTORIAL, USER-GUIDE (.md+.html), HANDOFF, ARCHITECTURE, DOCTOR, ONBOARDING, STACK-GUIDE, COMPONENTS, models, OPERATIONS, ALTERNATIVES, EXPLORE.html, README, and the 3 agent-profiles READMEs (unified). Regenerated TUTORIAL.html; tutorial-sync + fleet-parity guards green.
 
 ---
 

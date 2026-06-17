@@ -542,7 +542,7 @@ when Meridian is down, `model sync` availability-gates every profile back to
 
 | Profile | Role | Assigned model |
 |---|---|---|
-| `hermes_manager` | Engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates | claude-opus-4.8-sub-xhigh |
+| `hermes_manager` | Chief of staff / operator / second brain — the single entrance: runs all of an EM's job (people, process, knowledge/memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape it takes; executes directly when fastest, else delegates | claude-opus-4.8-sub-xhigh |
 | `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-4.8-sub-max |
 | `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-opus-4.8-sub-max |
 | `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-opus-4.8-sub-max |
@@ -560,8 +560,9 @@ a global turn budget). The manager frames a spec and routes work; the
 reviewing-engineer blocks bad changes; the SRE deploys only what passed the
 gates. The **same 9-role team is realized on three platforms** — Hermes
 profiles (here, in `hermes-fleet-v1`), **Pi personas** (`bin/pi-as <role>`),
-and **Claude Code subagents** (`~/.claude/agents`, global). All three share
-`team-protocol`. Install via `vz-ai-stack.sh install agent_fleet` (phase 04h /
+and **Claude Code subagents** (the manager installs as the main agent via an
+`~/.claude/CLAUDE.md` @-import; the other 8 roles as subagents under
+`~/.claude/agents`, global). All three share `team-protocol`. Install via `vz-ai-stack.sh install agent_fleet` (phase 04h /
 04f).
 
 **Where does it fit?** Inside the OpenShell sandbox, talking to

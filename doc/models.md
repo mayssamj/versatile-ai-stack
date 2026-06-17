@@ -35,8 +35,9 @@ software-engineering team) plus `pi`, `deerflow`, `ace`, and `rlm`
 nine Hermes profiles all route to a **Claude
 subscription via Meridian** and are availability-gated to `local-gemma4` when
 Meridian is down. The same 9-role team is also realized as **Pi personas**
-(`bin/pi-as <role>`) and **Claude Code subagents** (`~/.claude/agents`),
-sharing the `team-protocol` skill.
+(`bin/pi-as <role>`) and **Claude Code agents** (the `manager` is the MAIN
+agent, installed as a `~/.claude/CLAUDE.md` @-import; the other 8 roles are
+subagents at `~/.claude/agents/<role>.md`), sharing the `team-protocol` skill.
 
 | Agent | Assigned | Kind | Scoped key |
 |-------|----------|------|------------|

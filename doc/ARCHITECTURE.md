@@ -100,7 +100,7 @@ server on `:1234`, reached via `host.docker.internal`, opt-in Phase 25).
   governed by the shared **team-protocol** skill (definition-of-done, typed
   handoffs, review gate, escalation, turn budget). The **same team is realized
   on three platforms** — Hermes profiles here, **Pi personas** (`bin/pi-as
-  <role>`), and **Claude Code subagents** (`~/.claude/agents`). All nine route
+  <role>`), and **Claude Code** (the manager is the **main agent** via `~/.claude/CLAUDE.md`; the other 8 are subagents in `~/.claude/agents`). All nine route
   to a Claude subscription via Meridian, availability-gated to `local-gemma4`
   when Meridian is down. The Hermes Telegram gateway (Phase 20) runs the
   gateway process *inside the same sandbox*.

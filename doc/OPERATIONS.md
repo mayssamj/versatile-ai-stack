@@ -313,7 +313,7 @@ re-run `install 20`:
 
 - `HERMES_TELEGRAM_ALLOWED_USERS=<id>[,<id>…]` — numeric Telegram user ids (find
   yours by DMing `@userinfobot`). **Recommended.**
-- `HERMES_TELEGRAM_ALLOW_ALL=true` — open access. Not advised (the bot drives 7
+- `HERMES_TELEGRAM_ALLOW_ALL=true` — open access. Not advised (the bot drives 9
   profiles).
 
 `stack status` shows `hermes_telegram` as `n/a` (it's a sandbox-internal daemon);
