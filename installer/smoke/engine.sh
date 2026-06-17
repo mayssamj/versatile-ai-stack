@@ -509,3 +509,50 @@ for s in openshell-checkpoint openshell-state-restore openshell-watchdog openshe
     || { err "$s.sh is NOT engine-aware (still assumes OrbStack socket/binary)"; exit 1; }
 done
 ok "12b: openshell durability scripts derive DOCKER_HOST from the selected engine"
+
+# ===========================================================================
+# Task 13 — Doctor check 01 (selected engine reachable) + 02 (engine-aware host.docker.internal)
+# ===========================================================================
+# SAFETY: each subshell uses a THROWAWAY ENV_FILE + function stubs (engine_running,
+# docker) so nothing reaches a real daemon or the real .env / gateway.env.
+log "13: doctor check 01 — pinned-but-unreachable engine → non-zero + message"
+( set -Eeuo pipefail; AI_STACK="$AI_STACK"; ENV_FILE="$(mktemp)"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker.sh"
+  declare -a CHECKS; declare -A CHECK_TITLE
+  source "$AI_STACK/installer/doctor/checks/01_orbstack_running.sh"
+  # Pin a valid engine and stub engine_running to fail → diagnose must return non-zero.
+  set_env AI_STACK_DOCKER_ENGINE orbstack
+  engine_running() { return 1; }
+  out="$(orbstack_running_diagnose 2>&1)"; rc=$?
+  [[ $rc -ne 0 ]] || { echo "01 diagnose should fail when selected engine unreachable" >&2; exit 1; }
+  grep -qi 'not reachable\|selected engine' <<<"$out" || { echo "01 message missing: $out" >&2; exit 1; }
+  rm -f "$ENV_FILE"
+) || { err "doctor 01 pinned-unreachable path failed"; exit 1; }
+ok "13: doctor 01 pinned-unreachable path correct"
+
+log "13: doctor check 01 — no engine pinned → legacy ambient fallback returns 0 when docker info works"
+( set -Eeuo pipefail; AI_STACK="$AI_STACK"; ENV_FILE="$(mktemp)"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"; source "$AI_STACK/installer/lib/docker.sh"
+  declare -a CHECKS; declare -A CHECK_TITLE
+  source "$AI_STACK/installer/doctor/checks/01_orbstack_running.sh"
+  set_env AI_STACK_DOCKER_ENGINE ""
+  docker() { [[ "$1" == info ]] && return 0; command docker "$@"; }
+  orbstack_running_diagnose >/dev/null 2>&1 || { echo "01 legacy fallback should be green when docker info works" >&2; exit 1; }
+  rm -f "$ENV_FILE"
+) || { err "doctor 01 no-engine legacy fallback failed"; exit 1; }
+ok "13: doctor 01 legacy fallback correct"
+
+log "13: doctor check 02 — colima diagnose builds the --add-host arg (capture via docker stub)"
+( set -Eeuo pipefail; AI_STACK="$AI_STACK"; ENV_FILE="$(mktemp)"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"; source "$AI_STACK/installer/lib/docker.sh"
+  declare -a CHECKS; declare -A CHECK_TITLE
+  source "$AI_STACK/installer/doctor/checks/02_host_docker_internal.sh"
+  set_env AI_STACK_DOCKER_ENGINE colima
+  captured=""; docker() { captured="$*"; echo "$captured" >"$ENV_FILE.args"; return 0; }
+  host_docker_internal_diagnose >/dev/null 2>&1 || true
+  grep -q -- '--add-host=host.docker.internal:host-gateway' "$ENV_FILE.args" \
+    || { echo "02 colima diagnose did not pass the add-host flag to docker" >&2; exit 1; }
+  rm -f "$ENV_FILE" "$ENV_FILE.args"
+) || { err "doctor 02 colima add-host path failed"; exit 1; }
+ok "13: doctor 02 engine-aware add-host path correct"
