@@ -25,6 +25,7 @@ fi
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
+source "$AI_STACK/installer/lib/docker-engine.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/network.sh"
 aliases_load
@@ -153,6 +154,17 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY "")"
 PHOENIX_API_KEY="$(get_env PHOENIX_API_KEY "")"
 set -u
 
+# Engine-derived host.docker.internal add-host (LiteLLM dials Postgres at
+# host.docker.internal:5432). OrbStack/Docker Desktop auto-inject it (so this is
+# empty + the flag is omitted); Colima/Podman need it explicitly. Sourced from the
+# engine registry — never hardcoded — so it is correct on every engine + honest.
+HDI_ADDHOST=()
+_litellm_eng="$(get_env AI_STACK_DOCKER_ENGINE orbstack)"
+if _engine_valid "$_litellm_eng" 2>/dev/null; then
+  _litellm_ah="$(engine_addhost_args "$_litellm_eng" 2>/dev/null || true)"
+  [[ -n "$_litellm_ah" ]] && HDI_ADDHOST=("$_litellm_ah")
+fi
+
 # Canonical flag order: --network/--add-host, then -e..., then -p, then -v, then --restart, then IMAGE, then CMD.
 # NOTE: litellm/ mount is RO (Reviewer Y-8). Container cannot tamper with
 # config.yaml or the custom callbacks at runtime.
@@ -164,7 +176,7 @@ docker run -d \
   --restart unless-stopped \
   --network ai-stack \
   --add-host=ollama:host-gateway \
-  --add-host=host.docker.internal:host-gateway \
+  "${HDI_ADDHOST[@]}" \
   -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
   -e OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \

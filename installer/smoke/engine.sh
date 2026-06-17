@@ -326,3 +326,73 @@ grep -q "Docker engine: orbstack" <<<"$rep" \
 grep -qE 'gateway\.env socket (==|!=) selected' <<<"$rep" \
   || { err "deps_report --check missing the gateway.env socket comparison line"; exit 1; }
 ok "deps wiring present (unique sentinels, read-only --check path)"
+
+# ===========================================================================
+# Task 10 — docker.sh: engine-conditional add-host in docker_run_managed
+# ===========================================================================
+# `docker` is fully stubbed (a shell function inside each subshell) so nothing
+# reaches a real daemon; ENV_FILE is a throwaway.
+log "docker_run_managed appends engine_addhost_args for the selected engine"
+# colima → MUST include host.docker.internal add-host
+_t10_env="$(mktemp -t aistack-t10c.XXXXXX)"
+out="$(AI_STACK_DOCKER_ENGINE=colima ENV_FILE="$_t10_env" bash -c '
+  set -Eeuo pipefail; AI_STACK="'"$AI_STACK"'"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker-engine.sh"; source "$AI_STACK/installer/lib/docker.sh"
+  docker() { printf "%s\n" "$*"; }
+  set_env AI_STACK_DOCKER_ENGINE colima
+  docker_run_managed t 99 alpine -- true
+')"
+rm -f "$_t10_env"
+grep -q -- '--add-host=host.docker.internal:host-gateway' <<<"$out" \
+  || { err "colima docker_run_managed missing host.docker.internal add-host: $out"; exit 1; }
+# orbstack → MUST NOT include it
+out="$(AI_STACK_DOCKER_ENGINE=orbstack bash -c '
+  set -Eeuo pipefail; AI_STACK="'"$AI_STACK"'"
+  e="$(mktemp)"; export ENV_FILE="$e"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker-engine.sh"; source "$AI_STACK/installer/lib/docker.sh"
+  docker() { printf "%s\n" "$*"; }
+  set_env AI_STACK_DOCKER_ENGINE orbstack
+  docker_run_managed t 99 alpine -- true; rm -f "$e"
+')"
+grep -q -- '--add-host=host.docker.internal' <<<"$out" \
+  && { err "orbstack docker_run_managed should NOT add host.docker.internal: $out"; exit 1; } || true
+ok "docker_run_managed add-host is engine-conditional"
+
+# --- 10b: bin/start-litellm.sh add-host must be engine-DERIVED, not hardcoded ----
+# SAFETY: start-litellm.sh exits early on its network/Postgres preconditions in a
+# clean env, so a test that depends on its full `docker run` output is flaky. The
+# LOAD-BEARING checks are (a) STATIC: the script sources docker-engine.sh AND builds
+# its add-host via engine_addhost_args/get_env (not a hardcoded literal); and (b)
+# ISOLATED: drive engine_addhost_args directly to prove colima→flag, orbstack→empty.
+# A run-the-script grep is kept ONLY as a soft signal (an early precondition-exit
+# does NOT fail the test). `docker` is stubbed via a temp-PATH dir; ENV_FILE throwaway.
+log "10b: start-litellm.sh add-host is engine-derived (static + isolated)"
+_sl="$AI_STACK/bin/start-litellm.sh"
+# (a) STATIC: sources the registry + constructs add-host from engine_addhost_args.
+grep -qE 'source[[:space:]].*docker-engine\.sh' "$_sl" \
+  || { err "10b: start-litellm.sh does not source docker-engine.sh"; exit 1; }
+grep -q 'engine_addhost_args' "$_sl" \
+  || { err "10b: start-litellm.sh does not derive add-host via engine_addhost_args"; exit 1; }
+grep -q -- '--add-host=host.docker.internal:host-gateway' "$_sl" \
+  && { err "10b: start-litellm.sh still HARDCODES the host.docker.internal add-host literal"; exit 1; } || true
+# (b) ISOLATED: the registry function the script now uses yields the right token.
+( set -Eeuo pipefail; AI_STACK="$AI_STACK"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/docker-engine.sh"
+  [[ "$(engine_addhost_args colima)" == "--add-host=host.docker.internal:host-gateway" ]] \
+    || { echo "isolated: colima must yield the add-host flag"; exit 1; }
+  [[ -z "$(engine_addhost_args orbstack)" ]] || { echo "isolated: orbstack must yield empty"; exit 1; }
+) || { err "10b: isolated engine_addhost_args check failed"; exit 1; }
+# (c) SOFT run-the-script signal — wrapped so an early precondition-exit cannot fail us.
+_d=$(mktemp -d); printf '#!/usr/bin/env bash\necho "$@"\nexit 0\n' >"$_d/docker"; chmod +x "$_d/docker"
+_slenv="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=colima\n' > "$_slenv"
+run_out="$(PATH="$_d:$PATH" ENV_FILE="$_slenv" bash "$_sl" 2>&1 || true)"
+rm -f "$_slenv"; rm -rf "$_d"
+if grep -q 'docker run' <<<"$run_out" || grep -q -- '--add-host' <<<"$run_out"; then
+  grep -q -- '--add-host=host.docker.internal:host-gateway' <<<"$run_out" \
+    || { err "10b: start-litellm.sh reached docker run but lacked the colima add-host: $run_out"; exit 1; }
+  ok "10b: start-litellm.sh emitted the colima add-host (full run path)"
+else
+  ok "10b: start-litellm.sh exited on a precondition (run-grep skipped; static+isolated checks carry it)"
+fi

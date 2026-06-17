@@ -95,12 +95,21 @@ docker_run_managed() {
     esac
   done
 
+  # Engine-conditional host.docker.internal (Colima/Podman need it explicitly).
+  local _eng _addhost=()
+  _eng="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  if [[ -n "$_eng" ]] && declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_eng" 2>/dev/null; then
+    local _ah; _ah="$(engine_addhost_args "$_eng" 2>/dev/null || true)"
+    [[ -n "$_ah" ]] && _addhost=("$_ah")
+  fi
+
   docker run -d \
     --name "$name" \
     --label "ai-stack.managed=true" \
     --label "ai-stack.phase=$phase" \
     --label "ai-stack.partial=true" \
     --restart unless-stopped \
+    "${_addhost[@]}" \
     "${env_args[@]}" \
     "${port_args[@]}" \
     "${vol_args[@]}" \
@@ -179,12 +188,23 @@ ensure_image() {
   fi
 }
 
-# host.docker.internal probe — Reviewer A #3.
+# host.docker.internal probe — Reviewer A #3. Engine-aware: on Colima/Podman the
+# alias only resolves when the probe container itself carries the add-host flag, so
+# we derive it from the selected engine (empty on OrbStack/Docker Desktop).
 probe_host_docker_internal() {
-  if ! docker run --rm alpine getent hosts host.docker.internal >/dev/null 2>&1; then
+  local _eng _addhost=()
+  _eng="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  if [[ -n "$_eng" ]] && declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_eng" 2>/dev/null; then
+    local _ah; _ah="$(engine_addhost_args "$_eng" 2>/dev/null || true)"
+    [[ -n "$_ah" ]] && _addhost=("$_ah")
+  fi
+  if ! docker run --rm "${_addhost[@]}" alpine getent hosts host.docker.internal >/dev/null 2>&1; then
     err "host.docker.internal does not resolve from inside containers."
-    err "This is required for LiteLLM → Phoenix and many other paths."
-    err "If you're on OrbStack: settings → Network → ensure host networking is enabled."
+    err "This is required for LiteLLM → host Postgres/Phoenix and other paths."
+    err "If you're on OrbStack/Docker Desktop: Settings → Network → ensure host networking is enabled."
+    err "If you're on Colima/Podman: the host-dialing service (LiteLLM) injects"
+    err "  --add-host=host.docker.internal:host-gateway from the engine registry."
+    err "  Any OTHER container that needs it must add that flag to its own 'docker run'."
     return 1
   fi
   return 0
