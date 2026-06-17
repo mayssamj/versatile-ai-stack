@@ -596,3 +596,32 @@ log "14-regression: check 47 diagnose GREEN when valid installed engine pinned (
   rm -f "$ENV_FILE"
 ) || { err "check 47 green-path regression failed"; exit 1; }
 ok "14-regression: check 47 diagnose green-path correct"
+
+# ===========================================================================
+# Task 17 — NO_PROMPT + ZERO engines installed → clean brew-remedy hard-fail
+# ===========================================================================
+# END-TO-END coverage gap (QA/INFRA): prove the hands-off path with NOTHING
+# installed exits cleanly with the brew remedy and NEVER proceeds to a docker
+# call. Simulate "zero engines" by stubbing detection in a subshell; `engine_select`
+# then falls to the NO_PROMPT priority-head, and `engine_ensure` hard-fails at the
+# static brew remedy (engine_install is offline under NO_PROMPT). Throwaway ENV_FILE.
+log "17: NO_PROMPT + zero engines installed → clean hard-fail with brew remedy (no docker calls)"
+out="$(
+  set +e
+  AI_STACK="$AI_STACK"; ENV_FILE="$(mktemp -t aistack-t17-env.XXXXXX)"
+  NO_PROMPT=1 bash -c '
+    set -Eeuo pipefail; AI_STACK="'"$AI_STACK"'"
+    source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+    source "$AI_STACK/installer/lib/docker-engine.sh"
+    engine_installed() { return 1; }            # pretend nothing is installed
+    engine_detect_installed() { :; }            # empty
+    # FAIL LOUDLY if any docker call escapes onto this path.
+    docker() { echo "FATAL: docker invoked on the zero-engine NO_PROMPT path: $*" >&2; return 99; }
+    sel="$(NO_PROMPT=1 engine_select 2>/dev/null)" || true
+    engine_ensure "$sel" 2>&1                    # must hard-fail with brew remedy
+  '
+  rm -f "$ENV_FILE"
+)"
+grep -q 'FATAL: docker invoked' <<<"$out" && { err "17: zero-engine NO_PROMPT path made a docker call: $out"; exit 1; }
+grep -q 'brew install' <<<"$out" || { err "17: NO_PROMPT zero-engine path did not print brew remedy: $out"; exit 1; }
+ok "17: NO_PROMPT zero-engine path hard-fails with remedy"

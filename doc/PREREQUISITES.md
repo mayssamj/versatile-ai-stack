@@ -108,3 +108,71 @@ only when a key is missing.
 The canonical first-run order is **`deps` → `setup` → `prepare-sudo` → `install all`
 → `doctor`** (`deps` + `setup` are optional-but-recommended; both run as your normal
 user — only `prepare-sudo` needs `sudo`).
+
+## Undo an engine switch
+
+Switching engines is **reversible** — nothing is auto-destroyed at any step (no
+container is deleted, no image is removed, no volume is touched). If you switched
+engines (e.g. `docker-engine set colima`) but your managed containers actually
+live on the **previous** engine, the **docker-engine-consistency** doctor check
+(check 46) flags it as split-brain. To roll back:
+
+1. **Re-pin to where the containers actually live:**
+
+   ```bash
+   vz-ai-stack.sh docker-engine set <previous-engine>   # e.g. set orbstack
+   ```
+
+2. **Restart the OpenShell gateway** so it re-reads the freshly-rewritten
+   `gateway.env` (`DOCKER_HOST`). If there is **no Ready sandbox**, a plain
+   `install 04` re-reads it; if a Ready sandbox exists (gateway won't restart on
+   its own), force the restart explicitly:
+
+   ```bash
+   OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04
+   ```
+
+3. **Restore your global `docker context`** if you let the pin switch it — when
+   `engine_pin` changed the ambient context it **printed the prior context name**;
+   put it back:
+
+   ```bash
+   docker context use <prior>     # the name engine_pin printed when it switched
+   ```
+
+4. **Confirm it's clean:**
+
+   ```bash
+   vz-ai-stack.sh doctor          # checks 01/46/47 green (engine reachable; no
+                                  # split-brain; selection present & valid)
+   ```
+
+Again: nothing is auto-destroyed at any of these steps — the rollback only
+re-pins selection and re-points `DOCKER_HOST`; your containers stay where they are.
+
+## Engine verification matrix (manual — UNVERIFIED on the build box)
+
+OrbStack is exercised end-to-end by the test suite on the build box. The other
+three engines (and the Docker Desktop cask-churn case) are **wired but not
+exercised here** — they are residual UNVERIFIED paths, logged as such rather than
+papered over. Before relying on a non-default engine, run it on a box that has it
+and confirm the socket resolves and the doctor checks are green.
+
+| engine | socket resolution to confirm | host.docker.internal |
+|---|---|---|
+| docker-desktop | `docker context inspect desktop-linux` endpoint, else `~/.docker/run` socket | auto (no flag) |
+| colima | `colima status` `socket:` line, else `~/.colima/<profile>/docker.sock` | needs `--add-host` |
+| podman | `podman machine inspect {{.ConnectionInfo.PodmanSocket.Path}}` | needs `--add-host` |
+| docker-desktop cask churn | `brew info --cask docker-desktop`, else fall back to `docker` | n/a |
+
+On a box that has the target engine:
+
+```bash
+vz-ai-stack.sh docker-engine set <engine>   # e.g. set podman
+vz-ai-stack.sh docker-engine status         # selected engine + resolved socket + consistency
+vz-ai-stack.sh doctor                        # checks 01/46/47 green before relying on it
+```
+
+`docker-engine status` plus doctor checks **01** (selected engine reachable), the
+**docker-engine-consistency** check (46, no split-brain), and **47** (selection
+present & valid) must all be green before you trust a non-default engine.
