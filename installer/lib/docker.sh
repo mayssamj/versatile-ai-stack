@@ -19,6 +19,12 @@
 
 [[ -z "${AI_STACK:-}" ]] && { echo "docker.sh: AI_STACK unset" >&2; exit 2; }
 
+# Make the engine registry available so the source-time DOCKER_HOST export at the
+# END of this file can resolve the selected socket. Guarded: callers that only want
+# docker.sh's container helpers (and never sourced docker-engine.sh) still work, and
+# this is a one-way dependency — docker-engine.sh must NOT source docker.sh (no cycle).
+[[ -f "$AI_STACK/installer/lib/docker-engine.sh" ]] && source "$AI_STACK/installer/lib/docker-engine.sh"
+
 # Has a container with this name?
 container_exists() {
   docker ps -a --format '{{.Names}}' | grep -qx "$1"
@@ -183,3 +189,15 @@ probe_host_docker_internal() {
   fi
   return 0
 }
+
+# Source-time DOCKER_HOST export so STANDALONE bin/start-*.sh (which source this
+# file but NOT vz-ai-stack.sh) talk to the SELECTED engine, not the ambient socket.
+# Idempotent + no-op when AI_STACK_DOCKER_ENGINE is empty/unset.
+if declare -F engine_socket >/dev/null 2>&1 && declare -F _engine_valid >/dev/null 2>&1; then
+  _ds_eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  if [[ -n "${_ds_eng:-}" ]] && _engine_valid "$_ds_eng" 2>/dev/null; then
+    _ds_sock="$(engine_socket "$_ds_eng" 2>/dev/null || true)"
+    [[ -n "${_ds_sock:-}" ]] && export DOCKER_HOST="$_ds_sock"
+  fi
+  unset _ds_eng _ds_sock
+fi

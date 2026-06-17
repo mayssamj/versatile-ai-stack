@@ -275,3 +275,16 @@ got2="$(env -u DOCKER_HOST ENV_FILE="$tmpe2" bash "$AI_STACK/vz-ai-stack.sh" __p
 rm -f "$tmpe2"
 grep -q 'DOCKER_HOST=<unset>' <<<"$got2" || { err "empty engine should be a no-op export: $got2"; exit 1; }
 ok "central DOCKER_HOST export wired (real path; no-op when unset)"
+
+log "8b: standalone docker.sh source chain exports the selected DOCKER_HOST"
+tmpenv="$(mktemp -t aistack-8b.XXXXXX)"
+printf 'AI_STACK_DOCKER_ENGINE=orbstack\n' > "$tmpenv"
+got="$(env -u DOCKER_HOST ENV_FILE="$tmpenv" bash -c '
+  set -Eeuo pipefail; AI_STACK="'"$AI_STACK"'"; L="$AI_STACK/installer/lib"
+  source "$L/common.sh"; source "$L/env.sh"; source "$L/docker-engine.sh"; source "$L/docker.sh"
+  echo "DOCKER_HOST=${DOCKER_HOST:-<unset>}"
+' 2>/dev/null || true)"
+rm -f "$tmpenv"
+grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
+  || { err "docker.sh source-time export not wired: $got"; exit 1; }
+ok "8b: standalone docker.sh chain exports DOCKER_HOST"
