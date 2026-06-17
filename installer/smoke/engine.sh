@@ -574,3 +574,25 @@ n="$(ls "$AI_STACK"/installer/doctor/checks/*.sh | wc -l | tr -d ' ')"
 grep -q 'CHECKS+=(docker_engine_consistency)' "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" || { err "46 check not registered"; exit 1; }
 grep -q 'CHECKS+=(docker_engine_selection)'  "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh"  || { err "47 check not registered"; exit 1; }
 ok "doctor 46/47 present, 47 checks total, single 46_ ordinal"
+
+# Behavioral guard for check 47's GREEN path: diagnose MUST return 0 when a valid,
+# installed engine is pinned. The original Task-14 test was STATIC (presence /
+# registration only) and never DROVE diagnose — this fills that gap.
+# NB on the reviewer's "missing return 0 → always RED" claim: it does NOT hold. The
+# pre-fix body ended in `if ! engine_installed "$sel"; then …; return 1; fi` — and a
+# trailing `if COND; …; fi` exits 0 when COND is false (engine installed), even under
+# the runner's `set -Eeuo pipefail`+inherit_errexit (errexit is suspended for a fn run
+# as an `if` condition). So the green path already returned 0; the added explicit
+# `return 0` is defensive clarity (robust if a later edit appends a statement), not a
+# bugfix — and this assertion correctly passes both before and after it.
+log "14-regression: check 47 diagnose GREEN when valid installed engine pinned (return 0)"
+( set -Eeuo pipefail; AI_STACK="$AI_STACK"; ENV_FILE="$(mktemp)"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"; source "$AI_STACK/installer/lib/docker.sh"
+  declare -a CHECKS; declare -A CHECK_TITLE
+  source "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh"
+  set_env AI_STACK_DOCKER_ENGINE orbstack
+  engine_installed() { return 0; }   # stub: pretend selected engine is installed
+  docker_engine_selection_diagnose >/dev/null 2>&1 || { echo "47 diagnose RED on a valid installed pin (missing return 0?)" >&2; exit 1; }
+  rm -f "$ENV_FILE"
+) || { err "check 47 green-path regression failed"; exit 1; }
+ok "14-regression: check 47 diagnose green-path correct"

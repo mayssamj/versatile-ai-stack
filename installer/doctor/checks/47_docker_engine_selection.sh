@@ -14,6 +14,7 @@ docker_engine_selection_diagnose() {
   if ! engine_installed "$sel"; then
     echo "selected engine '$sel' ($(engine_display "$sel")) is no longer installed"; return 1
   fi
+  return 0
 }
 
 docker_engine_selection_fix() {
