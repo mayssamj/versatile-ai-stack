@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (45 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
+- `doctor` targets **all green (46 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -1316,7 +1316,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (45 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (46 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
