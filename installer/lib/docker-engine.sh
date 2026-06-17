@@ -146,3 +146,71 @@ engine_detect_running() {
   local e
   for e in $ENGINE_IDS; do engine_running "$e" && printf '%s\n' "$e"; done
 }
+
+# engine_select — resolve the engine id by precedence and echo it to STDOUT.
+#   1. --engine flag (passed as env var AI_STACK_ENGINE_FLAG by the caller)
+#   2. AI_STACK_DOCKER_ENGINE in .env
+#   3. the single RUNNING engine (if exactly one runs)
+#   4. interactive prompt (skipped under NO_PROMPT / non-TTY)
+#   5. NO_PROMPT fallback: first INSTALLED engine in ENGINE_IDS priority order,
+#      else the first id in ENGINE_IDS. Logged loudly.
+# Reasons go to STDERR; only the chosen id goes to STDOUT.
+# Returns 1 (NOT 2) for caller-recoverable bad input (bad flag / bad .env / bad
+# interactive choice) so a guarded `sel="$(engine_select)" || {…}` caller can
+# recover under inherit_errexit. (2 is reserved for the _engine_valid programming
+# error in the pure accessors, which callers always pre-validate.)
+engine_select() {
+  local flag="${AI_STACK_ENGINE_FLAG:-}"
+  if [[ -n "$flag" ]]; then
+    _engine_valid "$flag" || { err "engine_select: unknown --engine id '$flag' (want: $ENGINE_IDS)"; return 1; }
+    log "engine: $flag (from --engine flag)" >&2
+    printf '%s' "$flag"; return 0
+  fi
+
+  local pinned; pinned="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  if [[ -n "$pinned" ]]; then
+    if ! _engine_valid "$pinned"; then
+      err "engine_select: .env AI_STACK_DOCKER_ENGINE='$pinned' is invalid (want: $ENGINE_IDS)"; return 1
+    fi
+    log "engine: $pinned (from AI_STACK_DOCKER_ENGINE in .env)" >&2
+    printf '%s' "$pinned"; return 0
+  fi
+
+  local running; running="$(engine_detect_running)"
+  local n; n="$(printf '%s' "$running" | grep -c . || true)"
+  if [[ "$n" == "1" ]]; then
+    log "engine: $running (the single running engine)" >&2
+    printf '%s' "$running"; return 0
+  fi
+
+  # Interactive prompt — skipped under NO_PROMPT or no TTY.
+  if [[ "${NO_PROMPT:-0}" != "1" && -t 0 ]]; then
+    local installed; installed="$(engine_detect_installed)"
+    printf '  Multiple/zero engines detected. Choose a Docker engine:\n' >&2
+    local e
+    for e in $ENGINE_IDS; do
+      local mark=""
+      grep -qx "$e" <<<"$installed" && mark=" [installed]"
+      grep -qx "$e" <<<"$running"   && mark="$mark [running]"
+      printf '    - %s (%s)%s\n' "$e" "$(engine_display "$e")" "$mark" >&2
+    done
+    printf '  engine id [orbstack]: ' >&2
+    local ans; read -r ans || true
+    ans="${ans:-orbstack}"
+    _engine_valid "$ans" || { err "engine_select: invalid choice '$ans'"; return 1; }
+    log "engine: $ans (interactive choice)" >&2
+    printf '%s' "$ans"; return 0
+  fi
+
+  # NO_PROMPT / non-TTY fallback: fixed priority, prefer installed.
+  local e
+  for e in $ENGINE_IDS; do
+    if engine_installed "$e"; then
+      warn "engine: $e (NO_PROMPT fixed-priority fallback — first INSTALLED of: $ENGINE_IDS)"
+      printf '%s' "$e"; return 0
+    fi
+  done
+  e="${ENGINE_IDS%% *}"
+  warn "engine: $e (NO_PROMPT fixed-priority fallback — none installed; first of: $ENGINE_IDS)"
+  printf '%s' "$e"
+}

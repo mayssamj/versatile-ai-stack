@@ -123,4 +123,37 @@ end=$(date +%s)
 (( end - start <= 8 )) || { err "engine_running not timeout-bounded ($((end-start))s for $bounded_target)"; exit 1; }
 ok "engine_running bounded (<=8s, target=$bounded_target)"
 
+log "engine_select precedence (failure paths first)"
+# 1) Unknown --engine flag must be rejected hard.
+( AI_STACK_ENGINE_FLAG=bogus NO_PROMPT=1 engine_select ) >/dev/null 2>&1 \
+  && { err "engine_select accepted bogus flag"; exit 1; } || true
+# 2) Flag beats everything (even a different .env value).
+set_env AI_STACK_DOCKER_ENGINE colima
+sel="$(AI_STACK_ENGINE_FLAG=podman NO_PROMPT=1 engine_select 2>/dev/null)"
+[[ "$sel" == podman ]] || { err "flag did not win: '$sel'"; exit 1; }
+# 3) .env beats running-singleton + priority when no flag.
+sel="$(NO_PROMPT=1 engine_select 2>/dev/null)"
+[[ "$sel" == colima ]] || { err ".env did not win: '$sel'"; exit 1; }
+# 4) RUNNING-SINGLETON rung (the subtlest one — MUST be unambiguous, so STUB
+#    engine_detect_running to return exactly ONE id that DIFFERS from the
+#    priority-fallback winner, with empty .env and NO flag. This proves
+#    "single running engine" beats the orbstack priority fallback. Without the
+#    stub this rung is physically untestable on a single-engine box.
+set_env AI_STACK_DOCKER_ENGINE ""
+sel="$(
+  set -Eeuo pipefail
+  AI_STACK="$AI_STACK"; ENV_FILE="$ENV_FILE"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker-engine.sh"
+  engine_detect_running() { printf 'colima\n'; }   # exactly one, != orbstack priority winner
+  NO_PROMPT=1 engine_select 2>/dev/null
+)"
+[[ "$sel" == colima ]] || { err "running-singleton rung failed (want colima, got '$sel')"; exit 1; }
+ok "running-singleton beats priority fallback"
+# 5) No flag, empty .env, NO_PROMPT, ZERO/MULTIPLE running → fixed priority (first INSTALLED, else first id).
+sel="$(NO_PROMPT=1 engine_select 2>/dev/null)"
+# orbstack is installed on this box → must win the priority fallback.
+[[ "$sel" == orbstack ]] || { err "NO_PROMPT priority did not pick orbstack: '$sel'"; exit 1; }
+ok "engine_select precedence correct (incl running-singleton)"
+
 ok "Task 1 registry-pure tests passed"
