@@ -9,6 +9,37 @@ source "$AI_STACK/installer/lib/env.sh"
 # after Task 2 the pre-export also works, but reassign is the belt-and-suspenders rule).
 ENV_FILE="$(mktemp -t aistack-test-env.XXXXXX)"
 trap 'rm -f "$ENV_FILE"' EXIT
+
+# Regression: a PRE-exported ENV_FILE must survive sourcing common.sh+env.sh.
+( set -Eeuo pipefail
+  tmp="$(mktemp -t aistack-presrc.XXXXXX)"; trap 'rm -f "$tmp"' EXIT
+  AI_STACK_X="$AI_STACK" ENV_FILE="$tmp" bash -c '
+    set -Eeuo pipefail
+    AI_STACK="$AI_STACK_X"
+    source "$AI_STACK/installer/lib/common.sh"
+    source "$AI_STACK/installer/lib/env.sh"
+    [[ "$ENV_FILE" == "'"$tmp"'" ]] || { echo "ENV_FILE clobbered to $ENV_FILE" >&2; exit 1; }
+  ' ) || { err "pre-exported ENV_FILE was clobbered by common.sh:58"; exit 1; }
+ok "pre-exported ENV_FILE honored"
+
+log "no lib re-hardcodes ENV_FILE unconditionally (only the :- idiom allowed)"
+bad="$(grep -rnE '^[[:space:]]*ENV_FILE=' "$AI_STACK"/installer/lib/*.sh | grep -vE 'ENV_FILE=\"?\$\{ENV_FILE:-' || true)"
+[[ -z "$bad" ]] || { err "unconditional ENV_FILE= assignment(s) found:\n$bad"; exit 1; }
+ok "all ENV_FILE= assignments honor the override"
+
+# Full source-chain survival: a pre-exported throwaway ENV_FILE must survive
+# common→env→docker→litellm→deps→setup (NOT just common+env).
+( set -Eeuo pipefail
+  tmp="$(mktemp -t aistack-chain.XXXXXX)"; trap 'rm -f "$tmp"' EXIT
+  AI_STACK_X="$AI_STACK" ENV_FILE="$tmp" bash -c '
+    set -Eeuo pipefail; AI_STACK="$AI_STACK_X"; L="$AI_STACK/installer/lib"
+    for f in common env docker litellm deps setup; do
+      [[ -f "$L/$f.sh" ]] && source "$L/$f.sh"
+    done
+    [[ "$ENV_FILE" == "'"$tmp"'" ]] || { echo "ENV_FILE clobbered to $ENV_FILE by the source chain" >&2; exit 1; }
+  ' ) || { err "throwaway ENV_FILE did not survive the full source chain"; exit 1; }
+ok "throwaway ENV_FILE survives full source chain"
+
 source "$AI_STACK/installer/lib/docker-engine.sh"
 
 hdr "Smoke engine — registry (pure)"
