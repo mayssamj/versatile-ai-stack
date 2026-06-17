@@ -57,6 +57,24 @@ mkdir -p "$STATE"
 # Resolve tools (launchd has a minimal PATH).
 _find() { for p in "$@"; do [[ -x "$p" ]] && { echo "$p"; return 0; }; done; command -v "$(basename "$1")" 2>/dev/null || echo ""; }
 DOCKER="$(_find /opt/homebrew/bin/docker "$HOME/.orbstack/bin/docker" /usr/local/bin/docker)"
+
+# Engine-aware: do NOT assume OrbStack. Prefer the gateway.env DOCKER_HOST (the
+# gateway's own source of truth); fall back to the registry from AI_STACK_DOCKER_ENGINE.
+if [[ -z "${DOCKER_HOST:-}" ]]; then
+  _gw_dh="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+  if [[ -n "${_gw_dh:-}" ]]; then
+    export DOCKER_HOST="$_gw_dh"
+  elif [[ -n "${AI_STACK:-}" && -f "$AI_STACK/installer/lib/docker-engine.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+    source "$AI_STACK/installer/lib/docker-engine.sh"
+    _eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+    if [[ -n "${_eng:-}" ]] && _engine_valid "$_eng" 2>/dev/null; then
+      _dh="$(engine_socket "$_eng" 2>/dev/null || true)"; [[ -n "${_dh:-}" ]] && export DOCKER_HOST="$_dh"
+    fi
+  fi
+  unset _gw_dh _eng _dh 2>/dev/null || true
+fi
 OPENSHELL="$(_find /opt/homebrew/bin/openshell /usr/local/bin/openshell)"
 BREW="$(_find /opt/homebrew/bin/brew /usr/local/bin/brew)"
 
@@ -84,6 +102,11 @@ case "${1:-run}" in
     <key>AI_STACK</key><string>$AI_STACK</string>
     <key>AI_STACK_WATCHDOG_HALT</key><string>${HALT}</string>
     <key>AI_STACK_WATCHDOG_RECREATE</key><string>${RECREATE}</string>
+    <!-- The `docker` CLI is engine-AGNOSTIC: Docker Desktop / Colima / Podman all
+         install it to /opt/homebrew/bin (resolved FIRST by _find, before
+         ~/.orbstack/bin), so this PATH works for every engine. The ENGINE itself
+         is selected by DOCKER_HOST (exported above from gateway.env / the registry),
+         not by which CLI dir is on PATH. -->
     <key>PATH</key><string>${DOCKER:+$(dirname "$DOCKER"):}${OPENSHELL:+$(dirname "$OPENSHELL"):}/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key><string>$STATE/openshell-watchdog.launchd.log</string>
