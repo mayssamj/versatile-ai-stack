@@ -5,7 +5,13 @@
 # Value space of AI_STACK_DOCKER_ENGINE (.env): orbstack | docker-desktop | colima | podman
 # All `docker -H … info` probes are timeout-bounded so a wedged daemon never hangs us.
 
-[[ -z "${AI_STACK:-}" ]] && { echo "docker-engine.sh: AI_STACK unset" >&2; exit 2; }
+# AI_STACK is normally exported by vz-ai-stack.sh (the sourcing parent). When this
+# file is RUN DIRECTLY as the docker-engine CLI it self-resolves AI_STACK from its
+# own path (../../) — matching fleet.sh shape — so the CLI works standalone too.
+if [[ -z "${AI_STACK:-}" ]]; then
+  AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd -P)" \
+    || { echo "docker-engine.sh: AI_STACK unset and unresolvable" >&2; exit 2; }
+fi
 
 # Idempotent: a second source (e.g. vz-ai-stack.sh sources us, then docker.sh re-sources) is a no-op.
 [[ -n "${_AI_STACK_DOCKER_ENGINE_LOADED:-}" ]] && return 0
@@ -383,3 +389,74 @@ engine_pin() {
     esac
   fi
 }
+
+# --- CLI entrypoint: docker-engine [status|select|set <id>] -----------------
+_engine_usage() {
+  cat >&2 <<'EOF'
+docker-engine — intentional Docker engine selection (orbstack|docker-desktop|colima|podman)
+  vz-ai-stack.sh docker-engine status            show selected engine, resolved socket, CLI/gateway consistency
+  vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
+  vz-ai-stack.sh docker-engine set <id>          set the engine to <id> explicitly (ensure + pin)
+EOF
+}
+
+_engine_status() {
+  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  if [[ -z "$sel" ]]; then
+    warn "no engine selected (AI_STACK_DOCKER_ENGINE unset). Run: vz-ai-stack.sh docker-engine select"
+    return 1
+  fi
+  _engine_valid "$sel" || { err "AI_STACK_DOCKER_ENGINE='$sel' is invalid (want: $ENGINE_IDS)"; return 1; }
+  local sock; sock="$(engine_socket "$sel" 2>/dev/null || echo '?')"
+  note "engine:      $sel ($(engine_display "$sel"))"
+  note "DOCKER_HOST: $sock"
+  engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: vz-ai-stack.sh docker-engine select)"
+  local gw; gw="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
+  [[ "$gw" == "$sock" ]] && ok "gateway.env: == selected" || warn "gateway.env: $gw (!= $sock)"
+  return 0
+}
+
+# Only run the CLI dispatch when executed directly (bash docker-engine.sh ...),
+# NOT when sourced by vz-ai-stack.sh.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # Run-directly path: this file is normally SOURCED after common.sh+env.sh (which
+  # define note/warn/ok/err and get_env). When invoked as a standalone CLI we must
+  # source those deps ourselves, in the canonical order (common first). Guarded so
+  # a re-source is a no-op.
+  declare -F note    >/dev/null 2>&1 || source "$AI_STACK/installer/lib/common.sh"
+  declare -F get_env >/dev/null 2>&1 || source "$AI_STACK/installer/lib/env.sh"
+  _de_main() {
+    local sub="${1:-}"; shift || true
+    case "$sub" in
+      status) _engine_status ;;
+      select)
+        # Accept BOTH `--engine <id>` (space) and `--engine=<id>`, plus a bare
+        # positional <id>. Implement the shift-latch for the space form.
+        local flag="" expect_engine=0
+        for a in "$@"; do
+          if (( expect_engine )); then flag="$a"; expect_engine=0; continue; fi
+          case "$a" in
+            --engine)   expect_engine=1 ;;             # next token is the value
+            --engine=*) flag="${a#--engine=}" ;;
+            -*) err "docker-engine select: unknown flag: $a"; exit 2 ;;
+            *) [[ -z "$flag" ]] && flag="$a" || { err "docker-engine select: too many args"; exit 2; } ;;
+          esac
+        done
+        (( expect_engine )) && { err "docker-engine select: --engine needs an <id>"; exit 2; }
+        local sel; sel="$(AI_STACK_ENGINE_FLAG="$flag" engine_select)" || exit $?
+        engine_ensure "$sel" || exit $?
+        engine_pin "$sel" || exit $?
+        ;;
+      set)
+        local id="${1:-}"
+        [[ -n "$id" ]] || { err "docker-engine set: missing <id> (want: $ENGINE_IDS)"; exit 2; }
+        _engine_valid "$id" || { err "docker-engine set: invalid id '$id' (want: $ENGINE_IDS)"; exit 2; }
+        engine_ensure "$id" || exit $?
+        engine_pin "$id" || exit $?
+        ;;
+      ""|-h|--help|help) _engine_usage ;;
+      *) err "docker-engine: unknown subcommand '$sub' (want status|select|set)"; exit 2 ;;
+    esac
+  }
+  _de_main "$@"
+fi

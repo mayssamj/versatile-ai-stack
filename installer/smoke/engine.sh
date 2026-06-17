@@ -407,3 +407,48 @@ rm -f "$tmpenv"
 grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
   || { err "global --engine flag not plumbed to AI_STACK_ENGINE_FLAG/engine_select: $got"; exit 1; }
 ok "11a: global --engine argv plumbed"
+
+# ===========================================================================
+# Task 11 — docker-engine [status|select|set <id>] subcommand + help routing
+# ===========================================================================
+log "11: docker-engine select accepts --engine colima AND --engine=colima (no daemon: assert parse, not pin)"
+# SAFETY: parse-only. We feed an UNINSTALLED engine (colima) so engine_ensure
+# fails fast at the NO_PROMPT brew-remedy BEFORE any engine_pin — it NEVER writes
+# the real .env / gateway.env. Guard: skip if colima is somehow installed on this
+# box (pinning it would be a real mutation), and run with a throwaway ENV_FILE +
+# ENGINE_GATEWAY_ENV_FILE as defense-in-depth.
+engine_installed colima && { err "11: test assumes colima NOT installed (else select would pin it for real)"; exit 1; } || true
+_t11_env="$(mktemp)"; _t11_gw="$(mktemp)"; rm -f "$_t11_gw"
+for form in "--engine colima" "--engine=colima"; do
+  out="$(NO_PROMPT=1 ENV_FILE="$_t11_env" ENGINE_GATEWAY_ENV_FILE="$_t11_gw" \
+        bash "$AI_STACK/installer/lib/docker-engine.sh" select $form 2>&1 || true)"
+  # The flag MUST have been parsed: NOT a 'needs an <id>' misparse, AND the
+  # engine_ensure failure names colima/brew (proves engine_select got the flag).
+  grep -q 'needs an <id>' <<<"$out" && { err "11: select misparsed '$form' (treated --engine as no-op): $out"; exit 1; }
+  grep -qiE 'colima|brew install colima' <<<"$out" \
+    || { err "11: select '$form' did not reach engine_ensure for colima (flag not plumbed): $out"; exit 1; }
+done
+# Defense-in-depth: the throwaway files must NOT have been pinned (ensure failed first).
+[[ ! -s "$_t11_gw" ]] || { err "11: select PINNED gateway.env on an uninstalled engine (should fail at ensure)"; rm -f "$_t11_env" "$_t11_gw"; exit 1; }
+grep -q '^AI_STACK_DOCKER_ENGINE=colima' "$_t11_env" 2>/dev/null && { err "11: select PINNED .env on an uninstalled engine"; rm -f "$_t11_env" "$_t11_gw"; exit 1; } || true
+rm -f "$_t11_env" "$_t11_gw"
+ok "11: both --engine forms parse (parse-only; no pin)"
+
+log "11: help docker-engine routes to usage (not services.yml service-help)"
+out="$(bash "$AI_STACK/vz-ai-stack.sh" help docker-engine 2>&1 || true)"
+grep -q 'docker-engine select' <<<"$out" \
+  || { err "help docker-engine did not route to docker-engine usage: $out"; exit 1; }
+ok "11: help docker-engine routes correctly"
+
+log "11: sourcing docker-engine.sh does NOT trigger the CLI dispatch (BASH_SOURCE guard)"
+# Pass a BOGUS subcommand at source time: if the guard were broken the dispatch would
+# run `_de_main bogus-…` → `exit 2` and abort the subshell (caught by `||` below). When
+# the guard holds, sourcing is a NO-OP dispatch and the LIBRARY functions are present.
+( set -Eeuo pipefail; AI_STACK="$AI_STACK"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker-engine.sh" bogus-should-not-dispatch
+  declare -F engine_select >/dev/null || { echo "library funcs not loaded on source"; exit 1; }
+  # The CLI body (_de_main) is defined INSIDE the guard, so it MUST be absent on source.
+  declare -F _de_main >/dev/null && { echo "_de_main leaked outside the BASH_SOURCE guard"; exit 1; } || true
+) || { err "sourcing docker-engine.sh dispatched the CLI (BASH_SOURCE==\$0 guard broken)"; exit 1; }
+ok "11: docker-engine.sh CLI guarded (source-safe)"
