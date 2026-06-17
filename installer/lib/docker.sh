@@ -98,7 +98,7 @@ docker_run_managed() {
 
   # Engine-conditional host.docker.internal (Colima/Podman need it explicitly).
   local _eng _addhost=()
-  _eng="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  _eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -n "$_eng" ]] && declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_eng" 2>/dev/null; then
     local _ah; _ah="$(engine_addhost_args "$_eng" 2>/dev/null || true)"
     [[ -n "$_ah" ]] && _addhost=("$_ah")
@@ -194,7 +194,7 @@ ensure_image() {
 # we derive it from the selected engine (empty on OrbStack/Docker Desktop).
 probe_host_docker_internal() {
   local _eng _addhost=()
-  _eng="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  _eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -n "$_eng" ]] && declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_eng" 2>/dev/null; then
     local _ah; _ah="$(engine_addhost_args "$_eng" 2>/dev/null || true)"
     [[ -n "$_ah" ]] && _addhost=("$_ah")

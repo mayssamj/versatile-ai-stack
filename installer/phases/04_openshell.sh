@@ -223,7 +223,7 @@ mkdir -p "$(dirname "$GATEWAY_ENV_FILE")"
 
 # Read-only about selection: Phase 00 preflight (Task 8c) already selected+pinned.
 # Do NOT perform a hidden global pin deep inside this phase.
-_selected="$(get_env AI_STACK_DOCKER_ENGINE "")"
+_selected="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
 if [[ -z "$_selected" ]] || ! _engine_valid "$_selected"; then
   err "Phase 04: no Docker engine selected. Run: vz-ai-stack.sh docker-engine select first"
   exit 1
@@ -269,6 +269,8 @@ if [[ -n "$state" ]]; then
           warn "NOT restarting (would error them ALL). A restart is PENDING — doctor will surface it."
           warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04"
         else
+          # Reached either when NO Ready sandboxes exist, OR when OPENSHELL_FORCE_GATEWAY_RESTART=1
+          # overrides the Ready-sandbox guard above (intentional restart even with live sandboxes).
           warn "gateway DOCKER_HOST changed → restarting openshell (all sandboxes will re-auth)."
           # Checkpoint EVERY Ready sandbox (fail-closed) BEFORE the auth-rotating restart,
           # in addition to the identity-backup — fleet-durability HALT-by-default contract.

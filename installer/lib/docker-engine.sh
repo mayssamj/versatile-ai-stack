@@ -79,15 +79,20 @@ engine_socket() {
       printf '%s' "unix://$HOME/.orbstack/run/docker.sock"
       ;;
     docker-desktop)
-      # Prefer Docker Desktop's own context endpoint as source of truth.
-      # WRAPPED in the timeout so a wedged docker CLI cannot hang the central export.
+      # NOTE: docker-desktop socket resolution is UNVERIFIED on the build box (per the
+      # support matrix — Docker Desktop is not installed here). On modern Docker Desktop
+      # the LIVE socket is $HOME/.docker/run/docker.sock, while the `desktop-linux`
+      # context endpoint can be STALE — so prefer the present per-user socket FIRST,
+      # fall back to the context endpoint, then the legacy /var/run socket.
+      if [[ -S "$HOME/.docker/run/docker.sock" ]]; then
+        printf '%s' "unix://$HOME/.docker/run/docker.sock"; return 0
+      fi
+      # Fallback: Docker Desktop's own context endpoint. WRAPPED in the timeout so a
+      # wedged docker CLI cannot hang the central export.
       local ep
       ep="$(_engine_docker_timeout 6 docker context inspect desktop-linux \
               --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || true)"
       if [[ -n "$ep" ]]; then printf '%s' "$ep"; return 0; fi
-      if [[ -S "$HOME/.docker/run/docker.sock" ]]; then
-        printf '%s' "unix://$HOME/.docker/run/docker.sock"; return 0
-      fi
       if [[ -S /var/run/docker.sock ]]; then
         printf '%s' "unix:///var/run/docker.sock"; return 0
       fi
@@ -284,6 +289,8 @@ engine_install() {
 }
 
 # engine_start <id> — start that engine's daemon (does not wait).
+# TODO(follow-up): bound the colima/podman start (`colima start` / `podman machine
+# start|init` can hang on a wedged VM) the way engine_running probes are bounded.
 engine_start() {
   local id="$1"
   _engine_valid "$id" || { err "engine_start: unknown engine id: $id"; return 2; }
@@ -418,7 +425,7 @@ _engine_status() {
   note "engine:      $sel ($(engine_display "$sel"))"
   note "DOCKER_HOST: $sock"
   engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: vz-ai-stack.sh docker-engine select)"
-  local gw; gw="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
+  local gw; gw="$(grep -E '^DOCKER_HOST=' "${ENGINE_GATEWAY_ENV_FILE:-$HOME/.config/openshell/gateway.env}" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
   [[ "$gw" == "$sock" ]] && ok "gateway.env: == selected" || warn "gateway.env: $gw (!= $sock)"
   return 0
 }

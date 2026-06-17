@@ -429,11 +429,11 @@ bash ~/ai-stack/vz-ai-stack.sh install all --dry-run
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/vz-ai-stack.sh install all
 
-# 4. Verify (45/45 expected — MemPalace check #44 green-skips, it's opt-in; #45 tutorial is always-on)
+# 4. Verify (47/47 expected — MemPalace check #44 green-skips, it's opt-in; #45 tutorial is always-on; #46/#47 = docker-engine consistency/selection)
 bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
-This canonical flow is VERIFIED end-to-end (45/45 doctor; cold `reset --hard → install all → doctor`). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
+This canonical flow is VERIFIED end-to-end (47/47 doctor; cold `reset --hard → install all → doctor`). OpenShell sandbox-create hangs are auto-recovered in-code (§2.2), so step 3 should no longer stall there.
 
 **If something still hangs at OpenShell sandbox create** (rare now — see §2.2), in a second terminal:
 ```bash

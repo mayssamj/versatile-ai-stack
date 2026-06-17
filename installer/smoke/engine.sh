@@ -70,17 +70,28 @@ engine_display bogus >/dev/null 2>&1 && { err "engine_display accepted bogus"; e
 engine_addhost_args bogus >/dev/null 2>&1 && { err "engine_addhost_args accepted bogus"; exit 1; }
 ok "unknown id rejected"
 
-# --- inherit_errexit safety lint: NO bare `=$(engine_…)` assignments anywhere ---
+# --- inherit_errexit safety lint: NO bare `=$(engine_…)` / `=$(get_env …)` assignments ---
 # (Under set -Eeuo pipefail + inherit_errexit a bare assignment from a function that
-#  returns non-zero ABORTS the whole script — every call MUST be guarded `|| {…}`.)
-log "lint: no bare =\$(engine_…) command-substitution assignments"
-if grep -rnE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\"?\$\(engine_' \
+#  returns non-zero ABORTS the whole script — every call MUST be guarded `|| {…}`/`|| true`.)
+# This is the guard that would have caught the §24 review's bare `sel=$(get_env …)` in the
+# doctor checks. Scans the engine module + its callers + ALL engine-aware doctor checks +
+# the OpenShell durability bin scripts; the regex flags a bare `var="$(engine_…`/`var="$(get_env …`
+# assignment NOT followed by `|| ` and NOT on an `if`/`for`/`while`/`||`/`&&` line.
+log "lint: no bare =\$(engine_…)/=\$(get_env …) command-substitution assignments"
+if grep -rnE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\"?\$\((engine_|get_env)' \
      "$AI_STACK/installer/lib/docker-engine.sh" "$AI_STACK/installer/lib/deps.sh" \
      "$AI_STACK/installer/lib/docker.sh" "$AI_STACK/installer/phases/04_openshell.sh" \
-     "$AI_STACK/vz-ai-stack.sh" 2>/dev/null | grep -vE '\|\||;[[:space:]]*\}|\bif\b|\bfor\b'; then
-  err "found a bare =\$(engine_…) assignment (must be guarded under inherit_errexit)"; exit 1
+     "$AI_STACK/vz-ai-stack.sh" \
+     "$AI_STACK/installer/doctor/checks/01_orbstack_running.sh" \
+     "$AI_STACK/installer/doctor/checks/02_host_docker_internal.sh" \
+     "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" \
+     "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh" \
+     "$AI_STACK/bin/openshell-checkpoint.sh" "$AI_STACK/bin/openshell-state-restore.sh" \
+     "$AI_STACK/bin/openshell-watchdog.sh" "$AI_STACK/bin/openshell-token-refresh.sh" \
+     2>/dev/null | grep -vE '\|\||;[[:space:]]*\}|\bif\b|\bfor\b|\bwhile\b|&&'; then
+  err "found a bare =\$(engine_…)/=\$(get_env …) assignment (must be guarded under inherit_errexit)"; exit 1
 fi
-ok "no unguarded engine_* command substitutions"
+ok "no unguarded engine_*/get_env command substitutions (lib + doctor checks + bin scripts)"
 
 log "engine_socket format contract"
 # orbstack: literal, stable path on this host.

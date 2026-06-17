@@ -276,7 +276,13 @@ deps_report() {
     if dep_have "$cmd";             then _drow "$f" "1 core" present; else _drow "$f" "1 core" MISSING; rc=1; fi
   done
   if dep_have python3;              then _drow "python3" "1 core" present; else _drow "python3" "1 core" MISSING; rc=1; fi
-  if docker info >/dev/null 2>&1;   then _drow "OrbStack/docker" "2 service" running; else _drow "OrbStack/docker" "2 service" DOWN; rc=1; fi
+  # Timeout-bound the probe (a wedged daemon must never hang deps_report) + name the
+  # SELECTED engine when one is pinned (else a generic label). _engine_docker_timeout
+  # is in scope (deps.sh sources docker-engine.sh).
+  local _dr_eng _dr_label="docker engine (2 service)"
+  _dr_eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  [[ -n "$_dr_eng" ]] && _engine_valid "$_dr_eng" 2>/dev/null && _dr_label="$(engine_display "$_dr_eng" 2>/dev/null || echo "$_dr_eng")"
+  if _engine_docker_timeout 6 docker info >/dev/null 2>&1; then _drow "$_dr_label" "2 service" running; else _drow "$_dr_label" "2 service" DOWN; rc=1; fi
   if curl -sf --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
     _drow "Ollama (:11434)" "2 service" running; else _drow "Ollama (:11434)" "2 service" DOWN; rc=1; fi
 
@@ -285,14 +291,19 @@ deps_report() {
   # depends on the install side-effects below). Reads only: get_env, engine_socket,
   # `docker context inspect`, and a grep of gateway.env. No engine_pin, no install.
   local _sel _sock _gw_host _ctx_host
-  _sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  _sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -n "$_sel" ]] && _engine_valid "$_sel"; then
     _sock="$(engine_socket "$_sel" 2>/dev/null || echo '?')"
-    # Timeout-bound the `docker context inspect` (and the inner `docker context show`)
-    # so a wedged daemon can never hang deps_report — matching the bounded-probe
-    # discipline of the rest of the engine module. `|| echo '?'` keeps the fallback.
-    _ctx_host="$(_engine_docker_timeout 5 docker context inspect "$(_engine_docker_timeout 5 docker context show 2>/dev/null)" \
-                   --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || echo '?')"
+    # Resolve the context NAME first (timeout-bound), THEN inspect it — avoids the
+    # racy nested-$() (an inner timeout firing leaves the outer with an empty name)
+    # and the empty-context edge (no name → `inspect ""` would error). Both calls are
+    # bounded so a wedged daemon can never hang deps_report. `|| echo '?'` keeps the fallback.
+    local _ctx_name; _ctx_name="$(_engine_docker_timeout 5 docker context show 2>/dev/null || true)"
+    _ctx_host="?"
+    if [[ -n "$_ctx_name" ]]; then
+      _ctx_host="$(_engine_docker_timeout 5 docker context inspect "$_ctx_name" \
+                     --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || echo '?')"
+    fi
     _gw_host="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
     note "Docker engine: $_sel ($(engine_display "$_sel"))   socket: $_sock"
     [[ "$_ctx_host" == "$_sock" ]] && ok "  CLI context socket == selected" || warn "  CLI context socket ($_ctx_host) != selected ($_sock)"

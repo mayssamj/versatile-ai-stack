@@ -5,7 +5,7 @@ CHECK_TITLE[host_docker_internal]="host.docker.internal resolves inside containe
 host_docker_internal_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
   local sel addhost=()
-  sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -n "$sel" ]] && _engine_valid "$sel"; then
     local ah; ah="$(engine_addhost_args "$sel" 2>/dev/null || true)"
     [[ -n "$ah" ]] && addhost=("$ah")
@@ -16,7 +16,7 @@ host_docker_internal_diagnose() {
 
 host_docker_internal_fix() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
-  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -n "$sel" ]] && [[ "$(engine_addhost_args "$sel" 2>/dev/null || true)" == --add-host* ]]; then
     err "On $(engine_display "$sel"), managed runs apply --add-host=host.docker.internal:host-gateway automatically."
     err "If a raw container still cannot resolve it, add that flag to its 'docker run'."

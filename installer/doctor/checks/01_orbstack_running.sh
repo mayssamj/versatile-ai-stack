@@ -4,7 +4,7 @@ CHECK_TITLE[orbstack_running]="Selected Docker engine reachable"
 
 orbstack_running_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
-  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -z "$sel" ]]; then
     # No selection yet: fall back to the legacy any-daemon probe so a
     # fresh/local-only box is not red before first selection — but WARN loudly
@@ -24,7 +24,7 @@ orbstack_running_diagnose() {
 
 orbstack_running_fix() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
-  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   [[ -n "$sel" ]] || sel="$(engine_select)" || return 1
   engine_ensure "$sel" || return 1
   engine_pin "$sel" || return 1

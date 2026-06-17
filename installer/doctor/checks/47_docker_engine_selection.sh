@@ -4,7 +4,7 @@ CHECK_TITLE[docker_engine_selection]="Docker engine selection present & valid"
 
 docker_engine_selection_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
-  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
+  local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -z "$sel" ]]; then
     echo "AI_STACK_DOCKER_ENGINE not set (run: vz-ai-stack.sh docker-engine select)"; return 1
   fi
