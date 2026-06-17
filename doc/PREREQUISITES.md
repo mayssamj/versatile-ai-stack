@@ -29,9 +29,40 @@ vz-ai-stack.sh deps --check    # read-only; non-zero exit if anything missing/do
 | **1 — core CLI** | `yq` `jq` `node@22`(+`npm`) `pnpm` `uv`(+`uvx`) `git` `tesseract` `openssl@3` | `brew list` / `command -v` | `brew install <formula>` (per-formula; tolerant of symlink conflicts) | re-verify each command resolves |
 | | `python3` | `command -v python3` | `brew install python3` | — |
 | | base builtins: `awk grep sed stat mktemp lsof perl plutil launchctl open sysctl curl` | `command -v` | **fail loud** (broken PATH / base system) → `xcode-select --install` | — |
-| **2 — services** | OrbStack (Docker runtime) | `brew list --cask orbstack` + `docker info` | `brew install --cask orbstack` | `open -a OrbStack` → wait `docker info` (≤90s) |
+| **2 — services** | Docker engine — **OrbStack** (default) \| Docker Desktop \| Colima \| Podman | per-engine probe (e.g. `brew list --cask orbstack` + `docker info` on the engine's socket) | install the *selected* engine (OrbStack default: `brew install --cask orbstack`) | start the selected engine → wait `docker info` on its socket (≤90s) |
 | | Ollama | `command -v ollama` + `:11434/api/tags` | `brew install ollama` | patch launchd plist (`OLLAMA_HOST=0.0.0.0`, `OLLAMA_ORIGINS=*`, `OLLAMA_KEEP_ALIVE=0`) → `brew services start ollama` → wait `:11434` |
 | **3 — opt-in / phase-owned** | `lms` (LM Studio), `openshell`, `blaxel`/`bl`, `unsloth`, `portless`, `cmux`, `mempalace`, `hermes`, `halo` | per-phase | each phase installs/ensures its own (often opt-in, not in `install all`) | per-phase |
+
+## Choosing the Docker engine
+
+OrbStack is the **default**, but it's one of **four selectable engines** — the
+whole stack (every container *and* the OpenShell gateway) runs on whichever one
+you pin:
+
+| Engine | id | Notes |
+|---|---|---|
+| OrbStack | `orbstack` | default; lightest on Apple Silicon |
+| Docker Desktop | `docker-desktop` | the mainstream option |
+| Colima | `colima` | CLI-only Lima VM |
+| Podman | `podman` | daemonless / rootless |
+
+The single source of truth is **`AI_STACK_DOCKER_ENGINE`** in `.env`; the registry
+module `installer/lib/docker-engine.sh` resolves each engine's socket and exports a
+single `DOCKER_HOST`. Pick or change it intentionally:
+
+```bash
+vz-ai-stack.sh docker-engine select        # interactive picker (then ensure + pin)
+vz-ai-stack.sh docker-engine set <id>       # pin explicitly (ensure + pin), e.g. set colima
+vz-ai-stack.sh docker-engine status         # show selected engine, resolved socket, consistency
+vz-ai-stack.sh --engine <id> <any command>  # one-off override for a single invocation
+```
+
+Phase 00 preflight selects-before-use, so an `install all` on a fresh box pins the
+engine before any container is created. Doctor checks **47** (selection present &
+valid) and **46** (no split-brain across the ambient CLI / `gateway.env` / managed
+containers) keep it honest. The podman/colima/docker-desktop sockets are wired but
+**less battle-tested than OrbStack** — confirm `docker-engine status` + doctor
+01/46/47 are green before relying on a non-default engine.
 
 ## Where each tier is ensured
 
@@ -40,7 +71,9 @@ vz-ai-stack.sh deps --check    # read-only; non-zero exit if anything missing/do
   `yq` the way it used to — preflight previously *asserted and exited* on the very
   tools that Phase 00 installs, which made Phase 00 unreachable on a clean machine.
 - **Phase 00 (`00_host.sh`)** → `ensure_core_tools` + `ensure_orbstack` (idempotent
-  re-affirm), then the directory tree + `.env`.
+  re-affirm; `ensure_orbstack` is now a back-compat **alias over `ensure_docker_engine`**,
+  which selects → installs-if-missing → starts → waits on the *selected* engine's
+  socket), then the directory tree + `.env`.
 - **Phase 01 (`01_inference.sh`)** → `ensure_ollama` (install + plist env-patch +
   start + verify) **then** pull the default models. The env-patch lives here, with
   the install, because it must run *after* Ollama exists: on a cold install Ollama

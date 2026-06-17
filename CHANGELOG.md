@@ -4,6 +4,17 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-17
+
+### Features
+
+- docker-engine: intentional Docker-engine selection — the whole stack (every container **and** the OpenShell gateway) now runs on a chosen engine instead of assuming OrbStack. Single source of truth `AI_STACK_DOCKER_ENGINE` in `.env` (one of `orbstack` | `docker-desktop` | `colima` | `podman`; OrbStack stays the default), resolved by the new data-driven registry `installer/lib/docker-engine.sh` into one `DOCKER_HOST` exported centrally (after `env.sh`) and at `docker.sh` source-time (so standalone `bin/start-*.sh` inherit it), and written into `~/.config/openshell/gateway.env` so the gateway and main containers can never split-brain onto different engines.
+- docker-engine: new `docker-engine` subcommand (`status | select [--engine <id>] | set <id>`) plus a global `--engine <id>` flag on every command for a one-off override. Phase 00 preflight selects-before-use; `ensure_orbstack` is now a back-compat alias over the engine-aware `ensure_docker_engine`. OpenShell durability scripts (checkpoint / watchdog / state-restore / identity-backup / token-refresh) made engine-aware.
+- doctor: check 01 ("Selected Docker engine reachable") + check 02 made engine-aware; two new checks — **46** `docker_engine_consistency` (no split-brain across the ambient docker context, `gateway.env`, and `ai-stack.managed` containers) and **47** `docker_engine_selection` (`AI_STACK_DOCKER_ENGINE` present, valid, still installed). Doctor count **45 → 47**.
+- docs: cohesion sweep — count 45 → 47 across README / DOCTOR / ARCHITECTURE / COMPONENTS / TUTORIAL (+regenerated TUTORIAL.html) / ONBOARDING / INSTALL / OPERATIONS / HANDOFF / USER-GUIDE; PREREQUISITES reframes OrbStack as the default of four selectable engines; `.env.example` documents `AI_STACK_DOCKER_ENGINE`; EXPLORE.html RLM gotcha generalized from "Docker/OrbStack" to "the selected Docker engine".
+
+---
+
 ## 2026-06-11
 
 ### Features

@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 45 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 47 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 45
+stack doctor                    # all 47
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -81,7 +81,9 @@ installer/doctor/checks/
 ├── 42_agent_fleet.sh                      (9-role fleet across claude-code + pi personas; opt-in Phase 04h)
 ├── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
 ├── 44_mempalace.sh                         (opt-in Phase 26; conditional green-skip when not installed)
-└── 45_tutorial.sh                          (always-on; doc/TUTORIAL.html self-contained / link-clean / in-sync)
+├── 45_tutorial.sh                          (always-on; doc/TUTORIAL.html self-contained / link-clean / in-sync)
+├── 46_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
+└── 47_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -89,16 +91,19 @@ Adding a new failure mode = adding a new file. No central registry. See
 
 ---
 
-## 01 · OrbStack / Docker daemon reachable
+## 01 · Selected Docker engine reachable
 
 | | |
 |---|---|
-| Asserts | `docker info` succeeds. |
-| Fails when | OrbStack isn't running, or Docker Desktop is hung, or the docker socket is wrong. |
-| Auto-fix | `open -a OrbStack`, wait up to 60 seconds for `docker info` to succeed. |
+| Asserts | The **selected** engine (`AI_STACK_DOCKER_ENGINE` — `orbstack` \| `docker-desktop` \| `colima` \| `podman`) is installed, valid, and its daemon answers on the engine's socket. When no engine is pinned yet, it falls back to the legacy any-daemon `docker info` probe and **warns loudly** that an unpinned engine is a split-brain risk (selection should have run in Phase 00 preflight) rather than failing a fresh/local-only box red. |
+| Fails when | `AI_STACK_DOCKER_ENGINE` names an engine that isn't running/installed, or is an invalid id; or no engine is pinned AND `docker info` fails. |
+| Auto-fix | Selects (if unpinned) → `engine_ensure` (install-if-missing + start + bounded wait) → `engine_pin` (writes `AI_STACK_DOCKER_ENGINE`, exports `DOCKER_HOST`, syncs `gateway.env`). |
 
-If auto-fix fails: open OrbStack manually. If on Docker Desktop and migrating
-to OrbStack, ensure `~/.docker/run/docker.sock` is owned by OrbStack.
+The engine registry (`installer/lib/docker-engine.sh`) is the single source of
+truth for per-engine sockets/probes. Pick or change the engine with
+`vz-ai-stack.sh docker-engine select` / `set <id>` (or the global `--engine <id>`
+flag); inspect it with `docker-engine status`. See [PREREQUISITES.md](PREREQUISITES.md)
+for the engine matrix.
 
 ---
 
@@ -613,6 +618,34 @@ into the mempalace tool env (so the doctor never adds it). See
 | Auto-fix | Regenerates both pages from their markdown sources: `installer/lib/build_tutorial_html.py` (overwrites `doc/TUTORIAL.html`) and `installer/lib/build_diagrams_html.py` (overwrites `doc/DIAGRAMS.html`). |
 
 This check is **always-on** (unlike the opt-in service checks 34–38/44): both HTML pages are in-repo artifacts that ship with the stack, so their integrity is a hard invariant. The tutorial validator parses real element attributes via `HTMLParser` (not a regex over the page text), so `id="…"` substrings inside code examples and attrs like `*_id` never false-positive. See [project_tutorial](../doc/TUTORIAL.md) / `installer/lib/tutorial-serve.sh` for the live ephemeral-proxy serve path. The diagrams generator (`installer/lib/build_diagrams_html.py`) parses `doc/DIAGRAMS.md` from scratch on every run — edit the `.md` and re-run to update the viewer.
+
+---
+
+## 46 · Docker engine consistency (no split-brain)
+
+| | |
+|---|---|
+| Asserts | The selected engine (`AI_STACK_DOCKER_ENGINE`) is the ONLY one the stack touches: (a) the user's **ambient** `docker context` resolves to the selected engine's socket (measured with `env -u DOCKER_HOST` so it isn't just validating doctor's own export); (b) `~/.config/openshell/gateway.env`'s `DOCKER_HOST` equals the selected socket; (c) **no** `ai-stack.managed=true` container is stranded on a different installed+running engine. |
+| Fails when | Other shells use a different engine than the pinned one, `gateway.env` points at a stale socket, or managed containers are running on a non-selected engine (split-brain — e.g. you re-pinned without recreating containers). |
+| Auto-fix | Re-pins `gateway.env` + `DOCKER_HOST` to the selected engine (`engine_pin`). It does **not** move/destroy containers: if managed containers are stranded elsewhere, it warns to either re-pin to where they live (`docker-engine set <that-engine>`) or do a guided recreate on the selected engine (conservative `recreate_guard` philosophy — never auto-destroyed). |
+
+Pass-as-skip when no engine is pinned (that case is check 47's job). A missing
+`gateway.env` (pre-Phase-04 / gateway not installed) is treated as "nothing to
+compare" by design, so the silent-pass there is intentional.
+
+---
+
+## 47 · Docker engine selection present & valid
+
+| | |
+|---|---|
+| Asserts | `AI_STACK_DOCKER_ENGINE` is set, is a valid id (`orbstack` \| `docker-desktop` \| `colima` \| `podman`), and the selected engine is still installed on the host. |
+| Fails when | The var is empty (selection never ran — fresh box, or `.env` nuked), names an unknown id, or names an engine that has since been uninstalled. |
+| Auto-fix | Runs the interactive selector (`engine_select`) → `engine_ensure` (install-if-missing + start) → `engine_pin`. Non-interactively, set it first with `vz-ai-stack.sh docker-engine set <id>` (or `--engine <id>`). |
+
+This is the foundational engine check: 46 (consistency) pass-as-skips until 47 is
+green, so fix 47 first. See [PREREQUISITES.md](PREREQUISITES.md) for the engine matrix
+and the `docker-engine` subcommand.
 
 ---
 

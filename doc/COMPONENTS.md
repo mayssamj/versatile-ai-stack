@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **28 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **45 doctor checks**.
+- **28 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **47 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -91,7 +91,7 @@ Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34�
 ## Platform
 | Component | What it is |
 |---|---|
-| **OrbStack** | macOS Docker runtime hosting every container |
+| **Docker engine** | macOS Docker runtime hosting every container — the selected engine (`AI_STACK_DOCKER_ENGINE`: OrbStack default, or Docker Desktop / Colima / Podman). Pick it with `docker-engine select`. |
 | **Networking** | `/etc/hosts` aliases (`127.0.10.x`) + the `ai-stack` bridge network — same URL form on host and in-container |
 
 ---

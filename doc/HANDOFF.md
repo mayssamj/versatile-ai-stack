@@ -79,7 +79,7 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
 | Total phases | **28 core + 6 opt-in extras** = 34 phase files. Core (in `install all`): 00, 00s, 00n, 00v, 01, 01h, 02, 03, 04, 04f, 04g, **04h**, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. **04h `agent_fleet`** (NEW 2026-06-02) installs the cross-platform agent fleet (runs LAST). Opt-in (install by name, NOT in `install all`): 21 portless, 22 cmux, 23 skillspector, 24 openagents, 25 lmstudio, **26 mempalace**. |
 | Default phase order (`install all`) | `00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h` (note: 03 before 01 — see §3.1; 04h LAST — it uploads to pi-v1 (15) + widens the PI/HERMES keys) |
 | Total services in `services.yml` | **40** |
-| Total doctor checks | **45** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**, `watchdog_alert` #43, **`mempalace` #44** (opt-in, green-skips when not installed), **`tutorial` #45** (ALWAYS-ON — validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`: self-contained, link-clean, in sync with the `.md`)) |
+| Total doctor checks | **47** (`hermes_routing` #30, `rlm` #31, `claw3d` #32, `hermes_telegram` #33, opt-in extras #34–38, `openshell_storm` #39, `models_binding` #40, **`meridian` #41**, **`agent_fleet` #42**, `watchdog_alert` #43, **`mempalace` #44** (opt-in, green-skips when not installed), **`tutorial` #45** (ALWAYS-ON — validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`: self-contained, link-clean, in sync with the `.md`), **`docker_engine_consistency` #46** (no split-brain across ambient CLI / gateway.env / managed containers), **`docker_engine_selection` #47** (`AI_STACK_DOCKER_ENGINE` present + valid + installed)) |
 | Model↔agent binding | `installer/models.yml` is the single source of truth. **3 local models** (`local-gemma4` Ollama default, `local-qwen3.6` + `local-qwen3-coder` LM Studio MLX, opt-in) **+ the Claude SUBSCRIPTION effort-ladder** via the Meridian host daemon: `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` + `claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` (runtime `meridian`, availability-gated to `local-gemma4` when Meridian is down; `ultracode` = the coding-focused highest effort tier). The 9-role Hermes fleet + Pi are assigned subscription models. `vz-ai-stack.sh model {list,assign,sync,superset,discover,add}` renders agents + the LiteLLM model_list. `model sync` is opt-in (NOT run by `install all`). See [models.md](models.md). |
 | Docs + ingestion layout | All docs under `doc/` (except `README.md` + `CHANGELOG.md` at repo root). Ingestion drop dirs are `ingestor/inbox` + `ingestor/processed`. NEW: `doc/TUTORIAL.md` + `doc/TUTORIAL.html` (hands-on tutorial). |
 | Last verified doctor pass | **2026-06-05: `doctor` = 45/45** on the live stack (44th check = `mempalace`, green-skips when not installed; **45th = `tutorial`**, always-on — validates `doc/TUTORIAL.html` is self-contained, link-clean & in sync with the `.md` via `installer/lib/build_tutorial_html.py --check`). ⚠️ If the sandbox-exec checks (24/25 pi-v1, 30/33 hermes, 40 models_binding) fail, the **sandboxes have dropped** — see §2.1. (Root-caused 2026-06-03: the openshell-watchdog's old auto-recreate DESTROYED both sandboxes; now **warn-only by default** + doctor check **43 `watchdog_alert`** surfaces it. Recreate with `vz-ai-stack.sh install 04 04f 15 20 04h`.) The `help` command (below) is **doctor-independent**; `help --check` is its own CI lint, not wired into doctor. |
@@ -101,7 +101,7 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
 
 **Memory pointers** (auto-loaded in this user's Claude sessions, see `~/.claude/projects/-Users-mayssam-sayyadian-ai-stack/memory/MEMORY.md`):
 - `feedback_autonomous_execution.md`, `feedback_background_tasks.md`, `feedback_upgrade_fleet_prefs.md`
-- `project_doctor_count.md` (now **45** checks — update if you add checks)
+- `project_doctor_count.md` (now **47** checks — update if you add checks)
 - `project_model_strategy.md` (3 local + Claude subscription via Meridian; the `-sub-*` effort ladder)
 - `project_agent_fleet.md` (the 9-role team across Hermes/Pi/Claude Code; phase 04h)
 - `project_tutorial.md` (doc/TUTORIAL.md+.html + the `tutorial-serve` ephemeral-key proxy)
@@ -159,7 +159,7 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
 - `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
 - `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
 - `help` / `--help` (full subcommand list) · `<cmd> --help` / `help <cmd>` (focused per-command usage, NEW 2026-06-04 `df371a3`) · `help <service>` / `help services` / `help regen [<svc>] [--apply] [--check] [--model <m>] [--force]` — per-service help (NEW 2026-06-03). `help <svc>` prints **what it is** (authored prose) · **how it's configured** (computed LIVE from services.yml/aliases/env-key names — never `.env` _values_) · **how to use**. Prose lives in `services.yml` `help:` blocks (**38 seeded** from doc/EXPLORE.html's verified prose). `help regen` drafts/refreshes prose via the stack's own LiteLLM (default model `local-gemma4`, override `--model` or `HELP_REGEN_MODEL`), writes a STAGED overlay + unified diff; `--apply` merges it back (atomic `yq -i`). `--check` is a CI lint (NOT a doctor check). Lib: `installer/lib/help.sh`.
-- `doctor [<filter>]` — 45 checks, per-check auto-fix
+- `doctor [<filter>]` — 47 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -476,7 +476,7 @@ bash ~/ai-stack/vz-ai-stack.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 45 checks, each with auto-fix offer.
+2. `stack doctor` — 47 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -506,7 +506,7 @@ If you keep these as constraints, you'll write the right code.
 | `installer/lib/setup.sh` | Backs `vz-ai-stack.sh setup` (alias `keys`) — interactive, skippable `.env`/API-key bootstrap. Calls `env_ensure_baseline` first, then an optional-secret catalog (all skippable, 0600, never echoed). |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (**45 checks**). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix`. Check **44 `mempalace`** (opt-in, green-skips when not installed) + **45 `tutorial`** (always-on; validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`). |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (**47 checks**). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix`. Check **44 `mempalace`** (opt-in, green-skips when not installed) + **45 `tutorial`** (always-on; validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`) + **46 `docker_engine_consistency`** (no split-brain across ambient CLI / gateway.env / managed containers) + **47 `docker_engine_selection`** (`AI_STACK_DOCKER_ENGINE` present + valid + installed). |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |
