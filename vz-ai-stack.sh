@@ -103,8 +103,8 @@ source "$LIB/docker-engine.sh"
 # Central DOCKER_HOST export: derive the one socket the WHOLE stack uses from the
 # single source of truth (AI_STACK_DOCKER_ENGINE in .env). No-op when unset (a
 # local-only user who never selected an engine keeps the ambient docker context).
-_ai_stack_engine="$(get_env AI_STACK_DOCKER_ENGINE "")"
-if [[ -n "$_ai_stack_engine" ]] && _engine_valid "$_ai_stack_engine"; then
+_ai_stack_engine="$(get_env AI_STACK_DOCKER_ENGINE "" || true)"
+if [[ -n "$_ai_stack_engine" ]] && _engine_valid "$_ai_stack_engine" 2>/dev/null; then
   _ai_stack_sock="$(engine_socket "$_ai_stack_engine" 2>/dev/null || true)"
   [[ -n "$_ai_stack_sock" ]] && export DOCKER_HOST="$_ai_stack_sock"
 fi

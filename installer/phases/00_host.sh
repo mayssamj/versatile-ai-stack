@@ -55,7 +55,9 @@ hdr "Phase 00 — host preparation"
 # Idempotent — if .env already pins an installed engine, engine_select returns it
 # with no prompt. Honors a global --engine via AI_STACK_ENGINE_FLAG (Task 11a).
 if declare -F engine_select >/dev/null 2>&1; then
-  _pf_sel="$(engine_select)" || { err "Phase 00: could not select a Docker engine"; exit 1; }
+  if ! _pf_sel="$(engine_select)"; then
+    err "Phase 00: could not select a Docker engine"; exit 1
+  fi
   engine_pin "$_pf_sel" || { err "Phase 00: could not pin engine '$_pf_sel'"; exit 1; }
   unset _pf_sel
 fi

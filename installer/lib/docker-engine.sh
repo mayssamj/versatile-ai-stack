@@ -7,6 +7,10 @@
 
 [[ -z "${AI_STACK:-}" ]] && { echo "docker-engine.sh: AI_STACK unset" >&2; exit 2; }
 
+# Idempotent: a second source (e.g. vz-ai-stack.sh sources us, then docker.sh re-sources) is a no-op.
+[[ -n "${_AI_STACK_DOCKER_ENGINE_LOADED:-}" ]] && return 0
+_AI_STACK_DOCKER_ENGINE_LOADED=1
+
 # Priority order is also the NO_PROMPT tie-break order (spec §key-decisions 3).
 ENGINE_IDS="orbstack docker-desktop colima podman"
 
