@@ -214,3 +214,88 @@ engine_select() {
   warn "engine: $e (NO_PROMPT fixed-priority fallback — none installed; first of: $ENGINE_IDS)"
   printf '%s' "$e"
 }
+
+# engine_install <id> — the brew remediation string + (if interactive) run it.
+# Echoes the exact command on the err path so NO_PROMPT callers can copy it.
+engine_install_cmd() {
+  case "$1" in
+    orbstack)       printf '%s' "brew install --cask orbstack" ;;
+    docker-desktop) printf '%s' "brew install --cask docker-desktop" ;;
+    colima)         printf '%s' "brew install colima docker" ;;
+    podman)         printf '%s' "brew install podman docker" ;;
+    *) return 2 ;;
+  esac
+}
+
+engine_install() {
+  local id="$1"
+  _engine_valid "$id" || { err "engine_install: unknown engine id: $id"; return 2; }
+  # Resolve the docker-desktop cask token BEFORE the prompt so the user consents
+  # to the EXACT command that runs (cask churned docker → docker-desktop).
+  local -a cmd
+  case "$id" in
+    orbstack)       cmd=(brew install --cask orbstack) ;;
+    docker-desktop)
+      if brew info --cask docker-desktop >/dev/null 2>&1; then cmd=(brew install --cask docker-desktop)
+      else cmd=(brew install --cask docker); fi ;;
+    colima)         cmd=(brew install colima docker) ;;
+    podman)         cmd=(brew install podman docker) ;;
+  esac
+  if [[ "${NO_PROMPT:-0}" == "1" ]]; then
+    err "$(engine_display "$id") not installed. Install it and re-run:"
+    err "    ${cmd[*]}"
+    return 1
+  fi
+  printf '  Install %s now via: %s ? [Y/n] ' "$(engine_display "$id")" "${cmd[*]}" >&2
+  local ans; read -r ans || true
+  case "${ans:-Y}" in
+    [Nn]*) err "declined; install manually: ${cmd[*]}"; return 1 ;;
+  esac
+  log "Running: ${cmd[*]}"
+  # Array invocation — no eval. Pipe through tail without losing the install rc.
+  if ! "${cmd[@]}" 2>&1 | tail -8; then err "install failed: ${cmd[*]}"; return 1; fi
+}
+
+# engine_start <id> — start that engine's daemon (does not wait).
+engine_start() {
+  local id="$1"
+  _engine_valid "$id" || { err "engine_start: unknown engine id: $id"; return 2; }
+  case "$id" in
+    orbstack)       open -a OrbStack 2>/dev/null || true ;;
+    docker-desktop) open -a Docker 2>/dev/null || true ;;
+    colima)         colima start 2>&1 | tail -4 || true ;;
+    podman)
+      # Init the machine on first run, else start it.
+      if podman machine inspect >/dev/null 2>&1; then
+        podman machine start 2>&1 | tail -4 || true
+      else
+        podman machine init --now 2>&1 | tail -6 || true
+      fi
+      ;;
+  esac
+}
+
+# engine_ensure <id> — install-if-missing (consent/NO_PROMPT) + start + bounded wait.
+engine_ensure() {
+  local id="$1"
+  _engine_valid "$id" || { err "engine_ensure: unknown engine id: $id"; return 2; }
+  if ! engine_installed "$id"; then
+    engine_install "$id" || return 1
+  fi
+  if engine_running "$id"; then
+    ok "$(engine_display "$id") daemon ready"
+    return 0
+  fi
+  log "Starting $(engine_display "$id")..."
+  engine_start "$id"
+  local i=0
+  until engine_running "$id"; do
+    sleep 2
+    (( ++i > 45 )) && {
+      err "$(engine_display "$id") did not answer on its socket within 90s."
+      err "Start it manually and re-run. (socket: $(engine_socket "$id" 2>/dev/null || echo '?'))"
+      return 1
+    }
+  done
+  ok "$(engine_display "$id") daemon ready"
+}

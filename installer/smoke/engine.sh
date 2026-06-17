@@ -156,4 +156,24 @@ sel="$(NO_PROMPT=1 engine_select 2>/dev/null)"
 [[ "$sel" == orbstack ]] || { err "NO_PROMPT priority did not pick orbstack: '$sel'"; exit 1; }
 ok "engine_select precedence correct (incl running-singleton)"
 
+log "engine_ensure failure path: not installed + NO_PROMPT → hard fail with brew remedy"
+# Pick an engine that is NOT installed on this box (docker-desktop).
+engine_installed docker-desktop && { err "test assumes docker-desktop NOT installed"; exit 1; } || true
+out="$(NO_PROMPT=1 engine_ensure docker-desktop 2>&1)" && { err "engine_ensure should fail (not installed, NO_PROMPT)"; exit 1; } || true
+grep -q 'brew install' <<<"$out" || { err "engine_ensure must print 'brew install' remedy; got: $out"; exit 1; }
+ok "engine_ensure NO_PROMPT-not-installed hard-fails with brew remedy"
+
+log "engine_install_cmd exact brew strings for ALL 4 ids (pure, no brew needed)"
+[[ "$(engine_install_cmd orbstack)"       == "brew install --cask orbstack" ]]       || { err "install_cmd orbstack";       exit 1; }
+[[ "$(engine_install_cmd docker-desktop)" == "brew install --cask docker-desktop" ]] || { err "install_cmd docker-desktop"; exit 1; }
+[[ "$(engine_install_cmd colima)"         == "brew install colima docker" ]]         || { err "install_cmd colima";         exit 1; }
+[[ "$(engine_install_cmd podman)"         == "brew install podman docker" ]]         || { err "install_cmd podman";         exit 1; }
+engine_install_cmd bogus >/dev/null 2>&1 && { err "install_cmd accepted bogus"; exit 1; } || true
+ok "engine_install_cmd strings correct for all 4 ids"
+
+log "engine_install / engine_start are defined (no-op assert)"
+declare -F engine_install >/dev/null || { err "engine_install undefined"; exit 1; }
+declare -F engine_start   >/dev/null || { err "engine_start undefined"; exit 1; }
+ok "engine_install/engine_start defined"
+
 ok "Task 1 registry-pure tests passed"
