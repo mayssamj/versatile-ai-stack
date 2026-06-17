@@ -556,3 +556,21 @@ log "13: doctor check 02 — colima diagnose builds the --add-host arg (capture 
   rm -f "$ENV_FILE" "$ENV_FILE.args"
 ) || { err "doctor 02 colima add-host path failed"; exit 1; }
 ok "13: doctor 02 engine-aware add-host path correct"
+
+# ===========================================================================
+# Task 14 — New doctor checks 46 (consistency / split-brain) + 47 (selection present)
+# ===========================================================================
+# NB: this branch's doctor baseline is 45 (highest is 45_tutorial.sh; there is NO
+# 46_agent_fleet_parity.sh here). So the new files are 46 + 47, final count 47.
+log "doctor: 46 + 47 present, count == 47, exactly one 46_ ordinal (no collision)"
+[[ -f "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" ]] || { err "46 missing"; exit 1; }
+[[ -f "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh" ]] || { err "47 missing"; exit 1; }
+# Exactly ONE 46_ ordinal (our consistency check) — proves no filename collision.
+[[ "$(ls "$AI_STACK"/installer/doctor/checks/46_*.sh | wc -l | tr -d ' ')" == 1 ]] \
+  || { err "duplicate 46_ ordinal — collision"; exit 1; }
+n="$(ls "$AI_STACK"/installer/doctor/checks/*.sh | wc -l | tr -d ' ')"
+[[ "$n" == 47 ]] || { err "expected 47 check files, found $n"; exit 1; }
+# Both new check NAMES register.
+grep -q 'CHECKS+=(docker_engine_consistency)' "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" || { err "46 check not registered"; exit 1; }
+grep -q 'CHECKS+=(docker_engine_selection)'  "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh"  || { err "47 check not registered"; exit 1; }
+ok "doctor 46/47 present, 47 checks total, single 46_ ordinal"
