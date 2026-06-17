@@ -240,7 +240,7 @@ DESIRED_DOCKER_HOST="$(engine_socket "$_selected")" || {
 _gw_changed=0
 if engine_write_gateway_env "$_selected" "$GATEWAY_ENV_FILE"; then
   _gw_changed=1
-  ok "wrote $GATEWAY_ENV_FILE (engine=$_selected, host=$DESIRED_DOCKER_HOST)"
+  ok "wrote $GATEWAY_ENV_FILE (engine=$_selected, host=$(grep -E '^DOCKER_HOST=' "$GATEWAY_ENV_FILE" | tail -1 | cut -d= -f2-))"
 else
   ok "gateway env file already configured: $GATEWAY_ENV_FILE"
 fi
@@ -258,13 +258,14 @@ if [[ -n "$state" ]]; then
         # DOCKER_HOST changed under a running gateway — it only re-reads gateway.env
         # at launch, so a restart is REQUIRED. A restart errors ALL sandboxes
         # (rotates signing kid). Reuse the CANONICAL guard (ANSI-strip + self-exclude).
-        source "$AI_STACK/installer/lib/openshell.sh"   # canonical _osh_strip_ansi + Ready guard
+        # NOTE: _osh_strip_ansi comes from the top-of-file `source openshell.sh` (~L32) — in scope here.
         # NOTE: this `case` runs at top-level script scope (not a function), so the
         # plan's `local` decls are dropped here — plain `_`-prefixed vars instead.
-        _others="$("$OSH" sandbox list 2>/dev/null | _osh_strip_ansi \
-                    | awk 'NR>1 && $NF=="Ready"{print $1}' | tr '\n' ' ' || true)"
-        if [[ -n "${_others// }" && "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
-          warn "gateway DOCKER_HOST changed but Ready sandbox(es) exist: ${_others% }"
+        # Collect Ready sandboxes into an ARRAY (no word-split on space-in-name on this data-loss path).
+        mapfile -t _others_arr < <("$OSH" sandbox list 2>/dev/null | _osh_strip_ansi \
+                                    | awk 'NR>1 && $NF=="Ready"{print $1}')
+        if (( ${#_others_arr[@]} > 0 )) && [[ "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
+          warn "gateway DOCKER_HOST changed but Ready sandbox(es) exist: ${_others_arr[*]}"
           warn "NOT restarting (would error them ALL). A restart is PENDING — doctor will surface it."
           warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04"
         else
@@ -272,7 +273,7 @@ if [[ -n "$state" ]]; then
           # Checkpoint EVERY Ready sandbox (fail-closed) BEFORE the auth-rotating restart,
           # in addition to the identity-backup — fleet-durability HALT-by-default contract.
           if [[ -x "$AI_STACK/bin/openshell-checkpoint.sh" ]]; then
-            for _s in ${_others}; do
+            for _s in "${_others_arr[@]}"; do
               bash "$AI_STACK/bin/openshell-checkpoint.sh" "$_s" >/dev/null 2>&1 \
                 || { err "checkpoint of sandbox '$_s' FAILED — aborting restart (fail-closed)."; exit 1; }
             done
@@ -288,6 +289,13 @@ if [[ -n "$state" ]]; then
           ps -Ao command 2>/dev/null | grep -q 'openshell-gateway-homebrew-service' \
             && ok "gateway wrapper relaunched (will have re-sourced gateway.env)" \
             || warn "could not confirm gateway wrapper is the launched program — verify gateway picked up the new DOCKER_HOST"
+          # Affirmative (best-effort) readback: confirm the launched gateway has the NEW DOCKER_HOST.
+          # brew can regenerate the plist on start (Ollama-plist gotcha) — name match alone isn't proof.
+          if launchctl print "gui/$(id -u)/homebrew.mxcl.openshell" 2>/dev/null | grep -q "DOCKER_HOST.*$DESIRED_DOCKER_HOST"; then
+            ok "gateway launchd env carries the new DOCKER_HOST ($DESIRED_DOCKER_HOST)"
+          else
+            warn "could NOT confirm the gateway loaded DOCKER_HOST=$DESIRED_DOCKER_HOST — verify with the live matrix (Task 17)."
+          fi
         fi
       else
         ok "openshell brew service is $state"
