@@ -288,13 +288,19 @@ deps_report() {
   _sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
   if [[ -n "$_sel" ]] && _engine_valid "$_sel"; then
     _sock="$(engine_socket "$_sel" 2>/dev/null || echo '?')"
-    _ctx_host="$(docker context inspect "$(docker context show 2>/dev/null)" \
+    # Timeout-bound the `docker context inspect` (and the inner `docker context show`)
+    # so a wedged daemon can never hang deps_report — matching the bounded-probe
+    # discipline of the rest of the engine module. `|| echo '?'` keeps the fallback.
+    _ctx_host="$(_engine_docker_timeout 5 docker context inspect "$(_engine_docker_timeout 5 docker context show 2>/dev/null)" \
                    --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || echo '?')"
     _gw_host="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
     note "Docker engine: $_sel ($(engine_display "$_sel"))   socket: $_sock"
     [[ "$_ctx_host" == "$_sock" ]] && ok "  CLI context socket == selected" || warn "  CLI context socket ($_ctx_host) != selected ($_sock)"
-    [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: vz-ai-stack.sh doctor (check 47)"
+    [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: vz-ai-stack.sh doctor (docker-engine-consistency check)"
   else
+    # ADVISORY ONLY — deliberately does NOT bump rc. Engine selection is materialized
+    # during install / Phase 00, so a pre-install box must not hard-fail
+    # `deps_report --check` merely because no engine is pinned yet.
     warn "Docker engine: not selected — run: vz-ai-stack.sh docker-engine select"
   fi
 

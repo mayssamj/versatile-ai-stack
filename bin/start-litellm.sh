@@ -160,7 +160,9 @@ set -u
 # engine registry — never hardcoded — so it is correct on every engine + honest.
 HDI_ADDHOST=()
 _litellm_eng="$(get_env AI_STACK_DOCKER_ENGINE orbstack)"
-if _engine_valid "$_litellm_eng" 2>/dev/null; then
+# Guard on declare -F too (matching docker.sh) — defense-in-depth if source order
+# ever changes and the engine registry is not yet loaded.
+if declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_litellm_eng" 2>/dev/null; then
   _litellm_ah="$(engine_addhost_args "$_litellm_eng" 2>/dev/null || true)"
   [[ -n "$_litellm_ah" ]] && HDI_ADDHOST=("$_litellm_ah")
 fi

@@ -2,9 +2,10 @@
 # Sourced by vz-ai-stack.sh after common.sh + env.sh.
 #
 # Every managed container is launched with three discipline rules:
-#   1. Flag order is FIXED: --network/--add-host, then --env-file, then -e...,
-#      then -p..., then -v..., then --restart, then IMAGE, then CMD/ARGS.
-#      Mixing -e after -p/-v makes docker leak the flag to the entrypoint
+#   1. Flag order is FIXED: --name, then the --label×3, then --restart, then any
+#      engine-derived --add-host (injected AFTER --restart and BEFORE env/ports/vols/
+#      IMAGE), then --env-file, then -e..., then -p..., then -v..., then IMAGE, then
+#      CMD/ARGS. Mixing -e after -p/-v makes docker leak the flag to the entrypoint
 #      ("No such option: -e").
 #   2. Bind on the per-service 127.0.10.x alias IP (NOT bare 127.0.0.1) and
 #      join the `ai-stack` bridge network. Host-from-container reaches the
