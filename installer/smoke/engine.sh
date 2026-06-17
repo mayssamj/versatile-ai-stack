@@ -261,3 +261,17 @@ mode2="$(stat -f '%Lp' "$GW" 2>/dev/null || stat -c '%a' "$GW" 2>/dev/null)"
 ok "engine_write_gateway_env idempotent (unchanged → return 1; content+mode preserved)"
 
 ok "Task 1 registry-pure tests passed"
+
+log "central export: pinned .env → DOCKER_HOST exported by the REAL vz-ai-stack.sh load path"
+tmpenv="$(mktemp -t aistack-export.XXXXXX)"
+printf 'AI_STACK_DOCKER_ENGINE=orbstack\n' > "$tmpenv"
+got="$(ENV_FILE="$tmpenv" bash "$AI_STACK/vz-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
+rm -f "$tmpenv"
+grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
+  || { err "central export not wired (real load path did not export DOCKER_HOST): $got"; exit 1; }
+# Empty-engine case: unset .env → export is a no-op (DOCKER_HOST stays unset/ambient).
+tmpe2="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=\n' > "$tmpe2"
+got2="$(env -u DOCKER_HOST ENV_FILE="$tmpe2" bash "$AI_STACK/vz-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
+rm -f "$tmpe2"
+grep -q 'DOCKER_HOST=<unset>' <<<"$got2" || { err "empty engine should be a no-op export: $got2"; exit 1; }
+ok "central DOCKER_HOST export wired (real path; no-op when unset)"
