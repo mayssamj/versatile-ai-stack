@@ -100,10 +100,26 @@ fi
 source "$LIB/common.sh"
 source "$LIB/env.sh"
 source "$LIB/docker-engine.sh"
+
+# Global --engine <id> → AI_STACK_ENGINE_FLAG (single argv→env translation site).
+# Honored by install/deps/phase-00/04 through the one engine_select path. Strips
+# the flag from "$@" so the subcommand dispatch below is unaffected. Placed BEFORE
+# the central export so the flag is set when the export's engine resolution runs.
+_vz_args=(); while (( $# )); do
+  case "$1" in
+    --engine) shift; export AI_STACK_ENGINE_FLAG="${1:-}";;
+    --engine=*) export AI_STACK_ENGINE_FLAG="${1#--engine=}";;
+    *) _vz_args+=("$1");;
+  esac
+  shift
+done
+set -- "${_vz_args[@]:-}"
+
 # Central DOCKER_HOST export: derive the one socket the WHOLE stack uses from the
-# single source of truth (AI_STACK_DOCKER_ENGINE in .env). No-op when unset (a
-# local-only user who never selected an engine keeps the ambient docker context).
-_ai_stack_engine="$(get_env AI_STACK_DOCKER_ENGINE "" || true)"
+# single source of truth — a global --engine flag first (AI_STACK_ENGINE_FLAG),
+# else AI_STACK_DOCKER_ENGINE in .env. No-op when both unset (a local-only user
+# who never selected an engine keeps the ambient docker context).
+_ai_stack_engine="${AI_STACK_ENGINE_FLAG:-$(get_env AI_STACK_DOCKER_ENGINE "" || true)}"
 if [[ -n "$_ai_stack_engine" ]] && _engine_valid "$_ai_stack_engine" 2>/dev/null; then
   _ai_stack_sock="$(engine_socket "$_ai_stack_engine" 2>/dev/null || true)"
   [[ -n "$_ai_stack_sock" ]] && export DOCKER_HOST="$_ai_stack_sock"

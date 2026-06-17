@@ -396,3 +396,14 @@ if grep -q 'docker run' <<<"$run_out" || grep -q -- '--add-host' <<<"$run_out"; 
 else
   ok "10b: start-litellm.sh exited on a precondition (run-grep skipped; static+isolated checks carry it)"
 fi
+
+# ===========================================================================
+# Task 11a — global --engine <id> argv → AI_STACK_ENGINE_FLAG → engine_select
+# ===========================================================================
+log "11a: global --engine <id> argv → AI_STACK_ENGINE_FLAG → engine_select"
+tmpenv="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=\n' > "$tmpenv"
+got="$(env -u DOCKER_HOST ENV_FILE="$tmpenv" bash "$AI_STACK/vz-ai-stack.sh" --engine orbstack __print-docker-host 2>/dev/null || true)"
+rm -f "$tmpenv"
+grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
+  || { err "global --engine flag not plumbed to AI_STACK_ENGINE_FLAG/engine_select: $got"; exit 1; }
+ok "11a: global --engine argv plumbed"
