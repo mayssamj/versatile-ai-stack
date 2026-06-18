@@ -2,9 +2,10 @@
 # Sourced by vz-ai-stack.sh after common.sh + env.sh.
 #
 # Every managed container is launched with three discipline rules:
-#   1. Flag order is FIXED: --network/--add-host, then --env-file, then -e...,
-#      then -p..., then -v..., then --restart, then IMAGE, then CMD/ARGS.
-#      Mixing -e after -p/-v makes docker leak the flag to the entrypoint
+#   1. Flag order is FIXED: --name, then the --label×3, then --restart, then any
+#      engine-derived --add-host (injected AFTER --restart and BEFORE env/ports/vols/
+#      IMAGE), then --env-file, then -e..., then -p..., then -v..., then IMAGE, then
+#      CMD/ARGS. Mixing -e after -p/-v makes docker leak the flag to the entrypoint
 #      ("No such option: -e").
 #   2. Bind on the per-service 127.0.10.x alias IP (NOT bare 127.0.0.1) and
 #      join the `ai-stack` bridge network. Host-from-container reaches the
@@ -18,6 +19,12 @@
 #      vz-ai-stack.sh gc cleans partial=true orphans.
 
 [[ -z "${AI_STACK:-}" ]] && { echo "docker.sh: AI_STACK unset" >&2; exit 2; }
+
+# Make the engine registry available so the source-time DOCKER_HOST export at the
+# END of this file can resolve the selected socket. Guarded: callers that only want
+# docker.sh's container helpers (and never sourced docker-engine.sh) still work, and
+# this is a one-way dependency — docker-engine.sh must NOT source docker.sh (no cycle).
+[[ -f "$AI_STACK/installer/lib/docker-engine.sh" ]] && source "$AI_STACK/installer/lib/docker-engine.sh"
 
 # Has a container with this name?
 container_exists() {
@@ -89,12 +96,21 @@ docker_run_managed() {
     esac
   done
 
+  # Engine-conditional host.docker.internal (Colima/Podman need it explicitly).
+  local _eng _addhost=()
+  _eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  if [[ -n "$_eng" ]] && declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_eng" 2>/dev/null; then
+    local _ah; _ah="$(engine_addhost_args "$_eng" 2>/dev/null || true)"
+    [[ -n "$_ah" ]] && _addhost=("$_ah")
+  fi
+
   docker run -d \
     --name "$name" \
     --label "ai-stack.managed=true" \
     --label "ai-stack.phase=$phase" \
     --label "ai-stack.partial=true" \
     --restart unless-stopped \
+    "${_addhost[@]}" \
     "${env_args[@]}" \
     "${port_args[@]}" \
     "${vol_args[@]}" \
@@ -173,13 +189,36 @@ ensure_image() {
   fi
 }
 
-# host.docker.internal probe — Reviewer A #3.
+# host.docker.internal probe — Reviewer A #3. Engine-aware: on Colima/Podman the
+# alias only resolves when the probe container itself carries the add-host flag, so
+# we derive it from the selected engine (empty on OrbStack/Docker Desktop).
 probe_host_docker_internal() {
-  if ! docker run --rm alpine getent hosts host.docker.internal >/dev/null 2>&1; then
+  local _eng _addhost=()
+  _eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  if [[ -n "$_eng" ]] && declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_eng" 2>/dev/null; then
+    local _ah; _ah="$(engine_addhost_args "$_eng" 2>/dev/null || true)"
+    [[ -n "$_ah" ]] && _addhost=("$_ah")
+  fi
+  if ! docker run --rm "${_addhost[@]}" alpine getent hosts host.docker.internal >/dev/null 2>&1; then
     err "host.docker.internal does not resolve from inside containers."
-    err "This is required for LiteLLM → Phoenix and many other paths."
-    err "If you're on OrbStack: settings → Network → ensure host networking is enabled."
+    err "This is required for LiteLLM → host Postgres/Phoenix and other paths."
+    err "If you're on OrbStack/Docker Desktop: Settings → Network → ensure host networking is enabled."
+    err "If you're on Colima/Podman: the host-dialing service (LiteLLM) injects"
+    err "  --add-host=host.docker.internal:host-gateway from the engine registry."
+    err "  Any OTHER container that needs it must add that flag to its own 'docker run'."
     return 1
   fi
   return 0
 }
+
+# Source-time DOCKER_HOST export so STANDALONE bin/start-*.sh (which source this
+# file but NOT vz-ai-stack.sh) talk to the SELECTED engine, not the ambient socket.
+# Idempotent + no-op when AI_STACK_DOCKER_ENGINE is empty/unset.
+if declare -F engine_socket >/dev/null 2>&1 && declare -F _engine_valid >/dev/null 2>&1; then
+  _ds_eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  if [[ -n "${_ds_eng:-}" ]] && _engine_valid "$_ds_eng" 2>/dev/null; then
+    _ds_sock="$(engine_socket "$_ds_eng" 2>/dev/null || true)"
+    [[ -n "${_ds_sock:-}" ]] && export DOCKER_HOST="$_ds_sock"
+  fi
+  unset _ds_eng _ds_sock
+fi

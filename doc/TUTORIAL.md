@@ -91,7 +91,7 @@ open doc/EXPLORE.html
 
 - macOS on **Apple Silicon** (M1 or newer; tested on M4 24 GB).
 - [Homebrew](https://brew.sh/).
-- Docker via **OrbStack** (the installer treats OrbStack as the runtime). The installer can `brew install` the OrbStack cask if it's missing.
+- A Docker engine — **OrbStack** by default, or Docker Desktop / Colima / Podman (pick one with `vz-ai-stack.sh docker-engine select`; the choice is pinned in `AI_STACK_DOCKER_ENGINE`). The installer can `brew install` the OrbStack cask if it's missing.
 - The CLI tools the preflight pins: `node`, `python3`/`uv`, `yq`, plus `jq`, `git`, `curl`, `openssl` (most are auto-installed by Phase 00; missing ones are reported with the exact `brew install` line).
 - Everything works **local-only** — zero cloud keys required to get a healthy stack.
 
@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (46 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
+- `doctor` targets **all green (48 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -802,7 +802,7 @@ vz-ai-stack.sh stop deerflow
 
 **Why.** Two ways an agent gets *better* without retraining weights. **ACE** (Agentic Context Engineering, `ace-agent/ace`) evolves a reusable context **playbook** — a Generator/Reflector/Curator loop that distills lessons into a Markdown artifact you paste into any agent's system prompt. **RLM** (Recursive Language Models, `rlms`) answers over inputs too large for one call by writing Python in a REPL that chunks and recursively re-calls the model. ACE improves the *context*; RLM improves the *reach*.
 
-**Prereqs.** Phases 17 + 18 installed (`bash vz-ai-stack.sh install 17 18`); `uv` present (from Phase 14); LiteLLM up; Docker/OrbStack up (RLM's REPL is sandboxed).
+**Prereqs.** Phases 17 + 18 installed (`bash vz-ai-stack.sh install 17 18`); `uv` present (from Phase 14); LiteLLM up; the selected Docker engine up (RLM's REPL is sandboxed).
 
 **Steps.**
 ```bash
@@ -1316,7 +1316,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (46 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (48 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 

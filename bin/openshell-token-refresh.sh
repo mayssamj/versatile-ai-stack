@@ -57,6 +57,24 @@ TOKEN_BASE="$HOME/.local/state/openshell/docker-sandbox-tokens/default"
 # ---------------------------------------------------------------------------
 _find() { for p in "$@"; do [[ -x "$p" ]] && { echo "$p"; return 0; }; done; command -v "$(basename "$1")" 2>/dev/null || echo ""; }
 DOCKER="$(_find /opt/homebrew/bin/docker "$HOME/.orbstack/bin/docker" /usr/local/bin/docker)"
+
+# Engine-aware: do NOT assume OrbStack. Prefer the gateway.env DOCKER_HOST (the
+# gateway's own source of truth); fall back to the registry from AI_STACK_DOCKER_ENGINE.
+if [[ -z "${DOCKER_HOST:-}" ]]; then
+  _gw_dh="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+  if [[ -n "${_gw_dh:-}" ]]; then
+    export DOCKER_HOST="$_gw_dh"
+  elif [[ -n "${AI_STACK:-}" && -f "$AI_STACK/installer/lib/docker-engine.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+    source "$AI_STACK/installer/lib/docker-engine.sh"
+    _eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+    if [[ -n "${_eng:-}" ]] && _engine_valid "$_eng" 2>/dev/null; then
+      _dh="$(engine_socket "$_eng" 2>/dev/null || true)"; [[ -n "${_dh:-}" ]] && export DOCKER_HOST="$_dh"
+    fi
+  fi
+  unset _gw_dh _eng _dh 2>/dev/null || true
+fi
 OPENSSL="$(_find /opt/homebrew/bin/openssl /usr/bin/openssl /usr/local/bin/openssl)"
 PYTHON3="$(_find /opt/homebrew/bin/python3 /usr/bin/python3 /usr/local/bin/python3)"
 

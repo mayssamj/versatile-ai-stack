@@ -9,6 +9,7 @@ set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
+source "$AI_STACK/installer/lib/docker-engine.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
 source "$AI_STACK/installer/lib/deps.sh"
@@ -49,6 +50,17 @@ if precheck 2>/dev/null && stamp_check "$PHASE"; then
 fi
 
 hdr "Phase 00 — host preparation"
+
+# Selection-before-use: pin the Docker engine before any docker call or Phase 04.
+# Idempotent — if .env already pins an installed engine, engine_select returns it
+# with no prompt. Honors a global --engine via AI_STACK_ENGINE_FLAG (Task 11a).
+if declare -F engine_select >/dev/null 2>&1; then
+  if ! _pf_sel="$(engine_select)"; then
+    err "Phase 00: could not select a Docker engine"; exit 1
+  fi
+  engine_pin "$_pf_sel" || { err "Phase 00: could not pin engine '$_pf_sel'"; exit 1; }
+  unset _pf_sel
+fi
 
 # --- host dependencies: core CLI tools + OrbStack/Docker (verified actions) ---
 # Centralized in installer/lib/deps.sh so the SAME check->install->verify logic

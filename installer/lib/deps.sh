@@ -43,6 +43,14 @@ command -v err  >/dev/null 2>&1 || err()  { printf '✗ %s\n' "$*" >&2; }
 command -v note >/dev/null 2>&1 || note() { printf '  %s\n' "$*"; }
 command -v hdr  >/dev/null 2>&1 || hdr()  { printf '\n=== %s ===\n' "$*"; }
 
+# The Docker-engine registry (engine_select/engine_ensure/engine_pin/engine_socket/
+# engine_display/_engine_valid). vz-ai-stack.sh already sources it before deps.sh, but
+# the standalone `deps`/phase entrypoints don't — source it here (idempotent, guarded
+# by docker-engine.sh's own load-once flag) so ensure_docker_engine + deps_report's
+# engine status block resolve their helpers. Needs AI_STACK (set by the caller).
+[[ -n "${AI_STACK:-}" && -f "$AI_STACK/installer/lib/docker-engine.sh" ]] \
+  && source "$AI_STACK/installer/lib/docker-engine.sh"
+
 # --- small verified-wait helper (no coreutils dependency) --------------------
 # _dep_wait <timeout_s> <description> <cmd...> : poll until <cmd> succeeds.
 _dep_wait() {
@@ -157,24 +165,21 @@ ensure_core_tools() {
 # TIER 2 — runtime services (install AND start AND verify)
 # ===========================================================================
 
-# ensure_orbstack — install the OrbStack cask if missing, then make sure the
-# Docker daemon is actually reachable (launch OrbStack + wait).
-ensure_orbstack() {
+# ensure_docker_engine — select + ensure the intentional Docker engine.
+# Selection precedence handled by engine_select (flag/env/running/prompt/priority);
+# engine_ensure installs (consent/NO_PROMPT) + starts + bounded-waits on the socket;
+# engine_pin persists AI_STACK_DOCKER_ENGINE + exports DOCKER_HOST + rewrites gateway.env.
+ensure_docker_engine() {
   ensure_homebrew || return 1
-  if ! brew list --cask 2>/dev/null | grep -qx orbstack && [[ ! -d "/Applications/OrbStack.app" ]]; then
-    log "Installing OrbStack (Docker runtime, cask)..."
-    brew install --cask orbstack 2>&1 | tail -6 || { err "brew install --cask orbstack failed — install from https://orbstack.dev and re-run."; return 1; }
-  fi
-  if docker info >/dev/null 2>&1; then ok "Docker daemon ready"; return 0; fi
-  log "Starting OrbStack (Docker daemon)..."
-  open -a OrbStack 2>/dev/null || open -a Docker 2>/dev/null || true
-  if _dep_wait 90 "Docker daemon (docker info)" docker info; then
-    ok "Docker daemon ready"
-    return 0
-  fi
-  err "Docker daemon did not come up. Start OrbStack manually (open -a OrbStack) and re-run."
-  return 1
+  local sel; sel="$(engine_select)" || return 1
+  engine_ensure "$sel" || return 1
+  engine_pin "$sel" || return 1
+  return 0
 }
+
+# ensure_orbstack — retained name for back-compat with existing callers
+# (phases 00/01, etc.). Now a thin wrapper that honors the selected engine.
+ensure_orbstack() { ensure_docker_engine "$@"; }
 
 # ensure_ollama — install Ollama, configure it for cross-container access + lazy
 # memory, start it, and verify it responds. Centralized here so the env-patch
@@ -271,9 +276,44 @@ deps_report() {
     if dep_have "$cmd";             then _drow "$f" "1 core" present; else _drow "$f" "1 core" MISSING; rc=1; fi
   done
   if dep_have python3;              then _drow "python3" "1 core" present; else _drow "python3" "1 core" MISSING; rc=1; fi
-  if docker info >/dev/null 2>&1;   then _drow "OrbStack/docker" "2 service" running; else _drow "OrbStack/docker" "2 service" DOWN; rc=1; fi
+  # Timeout-bound the probe (a wedged daemon must never hang deps_report) + name the
+  # SELECTED engine when one is pinned (else a generic label). _engine_docker_timeout
+  # is in scope (deps.sh sources docker-engine.sh).
+  local _dr_eng _dr_label="docker engine (2 service)"
+  _dr_eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  [[ -n "$_dr_eng" ]] && _engine_valid "$_dr_eng" 2>/dev/null && _dr_label="$(engine_display "$_dr_eng" 2>/dev/null || echo "$_dr_eng")"
+  if _engine_docker_timeout 6 docker info >/dev/null 2>&1; then _drow "$_dr_label" "2 service" running; else _drow "$_dr_label" "2 service" DOWN; rc=1; fi
   if curl -sf --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
     _drow "Ollama (:11434)" "2 service" running; else _drow "Ollama (:11434)" "2 service" DOWN; rc=1; fi
+
+  # --- Docker engine selection ---------------------------------------------
+  # READ-ONLY status (runs on BOTH the --check and the install paths, so it never
+  # depends on the install side-effects below). Reads only: get_env, engine_socket,
+  # `docker context inspect`, and a grep of gateway.env. No engine_pin, no install.
+  local _sel _sock _gw_host _ctx_host
+  _sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
+  if [[ -n "$_sel" ]] && _engine_valid "$_sel"; then
+    _sock="$(engine_socket "$_sel" 2>/dev/null || echo '?')"
+    # Resolve the context NAME first (timeout-bound), THEN inspect it — avoids the
+    # racy nested-$() (an inner timeout firing leaves the outer with an empty name)
+    # and the empty-context edge (no name → `inspect ""` would error). Both calls are
+    # bounded so a wedged daemon can never hang deps_report. `|| echo '?'` keeps the fallback.
+    local _ctx_name; _ctx_name="$(_engine_docker_timeout 5 docker context show 2>/dev/null || true)"
+    _ctx_host="?"
+    if [[ -n "$_ctx_name" ]]; then
+      _ctx_host="$(_engine_docker_timeout 5 docker context inspect "$_ctx_name" \
+                     --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || echo '?')"
+    fi
+    _gw_host="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
+    note "Docker engine: $_sel ($(engine_display "$_sel"))   socket: $_sock"
+    [[ "$_ctx_host" == "$_sock" ]] && ok "  CLI context socket == selected" || warn "  CLI context socket ($_ctx_host) != selected ($_sock)"
+    [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: vz-ai-stack.sh doctor (docker-engine-consistency check)"
+  else
+    # ADVISORY ONLY — deliberately does NOT bump rc. Engine selection is materialized
+    # during install / Phase 00, so a pre-install box must not hard-fail
+    # `deps_report --check` merely because no engine is pinned yet.
+    warn "Docker engine: not selected — run: vz-ai-stack.sh docker-engine select"
+  fi
 
   if (( check_only )); then
     echo

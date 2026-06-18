@@ -13,7 +13,7 @@ bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, O
 bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
 sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
 bash vz-ai-stack.sh install all       # the 28 core phases (offers `setup` on first run if you skipped it)
-bash vz-ai-stack.sh doctor            # 46 checks — target all green
+bash vz-ai-stack.sh doctor            # 48 checks — target all green
 ```
 
 A plain `install all` runs `deps` for you and offers `setup` on a first run, so on a
@@ -34,7 +34,7 @@ Then the four you'll use daily:
 
 ```bash
 stack status        # declared vs actual — what's enabled, what's running, what drifted
-stack doctor        # 45 health checks + per-check auto-fix offers (your first move when something's off)
+stack doctor        # 47 health checks + per-check auto-fix offers (your first move when something's off)
 stack phases        # list every phase as  id → name
 stack logs <svc>    # docker logs wrapper, e.g.  stack logs litellm -f
 stack model list    # which LLM each agent is bound to (models.yml) — assign/sync/superset too

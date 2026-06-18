@@ -55,7 +55,7 @@ record_block() {
 }
 
 # --- paths -------------------------------------------------------------------
-ENV_FILE="$AI_STACK/.env"
+ENV_FILE="${ENV_FILE:-$AI_STACK/.env}"
 SERVICES_YML="$AI_STACK/services.yml"
 BIN_DIR="$AI_STACK/bin"
 STATE_DIR="$AI_STACK/installer/state"

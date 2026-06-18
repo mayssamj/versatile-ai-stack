@@ -99,6 +99,40 @@ fi
 # shellcheck source=installer/lib/common.sh
 source "$LIB/common.sh"
 source "$LIB/env.sh"
+source "$LIB/docker-engine.sh"
+
+# Global --engine <id> → AI_STACK_ENGINE_FLAG (single argv→env translation site).
+# Honored by install/deps/phase-00/04 through the one engine_select path. Strips
+# the flag from "$@" so the subcommand dispatch below is unaffected. Placed BEFORE
+# the central export so the flag is set when the export's engine resolution runs.
+_vz_args=(); while (( $# )); do
+  case "$1" in
+    --engine)
+      if (( $# < 2 )); then
+        echo "vz-ai-stack.sh: --engine requires an <id> (orbstack|docker-desktop|colima|podman)" >&2
+        exit 2
+      fi
+      shift; export AI_STACK_ENGINE_FLAG="$1";;
+    --engine=*)
+      export AI_STACK_ENGINE_FLAG="${1#--engine=}"
+      [[ -n "$AI_STACK_ENGINE_FLAG" ]] || { echo "vz-ai-stack.sh: --engine= requires a value" >&2; exit 2; }
+      ;;
+    *) _vz_args+=("$1");;
+  esac
+  shift
+done
+set -- "${_vz_args[@]:-}"
+
+# Central DOCKER_HOST export: derive the one socket the WHOLE stack uses from the
+# single source of truth — a global --engine flag first (AI_STACK_ENGINE_FLAG),
+# else AI_STACK_DOCKER_ENGINE in .env. No-op when both unset (a local-only user
+# who never selected an engine keeps the ambient docker context).
+_ai_stack_engine="${AI_STACK_ENGINE_FLAG:-$(get_env AI_STACK_DOCKER_ENGINE "" || true)}"
+if [[ -n "$_ai_stack_engine" ]] && _engine_valid "$_ai_stack_engine" 2>/dev/null; then
+  _ai_stack_sock="$(engine_socket "$_ai_stack_engine" 2>/dev/null || true)"
+  [[ -n "$_ai_stack_sock" ]] && export DOCKER_HOST="$_ai_stack_sock"
+fi
+unset _ai_stack_engine _ai_stack_sock
 source "$LIB/docker.sh"
 source "$LIB/validate.sh"
 source "$LIB/prompt.sh"
@@ -181,6 +215,11 @@ ai-stack-installer — usage:
                                         re-render); `vz-ai-stack.sh fleet <add|remove|list|new|destroy>`
                                         is the fleet MANAGER. (add/remove default new profiles to the
                                         gemma4 default; nothing loads a model.)
+    vz-ai-stack.sh docker-engine status     show the selected Docker engine + resolved socket
+                                        + CLI/gateway consistency
+    vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
+                                        (orbstack|docker-desktop|colima|podman); idempotent
+    vz-ai-stack.sh docker-engine set <id>   pin the engine explicitly to <id> (ensure + pin)
     vz-ai-stack.sh doctor [<service>]       diagnose & offer fixes
     vz-ai-stack.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
     vz-ai-stack.sh adopt <service>          take ownership of a foreign container
@@ -245,7 +284,7 @@ is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
     setup|keys|verify|adopt|apply-restarts|logs|history|gc|migrate-v2|upgrade|\
-    tutorial-serve|fleet-studio|reset|start|run|enable|stop|disable|help) return 0 ;;
+    tutorial-serve|fleet-studio|reset|start|run|enable|stop|disable|docker-engine|help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -580,6 +619,7 @@ cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "
 cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
+cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
 cmd_help() {
   # bare `help` → the full command list (same as --help; "what can I do?").
   if [[ -z "${1:-}" ]]; then usage; return 0; fi
@@ -1036,6 +1076,7 @@ main() {
     status)            cmd_status "$@" ;;
     model)             cmd_model "$@" ;;
     fleet)             cmd_fleet "$@" ;;
+    docker-engine)     cmd_docker_engine "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
     deps)              cmd_deps "$@" ;;
     setup|keys)        cmd_setup "$@" ;;
@@ -1052,6 +1093,7 @@ main() {
     reset)             cmd_reset "$@" ;;
     run|start|enable)  cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;
+    __print-docker-host) printf '%s\n' "DOCKER_HOST=${DOCKER_HOST:-<unset>}"; exit 0 ;;
     -h|--help)         usage ;;
     help)              cmd_help "$@" ;;   # help · help services · help <svc> · help regen
     *)
