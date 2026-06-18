@@ -50,8 +50,8 @@ sandbox_ready() {
 }
 
 precheck() {
-  # Manager is the MAIN agent now (CLAUDE.md @-import), not a subagent. Check that + a specialist.
-  [[ -f "$CLAUDE_DIR/fleet/manager.md" ]] && grep -qF "BEGIN ai-stack fleet manager" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null || return 1
+  # Manager is the MAIN agent (CLAUDE.md absolute @-import of the repo canonical, D2), not a subagent.
+  grep -qF "@$AI_STACK/fleet/manager.md" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null && [[ -f "$AI_STACK/fleet/manager.md" ]] || return 1
   [[ -f "$CLAUDE_DIR/agents/techlead.md" ]] || return 1
   sandbox_ready "$PI_SANDBOX" || return 1
   "$OSH" sandbox exec -n "$PI_SANDBOX" --no-tty -- /bin/sh -c \
@@ -97,31 +97,37 @@ install_file() {  # <src> <dst>
 # (Task is main-agent-only), so "single entrance orchestrates the 8" requires the manager to be
 # the main session. It installs as a managed CLAUDE.md @-import (NOT a peer subagent); the other
 # 8 install as subagents. CLAUDE.md is auto-loaded GUIDANCE (not a system-prompt override).
-install_main_agent() {  # manager persona -> ~/.claude/fleet/manager.md + clobber-safe @-import
-  local src="$CLAUDE_AGENTS_SRC/manager.md"
-  local managed="$CLAUDE_DIR/fleet/manager.md" claudemd="$CLAUDE_DIR/CLAUDE.md"
+install_main_agent() {  # manager persona: direct ABSOLUTE @-import of the repo canonical (D2) + clobber-safe block
+  local canonical="$AI_STACK/fleet/manager.md" claudemd="$CLAUDE_DIR/CLAUDE.md"
   local begin="<!-- BEGIN ai-stack fleet manager (managed) -->" end="<!-- END ai-stack fleet manager (managed) -->"
-  [[ -f "$src" ]] || { warn "missing manager source $src"; return; }
-  mkdir -p "$CLAUDE_DIR/fleet"
-  # The managed persona file is OURS: strip the YAML frontmatter, overwrite freely on update.
-  # Robust YAML-frontmatter strip: fence-toggle (only before the body starts, so the body's own
-  # '---' rules survive) + drop leading blanks. Tolerant of a leading blank/comment before the fence.
-  awk '/^---$/ && !started && !fmclosed { if (fmopen) fmclosed=1; else fmopen=1; next }
-       fmopen && !fmclosed { next }
-       !started && NF==0 { next }
-       { started=1; print }' "$src" > "$managed"
-  ok "wrote $managed (manager persona — the main-agent instruction)"
-  # @-import it from CLAUDE.md, NEVER clobbering the user's own content.
+  local import_line="@$canonical" legacy="$CLAUDE_DIR/fleet/manager.md"
+  [[ -f "$canonical" ]] || { warn "missing manager canonical $canonical (run from a full ai-stack checkout)"; return; }
+  # D2: the canonical IS the repo file (frontmatter-free, version-controlled). We do NOT copy or strip —
+  # CLAUDE.md @-imports it by ABSOLUTE path (mirrors the SOUL.md import), so an edit to fleet/manager.md
+  # is live in every session with no reinstall. NEVER clobber the user's own CLAUDE.md content.
   if [[ ! -f "$claudemd" ]]; then
-    printf '%s\n@fleet/manager.md\n%s\n' "$begin" "$end" > "$claudemd"
-    ok "created $claudemd importing the fleet manager"
+    printf '%s\n%s\n%s\n' "$begin" "$import_line" "$end" > "$claudemd"
+    ok "created $claudemd importing the fleet manager ($import_line)"
+  elif grep -qF "$import_line" "$claudemd"; then
+    note "$claudemd already imports the fleet manager by absolute path (current)"
   elif grep -qF "$begin" "$claudemd"; then
-    note "$claudemd already imports the fleet manager (managed block present; persona refreshed in place)"
+    # D1->D2 migration: a managed block exists but points at the old relative @fleet/manager.md.
+    # Rewrite that import line in place to the absolute path (clobber-safe: temp + mv; user content kept).
+    # Escape sed-replacement metachars (\, &, and the | delimiter) so an unusual $AI_STACK path can't corrupt the line.
+    local tmp repl; tmp="$(mktemp)"; repl=${import_line//\\/\\\\}; repl=${repl//&/\\&}; repl=${repl//|/\\|}
+    sed "s|^@fleet/manager\.md\$|$repl|" "$claudemd" > "$tmp" && mv "$tmp" "$claudemd"
+    if grep -qF "$import_line" "$claudemd"; then
+      ok "upgraded the managed block: @fleet/manager.md -> $import_line (D1->D2)"
+      # Remove the now-orphaned D1 generated copy ONLY on a confirmed migration (never a foreign file).
+      [[ -f "$legacy" ]] && rm -f "$legacy" && note "removed orphaned D1 copy $legacy (now imported from $canonical)"
+    else
+      warn "managed block present but no relative @fleet/manager.md line found to upgrade — inspect $claudemd"
+    fi
   else
-    printf '\n%s\n@fleet/manager.md\n%s\n' "$begin" "$end" >> "$claudemd"
+    printf '\n%s\n%s\n%s\n' "$begin" "$import_line" "$end" >> "$claudemd"
     ok "appended the managed manager import to your existing $claudemd (your content untouched)"
   fi
-  [[ -f "$CLAUDE_DIR/agents/manager.md" ]] && warn "superseded: $CLAUDE_DIR/agents/manager.md (manager is now the MAIN agent) — you may remove it"
+  [[ -f "$CLAUDE_DIR/agents/manager.md" ]] && warn "superseded: $CLAUDE_DIR/agents/manager.md (manager is the MAIN agent) — you may remove it"
   return 0
 }
 log "Claude Code: installing 8 specialist subagents + ${#SKILLS[@]} skills + the manager (main agent) into $CLAUDE_DIR (GLOBAL)..."
@@ -130,7 +136,7 @@ for r in "${ROLES[@]}"; do [[ "$r" == manager ]] && continue; install_file "$CLA
 for sk in "${SKILLS[@]}"; do install_file "$CLAUDE_SKILLS_SRC/$sk/SKILL.md" "$CLAUDE_DIR/skills/$sk/SKILL.md"; done
 install_main_agent
 ok "Claude Code: ${#CLAUDE_WRITTEN[@]} subagent/skill file(s) newly written; manager installed as the main-agent persona (existing user edits preserved)"
-note "GLOBAL — active in every Claude Code session on this Mac. Remove with: rm the 8 ~/.claude/agents/*.md, the skill dirs, ~/.claude/fleet/manager.md, and the managed block in ~/.claude/CLAUDE.md."
+note "GLOBAL — active in every Claude Code session on this Mac. Remove with: rm the 8 ~/.claude/agents/*.md, the skill dirs, and the managed block in ~/.claude/CLAUDE.md (the manager is @-imported from the repo, not copied)."
 
 # --- 3) Pi: upload the 9 SYSTEM.md (+ skills) into the pi-v1 sandbox ----------
 if sandbox_ready "$PI_SANDBOX"; then

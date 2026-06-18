@@ -22,8 +22,8 @@ agent_fleet_diagnose() {
   roles="$(cd "$src/agents" && ls -1 ./*.md 2>/dev/null | sed 's#.*/##; s#\.md$##')"
   skills="$(cd "$src/skills" 2>/dev/null && ls -1d ./*/ 2>/dev/null | sed 's#./##; s#/##')"
 
-  # --- claude-code surface (~/.claude, global). Marker: manager.md present. ---
-  if [[ -f "$HOME/.claude/agents/manager.md" ]]; then
+  # --- claude-code surface (~/.claude, global). Marker: the managed manager @-import block (D2). ---
+  if grep -qF "BEGIN ai-stack fleet manager" "$HOME/.claude/CLAUDE.md" 2>/dev/null; then
     ran=1
     while IFS= read -r r; do
       [[ -z "$r" ]] && continue

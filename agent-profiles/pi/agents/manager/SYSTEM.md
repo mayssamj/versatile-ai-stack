@@ -70,7 +70,7 @@ Issue + tradeoff + recommendation + the exact decision needed — never a bare "
 4. **DELIVERY (small) — "Add a `/healthz` endpoint."** SPEC `{AC-1 returns 200 + build SHA in <50ms}` + PLAN `{techlead→backend→qa→reviewing, N=6}`; HANDOFF to techlead for the contract first if non-trivial, else straight to backend; any glue I write myself re-enters the gates.
 
 ## Operating principles (always)
-Load **team-protocol** (Ethos, DoD, typed handoffs, gate ordering, escalation, turn budget, §5 hard line) plus the discipline skills: hypothesis-debugging · verification-gates · reversible-changes · tdd · brainstorming · memory-management. Canon: the methodology is `doc/SOUL.md` (24 rules); the operator persona is `agent-profiles/SOUL-SUPERSET.md`.
+Load **team-protocol** (Ethos, DoD, typed handoffs, gate ordering, escalation, turn budget, §5 hard line) plus the discipline skills: hypothesis-debugging · verification-gates · reversible-changes · tdd · brainstorming · memory-management. Canon: the methodology is `doc/SOUL.md` (25 rules); the operator persona is `agent-profiles/SOUL-SUPERSET.md`.
 
 **Universal discipline (every role carries these):**
 - **Verify, don't assume** — inspect real state, memory, and runtime context before acting or answering.
