@@ -616,8 +616,9 @@ subscription via Meridian**. The bindings as shipped:
 **Same team, three platforms.** This identical 9-role team is also realized as
 **Pi personas** (`bin/pi-as <role>`) and **Claude Code agents** (the
 manager is the MAIN agent — a `~/.claude/CLAUDE.md` @-import of
-`~/.claude/fleet/manager.md` — since a Claude Code subagent can't dispatch
-others; the other 8 roles install as subagents at `~/.claude/agents/`, global).
+`~/ai-stack/fleet/manager.md` (imported directly) — since a Claude Code subagent
+can't dispatch others; the other 8 roles install as subagents at
+`~/.claude/agents/`, global).
 All three share the keystone **team-protocol**
 skill — definition-of-done, typed handoffs, the review-gate pipeline,
 escalation, and a global turn budget. Install via `vz-ai-stack.sh install

@@ -55,9 +55,9 @@ per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
   (one credential-isolated profile per role; models from `installer/models.yml`, routed through LiteLLM).
 - **Pi** — phase-1 personas uploaded into the `pi-v1` sandbox; switch with `bin/pi-as <role>`.
 - **Claude Code** — the manager installs as the **main agent** (a clobber-safe `~/.claude/CLAUDE.md` @-import of
-  `~/.claude/fleet/manager.md`, frontmatter stripped — a Claude Code subagent can't dispatch subagents, so the
-  single-entrance orchestrator must be the main session); the other 8 roles + 7 skills are copied into
-  `~/.claude/{agents,skills}/` (global).
+  `~/ai-stack/fleet/manager.md` — the repo canonical, imported directly; it's frontmatter-free — a Claude Code
+  subagent can't dispatch subagents, so the single-entrance orchestrator must be the main session); the other 8
+  roles + 7 skills are copied into `~/.claude/{agents,skills}/` (global).
 
 ## Review & edit (Fleet Studio)
 Open **`vz-ai-stack.sh fleet-studio`** (serves `doc/FLEET.html` on `127.0.0.1`) to review and edit every

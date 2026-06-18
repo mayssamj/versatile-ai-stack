@@ -152,3 +152,28 @@ Four reviewers (adversarial · architect · QA/infra · PM) + a capability verif
 ### Must-fixes folded into the implementation
 **Safety —** aggregate-reversibility (undo the whole run incl. downstream subagents in one step, else §5); `send_requires_approval` stated as a SOFT control (real gate = §5 + HITL where available); **memory gating**: a MEMORY-WRITE that *supersedes* an existing key = §5, additive writes need a citable source before landing, `supersedes` required when the key exists; **PII hard-stop** for INFORMATIONAL/MEMORY over personal comms/credentials/employee data (independent of reversibility); the manager's own DIFFs must carry the reviewing-engineer's REVIEW artifact in the handoff chain (behavioral guarantee + human spot-check on non-trivial). **Correctness —** Tier-1 = brief **actual rule text**, not "(Rule n)" pointers (agents don't read `doc/SOUL.md` mid-task); the OPERATIONAL precondition row rephrased (reversible → proceed; irreversible → §5) to kill the circular definition; "capability ≠ authority" distinguishes class-level standing authorization (install-time) from instance-level §5 approval (this action, now). **Product —** add **PEOPLE** (1:1 prep, growth, unblock-a-person, who's-overloaded), **TRIAGE** (sort an incoming pile → act/delegate/defer/decline), **PRIORITIZE** (portfolio/§Mission stance) request classes; **typed outputs are the INTERNAL grounding/DoD contract — the human-facing reply is prose in the operator's voice** (pull SOUL-SUPERSET §Tone: contractions, plain, say-what-matters-and-stop; §Self-Improvement: capture his corrections); rebalance the 3 worked examples toward chief-of-staff (1:1-prep / stakeholder-update / inbox-triage + one small DELIVERY + the §5 case).
 
+---
+
+## 10. Re-root: manager canonical → `fleet/manager.md`, direct absolute `@`-import (2026-06-17)
+
+**Supersedes the §9-D1 *install mechanism* only** — the manager-as-main-agent decision itself stands; *how* it's wired changes. (Called "D2" in the 2026-06-17 working session; recorded here as §10 to avoid clashing with §9's own D2, the parity-strengthening decision.)
+
+### Decision
+The Claude Code main-agent persona is a **frontmatter-free canonical committed at `fleet/manager.md`** (repo top-level — it is the MAIN agent, not a subagent, so it does not belong under `.claude/agents/`). `~/.claude/CLAUDE.md` `@`-imports it by **absolute path** (`@<AI_STACK>/fleet/manager.md`, written from `$AI_STACK` at install time), inside the same clobber-safe managed `BEGIN/END` block. **No** generated `~/.claude/fleet/manager.md` copy; **no** frontmatter strip (the canonical is already frontmatter-free). An edit to `fleet/manager.md` is live in every session, no reinstall.
+
+**Why (over §9-D1's managed copy):** single source of truth — the imported file *is* the version-controlled canonical, killing the copy/strip step and the source↔installed drift it caused (e.g. the 24/25 lag); semantic correctness (the main agent leaves the subagents dir); matches the existing SOUL.md absolute-import precedent. **D1's clobber-safety is retained** (managed block + never overwrite user content).
+
+### Source→derived model
+Hermes stays the **body canonical**; `fleet/manager.md` is the claude-code leg (body == hermes + the cc Platform note). `check_fleet_parity.sh` asserts it via a **named `check_manager_body`** (NOT an in-loop special-case): the manager is structurally distinct (main agent, lives at `fleet/`), so it is checked by name with a rationale comment; `fleet/manager.md` is in the souls set (couplet + Tier-1). Count stays 27/27 (cc drops `agents/manager.md`, gains `fleet/manager.md`).
+
+### §24 council (2026-06-17) — consensus
+Three reviewers (adversarial · architect · qa/infra), all APPROVE-WITH-CHANGES. The architect dissented toward **A2** (make `fleet/manager.md` the fleet-wide canonical all 3 platforms derive from) and warned an in-loop manager special-case would rot. **Resolution:** keep A1 (the operator's choice), adopt the *named-assertion* refinement (done). **A2 + a one-source→3-file generator is the recorded sunset path** that would retire the special-case. Unanimous must-fixes folded in: the D1→D2 in-place import upgrade + orphan cleanup (else an already-installed machine silently loses the persona), the atomic parity edit, and a D1-seeded migration test.
+
+### Frontmatter disposition (preserved here per the council, Q4)
+The removed `agent-profiles/claude-code/.claude/agents/manager.md` carried YAML frontmatter that **no tool consumes** (04h hardcodes ROLES/SKILLS; Claude Code doesn't read main-agent frontmatter; doctor-42 keys on filenames; parity strips it). Preserved for the record: `model: opus`; `tools: Read, Grep, Glob, Edit, Write, Bash, TodoWrite, Task, WebFetch, WebSearch`. The body's "Access" + "Recommended skills" sections carry the grant in prose.
+
+### Implementation + verification (branch `feat/manager-fleet-reroot-d2`)
+New `fleet/manager.md`; rewired `04h` (install_main_agent + precheck), `check_fleet_parity.sh` (named manager assertion + souls), doctor-42 (marker → managed block); pi `(24→25)`; removed cc `agents/manager.md`; docs + TUTORIAL.html regenerated. **Verified:** parity green (27/27 souls, all bodies ×3); `bash -n` clean on all edited scripts; throwaway-`$HOME` migration test 11/11 (fresh + D1→D2 in-place upgrade + idempotency); the real `~/.claude` was never touched.
+
+**User's live step (per the §9-D1 guardrail — never mutate the real `~/.claude` from the repo):** `bash vz-ai-stack.sh install 04h` upgrades the relative import → absolute and removes the orphan; then reload a Claude Code session.
+
