@@ -691,13 +691,13 @@ Pi **cannot see** phoenix, qdrant, falkordb, openwebui, the workspace, unsloth, 
 
 ### L15 · Claude Code subagents on your machine · 🟡
 
-The same nine roles also install on Claude Code — globally, into `~/.claude/`, so they appear in *every* Claude Code session on this Mac. The **manager installs as the main agent** (a clobber-safe `~/.claude/CLAUDE.md` @-import of `~/.claude/fleet/manager.md`, frontmatter stripped) — because a Claude Code subagent cannot dispatch other subagents, so the single-entrance orchestrator must *be* the main session; the **other eight roles install as subagents** (`~/.claude/agents/<role>.md`):
+The same nine roles also install on Claude Code — globally, into `~/.claude/`, so they appear in *every* Claude Code session on this Mac. The **manager installs as the main agent** (a clobber-safe `~/.claude/CLAUDE.md` @-import of the version-controlled, frontmatter-free `~/ai-stack/fleet/manager.md` — no copy under `~/.claude`) — because a Claude Code subagent cannot dispatch other subagents, so the single-entrance orchestrator must *be* the main session; the **other eight roles install as subagents** (`~/.claude/agents/<role>.md`):
 
 ```bash
 vz-ai-stack.sh install agent_fleet
 ```
 
-This installs the **manager** as a `~/.claude/CLAUDE.md` @-import of `~/.claude/fleet/manager.md` plus the **8 subagents** (`~/.claude/agents/<role>.md`) + **7 skills** (`~/.claude/skills/<skill>/SKILL.md` — the six shared ones plus the manager-only `memory-management`). The copy is **non-clobbering**: an identical file is a no-op; a file that exists and *differs* is left untouched and a `<name>.ai-stack-new` is written beside it for you to merge — your edits are never overwritten.
+This installs the **manager** as a `~/.claude/CLAUDE.md` @-import of `~/ai-stack/fleet/manager.md` (the repo canonical, imported directly — no copy under `~/.claude`) plus the **8 subagents** (`~/.claude/agents/<role>.md`) + **7 skills** (`~/.claude/skills/<skill>/SKILL.md` — the six shared ones plus the manager-only `memory-management`). The copy is **non-clobbering**: an identical file is a no-op; a file that exists and *differs* is left untouched and a `<name>.ai-stack-new` is written beside it for you to merge — your edits are never overwritten.
 
 **Invoke a subagent** from any Claude Code session: type `/agents` to list them, or just ask Claude to use one ("have the backend-engineer subagent design this API"). Each agent's frontmatter declares its `model`, its `tools`, and its preloaded `skills`:
 
@@ -715,7 +715,7 @@ skills: [team-protocol, tdd, hypothesis-debugging, verification-gates, reversibl
 
 **The permissionMode caveat (important).** A subagent's `permissionMode` is **not reliably honored at runtime**, so read-only roles enforce read-only the only way that's robust: by **omitting `Edit` and `Write` from `tools`**. The `reviewing-engineer` and `incident-manager` simply have no write tools — they physically cannot edit, regardless of permission mode. The `manager` is not a subagent at all — it's the main-session agent (the operator), so it holds full tool access but defaults to orchestration.
 
-> For peer-to-peer teamwork between subagents, enable Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`); otherwise the manager orchestrates. Remove the fleet with `rm ~/.claude/agents/{techlead,…}.md` (the 8 subagents) and the skill dirs, plus `rm ~/.claude/fleet/manager.md` and delete the managed block in `~/.claude/CLAUDE.md` (the manager).
+> For peer-to-peer teamwork between subagents, enable Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`); otherwise the manager orchestrates. Remove the fleet with `rm ~/.claude/agents/{techlead,…}.md` (the 8 subagents) and the skill dirs; for the manager, just delete the managed block in `~/.claude/CLAUDE.md` (the import points at the repo file `~/ai-stack/fleet/manager.md`, so there's nothing to `rm` under `~/.claude`).
 
 ---
 

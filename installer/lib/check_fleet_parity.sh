@@ -38,7 +38,7 @@ for s in "${SKILLS[@]}"; do
 done
 
 echo "== Shared Ethos couplet present in all 27 souls =="
-souls=( agent-profiles/hermes/profiles/*/SOUL.md agent-profiles/pi/agents/*/SYSTEM.md agent-profiles/claude-code/.claude/agents/*.md )
+souls=( agent-profiles/hermes/profiles/*/SOUL.md agent-profiles/pi/agents/*/SYSTEM.md agent-profiles/claude-code/.claude/agents/*.md fleet/manager.md )
 have=0; total=0
 for f in "${souls[@]}"; do
   total=$((total+1))
@@ -59,7 +59,10 @@ done <<< "$t1"
 echo "  Tier-1: $tn bullets checked × ${#souls[@]} souls"
 
 echo "== Each role's persona body identical across its 3 framework copies =="
-ROLES9=(manager techlead frontend-engineer backend-engineer ml-engineer qa-test-engineer reviewing-engineer sre-engineer incident-manager)
+# The 8 specialists are uniform (agent-profiles/<platform>/.../<role>). The MANAGER is the MAIN
+# agent — a CLAUDE.md @-import, NOT a subagent — so its claude-code body lives at top-level
+# fleet/manager.md (D2), not under .claude/agents/; it's checked by name in check_manager_body below.
+ROLES8=(techlead frontend-engineer backend-engineer ml-engineer qa-test-engineer reviewing-engineer sre-engineer incident-manager)
 extract_body() {  # strip cc frontmatter + framework tail; print the role H1..(before tail), trailing ---/blank trimmed
   awk '
     NR==1 && /^---$/ {fm=1; next}
@@ -70,7 +73,18 @@ extract_body() {  # strip cc frontmatter + framework tail; print the role H1..(b
     started {print}
   ' "$1" | awk '{a[NR]=$0} END{last=NR; while(last>0 && (a[last]=="" || a[last]=="---")) last--; for(i=1;i<=last;i++) print a[i]}'
 }
-for r in "${ROLES9[@]}"; do
+check_manager_body() {  # manager = MAIN agent; its claude-code body is fleet/manager.md, not .claude/agents/manager.md
+  local h="agent-profiles/hermes/profiles/manager/SOUL.md"
+  local p="agent-profiles/pi/agents/manager/SYSTEM.md"
+  local c="fleet/manager.md" f
+  for f in "$h" "$p" "$c"; do [[ -f "$f" ]] || { echo "  ✗ manager: missing $f"; fail=1; return; }; done
+  if diff -q <(extract_body "$h") <(extract_body "$p") >/dev/null && diff -q <(extract_body "$h") <(extract_body "$c") >/dev/null; then
+    echo "  ✓ manager body identical ×3 (hermes == pi == fleet/manager.md)"
+  else
+    echo "  ✗ manager body DRIFT: hermes-vs-pi $(diff -q <(extract_body "$h") <(extract_body "$p") >/dev/null && echo ok || echo DIFF); hermes-vs-fleet $(diff -q <(extract_body "$h") <(extract_body "$c") >/dev/null && echo ok || echo DIFF)"; fail=1
+  fi
+}
+for r in "${ROLES8[@]}"; do
   h="agent-profiles/hermes/profiles/$r/SOUL.md"; p="agent-profiles/pi/agents/$r/SYSTEM.md"; c="agent-profiles/claude-code/.claude/agents/$r.md"
   if diff -q <(extract_body "$h") <(extract_body "$p") >/dev/null && diff -q <(extract_body "$h") <(extract_body "$c") >/dev/null; then
     echo "  ✓ $r body identical ×3"
@@ -78,9 +92,10 @@ for r in "${ROLES9[@]}"; do
     echo "  ✗ $r body DRIFT: hermes-vs-pi $(diff -q <(extract_body "$h") <(extract_body "$p") >/dev/null && echo ok || echo DIFF); hermes-vs-claude $(diff -q <(extract_body "$h") <(extract_body "$c") >/dev/null && echo ok || echo DIFF)"; fail=1
   fi
 done
+check_manager_body
 
 if (( fail )); then
-  echo "FLEET PARITY: ✗ DRIFT DETECTED — re-sync the divergent copies (edit hermes, then cp to pi + claude-code)." >&2
+  echo "FLEET PARITY: ✗ DRIFT DETECTED — re-sync the divergent copies (edit hermes, then cp to pi + claude-code; the claude-code manager copy is fleet/manager.md)." >&2
   exit 1
 fi
 echo "FLEET PARITY: ✓ all skills identical ×3 and all souls carry the Ethos couplet."
