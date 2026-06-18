@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 47 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 48 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 47
+stack doctor                    # all 48
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -82,8 +82,9 @@ installer/doctor/checks/
 ├── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
 ├── 44_mempalace.sh                         (opt-in Phase 26; conditional green-skip when not installed)
 ├── 45_tutorial.sh                          (always-on; doc/TUTORIAL.html self-contained / link-clean / in-sync)
-├── 46_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
-└── 47_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
+├── 46_agent_fleet_parity.sh                (always-on; shared skills + Tier-1 block + each role byte-identical across the 3 frameworks)
+├── 47_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
+└── 48_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -572,7 +573,7 @@ for the Meridian setup.
 
 | | |
 |---|---|
-| Asserts | When Phase 04h has run, the full **9-role** software-engineering team (`manager`, `techlead`, `frontend_engineer`, `backend_engineer`, `ml_engineer`, `qa_test_engineer`, `reviewing_engineer`, `sre_engineer`, `incident_manager`) plus its shared skills landed on both surfaces it targets: `claude-code` (`~/.claude/agents` + `~/.claude/skills`, user-global) and `pi-v1` (`/sandbox/agents/<role>/SYSTEM.md`). Also flags un-applied updates (`*.ai-stack-new` sidecars 04h writes rather than clobbering a user-edited file). Hermes's side of the same team is covered by check 30. |
+| Asserts | When Phase 04h has run, the full **9-role** software-engineering team (`manager`, `techlead`, `frontend_engineer`, `backend_engineer`, `ml_engineer`, `qa_test_engineer`, `reviewing_engineer`, `sre_engineer`, `incident_manager`) plus its shared skills landed on both surfaces it targets: `claude-code` (the `manager` as the main-agent persona via the `~/.claude/CLAUDE.md` @-import of `~/.claude/fleet/manager.md`, the other 8 roles as subagents under `~/.claude/agents`, + `~/.claude/skills`, user-global) and `pi-v1` (`/sandbox/agents/<role>/SYSTEM.md`). Also flags un-applied updates (`*.ai-stack-new` sidecars 04h writes rather than clobbering a user-edited file). Hermes's side of the same team is covered by check 30. |
 | Fails when | A role file or skill is missing on a surface where the fleet was installed, or `*.ai-stack-new` sidecars are pending review. |
 | Green-skip | No install marker on either surface (04h is not part of a minimal install). |
 
@@ -621,7 +622,19 @@ This check is **always-on** (unlike the opt-in service checks 34–38/44): both 
 
 ---
 
-## 46 · Docker engine consistency (no split-brain)
+## 46 · Agent-fleet parity across the 3 frameworks
+
+| | |
+|---|---|
+| Asserts | The 9-role fleet is byte-identical where it must be across the `claude-code`, `pi`, and `hermes` frameworks: every shared skill, the Tier-1 universal operating-principles block, and each role's body match across all three. Wraps `installer/lib/check_fleet_parity.sh`. |
+| Fails when | A skill, the Tier-1 block, or a role body drifted between frameworks (someone hand-edited a derived copy instead of the source, or `install 04h` wasn't re-run after a source edit). |
+| Auto-fix | None directly — re-run `bash vz-ai-stack.sh install 04h` to regenerate the derived `pi/` + `claude-code/` copies from the canonical `agent-profiles/` sources, then re-run doctor. |
+
+This check is **always-on**: the fleet source→derived sync model is a hard invariant, so any drift surfaces here regardless of which framework you run.
+
+---
+
+## 47 · Docker engine consistency (no split-brain)
 
 | | |
 |---|---|
@@ -629,13 +642,13 @@ This check is **always-on** (unlike the opt-in service checks 34–38/44): both 
 | Fails when | Other shells use a different engine than the pinned one, `gateway.env` points at a stale socket, or managed containers are running on a non-selected engine (split-brain — e.g. you re-pinned without recreating containers). |
 | Auto-fix | Re-pins `gateway.env` + `DOCKER_HOST` to the selected engine (`engine_pin`). It does **not** move/destroy containers: if managed containers are stranded elsewhere, it warns to either re-pin to where they live (`docker-engine set <that-engine>`) or do a guided recreate on the selected engine (conservative `recreate_guard` philosophy — never auto-destroyed). |
 
-Pass-as-skip when no engine is pinned (that case is check 47's job). A missing
+Pass-as-skip when no engine is pinned (that case is check 48's job). A missing
 `gateway.env` (pre-Phase-04 / gateway not installed) is treated as "nothing to
 compare" by design, so the silent-pass there is intentional.
 
 ---
 
-## 47 · Docker engine selection present & valid
+## 48 · Docker engine selection present & valid
 
 | | |
 |---|---|
@@ -643,8 +656,8 @@ compare" by design, so the silent-pass there is intentional.
 | Fails when | The var is empty (selection never ran — fresh box, or `.env` nuked), names an unknown id, or names an engine that has since been uninstalled. |
 | Auto-fix | Runs the interactive selector (`engine_select`) → `engine_ensure` (install-if-missing + start) → `engine_pin`. Non-interactively, set it first with `vz-ai-stack.sh docker-engine set <id>` (or `--engine <id>`). |
 
-This is the foundational engine check: 46 (consistency) pass-as-skips until 47 is
-green, so fix 47 first. See [PREREQUISITES.md](PREREQUISITES.md) for the engine matrix
+This is the foundational engine check: 47 (consistency) pass-as-skips until 48 is
+green, so fix 48 first. See [PREREQUISITES.md](PREREQUISITES.md) for the engine matrix
 and the `docker-engine` subcommand.
 
 ---

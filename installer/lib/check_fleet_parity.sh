@@ -15,7 +15,7 @@ fi
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$AI_STACK"
 
-SKILLS=(team-protocol verification-gates hypothesis-debugging reversible-changes tdd brainstorming)
+SKILLS=(team-protocol verification-gates hypothesis-debugging reversible-changes tdd brainstorming memory-management)
 HERMES_SKILLS="agent-profiles/hermes/skills"
 PI_SKILLS="agent-profiles/pi/skills"
 CLAUDE_SKILLS="agent-profiles/claude-code/.claude/skills"

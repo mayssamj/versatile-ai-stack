@@ -58,11 +58,11 @@ vz-ai-stack.sh --engine <id> <any command>  # one-off override for a single invo
 ```
 
 Phase 00 preflight selects-before-use, so an `install all` on a fresh box pins the
-engine before any container is created. Doctor checks **47** (selection present &
-valid) and **46** (no split-brain across the ambient CLI / `gateway.env` / managed
+engine before any container is created. Doctor checks **48** (selection present &
+valid) and **47** (no split-brain across the ambient CLI / `gateway.env` / managed
 containers) keep it honest. The podman/colima/docker-desktop sockets are wired but
 **less battle-tested than OrbStack** — confirm `docker-engine status` + doctor
-01/46/47 are green before relying on a non-default engine.
+01/47/48 are green before relying on a non-default engine.
 
 ## Where each tier is ensured
 
@@ -115,7 +115,7 @@ Switching engines is **reversible** — nothing is auto-destroyed at any step (n
 container is deleted, no image is removed, no volume is touched). If you switched
 engines (e.g. `docker-engine set colima`) but your managed containers actually
 live on the **previous** engine, the **docker-engine-consistency** doctor check
-(check 46) flags it as split-brain. To roll back:
+(check 47) flags it as split-brain. To roll back:
 
 1. **Re-pin to where the containers actually live:**
 
@@ -143,7 +143,7 @@ live on the **previous** engine, the **docker-engine-consistency** doctor check
 4. **Confirm it's clean:**
 
    ```bash
-   vz-ai-stack.sh doctor          # checks 01/46/47 green (engine reachable; no
+   vz-ai-stack.sh doctor          # checks 01/47/48 green (engine reachable; no
                                   # split-brain; selection present & valid)
    ```
 
@@ -170,9 +170,9 @@ On a box that has the target engine:
 ```bash
 vz-ai-stack.sh docker-engine set <engine>   # e.g. set podman
 vz-ai-stack.sh docker-engine status         # selected engine + resolved socket + consistency
-vz-ai-stack.sh doctor                        # checks 01/46/47 green before relying on it
+vz-ai-stack.sh doctor                        # checks 01/47/48 green before relying on it
 ```
 
 `docker-engine status` plus doctor checks **01** (selected engine reachable), the
-**docker-engine-consistency** check (46, no split-brain), and **47** (selection
+**docker-engine-consistency** check (47, no split-brain), and **48** (selection
 present & valid) must all be green before you trust a non-default engine.

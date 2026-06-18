@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (47 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
+- `doctor` targets **all green (48 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -562,7 +562,7 @@ A single generic chatbot is mediocre at most things. A *team* — each member wi
 
 | Role | Speciality | Use it when… | Model tier | Access |
 |---|---|---|---|---|
-| **manager** | Eng manager **+ product intake**: turns a raw request into a SPEC with testable acceptance criteria, decomposes, delegates, orchestrates the gate order + turn budget | You have a *goal*, not a task — something that needs framing, breaking down, and routing across people | opus-sub-xhigh | **operator** (executes directly when fastest; defers architecture to techlead) |
+| **manager** | **Chief of Staff · Operator · Second Brain**: the operator's single entrance — runs *all* of an EM's job (people, process & execution, info/knowledge & memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape the task needs (a spec, a decision, a status read, a memory update, a drafted message, a direct fix, or a fanned-out delivery) | You have *anything* — a goal, a question, a decision, a pile to triage — the manager is the front door and routes from there | opus-sub-xhigh | **operator** (full access bounded by team-protocol §5; executes directly when fastest; defers architecture to techlead, production to sre-engineer) |
 | **techlead** | Architecture & direction: ADRs, interface contracts, standards, design review; co-designs ML work | A change needs a design decision, an interface defined, a technology chosen, or trade-offs weighed | opus-sub-max | read-mostly (writes ADRs/design docs only) |
 | **frontend-engineer** | Accessible (WCAG 2.1 AA), performant (Core Web Vitals) UI against the contract + design system | Building/changing a UI component, styling, client state, browser data-fetching | opus-sub-max | writes UI code + its tests |
 | **backend-engineer** | Server-side APIs, services, business logic, data access; security basics (parameterized queries, authz, OWASP) | Designing/implementing an API, business logic, a schema/query, authn/authz, an integration | opus-sub-max | writes app/server/data code + tests |
@@ -596,11 +596,11 @@ Every role loads the keystone skill `team-protocol`. It is the connective tissue
 - **Escalation / dissent** — push back upward (`manager` for scope, `techlead` for technical, `human` for anything irreversible).
 - **Turn budget** — the manager enforces a global budget; a REJECT/BLOCK costs one back-edge, **max 2 per gate**, then escalate to a human (prevents infinite handoff loops).
 
-Five more shared skills back the protocol: `tdd`, `hypothesis-debugging`, `verification-gates`, `reversible-changes`, `brainstorming` — six in total, edited in one place and attached to every role.
+Five more shared skills back the protocol: `tdd`, `hypothesis-debugging`, `verification-gates`, `reversible-changes`, `brainstorming` — six in total, edited in one place and attached to every role. A seventh skill, `memory-management` (the second-brain retrieve/write protocol), is **manager-only** — installed alongside the rest so it's byte-identical across frameworks, but referenced only by the manager profile.
 
 #### The safety model (baked in, not optional)
 
-- `reviewing-engineer` and `incident-manager` are **read-only**; `manager` orchestrates and executes directly when fastest.
+- `reviewing-engineer` and `incident-manager` are **read-only**; the `manager` is the single-entrance operator — it routes and executes directly when fastest, and its own changes still pass the gates.
 - `reviewing-engineer` owns the **security pass** — there is no separate security role; a security hole is a **BLOCK**.
 - `sre-engineer` is the **only prod-credentialed role**; `incident-manager` coordinates but never touches prod.
 - On Claude Code, read-only is enforced by **omitting `Edit`/`Write` from the subagent's `tools`** (a subagent's `permissionMode` is not reliably honored at runtime).
@@ -661,7 +661,7 @@ What you should see, in order:
 
 The `sre-engineer` DEPLOY stage and the `incident-manager` are *not* exercised by a dry feature request — the SRE only deploys a merged, reviewed change, and the incident manager activates out-of-band. That's by design.
 
-> The manager is an **operator-orchestrator** — it frames, routes, and tracks, and executes directly when that's fastest; its own edits still pass the review + verification gates (it never edits to *skip* a gate). Keep the request small for your first run; the pipeline's value is the *discipline*, and that's most visible on a task you can read end-to-end.
+> The manager is the operator's **second brain / chief-of-staff / single entrance** — it frames, routes, and tracks, runs the rest of an EM's job, and executes directly when that's fastest; its own edits still pass the review + verification gates (it never edits to *skip* a gate). Keep the request small for your first run; the pipeline's value is the *discipline*, and that's most visible on a task you can read end-to-end.
 
 ---
 
@@ -691,13 +691,13 @@ Pi **cannot see** phoenix, qdrant, falkordb, openwebui, the workspace, unsloth, 
 
 ### L15 · Claude Code subagents on your machine · 🟡
 
-The same nine roles also install as **Claude Code subagents** — globally, into `~/.claude/`, so they appear in *every* Claude Code session on this Mac:
+The same nine roles also install on Claude Code — globally, into `~/.claude/`, so they appear in *every* Claude Code session on this Mac. The **manager installs as the main agent** (a clobber-safe `~/.claude/CLAUDE.md` @-import of `~/.claude/fleet/manager.md`, frontmatter stripped) — because a Claude Code subagent cannot dispatch other subagents, so the single-entrance orchestrator must *be* the main session; the **other eight roles install as subagents** (`~/.claude/agents/<role>.md`):
 
 ```bash
 vz-ai-stack.sh install agent_fleet
 ```
 
-This copies **9 agents** (`~/.claude/agents/<role>.md`) + **6 skills** (`~/.claude/skills/<skill>/SKILL.md`). The copy is **non-clobbering**: an identical file is a no-op; a file that exists and *differs* is left untouched and a `<name>.ai-stack-new` is written beside it for you to merge — your edits are never overwritten.
+This installs the **manager** as a `~/.claude/CLAUDE.md` @-import of `~/.claude/fleet/manager.md` plus the **8 subagents** (`~/.claude/agents/<role>.md`) + **7 skills** (`~/.claude/skills/<skill>/SKILL.md` — the six shared ones plus the manager-only `memory-management`). The copy is **non-clobbering**: an identical file is a no-op; a file that exists and *differs* is left untouched and a `<name>.ai-stack-new` is written beside it for you to merge — your edits are never overwritten.
 
 **Invoke a subagent** from any Claude Code session: type `/agents` to list them, or just ask Claude to use one ("have the backend-engineer subagent design this API"). Each agent's frontmatter declares its `model`, its `tools`, and its preloaded `skills`:
 
@@ -713,9 +713,9 @@ skills: [team-protocol, tdd, hypothesis-debugging, verification-gates, reversibl
 
 **Native model aliases.** Claude Code subagents use native aliases (`opus`/`sonnet`) — a different axis from the Meridian roster table above. Here the three heavy roles (manager, techlead, ml-engineer) use `opus` and the six executors use `sonnet` (the standard subagent default). The Meridian Hermes/Pi fleet is all-Opus because reasoning *effort* is its only knob; on Claude Code the model itself is the knob.
 
-**The permissionMode caveat (important).** A subagent's `permissionMode` is **not reliably honored at runtime**, so read-only roles enforce read-only the only way that's robust: by **omitting `Edit` and `Write` from `tools`**. The `reviewing-engineer` and `incident-manager` simply have no write tools — they physically cannot edit, regardless of permission mode. The `manager` keeps `Edit`/`Write` (it is the operator) but defaults to orchestration.
+**The permissionMode caveat (important).** A subagent's `permissionMode` is **not reliably honored at runtime**, so read-only roles enforce read-only the only way that's robust: by **omitting `Edit` and `Write` from `tools`**. The `reviewing-engineer` and `incident-manager` simply have no write tools — they physically cannot edit, regardless of permission mode. The `manager` is not a subagent at all — it's the main-session agent (the operator), so it holds full tool access but defaults to orchestration.
 
-> For peer-to-peer teamwork between subagents, enable Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`); otherwise the manager orchestrates. Remove the fleet with `rm ~/.claude/agents/{manager,techlead,…}.md` and the skill dirs.
+> For peer-to-peer teamwork between subagents, enable Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`); otherwise the manager orchestrates. Remove the fleet with `rm ~/.claude/agents/{techlead,…}.md` (the 8 subagents) and the skill dirs, plus `rm ~/.claude/fleet/manager.md` and delete the managed block in `~/.claude/CLAUDE.md` (the manager).
 
 ---
 
@@ -1316,7 +1316,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (47 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (48 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 

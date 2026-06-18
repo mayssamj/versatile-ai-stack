@@ -142,7 +142,7 @@ The "fleet" is the same agent run with nine different SOUL.md identities — a
 9-role software-engineering team (manager, techlead, frontend/backend/ml
 engineers, QA, reviewing engineer, SRE, incident manager) running a spec→deploy
 pipeline under a shared team-protocol. The same team is also realized as Pi
-personas and Claude Code subagents.
+personas and Claude Code agents (the manager is the main agent; the other 8 are subagents).
 
 | Alternative | Differentiator |
 |---|---|

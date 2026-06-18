@@ -6,9 +6,11 @@ portable skill library**, wrapped per framework. Specialist depth (React, Postgr
 lives in *skills* attached on demand, not as extra standing agents.
 
 ## Roster
-- **manager** — Engineering Manager / orchestrator **+ product intake**. Turns a request into a spec with
-  testable acceptance criteria, then plans, delegates, tracks, and enforces the gate order + turn budget.
-  Executes directly when fastest, else delegates; owns the outcome. (Opus)
+- **manager** — Chief of Staff / Operator / Second Brain — the operator's single entrance to the fleet. Runs
+  all of an EM's job (people, process & execution, information/knowledge & memory, decisions, communication,
+  triage) and turns intent into shipped reality in whatever shape the task needs — a spec, a decision, a status
+  read, a memory update, a drafted message, a direct fix, or a fanned-out delivery. Defers architecture to
+  techlead and production to sre-engineer; its own direct changes still pass the gates; owns the outcome. (Opus)
 - **techlead** — Tech Lead / Architect. Direction, ADRs, interface contracts, design review, standards;
   co-designs ML work with ml-engineer. (Opus)
 - **frontend-engineer** — accessible, performant UI against the contract. (Sonnet)
@@ -26,6 +28,9 @@ lives in *skills* attached on demand, not as extra standing agents.
 
 ## Shared skills (attached to every role)
 **team-protocol** · hypothesis-debugging · verification-gates · reversible-changes · tdd · brainstorming.
+A 7th skill, **memory-management** (the second-brain retrieve/write protocol), is **manager-only** — its
+SKILL.md ships byte-identical across all three frameworks so parity holds, but only the manager profile
+references it.
 `team-protocol` is the keystone — it encodes the **definition-of-done, typed handoff contract, review-gate
 ordering, escalation/dissent format, and turn budget** so the roster behaves as a team, not eight monologues.
 The rest encode the operating discipline centrally, edited in one place.
@@ -41,7 +46,7 @@ Every handoff is a typed artifact; executors don't self-delegate; a global turn 
 per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
 
 ## Key safety decisions (baked in)
-- **reviewing-engineer** and **incident-manager** are read-only; **manager** orchestrates and executes directly when fastest.
+- **reviewing-engineer** and **incident-manager** are read-only; **manager** is the single-entrance operator — it routes and executes directly when fastest, and its own direct changes still pass the gates.
 - **reviewing-engineer** owns the security pass (no separate security role); a security hole = BLOCK.
 - **sre-engineer** is the only prod-credentialed role; incident-manager coordinates but never touches prod.
 - Risky/irreversible actions (deploys, broadcasts) require explicit confirmation; mark their skills
@@ -51,7 +56,10 @@ per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
 - **Hermes** — `vz-ai-stack.sh install agent_fleet` rebuilds the `hermes-fleet-v1` fleet to these 9 roles
   (one credential-isolated profile per role; models from `installer/models.yml`, routed through LiteLLM).
 - **Pi** — phase-1 personas uploaded into the `pi-v1` sandbox; switch with `bin/pi-as <role>`.
-- **Claude Code** — the 9 agents + 6 skills are copied into `~/.claude/{agents,skills}/` (global).
+- **Claude Code** — the manager installs as the **main agent** (a clobber-safe `~/.claude/CLAUDE.md` @-import of
+  `~/.claude/fleet/manager.md`, frontmatter stripped — a Claude Code subagent can't dispatch subagents, so the
+  single-entrance orchestrator must be the main session); the other 8 roles + 7 skills are copied into
+  `~/.claude/{agents,skills}/` (global).
 
 ## Review & edit (Fleet Studio)
 Open **`vz-ai-stack.sh fleet-studio`** (serves `doc/FLEET.html` on `127.0.0.1`) to review and edit every

@@ -346,13 +346,19 @@ fi
 # single-file uploads. To eliminate ambiguity, iterate per-file like
 # Phase 15 does. Costs ~7 RPC roundtrips but they're cheap.
 log "Uploading souls + bootstrap into sandbox and running..."
+# --no-git-ignore is REQUIRED: `openshell sandbox upload` filters by .gitignore by
+# default, and BOTH staging dirs are intentionally gitignored — `openshell/fleet-souls/`
+# (.gitignore L78) and `openshell/fleet-bootstrap/` (L79) hold DERIVED artifacts. Without
+# the flag, upload silently matches 0 files, still prints "✓ Upload complete", and lands
+# NOTHING — then the SOUL_COUNT guard below aborts with "Expected 9 … found 0".
+# (Root-caused 2026-06-17; latent since the fleet-artifact gitignore landed in 537894a.)
 "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'mkdir -p /sandbox/fleet-souls /sandbox/fleet-boot' 2>&1 | tail -3 || true
 for soul_file in "$SOULS_DIR"/*.md; do
   [[ -f "$soul_file" ]] || continue
-  "$OSH" sandbox upload "$SANDBOX" "$soul_file" /sandbox/fleet-souls/ 2>&1 | tail -1 \
+  "$OSH" sandbox upload --no-git-ignore "$SANDBOX" "$soul_file" /sandbox/fleet-souls/ 2>&1 | tail -1 \
     || { err "sandbox upload soul $soul_file failed"; exit 1; }
 done
-"$OSH" sandbox upload "$SANDBOX" "$BOOT_DIR/bootstrap.sh" /sandbox/fleet-boot/ 2>&1 | tail -3 \
+"$OSH" sandbox upload --no-git-ignore "$SANDBOX" "$BOOT_DIR/bootstrap.sh" /sandbox/fleet-boot/ 2>&1 | tail -3 \
   || { err "sandbox upload bootstrap failed"; exit 1; }
 # Verify souls actually landed (defense against silent upload misbehavior).
 SOUL_COUNT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- /bin/sh -c 'ls /sandbox/fleet-souls/*.md 2>/dev/null | wc -l' 2>/dev/null | tr -d '[:space:]')"

@@ -13,7 +13,7 @@ bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, O
 bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
 sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
 bash vz-ai-stack.sh install all       # the 28 core phases (offers `setup` on first run if you skipped it)
-bash vz-ai-stack.sh doctor            # 47 checks — target all green
+bash vz-ai-stack.sh doctor            # 48 checks — target all green
 ```
 
 A plain `install all` runs `deps` for you and offers `setup` on a first run, so on a
@@ -103,7 +103,7 @@ Studio is down, so a plain `install all` works with no LM Studio.
 |---|---|---|
 | **claw3d office** | `http://claw3d:4310` | A 3D "office" where you click + chat with the stack's agents — the Hermes fleet, **Pi**, and **DeerFlow** — routed authentically through the stack-agents bridge. The friendliest front door. (The bridge's agent registry serves the 9-role fleet plus Pi and DeerFlow.) |
 | **Telegram bot** | DM `@vz_hermes_controller_bot` | The Hermes fleet from your phone. Secure-by-default: **set an allowlist or it denies everyone** — `HERMES_TELEGRAM_ALLOWED_USERS=<your-id>` in `.env`, then `stack install 20`. (Get your id from `@userinfobot`.) |
-| **Hermes fleet** | `openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_manager -m local …` | A 9-role sandboxed engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) running a spec→deploy pipeline under the shared team-protocol. Same team also runs as Pi personas + Claude Code subagents. |
+| **Hermes fleet** | `openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_manager -m local …` | A 9-role sandboxed engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) running a spec→deploy pipeline under the shared team-protocol. Same team also runs as Pi personas + Claude Code agents (the manager is the main session; the other 8 are subagents it dispatches). |
 | **Pi** | `bin/pi` | Earendil terminal coding agent, sandboxed; scoped virtual key, local-only. |
 | **DeerFlow** | `http://localhost:2026` | Multi-step LangGraph research agent. |
 | **Open WebUI** | `http://openwebui:8080` | Plain chat UI straight to LiteLLM (no agent framework). |

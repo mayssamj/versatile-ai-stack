@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **28 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **47 doctor checks**.
+- **28 core install phases** (+6 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `mempalace`), **40 services** (`services.yml`), **48 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -39,7 +39,7 @@ FalkorDB, LFM2, etc.).
 | Component | What it is | Reach it |
 |---|---|---|
 | **OpenShell** | Sandbox host for isolated agents (`hermes-fleet-v1`, `pi-v1`) | gateway `:17670` |
-| **Hermes fleet** | A 9-role engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) in the `hermes-fleet-v1` sandbox, routed to LiteLLM; same team also runs as Pi personas + Claude Code subagents, sharing the `team-protocol` skill | `openshell sandbox exec -n hermes-fleet-v1 -- hermes …` |
+| **Hermes fleet** | A 9-role engineering team (manager, techlead, frontend_engineer, backend_engineer, ml_engineer, qa_test_engineer, reviewing_engineer, sre_engineer, incident_manager) in the `hermes-fleet-v1` sandbox, routed to LiteLLM; same team also runs as Pi personas + Claude Code agents (manager = the main agent, the other 8 = subagents), sharing the `team-protocol` skill | `openshell sandbox exec -n hermes-fleet-v1 -- hermes …` |
 | **Pi** | Earendil terminal coding agent in the `pi-v1` sandbox | `bin/pi` |
 | **AutoFyn** | Multi-agent framework (dashboard + agent + sandbox) | `http://autofyn:3400` |
 | **DeerFlow** | Multi-step research agent (LangGraph) | `http://localhost:2026` |

@@ -6,9 +6,9 @@ CHECK_TITLE[docker_engine_consistency]="Docker engine consistency (no split-brai
 docker_engine_consistency_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
   local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
-  # No selection → check 47 owns that; pass-as-skip here.
+  # No selection → check 48 owns that; pass-as-skip here.
   if [[ -z "$sel" ]] || ! _engine_valid "$sel"; then
-    echo "(no engine selected — see check 47)"; return 0
+    echo "(no engine selected — see check 48)"; return 0
   fi
   local sock; sock="$(engine_socket "$sel" 2>/dev/null || echo '')"
   [[ -n "$sock" ]] || { echo "cannot resolve socket for selected engine '$sel'"; return 1; }
@@ -58,7 +58,7 @@ docker_engine_consistency_diagnose() {
 docker_engine_consistency_fix() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
   local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
-  [[ -n "$sel" ]] && _engine_valid "$sel" || { err "no valid engine selected — run check 47 fix"; return 1; }
+  [[ -n "$sel" ]] && _engine_valid "$sel" || { err "no valid engine selected — run check 48 fix"; return 1; }
   # Re-pin: rewrites gateway.env + exports DOCKER_HOST. Does NOT touch containers.
   engine_pin "$sel" || return 1
   warn "Re-pinned gateway.env + DOCKER_HOST to '$sel'."

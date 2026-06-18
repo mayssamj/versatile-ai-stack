@@ -100,7 +100,7 @@ server on `:1234`, reached via `host.docker.internal`, opt-in Phase 25).
   governed by the shared **team-protocol** skill (definition-of-done, typed
   handoffs, review gate, escalation, turn budget). The **same team is realized
   on three platforms** — Hermes profiles here, **Pi personas** (`bin/pi-as
-  <role>`), and **Claude Code subagents** (`~/.claude/agents`). All nine route
+  <role>`), and **Claude Code** (the manager is the **main agent** via `~/.claude/CLAUDE.md`; the other 8 are subagents in `~/.claude/agents`). All nine route
   to a Claude subscription via Meridian, availability-gated to `local-gemma4`
   when Meridian is down. The Hermes Telegram gateway (Phase 20) runs the
   gateway process *inside the same sandbox*.
@@ -376,7 +376,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 47_docker_engine_selection.sh  — full list in doc/DOCTOR.md (47 checks total)
+│   │       └── 23_… 48_docker_engine_selection.sh  — full list in doc/DOCTOR.md (48 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping

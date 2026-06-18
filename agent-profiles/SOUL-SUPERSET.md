@@ -6,7 +6,7 @@
 relevant feature by unilateral decision.
 
 **The two governing "soul" documents (complementary — do not conflate):**
-- [`doc/SOUL.md`](../doc/SOUL.md) — the **Operating Methodology / Constitution**: 24 numbered, procedural
+- [`doc/SOUL.md`](../doc/SOUL.md) — the **Operating Methodology / Constitution**: 25 numbered, procedural
   rules for *how to work* (verify-don't-assume, research-when-uncertain, hypothesis-first, validate every
   step, E2E from the real user, don't-drift, reversible+CHANGELOG, runtime-context, minimal-diffs, DoD,
   fact-vs-hypothesis reporting, and Rule 24 = review-by-3-agents + PM + debate-to-consensus).

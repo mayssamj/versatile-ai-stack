@@ -84,8 +84,8 @@ if grep -rnE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\"?\$\((engine_|get_env)' \
      "$AI_STACK/vz-ai-stack.sh" \
      "$AI_STACK/installer/doctor/checks/01_orbstack_running.sh" \
      "$AI_STACK/installer/doctor/checks/02_host_docker_internal.sh" \
-     "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" \
-     "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh" \
+     "$AI_STACK/installer/doctor/checks/47_docker_engine_consistency.sh" \
+     "$AI_STACK/installer/doctor/checks/48_docker_engine_selection.sh" \
      "$AI_STACK/bin/openshell-checkpoint.sh" "$AI_STACK/bin/openshell-state-restore.sh" \
      "$AI_STACK/bin/openshell-watchdog.sh" "$AI_STACK/bin/openshell-token-refresh.sh" \
      2>/dev/null | grep -vE '\|\||;[[:space:]]*\}|\bif\b|\bfor\b|\bwhile\b|&&'; then
@@ -569,24 +569,30 @@ log "13: doctor check 02 — colima diagnose builds the --add-host arg (capture 
 ok "13: doctor 02 engine-aware add-host path correct"
 
 # ===========================================================================
-# Task 14 — New doctor checks 46 (consistency / split-brain) + 47 (selection present)
+# Task 14 — New doctor checks 47 (consistency / split-brain) + 48 (selection present)
 # ===========================================================================
-# NB: this branch's doctor baseline is 45 (highest is 45_tutorial.sh; there is NO
-# 46_agent_fleet_parity.sh here). So the new files are 46 + 47, final count 47.
-log "doctor: 46 + 47 present, count == 47, exactly one 46_ ordinal (no collision)"
-[[ -f "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" ]] || { err "46 missing"; exit 1; }
-[[ -f "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh" ]] || { err "47 missing"; exit 1; }
-# Exactly ONE 46_ ordinal (our consistency check) — proves no filename collision.
-[[ "$(ls "$AI_STACK"/installer/doctor/checks/46_*.sh | wc -l | tr -d ' ')" == 1 ]] \
-  || { err "duplicate 46_ ordinal — collision"; exit 1; }
+# NB: on the post-fleet-parity main, the doctor baseline is 46 — fleet-parity's
+# 46_agent_fleet_parity.sh merged FIRST. So this feature's two checks were renumbered
+# to 47 (consistency) + 48 (selection), final count 48. The pre-existing
+# 46_agent_fleet_parity.sh MUST remain present + intact (no collision with our files).
+log "doctor: 46_agent_fleet_parity intact, 47 + 48 present, count == 48, single 47_/48_ ordinals"
+[[ -f "$AI_STACK/installer/doctor/checks/46_agent_fleet_parity.sh" ]] || { err "46_agent_fleet_parity missing (fleet-parity check clobbered)"; exit 1; }
+grep -q 'CHECKS+=(agent_fleet_parity)' "$AI_STACK/installer/doctor/checks/46_agent_fleet_parity.sh" || { err "46_agent_fleet_parity not registered (intact check)"; exit 1; }
+[[ -f "$AI_STACK/installer/doctor/checks/47_docker_engine_consistency.sh" ]] || { err "47 missing"; exit 1; }
+[[ -f "$AI_STACK/installer/doctor/checks/48_docker_engine_selection.sh" ]] || { err "48 missing"; exit 1; }
+# Exactly ONE 47_ and ONE 48_ ordinal — proves no filename collision after the renumber.
+[[ "$(ls "$AI_STACK"/installer/doctor/checks/47_*.sh | wc -l | tr -d ' ')" == 1 ]] \
+  || { err "duplicate 47_ ordinal — collision"; exit 1; }
+[[ "$(ls "$AI_STACK"/installer/doctor/checks/48_*.sh | wc -l | tr -d ' ')" == 1 ]] \
+  || { err "duplicate 48_ ordinal — collision"; exit 1; }
 n="$(ls "$AI_STACK"/installer/doctor/checks/*.sh | wc -l | tr -d ' ')"
-[[ "$n" == 47 ]] || { err "expected 47 check files, found $n"; exit 1; }
+[[ "$n" == 48 ]] || { err "expected 48 check files, found $n"; exit 1; }
 # Both new check NAMES register.
-grep -q 'CHECKS+=(docker_engine_consistency)' "$AI_STACK/installer/doctor/checks/46_docker_engine_consistency.sh" || { err "46 check not registered"; exit 1; }
-grep -q 'CHECKS+=(docker_engine_selection)'  "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh"  || { err "47 check not registered"; exit 1; }
-ok "doctor 46/47 present, 47 checks total, single 46_ ordinal"
+grep -q 'CHECKS+=(docker_engine_consistency)' "$AI_STACK/installer/doctor/checks/47_docker_engine_consistency.sh" || { err "47 check not registered"; exit 1; }
+grep -q 'CHECKS+=(docker_engine_selection)'  "$AI_STACK/installer/doctor/checks/48_docker_engine_selection.sh"  || { err "48 check not registered"; exit 1; }
+ok "doctor 46_agent_fleet_parity intact + 47/48 present, 48 checks total, single 47_/48_ ordinals"
 
-# Behavioral guard for check 47's GREEN path: diagnose MUST return 0 when a valid,
+# Behavioral guard for check 48's GREEN path: diagnose MUST return 0 when a valid,
 # installed engine is pinned. The original Task-14 test was STATIC (presence /
 # registration only) and never DROVE diagnose — this fills that gap.
 # NB on the reviewer's "missing return 0 → always RED" claim: it does NOT hold. The
@@ -596,17 +602,17 @@ ok "doctor 46/47 present, 47 checks total, single 46_ ordinal"
 # as an `if` condition). So the green path already returned 0; the added explicit
 # `return 0` is defensive clarity (robust if a later edit appends a statement), not a
 # bugfix — and this assertion correctly passes both before and after it.
-log "14-regression: check 47 diagnose GREEN when valid installed engine pinned (return 0)"
+log "14-regression: check 48 diagnose GREEN when valid installed engine pinned (return 0)"
 ( set -Eeuo pipefail; AI_STACK="$AI_STACK"; ENV_FILE="$(mktemp)"
   source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"; source "$AI_STACK/installer/lib/docker.sh"
   declare -a CHECKS; declare -A CHECK_TITLE
-  source "$AI_STACK/installer/doctor/checks/47_docker_engine_selection.sh"
+  source "$AI_STACK/installer/doctor/checks/48_docker_engine_selection.sh"
   set_env AI_STACK_DOCKER_ENGINE orbstack
   engine_installed() { return 0; }   # stub: pretend selected engine is installed
-  docker_engine_selection_diagnose >/dev/null 2>&1 || { echo "47 diagnose RED on a valid installed pin (missing return 0?)" >&2; exit 1; }
+  docker_engine_selection_diagnose >/dev/null 2>&1 || { echo "48 diagnose RED on a valid installed pin (missing return 0?)" >&2; exit 1; }
   rm -f "$ENV_FILE"
-) || { err "check 47 green-path regression failed"; exit 1; }
-ok "14-regression: check 47 diagnose green-path correct"
+) || { err "check 48 green-path regression failed"; exit 1; }
+ok "14-regression: check 48 diagnose green-path correct"
 
 # ===========================================================================
 # Task 17 — NO_PROMPT + ZERO engines installed → clean brew-remedy hard-fail
