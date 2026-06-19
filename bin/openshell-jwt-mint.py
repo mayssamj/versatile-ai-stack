@@ -21,6 +21,11 @@ This does NOT restart any container — the caller decides when to `docker resta
 """
 import argparse, base64, json, os, subprocess, sys, tempfile, time
 
+# The gateway's signing key is PKCS#8-v2 Ed25519, which macOS system LibreSSL may
+# not sign via `pkeyutl -rawin`; resolve a capable OpenSSL 3.x (env override lets
+# launchd's minimal PATH point at brew's openssl explicitly).
+OPENSSL = os.environ.get("OPENSSL_BIN", "openssl")
+
 def b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
@@ -39,7 +44,7 @@ def _ed25519_sign(signing_key: str, message: bytes) -> bytes:
     try:
         fd, md = tempfile.mkstemp(prefix=".jwtmsg."); os.write(fd, message); os.close(fd)
         sfd, sd = tempfile.mkstemp(prefix=".jwtsig."); os.close(sfd)
-        r = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", signing_key,
+        r = subprocess.run([OPENSSL, "pkeyutl", "-sign", "-inkey", signing_key,
                             "-rawin", "-in", md, "-out", sd],
                            capture_output=True, text=True)
         if r.returncode != 0:
@@ -61,7 +66,7 @@ def _ed25519_verify(pubkey: str, message: bytes, sig: bytes) -> bool:
     try:
         fd, md = tempfile.mkstemp(prefix=".jwtvm."); os.write(fd, message); os.close(fd)
         sfd, sd = tempfile.mkstemp(prefix=".jwtvs."); os.write(sfd, sig); os.close(sfd)
-        r = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", pubkey,
+        r = subprocess.run([OPENSSL, "pkeyutl", "-verify", "-pubin", "-inkey", pubkey,
                             "-rawin", "-in", md, "-sigfile", sd],
                            capture_output=True, text=True)
         return r.returncode == 0
@@ -79,6 +84,8 @@ def main() -> int:
         "~/.local/state/openshell/homebrew/tls/jwt/public.pem"), help="Ed25519 public key (PEM) for self-verify")
     ap.add_argument("--ttl", type=int, default=3600, help="new token TTL in seconds (default 3600)")
     ap.add_argument("--now", type=int, default=None, help="override 'now' epoch (testing only)")
+    ap.add_argument("--exp-only", action="store_true",
+                    help="print seconds-until-expiry (exp - now) of the EXISTING token and exit (no mint)")
     ap.add_argument("--write", action="store_true", help="actually write (default: dry-run, no changes)")
     args = ap.parse_args()
 
@@ -101,6 +108,9 @@ def main() -> int:
         die(f"unexpected alg {header.get('alg')!r} (only EdDSA supported)")
 
     now = args.now if args.now is not None else int(time.time())
+    if args.exp_only:                      # proactive-check helper for the watchdog
+        print(int(payload.get("exp", 0)) - now)
+        return 0
     new_payload = dict(payload)              # mirror ALL claims verbatim
     new_payload["iat"] = now
     new_payload["exp"] = now + args.ttl

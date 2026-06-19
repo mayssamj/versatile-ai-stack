@@ -2,11 +2,14 @@
 # openshell-watchdog.sh — auto-heal the OpenShell sandbox "expired-token storm".
 #
 # THE FAILURE (seen twice): an OpenShell sandbox's short-lived gateway token
-# expires (~8h uptime). The in-sandbox agent then retries its log-push gRPC with
-# NO backoff — hundreds of reconnects/second ("invalid token: ExpiredSignature",
-# "log push stream lost, reconnecting") — pegging ~36% CPU per sandbox, and the
-# container restart-loops. A gateway restart does NOT refresh the token; only
-# RECREATING the sandbox mints a fresh one (empirically verified 2026-05-31).
+# expires (~1h uptime — NOT ~8h; corrected 2026-06-19). The in-sandbox agent then
+# retries its log-push / inference-route gRPC with NO backoff — hundreds of
+# reconnects/second ("invalid token: ExpiredSignature", "log push stream lost,
+# reconnecting") — pegging ~36% CPU per sandbox, and the container restart-loops.
+# A gateway restart does NOT refresh the token. RECREATING mints a fresh one but
+# DESTROYS /sandbox; the NON-destructive cure is an in-place host RE-MINT — the host
+# holds the gateway Ed25519 key and the gateway validates statelessly (no jti),
+# verified 2026-06-19. See the REMINT path (bin/openshell-jwt-mint.py) below.
 #
 # THIS WATCHDOG (run every few minutes by launchd):
 #   1. For each OpenShell sandbox, detect the storm by its UNAMBIGUOUS signature
@@ -51,7 +54,26 @@ CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshol
 RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
 HALT="${AI_STACK_WATCHDOG_HALT:-1}"
 FAILMARK="$STATE/openshell-watchdog.alert"            # RED marker → doctor check 43
-SANDBOXES=(hermes-fleet-v1 pi-v1)
+# Managed sandbox set; override via AI_STACK_WATCHDOG_SANDBOXES="a b c" (testing / extra sandboxes).
+read -ra SANDBOXES <<< "${AI_STACK_WATCHDOG_SANDBOXES:-hermes-fleet-v1 pi-v1}"
+
+# --- Persistence via in-place token RE-MINT (opt-in; added 2026-06-19) --------
+# The expired-token storm's only non-destructive cure is a fresh token. Recreate
+# mints one but DESTROYS /sandbox; verified 2026-06-19 that the gateway validates
+# statelessly (no jti) so a host-minted token mirroring the claims with a fresh exp
+# is ACCEPTED — letting us refresh the SAME sandbox in place (bin/openshell-jwt-mint.py).
+#   REMINT=1   → heal a storm by re-minting (+restart) instead of halt/recreate, AND
+#                proactively re-mint BEFORE expiry so the storm never starts.
+#   PERSIST=1  → managed sandboxes are long-lived: restart=unless-stopped (survive a
+#                docker/system restart — safe now: capped + the watchdog re-mints any
+#                post-restart storm within one cycle) + the timer runs at boot (RunAtLoad).
+# Both default OFF (shared-repo safety); `install` bakes the chosen values into the plist.
+REMINT="${AI_STACK_WATCHDOG_REMINT:-0}"
+PERSIST="${AI_STACK_SANDBOX_PERSIST:-0}"
+REMINT_THRESHOLD="${AI_STACK_WATCHDOG_REMINT_THRESHOLD:-900}"   # proactively re-mint when < N s to expiry
+REMINT_RESTART="${AI_STACK_WATCHDOG_REMINT_RESTART:-1}"         # 1=docker restart after re-mint (proven); 0=rely on relay re-read
+MINT="$AI_STACK/bin/openshell-jwt-mint.py"
+TOKDIR="$HOME/.local/state/openshell/docker-sandbox-tokens/default"
 
 mkdir -p "$STATE"
 # Resolve tools (launchd has a minimal PATH).
@@ -77,6 +99,10 @@ if [[ -z "${DOCKER_HOST:-}" ]]; then
 fi
 OPENSHELL="$(_find /opt/homebrew/bin/openshell /usr/local/bin/openshell)"
 BREW="$(_find /opt/homebrew/bin/brew /usr/local/bin/brew)"
+# For in-place re-mint: python3 (stdlib only — the minter shells to openssl) + an
+# OpenSSL 3.x that can sign the PKCS#8-v2 Ed25519 key (macOS LibreSSL may not).
+PYTHON3="$(_find /usr/bin/python3 /opt/homebrew/bin/python3)"
+OPENSSL="$(_find /opt/homebrew/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl /usr/bin/openssl)"
 
 log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 notify() { /usr/bin/osascript -e "display notification \"$1\" with title \"ai-stack watchdog\"" >/dev/null 2>&1 || true; }
@@ -88,6 +114,8 @@ INTERVAL="${AI_STACK_WATCHDOG_INTERVAL:-180}"   # check every 3 min (was 600; bo
 case "${1:-run}" in
   install)
     mkdir -p "$HOME/Library/LaunchAgents"
+    # Persistence: run at boot/login (RunAtLoad) so sandboxes recover after a VM cycle.
+    RUNATLOAD="<false/>"; [[ "$PERSIST" == "1" ]] && RUNATLOAD="<true/>"
     cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -97,11 +125,14 @@ case "${1:-run}" in
     <string>/bin/bash</string><string>$AI_STACK/bin/openshell-watchdog.sh</string><string>run</string>
   </array>
   <key>StartInterval</key><integer>$INTERVAL</integer>
-  <key>RunAtLoad</key><false/>
+  <key>RunAtLoad</key>$RUNATLOAD
   <key>EnvironmentVariables</key><dict>
     <key>AI_STACK</key><string>$AI_STACK</string>
     <key>AI_STACK_WATCHDOG_HALT</key><string>${HALT}</string>
     <key>AI_STACK_WATCHDOG_RECREATE</key><string>${RECREATE}</string>
+    <key>AI_STACK_WATCHDOG_REMINT</key><string>${REMINT}</string>
+    <key>AI_STACK_SANDBOX_PERSIST</key><string>${PERSIST}</string>
+    <key>AI_STACK_WATCHDOG_REMINT_THRESHOLD</key><string>${REMINT_THRESHOLD}</string>
     <!-- The `docker` CLI is engine-AGNOSTIC: Docker Desktop / Colima / Podman all
          install it to /opt/homebrew/bin (resolved FIRST by _find, before
          ~/.orbstack/bin), so this PATH works for every engine. The ENGINE itself
@@ -187,6 +218,40 @@ _verify_ready() {
   return 1
 }
 
+# --- in-place token re-mint (persistence) -----------------------------------
+_token_path() {  # _token_path <cid> -> echo sandbox.jwt path (rc 1 if absent)
+  local cid="$1" uuid
+  uuid="$("$DOCKER" inspect "$cid" --format '{{.Name}}' 2>/dev/null \
+    | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
+  [[ -n "$uuid" && -f "$TOKDIR/$uuid/sandbox.jwt" ]] || return 1
+  echo "$TOKDIR/$uuid/sandbox.jwt"
+}
+_token_secs_left() {  # _token_secs_left <tokenpath> -> echo seconds-to-expiry
+  [[ -n "$PYTHON3" && -f "$MINT" && -f "$1" ]] || return 1
+  OPENSSL_BIN="$OPENSSL" "$PYTHON3" "$MINT" --token "$1" --exp-only 2>/dev/null
+}
+_remint_file() {  # _remint_file <name> <tok> -> 0 if a fresh token was written
+  [[ -n "$PYTHON3" && -f "$MINT" && -n "$OPENSSL" ]] || { log "  re-mint($1): python3/minter/openssl unavailable"; return 1; }
+  OPENSSL_BIN="$OPENSSL" "$PYTHON3" "$MINT" --token "$2" --write >>"$LOG" 2>&1 \
+    || { log "  re-mint($1): mint FAILED (original token + .bak intact)"; return 1; }
+}
+# Reactive heal (PROVEN path): re-mint + docker restart (forces re-bootstrap on the
+# fresh token) + relaunch in-sandbox daemons that a restart kills. State in /sandbox
+# survives a docker restart, so this is NON-destructive (no delete, no recreate).
+_remint_heal() {  # _remint_heal <name> <cid> -> 0 healed
+  local name="$1" cid="$2" tok relaunch cpath
+  tok="$(_token_path "$cid")" || { log "  re-mint($name): no token file"; return 1; }
+  _remint_file "$name" "$tok" || return 1
+  "$DOCKER" restart "$cid" >>"$LOG" 2>&1 || { log "  re-mint($name): docker restart failed"; return 1; }
+  _verify_ready "$name" || { log "  re-mint($name): NOT Ready after restart"; return 1; }
+  case "$name" in hermes-fleet-v1) relaunch="20" ;; *) relaunch="" ;; esac   # telegram daemon
+  if [[ -n "$relaunch" ]]; then
+    cpath="$(_child_path)"
+    _phase_install "$cpath" $relaunch || log "  re-mint($name): daemon relaunch (phase $relaunch) had issues"
+  fi
+  return 0
+}
+
 handle_storm() {  # handle_storm <name> <cid>
   local name="$1" cid="$2" phases
   case "$name" in
@@ -196,6 +261,18 @@ handle_storm() {  # handle_storm <name> <cid>
     pi-v1) phases="15" ;;
     *)     phases="" ;;
   esac
+
+  # PERSISTENCE (REMINT=1): try the NON-DESTRUCTIVE in-place re-mint heal FIRST —
+  # keeps the SAME sandbox + /sandbox state (no delete, no recreate). Only fall
+  # through to the destructive halt/recreate paths if re-mint is unavailable/fails.
+  if [[ "$REMINT" == "1" ]]; then
+    if _remint_heal "$name" "$cid"; then
+      log "  HEALED $name via in-place token re-mint + restart (state preserved, no recreate)"
+      rm -f "$FAILMARK"; notify "$name token re-minted ✓ (persisted, no data loss)"
+      return 0
+    fi
+    log "  re-mint heal FAILED for $name — falling back to the halt/recreate path"
+  fi
 
   # DEFAULT (RECREATE!=1): NEVER auto-destroy. With HALT=1 (now default) cap + stop the
   # storming container to kill the CPU burn — non-destructive (writable layer preserved;
@@ -263,7 +340,33 @@ acted=0
 for name in "${SANDBOXES[@]}"; do
   cid="$("$DOCKER" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
   [[ -n "$cid" ]] || continue
-  if _is_storming "$cid"; then
+
+  # Persistence: keep managed containers on restart=unless-stopped so they survive a
+  # docker/system restart (safe now: capped + the storm-heal below re-mints any
+  # post-restart storm within one cycle — not the 2026-06-08 uncapped/no-heal vector).
+  if [[ "$PERSIST" == "1" ]]; then
+    cur_rp="$("$DOCKER" inspect "$cid" --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null || echo)"
+    [[ "$cur_rp" != "unless-stopped" ]] && { "$DOCKER" update --restart=unless-stopped "$cid" >>"$LOG" 2>&1 \
+      && log "persistence: $name restart-policy -> unless-stopped" || true; }
+  fi
+
+  storming=0; _is_storming "$cid" && storming=1
+
+  # PROACTIVE re-mint: refresh the token in place BEFORE it expires so the storm never
+  # starts. No restart (best-effort — relies on the relay re-reading the file; the
+  # reactive storm-heal below is the PROVEN safety net if the relay cached the old token).
+  if [[ "$REMINT" == "1" && "$storming" == "0" ]]; then
+    tok="$(_token_path "$cid" 2>/dev/null || true)"
+    if [[ -n "$tok" ]]; then
+      left="$(_token_secs_left "$tok" 2>/dev/null || echo)"
+      if [[ "$left" =~ ^-?[0-9]+$ ]] && (( left < REMINT_THRESHOLD )); then
+        log "PROACTIVE re-mint $name (~${left}s to expiry < ${REMINT_THRESHOLD}s; in place, no restart)"
+        _remint_file "$name" "$tok" && acted=1 || true
+      fi
+    fi
+  fi
+
+  if [[ "$storming" == "1" ]]; then
     if _throttled "$name"; then
       log "$name is storming but throttled (acted < ${THROTTLE_SECS}s ago) — skipping"
     else
