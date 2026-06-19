@@ -71,7 +71,9 @@ read -ra SANDBOXES <<< "${AI_STACK_WATCHDOG_SANDBOXES:-hermes-fleet-v1 pi-v1}"
 REMINT="${AI_STACK_WATCHDOG_REMINT:-0}"
 PERSIST="${AI_STACK_SANDBOX_PERSIST:-0}"
 REMINT_THRESHOLD="${AI_STACK_WATCHDOG_REMINT_THRESHOLD:-900}"   # proactively re-mint when < N s to expiry
-REMINT_RESTART="${AI_STACK_WATCHDOG_REMINT_RESTART:-1}"         # 1=docker restart after re-mint (proven); 0=rely on relay re-read
+# NOTE: the two re-mint paths differ BY DESIGN — proactive (pre-expiry) rewrites the
+# token file with NO restart (best-effort, zero-blip); reactive (storm detected) always
+# re-mints + docker restart (the PROVEN heal). There is intentionally no restart toggle.
 MINT="$AI_STACK/bin/openshell-jwt-mint.py"
 TOKDIR="$HOME/.local/state/openshell/docker-sandbox-tokens/default"
 
@@ -146,13 +148,21 @@ case "${1:-run}" in
 PL
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load "$PLIST" 2>/dev/null || true
-    echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s)"; exit 0 ;;
+    # Fire one cycle NOW so persistence takes effect immediately (don't wait a full
+    # interval). RunAtLoad covers boot; this covers install-time + shrinks the post-reboot
+    # window where an auto-restarted container could briefly storm before the first cycle.
+    launchctl kickstart -k "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl start "$LABEL" 2>/dev/null || true
+    echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false))"; exit 0 ;;
   uninstall)
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
     rm -f "$PLIST"; echo "openshell-watchdog launchd job removed"; exit 0 ;;
   status)
     launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | grep -iE 'state|pid|last exit|runs' | head \
       || echo "launchd job not loaded"
+    echo "--- persistence mode (baked into installed plist) ---"
+    grep -E 'AI_STACK_WATCHDOG_REMINT|AI_STACK_SANDBOX_PERSIST|RunAtLoad' "$PLIST" 2>/dev/null \
+      | sed -E 's/<key>|<\/key>|<string>|<\/string>|<|\/>/ /g; s/  +/ /g; s/^ //' \
+      || echo "(plist not installed)"
     echo "--- recent watchdog log ($LOG) ---"; tail -n 15 "$LOG" 2>/dev/null || echo "(no log yet)"; exit 0 ;;
   run) : ;;   # fall through to the detection cycle below
   *) echo "usage: openshell-watchdog.sh [run|install|uninstall|status]" >&2; exit 2 ;;
@@ -243,8 +253,13 @@ _remint_heal() {  # _remint_heal <name> <cid> -> 0 healed
   tok="$(_token_path "$cid")" || { log "  re-mint($name): no token file"; return 1; }
   _remint_file "$name" "$tok" || return 1
   "$DOCKER" restart "$cid" >>"$LOG" 2>&1 || { log "  re-mint($name): docker restart failed"; return 1; }
-  _verify_ready "$name" || { log "  re-mint($name): NOT Ready after restart"; return 1; }
-  case "$name" in hermes-fleet-v1) relaunch="20" ;; *) relaunch="" ;; esac   # telegram daemon
+  # rc 2 = minted + restarted but not Ready YET. Caller must NOT fall through to the
+  # destructive halt/recreate (that would discard the fresh-token state); next cycle re-checks.
+  _verify_ready "$name" || { log "  re-mint($name): minted+restarted, not Ready yet — leaving it for the next cycle"; return 2; }
+  # Relaunch in-sandbox daemons a docker restart kills. /sandbox state itself survives a
+  # restart. hermes-fleet-v1 runs the persistent Telegram gateway (phase 20); pi-v1 has NO
+  # persistent daemon (Pi is launched on demand by bin/pi), so it needs no relaunch.
+  case "$name" in hermes-fleet-v1) relaunch="20" ;; *) relaunch="" ;; esac
   if [[ -n "$relaunch" ]]; then
     cpath="$(_child_path)"
     _phase_install "$cpath" $relaunch || log "  re-mint($name): daemon relaunch (phase $relaunch) had issues"
@@ -266,12 +281,16 @@ handle_storm() {  # handle_storm <name> <cid>
   # keeps the SAME sandbox + /sandbox state (no delete, no recreate). Only fall
   # through to the destructive halt/recreate paths if re-mint is unavailable/fails.
   if [[ "$REMINT" == "1" ]]; then
-    if _remint_heal "$name" "$cid"; then
+    local _rc=0; _remint_heal "$name" "$cid" || _rc=$?
+    if (( _rc == 0 )); then
       log "  HEALED $name via in-place token re-mint + restart (state preserved, no recreate)"
       rm -f "$FAILMARK"; notify "$name token re-minted ✓ (persisted, no data loss)"
       return 0
+    elif (( _rc == 2 )); then
+      log "  $name re-minted + restarted, awaiting Ready — NOT halting/recreating (fresh-token state preserved; re-checked next cycle)"
+      return 0
     fi
-    log "  re-mint heal FAILED for $name — falling back to the halt/recreate path"
+    log "  re-mint heal FAILED for $name (mint/restart error, rc=$_rc) — falling back to the halt/recreate path"
   fi
 
   # DEFAULT (RECREATE!=1): NEVER auto-destroy. With HALT=1 (now default) cap + stop the
@@ -336,6 +355,16 @@ handle_storm() {  # handle_storm <name> <cid>
   fi
 }
 
+# Loud guards for the silent-failure configs the review flagged (run once per cycle).
+if [[ "$PERSIST" == "1" && "$REMINT" != "1" ]]; then
+  log "WARNING: PERSIST=1 but REMINT!=1 — NOT applying restart=unless-stopped (unsafe without the re-mint heal). Re-install with AI_STACK_WATCHDOG_REMINT=1."
+fi
+if [[ "$REMINT" == "1" ]]; then
+  if [[ -z "$OPENSSL" ]] || "$OPENSSL" version 2>/dev/null | grep -qi 'libressl'; then
+    log "WARNING: REMINT=1 but no OpenSSL 3.x resolved (got '${OPENSSL:-none}'); macOS LibreSSL cannot sign the gateway key — re-mint WILL fail. Run: brew install openssl@3."
+  fi
+fi
+
 acted=0
 for name in "${SANDBOXES[@]}"; do
   cid="$("$DOCKER" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
@@ -344,7 +373,11 @@ for name in "${SANDBOXES[@]}"; do
   # Persistence: keep managed containers on restart=unless-stopped so they survive a
   # docker/system restart (safe now: capped + the storm-heal below re-mints any
   # post-restart storm within one cycle — not the 2026-06-08 uncapped/no-heal vector).
-  if [[ "$PERSIST" == "1" ]]; then
+  # restart=unless-stopped is ONLY safe paired with REMINT (the heal that re-mints a
+  # post-restart storm). Without REMINT an auto-resurrected sandbox could storm with only
+  # the destructive halt/recreate fallback — so require BOTH. (A loud warning for the
+  # PERSIST=1/REMINT=0 misconfig is emitted once per cycle below the loop.)
+  if [[ "$PERSIST" == "1" && "$REMINT" == "1" ]]; then
     cur_rp="$("$DOCKER" inspect "$cid" --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null || echo)"
     [[ "$cur_rp" != "unless-stopped" ]] && { "$DOCKER" update --restart=unless-stopped "$cid" >>"$LOG" 2>&1 \
       && log "persistence: $name restart-policy -> unless-stopped" || true; }

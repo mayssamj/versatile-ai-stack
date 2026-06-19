@@ -44,11 +44,14 @@ def _ed25519_sign(signing_key: str, message: bytes) -> bytes:
     try:
         fd, md = tempfile.mkstemp(prefix=".jwtmsg."); os.write(fd, message); os.close(fd)
         sfd, sd = tempfile.mkstemp(prefix=".jwtsig."); os.close(sfd)
-        r = subprocess.run([OPENSSL, "pkeyutl", "-sign", "-inkey", signing_key,
-                            "-rawin", "-in", md, "-out", sd],
-                           capture_output=True, text=True)
+        try:
+            r = subprocess.run([OPENSSL, "pkeyutl", "-sign", "-inkey", signing_key,
+                                "-rawin", "-in", md, "-out", sd],
+                               capture_output=True, text=True)
+        except (FileNotFoundError, PermissionError) as e:
+            die(f"openssl not runnable ({OPENSSL!r}): {e} — need OpenSSL 3.x (set OPENSSL_BIN)", 3)
         if r.returncode != 0:
-            die(f"openssl signing failed: {r.stderr.strip()}")
+            die(f"openssl signing failed (need OpenSSL 3.x, not LibreSSL): {r.stderr.strip()[:300]}")
         sig = open(sd, "rb").read()
         if len(sig) != 64:
             die(f"unexpected Ed25519 signature length {len(sig)} (want 64)")
@@ -95,7 +98,8 @@ def main() -> int:
         die(f"signing key not found: {args.signing_key}", 2)
 
     try:
-        raw = open(args.token).read().strip()
+        with open(args.token) as f:
+            raw = f.read().strip()
         parts = raw.split(".")
         if len(parts) != 3:
             die(f"not a 3-part JWS ({len(parts)} parts)")
@@ -122,6 +126,12 @@ def main() -> int:
     sig = _ed25519_sign(args.signing_key, signing_input.encode("ascii"))
     new_token = signing_input + "." + b64url_encode(sig)
 
+    # Refuse to write a token we can't self-verify against the gateway's PUBLIC key:
+    # catches a stale/rotated signing key (kid mismatch) before the gateway would
+    # reject it — otherwise the watchdog "heals" while the sandbox keeps storming.
+    if os.path.isfile(args.pubkey) and not _ed25519_verify(args.pubkey, signing_input.encode("ascii"), sig):
+        die("minted signature FAILED self-verify vs public.pem (stale/rotated signing key?) — refusing to write", 3)
+
     print(f"  sandbox_id : {new_payload.get('sandbox_id')}")
     print(f"  kid        : {header.get('kid')}")
     print(f"  old exp    : {payload.get('exp')}  new exp: {new_payload['exp']}  (+{args.ttl}s from now={now})")
@@ -134,12 +144,12 @@ def main() -> int:
             print("  self-verify: SKIPPED/failed (public.pem absent or mismatch) — informational only")
         return 0
 
-    # atomic write with mandatory backup
+    # atomic write; .bak ALWAYS holds the token we are about to displace (true 1-deep
+    # rollback — not just the first-ever token), written + fsync'd BEFORE the replace.
     bak = args.token + ".bak"
     try:
-        if not os.path.exists(bak):
-            with open(bak, "w") as f:
-                f.write(raw)
+        with open(bak, "w") as f:
+            f.write(raw); f.flush(); os.fsync(f.fileno())
         d = os.path.dirname(args.token)
         fd, tmp = tempfile.mkstemp(dir=d, prefix=".jwt.", suffix=".tmp")
         with os.fdopen(fd, "w") as f:
