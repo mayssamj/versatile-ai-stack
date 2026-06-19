@@ -170,8 +170,20 @@ esac
 
 [[ -n "$DOCKER" ]] || { log "FATAL: docker not found"; exit 0; }
 
-# Single-instance: skip if a prior watchdog run is still going.
-if ! mkdir "$LOCK" 2>/dev/null; then exit 0; fi
+# Single-instance lock, with STALE RECLAIM: a watchdog run killed mid-cycle (e.g. by a
+# reboot — observed 2026-06-19) leaves the lock dir behind, which would silently wedge
+# EVERY future run (mkdir fails -> exit 0 forever -> persistence dies quietly). So if the
+# lock exists but is older than the max plausible run (10 min), reclaim it and proceed.
+if ! mkdir "$LOCK" 2>/dev/null; then
+  _lock_age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || echo 0) ))
+  if (( _lock_age > 600 )); then
+    log "reclaiming STALE watchdog lock (age ${_lock_age}s > 600s — a prior run was killed/rebooted mid-cycle)"
+    rmdir "$LOCK" 2>/dev/null || rm -rf "$LOCK" 2>/dev/null || true
+    mkdir "$LOCK" 2>/dev/null || exit 0
+  else
+    exit 0   # a recent run is genuinely still in flight
+  fi
+fi
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
 # Defer if an install is in progress (avoid fighting over sandboxes).
