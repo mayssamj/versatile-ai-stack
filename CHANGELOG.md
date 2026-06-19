@@ -4,6 +4,15 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-19
+
+### Features
+
+- openshell persistence (opt-in): OpenShell fleet sandboxes can now **persist across token expiry, Docker restarts, and system/VM reboots WITHOUT recreate** — the same container + `/sandbox` state survive. OpenShell's gateway issues 1h **non-refreshable** Ed25519 tokens (no `--ttl`); the only non-destructive cure is an **in-place host re-mint**, proven feasible 2026-06-19 (the gateway validates statelessly — no `jti` — so a host-minted token mirroring the original claims with a fresh `exp` + a valid signature under the gateway's on-disk key is accepted and heals an expired sandbox).
+  - New `bin/openshell-jwt-mint.py`: hardened in-place re-mint. Signs via `openssl pkeyutl` (the gateway key is PKCS#8-v2, which `cryptography` 48 rejects); mirrors all claims with a fresh `iat`/`exp`; atomic write + a true 1-deep `.bak` (the displaced token); refuses to write a token that fails self-verify vs `public.pem` (catches a stale/rotated signing key); **no shell interpolation of token/key bytes** (the security-safe rewrite the 2026-06-08 audit required; supersedes the disabled `openshell-token-refresh.sh`). `--exp-only` for the watchdog's proactive check; `OPENSSL_BIN` override for launchd.
+  - `bin/openshell-watchdog.sh` gains **REMINT** mode (`AI_STACK_WATCHDOG_REMINT=1`): heal a storm by re-minting + restart + relaunching in-sandbox daemons (Telegram = phase 20) instead of the destructive halt/recreate, AND proactively re-mint when a token is `<REMINT_THRESHOLD` (900s) to expiry; and **PERSIST** mode (`AI_STACK_SANDBOX_PERSIST=1`): `restart=unless-stopped` on managed sandboxes (gated on REMINT for safety) + `RunAtLoad` so a reboot auto-recovers. Both default OFF (shared-repo safety); `install` bakes the chosen values into the plist and kickstarts one cycle. `AI_STACK_WATCHDOG_SANDBOXES` override added for testing/extra sandboxes; `status` surfaces the persistence mode.
+  - **Verified:** throwaway-sandbox tests — expired→Error then re-mint+restart→Ready+relay-live; watchdog PROACTIVE (300s→3592s, no restart) + REACTIVE (Provisioning→Ready, `WD_HEAL_OK`, `restart-policy unless-stopped`). 3-reviewer §24 council (security/correctness · adversarial · QA/infra) → all *ship-with-fixes* → consensus fixes applied (PERSIST⇒REMINT guard, partial-failure rc-2 no-destroy, `.bak` rollback, LibreSSL/missing-openssl loud-fail, self-verify-before-write, dead-flag removal). Neither the 2026-06-08 host-hang nor the 2026-06-03 data-loss vector is reintroduced (caps bound any storm; re-mint never deletes). **Pending wall-clock validation:** a real >1h survival run + a true reboot. See [[project_fleet_durability]] (2026-06-19 note) and `bin/openshell-jwt-mint.py`.
+
 ## 2026-06-17
 
 ### Features
