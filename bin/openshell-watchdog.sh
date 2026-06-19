@@ -105,6 +105,10 @@ BREW="$(_find /opt/homebrew/bin/brew /usr/local/bin/brew)"
 # OpenSSL 3.x that can sign the PKCS#8-v2 Ed25519 key (macOS LibreSSL may not).
 PYTHON3="$(_find /usr/bin/python3 /opt/homebrew/bin/python3)"
 OPENSSL="$(_find /opt/homebrew/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl /usr/bin/openssl)"
+# This script uses bash 4+ (associative arrays). macOS system /bin/bash is 3.2, so the
+# launchd plist must invoke a bash 4+ (brew). Fall back to /bin/bash only if none found
+# (the generic-net is then version-guarded so it still won't crash).
+BASH4="$(_find /opt/homebrew/bin/bash /usr/local/bin/bash)"
 
 log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 notify() { /usr/bin/osascript -e "display notification \"$1\" with title \"ai-stack watchdog\"" >/dev/null 2>&1 || true; }
@@ -118,13 +122,14 @@ case "${1:-run}" in
     mkdir -p "$HOME/Library/LaunchAgents"
     # Persistence: run at boot/login (RunAtLoad) so sandboxes recover after a VM cycle.
     RUNATLOAD="<false/>"; [[ "$PERSIST" == "1" ]] && RUNATLOAD="<true/>"
+    [[ -n "$BASH4" ]] || echo "⚠ no bash 4+ found (run: brew install bash) — plist will use /bin/bash 3.2; sandbox persistence still works, only the generic CPU-runaway net is skipped"
     cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key><array>
-    <string>/bin/bash</string><string>$AI_STACK/bin/openshell-watchdog.sh</string><string>run</string>
+    <string>${BASH4:-/bin/bash}</string><string>$AI_STACK/bin/openshell-watchdog.sh</string><string>run</string>
   </array>
   <key>StartInterval</key><integer>$INTERVAL</integer>
   <key>RunAtLoad</key>$RUNATLOAD
@@ -423,18 +428,26 @@ for name in "${SANDBOXES[@]}"; do
   fi
 done
 
-# Generic runaway net: any managed container pegged across two ~3s samples.
-declare -A s1
-while IFS=$'\t' read -r nm cpu; do s1["$nm"]="${cpu%\%}"; done < <("$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)
-sleep 3
-while IFS=$'\t' read -r nm cpu; do
-  c2="${cpu%\%}"; c1="${s1[$nm]:-0}"
-  # integer compare (strip decimals)
-  if (( ${c1%.*} > CPU_WARN )) && (( ${c2%.*} > CPU_WARN )); then
-    # sandboxes self-heal above; here we just surface non-sandbox runaways.
-    [[ "$nm" == openshell-* ]] || log "RUNAWAY: container '$nm' sustained CPU ${c1}%/${c2}% (> ${CPU_WARN}%) — investigate ('docker logs $nm')"
-  fi
-done < <("$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)
+# Generic runaway net: any managed container pegged across two ~3s samples. Uses an
+# associative array (`declare -A`), which needs bash 4+. Guard it so this script NEVER
+# crashes under macOS system bash 3.2 (e.g. a plist that calls /bin/bash) — the
+# sandbox persistence loop above is the critical path and is bash-3.2-safe; only this
+# secondary non-sandbox CPU net is skipped on old bash. (The plist now prefers brew bash.)
+if (( BASH_VERSINFO[0] >= 4 )); then
+  declare -A s1
+  while IFS=$'\t' read -r nm cpu; do s1["$nm"]="${cpu%\%}"; done < <("$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)
+  sleep 3
+  while IFS=$'\t' read -r nm cpu; do
+    c2="${cpu%\%}"; c1="${s1[$nm]:-0}"
+    # integer compare (strip decimals)
+    if (( ${c1%.*} > CPU_WARN )) && (( ${c2%.*} > CPU_WARN )); then
+      # sandboxes self-heal above; here we just surface non-sandbox runaways.
+      [[ "$nm" == openshell-* ]] || log "RUNAWAY: container '$nm' sustained CPU ${c1}%/${c2}% (> ${CPU_WARN}%) — investigate ('docker logs $nm')"
+    fi
+  done < <("$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)
+else
+  log "note: generic CPU-runaway net skipped (bash ${BASH_VERSINFO[0]} < 4; sandbox persistence ran above)"
+fi
 
 (( acted == 1 )) && log "watchdog cycle acted on a storm" || true
 exit 0
