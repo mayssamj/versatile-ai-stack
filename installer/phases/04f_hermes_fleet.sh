@@ -10,6 +10,7 @@ AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"   # get_env/set_env for HERMES_LITELLM_KEY
 source "$AI_STACK/installer/lib/openshell.sh"  # openshell_token_storm (expired-token detection)
+source "$AI_STACK/installer/lib/mcp.sh"        # configure_hermes_mcp_sourcegraph (gated on SG token)
 
 PHASE=04f
 SANDBOX=hermes-fleet-v1
@@ -491,6 +492,14 @@ if [[ "$VERIFY_OUT" == "WIRED" ]]; then
 else
   warn "hermes_manager LiteLLM routing not detected (got '${VERIFY_OUT:-none}') — check with: openshell sandbox exec -n $SANDBOX --no-tty -- hermes --profile hermes_manager config check"
 fi
+
+# --- Wire the fleet to the local Sourcegraph MCP (opt-in, gated) -----------
+# Non-fatal + gated on the SG token: if Sourcegraph isn't installed (no token at
+# ~/.sourcegraph-local/sg-token) this prints a one-line skip note and returns 0,
+# so a fleet rebuild stays green when SG is absent. When SG IS installed, every
+# profile gets the `sourcegraph` MCP server (12 code-search tools). Shared with
+# Phase 27 via lib/mcp.sh so install order (SG-first vs fleet-first) doesn't matter.
+configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "Sourcegraph MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install 04f' after fixing)"
 
 stamp_mark "$PHASE"
 record "phase 04·F complete: $_EXPECT hermes profiles bootstrapped + routed to LiteLLM ($HERMES_MODEL) in sandbox $SANDBOX"

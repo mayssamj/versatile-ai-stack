@@ -348,7 +348,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
 │   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
 │   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
-│   │   ├── 21 … 26                  — opt-in extras (install BY NAME): portless … mempalace
+│   │   ├── 21 … 27                  — opt-in extras (install BY NAME): portless … sourcegraph
 │   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
@@ -376,7 +376,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 48_docker_engine_selection.sh  — full list in doc/DOCTOR.md (48 checks total)
+│   │       └── 23_… 49_sourcegraph_mcp.sh  — full list in doc/DOCTOR.md (49 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
@@ -453,8 +453,8 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-34 phase scripts (`installer/phases/00_host.sh` through `26_mempalace.sh`; 6 of
-them — 21–26 — are opt-in extras installed by name), each:
+35 phase scripts (`installer/phases/00_host.sh` through `27_sourcegraph.sh`; 7 of
+them — 21–27 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.

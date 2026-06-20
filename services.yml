@@ -1052,6 +1052,40 @@ services:
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
         "reviewed": true
+  sourcegraph:
+    enabled: true # Phase 27 (opt-in) — local self-hosted Sourcegraph + fleet MCP
+    type: docker
+    desc: "Local self-hosted Sourcegraph (code search) + native MCP for the Hermes fleet"
+    image: sourcegraph/server:6.12.5040
+    phase: "27"
+    # Host-port LOOPBACK service — NOT on the ai-stack bridge and intentionally
+    # absent from installer/lib/aliases.tsv (it dials no other stack service).
+    # Reached at http://localhost:7080 (host) and host.docker.internal:7080 (the
+    # hermes-fleet-v1 sandbox, gated by the sourcegraph_mcp network-policy stanza).
+    network: none
+    bind: 127.0.0.1
+    port: 7080
+    health: http://localhost:7080/
+    open_url: http://localhost:7080
+    consumes_env:
+      - SOURCEGRAPH_ADMIN_PASSWORD
+      - SOURCEGRAPH_INDEX_REPOS
+    help:
+      "what": A local, self-hosted Sourcegraph (the LAST single-container tag, 6.12.5040, amd64-emulated on Apple Silicon) that indexes your repos for code search AND exposes a native MCP server (12 tools — keyword_search, nls_search, read_file, go_to_definition, find_references, …) at http://localhost:7080/.api/mcp. Opt-in Phase 27 deploys it, bootstraps the admin + a user:all token, indexes the configured repo, and wires every Hermes fleet profile to it.
+      "why": Reach for it when you want the Hermes fleet (or Claude Code) to search real code semantically/structurally instead of grepping. The fleet's profiles gain a `sourcegraph` MCP server automatically once this is installed; a fleet built later auto-wires via Phase 04f.
+      "usage":
+        - vz-ai-stack.sh install sourcegraph
+        - vz-ai-stack.sh start sourcegraph
+        - open http://localhost:7080
+        - 'curl -s -X POST http://localhost:7080/.api/mcp -H "Authorization: token $(cat ~/.sourcegraph-local/sg-token)" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d ''{"jsonrpc":"2.0","id":1,"method":"tools/list"}'''
+        - 'stack doctor sourcegraph   # doctor check 49 (skip-clean when SG absent)'
+        - docker logs -f sourcegraph
+        - vz-ai-stack.sh stop sourcegraph
+      "config_notes": "OPT-IN: a ~4GB amd64-emulated container, so it is NOT in `install all` — install it by name. AUTO-START: it runs --restart unless-stopped, so it returns whenever the Docker engine daemon starts; on OrbStack/Docker Desktop the daemon auto-starts at login (survives reboot), but on Colima/Podman the engine does NOT auto-start by default (start it, or the container, after a reboot — the guarantee is the engine's, not a launchd unit). Bound to 127.0.0.1:7080 (loopback only — not exposed on the LAN). Data lives at ~/.sourcegraph-local/{config,data} (OUTSIDE the repo data/ tree — preserved across container recreate; removed only by `reset nuke`, which backs it up first). The admin password is generated and stored in .env (SOURCEGRAPH_ADMIN_PASSWORD, 0600). The fleet token is at ~/.sourcegraph-local/sg-token (0600) and is seeded into each profile's in-sandbox .env as MCP_SOURCEGRAPH_API_KEY (never in argv/log). To index different repos set SOURCEGRAPH_INDEX_REPOS (space-separated owner/name) before install."
+      "_gen":
+        "at": "2026-06-20T00:00:00Z"
+        "source": phase-27-sourcegraph
+        "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:

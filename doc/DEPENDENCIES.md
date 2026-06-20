@@ -396,7 +396,7 @@ graph TD
   p18[Phase 18 rlm]:::opt
   p19[Phase 19 claw3d office + bridge]:::opt
   p20[Phase 20 hermes_telegram gateway]:::opt
-  p21_26[Phases 21-26 opt-in extras<br/>install BY NAME: portless ... mempalace]:::opt
+  p21_26[Phases 21-27 opt-in extras<br/>install BY NAME: portless ... sourcegraph]:::opt
   p04h[Phase 04 H agent_fleet - RUNS LAST<br/>cross-platform 9-role fleet -> pi-v1 Phase 15 + Claude Code<br/>widens PI/HERMES virtual keys]:::sec
 
   p00 --> p00s --> p01 --> p01h

@@ -49,7 +49,7 @@ diff, a blocked attack.
 ---
 ## Act I — Arrival
 
-This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 40 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
+This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 41 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
 ---
 
@@ -63,7 +63,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 
 1. The one thing to internalize: every AI request funnels through **LiteLLM at `http://litellm:4000/v1`**. Point any app, agent, or `curl` at that one endpoint and you get model routing, scoped keys, and call-by-call tracing for free.
 2. Everything is **local-first**: models, memory, traces, and documents all stay on your machine. It works fully offline; cloud is opt-in only when you hand it your own keys.
-3. The ~40 services sort into layers:
+3. The ~41 services sort into layers:
    - **Inference plane** — LiteLLM (the hub), Ollama (local models), Phoenix (tracing).
    - **Storage + memory** — Honcho (conversation memory + Postgres), Qdrant (vectors), FalkorDB (graph).
    - **Agents + fleets** — the Hermes fleet, Pi, OpenShell sandbox, DeerFlow, ACE, RLM, HALO.
@@ -162,7 +162,7 @@ bash vz-ai-stack.sh install 01h         # by id
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
 
-The **opt-in extras (Phases 21–26: portless · cmux · skillspector · openagents · lmstudio · mempalace)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
+The **opt-in extras (Phases 21–27: portless · cmux · skillspector · openagents · lmstudio · mempalace · sourcegraph)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
 
 > **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
 
@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (48 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace when that opt-in extra is installed.
+- `doctor` targets **all green (49 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace and check 49 covers the Sourcegraph fleet MCP when those opt-in extras are installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -1316,7 +1316,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (48 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (49 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
@@ -1338,7 +1338,7 @@ vz-ai-stack.sh gc
 
 **Expected.** `doctor` ends with `Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.` — many checks **auto-fix** and re-verify rather than just complaining. `upgrade --check` prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; sandbox/CLI/npm/pip rows are hidden unless `--all`). `history` prints a chronological record of every install decision.
 
-**Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, the watchdog alert 43, and MemPalace 44). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; **check 43 (`watchdog_alert`)** surfaces any pending alert the watchdog left behind. **Check 44 (`mempalace`)** pass-as-skips until the Phase 26 opt-in extra is installed.
+**Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, the watchdog alert 43, MemPalace 44, and the Sourcegraph fleet MCP 49). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; **check 43 (`watchdog_alert`)** surfaces any pending alert the watchdog left behind. **Check 44 (`mempalace`)** pass-as-skips until the Phase 26 opt-in extra is installed; **check 49 (`sourcegraph_mcp`)** skip-cleans until the Phase 27 opt-in extra is installed.
 
 **The watchdog.** `bin/openshell-watchdog.sh` runs every few minutes via launchd and guards against the **token-expiry storm**: after ~8h, a sandbox's gateway token expires and the in-sandbox agent retries its log-push with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. A gateway *restart does not* refresh the token; only **recreating** the sandbox mints a fresh one. The watchdog detects the unambiguous signature (`ExpiredSignature` / reconnect-storm in recent logs, or a climbing RestartCount — meaning the sandbox is already dead). **By default it is warn-only and data-safe:** it halts the container to stop the CPU burn at once, writes an alert (surfaced by check 43), and posts a desktop notification — it does **not** delete or recreate the sandbox, because recreation discards in-sandbox state. You recreate when ready. Opt into automatic delete+recreate (capability-checked, Ready-verified, fails loud) with `AI_STACK_WATCHDOG_RECREATE=1`.
 

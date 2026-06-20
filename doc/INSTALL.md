@@ -440,7 +440,7 @@ Then run the full doctor:
 bash vz-ai-stack.sh doctor
 ```
 
-Expected: 48/48 checks pass after the post-install steps above and a
+Expected: 49/49 checks pass after the post-install steps above and a
 successful `sudo bash vz-ai-stack.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more
@@ -461,7 +461,10 @@ model↔agent binding (40), the opt-in Meridian/Claude-subscription wiring (41),
 9-role agent fleet (42), and any pending watchdog alert (43). Check 44
 (`mempalace`) covers the sixth opt-in extra (Phase 26: verbatim Claude Code
 session memory) — it verifies the tool + wrapper + launchers + palace config +
-LiteLLM key and **green-skips when MemPalace isn't installed**.
+LiteLLM key and **green-skips when MemPalace isn't installed**. Check 49
+(`sourcegraph_mcp`) covers the seventh opt-in extra (Phase 27: local Sourcegraph
+code search wired into the Hermes fleet over MCP) — it verifies the network-policy
+stanza + fleet wiring and **skip-cleans when Sourcegraph isn't installed**.
 
 ---
 

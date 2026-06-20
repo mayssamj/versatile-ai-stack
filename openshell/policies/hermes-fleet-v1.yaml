@@ -70,6 +70,18 @@ network_policies:
     binaries:
       - { path: "/**" }
 
+  # Sourcegraph MCP — local self-hosted Sourcegraph code-search server (opt-in
+  # Phase 27), reached at host.docker.internal:7080. GENERATED MIRROR: the
+  # authoritative copy is the heredoc in installer/phases/04_openshell.sh, which
+  # regenerates this file on every Phase 04 run. Keep byte-identical to it.
+  sourcegraph_mcp:
+    name: sourcegraph-mcp
+    endpoints:
+      - host: host.docker.internal
+        port: 7080
+    binaries:
+      - { path: "/**" }
+
   # Egress for common dev tools (pip, npm, gh, git clone).
   package_registries:
     name: package-registries

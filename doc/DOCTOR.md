@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 48 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 49 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 48
+stack doctor                    # all 49
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -84,7 +84,8 @@ installer/doctor/checks/
 ├── 45_tutorial.sh                          (always-on; doc/TUTORIAL.html self-contained / link-clean / in-sync)
 ├── 46_agent_fleet_parity.sh                (always-on; shared skills + Tier-1 block + each role byte-identical across the 3 frameworks)
 ├── 47_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
-└── 48_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
+├── 48_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
+└── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -659,6 +660,12 @@ compare" by design, so the silent-pass there is intentional.
 This is the foundational engine check: 47 (consistency) pass-as-skips until 48 is
 green, so fix 48 first. See [PREREQUISITES.md](PREREQUISITES.md) for the engine matrix
 and the `docker-engine` subcommand.
+
+---
+
+## 49 · Sourcegraph fleet MCP wired (opt-in)
+
+Graceful by design — skip-clean (pass) when Sourcegraph isn't installed (no `~/.sourcegraph-local/sg-token`), so it never red-bars a stack that didn't opt into code search. When SG IS installed it checks, fast: the `sourcegraph_mcp` network-policy stanza is present in `openshell/policies/hermes-fleet-v1.yaml` (drift guard — the 04_openshell.sh heredoc regenerates that file, and a stanza-less copy would silently drop fleet→SG reachability on the next `install 04`), and — if a Hermes fleet sandbox is Ready — that `hermes_manager` actually carries the `mcp_servers.sourcegraph` stanza (fleet wired). With `--all` / `OPENSHELL_DOCTOR_SLOW=1` it adds a LIVE probe: the sandbox can reach SG through the landlock (not `policy_denied`) and SG's MCP `initialize` returns HTTP 200 with the token. It never uses `hermes mcp test` (verified buggy against this SG — its probe sends a malformed `Accept` and 400s). Fix: `vz-ai-stack.sh install sourcegraph` (deploy + bootstrap + wire), or `install 04f` (wire an existing fleet), or `install 04` (re-apply the policy stanza if the LIVE policy lacks it).
 
 ---
 

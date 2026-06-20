@@ -13,7 +13,7 @@ bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, O
 bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
 sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
 bash vz-ai-stack.sh install all       # the 28 core phases (offers `setup` on first run if you skipped it)
-bash vz-ai-stack.sh doctor            # 48 checks — target all green
+bash vz-ai-stack.sh doctor            # 49 checks — target all green
 ```
 
 A plain `install all` runs `deps` for you and offers `setup` on a first run, so on a
@@ -59,7 +59,7 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 `hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
 `halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. Run
 `stack phases` if you're not sure of a name. `install all` runs the 28 core phases
-(the 6 opt-in extras are excluded — see §5).
+(the 7 opt-in extras are excluded — see §5).
 
 ---
 

@@ -371,6 +371,23 @@ case "$TIER" in
     log "Stopping + removing managed ai-stack containers..."
     while IFS= read -r c; do docker rm -f "$c" >/dev/null; done \
       < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
+    # Sourcegraph data (~/.sourcegraph-local) lives OUTSIDE the repo data/ tree, so
+    # the data/ backup above never covers it. The managed-label sweep removed the
+    # container but not this dir. NUKE = remove everything → back it up (fail-closed,
+    # same discipline as data//.env) then delete. (hard/soft INTENTIONALLY keep it so
+    # bootstrap re-adopts the index + token on the next `install sourcegraph`.)
+    if [[ -d "$HOME/.sourcegraph-local" ]]; then
+      if tar czf "$AI_STACK/sourcegraph-local.bak-${ts}.tgz" -C "$HOME" .sourcegraph-local 2>/dev/null \
+           && [[ -s "$AI_STACK/sourcegraph-local.bak-${ts}.tgz" ]]; then
+        ok "~/.sourcegraph-local backed up → sourcegraph-local.bak-${ts}.tgz"
+        rm -rf "$HOME/.sourcegraph-local" && ok "removed ~/.sourcegraph-local"
+      elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+        warn "~/.sourcegraph-local backup FAILED but AI_STACK_FORCE_WIPE=1 — removing anyway"
+        rm -rf "$HOME/.sourcegraph-local"
+      else
+        warn "~/.sourcegraph-local backup failed — LEAVING it in place (re-run with AI_STACK_FORCE_WIPE=1 to force)"
+      fi
+    fi
     log "Stopping host daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)..."
     teardown_host_daemons
     log "Removing ai-stack docker network..."

@@ -252,7 +252,7 @@ ai-stack-installer — usage:
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 26 mempalace
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 26 mempalace · 27 sourcegraph
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
   e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model
@@ -537,7 +537,7 @@ install_plan() {
     fi
   done
   echo
-  [[ "$target" == "all" ]] && note "(Opt-in extras 21–26 — portless · cmux · skillspector · openagents · lmstudio · mempalace — are NOT in 'install all'; install them by name.)"
+  [[ "$target" == "all" ]] && note "(Opt-in extras 21–27 — portless · cmux · skillspector · openagents · lmstudio · mempalace · sourcegraph — are NOT in 'install all'; install them by name.)"
   ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
   return 0
 }
