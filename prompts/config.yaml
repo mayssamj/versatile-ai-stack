@@ -214,6 +214,11 @@ litellm_settings:
     - openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet"]
     # No local fallback — if the local model is down, surface the failure
     # so the user sees that the local stack is unhealthy.
+    # NOTE (2026-06-19): the LIVE litellm/config.yaml DIVERGES from this seed — it
+    # adds a `local-gemma4 -> claude-opus-4.8-sub-xhigh` fallback. That subscription
+    # model is intentionally NOT added to this seed (it predates the `-sub` models,
+    # so referencing it here would dangle). This seed only applies on a fresh
+    # install when litellm/config.yaml is absent.
   # Phase 01·H adds the arize_phoenix callback to the list above:
   # callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
 

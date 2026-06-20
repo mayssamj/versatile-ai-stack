@@ -331,10 +331,18 @@ litellm_settings:
   # keep getting Opus (just via OpenRouter) when Anthropic's API
   # is down, instead of silently swapping to GPT.
   fallbacks:
-    # USER DECISION (2026-05-28): All local. Hermes profiles route through
+    # USER DECISION (2026-05-28): mostly local. Hermes profiles route through
     # `local-heavy` (Qwen 3.6 27B q4_K_M) with `local` (Gemma 4 E4B) as the
     # offline fallback. Cloud fallbacks below are retained but currently
     # unused since no profile points at a cloud slug.
+    # 2026-06-19: local-gemma4 (the default local model) falls back to the Claude
+    # subscription (Opus 4.8, xhigh effort via Meridian) so an Ollama outage no
+    # longer surfaces as a bare HTTP 500. CAVEATS: needs the Meridian daemon up —
+    # if it is ALSO down the caller gets a LiteLLM 503 (no fallback left), not the
+    # gemma error; a local failure uses the subscription plan, not local compute;
+    # and a FLAPPING Ollama (intermittent errors) routes EVERY failed call here, so
+    # watch traces/litellm.jsonl if subscription usage looks unexpectedly high.
+    - local-gemma4: ["claude-opus-4.8-sub-xhigh"]
     - local-heavy: ["local"]
     - claude-opus-4.7: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
     - claude-sonnet-4.6: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
