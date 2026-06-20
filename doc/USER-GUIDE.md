@@ -94,7 +94,7 @@ Every component in `services.yml`. Each subsection: **what it is** (one line), *
 
 #### `ollama` (host brew, port 11434)
 
-**What.** Local model server. Serves open-weight models over a REST API. Runs as a brew service on the host, not in a container — gets full Metal acceleration on Apple Silicon. Phase 01 now eager-pulls only `gemma4:e4b` (`local-gemma4`, the default) + `nomic-embed-text`; the heavy/coder models moved to LM Studio MLX. Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=0`) so a model unloads from RAM right after each request.
+**What.** Local model server. Serves open-weight models over a REST API. Runs as a brew service on the host, not in a container — gets full Metal acceleration on Apple Silicon. Phase 01 now eager-pulls only `gemma4:e4b` (`local-gemma4`, the default) + `nomic-embed-text`; the heavy/coder models moved to LM Studio MLX. Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=30m`) so the default model stays warm for 30 min of inactivity, then unloads from RAM.
 
 **When.** Almost never directly. Everything else talks to LiteLLM, which talks to Ollama. You touch Ollama directly to manage models (pull, list, remove).
 

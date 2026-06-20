@@ -101,8 +101,8 @@ LiteLLM fronts four back ends. **At least one must be active** — the end-of-ru
 `print_inference_hint` (in `installer/lib/lmstudio.sh`) shows up/down state and
 the start command for each.
 
-- **Ollama** (host, Homebrew) — **lazy**: Phase 00 sets `OLLAMA_KEEP_ALIVE=0` so
-  no model stays resident between requests; Phase 01 eager-pulls **only**
+- **Ollama** (host, Homebrew) — **lazy**: Phase 00 sets `OLLAMA_KEEP_ALIVE=30m` so
+  the default model stays warm for 30 min of inactivity, then unloads; Phase 01 eager-pulls **only**
   `gemma4:e4b` + `nomic-embed-text`. Serves the default `local-gemma4`. Reached
   by LiteLLM at `http://ollama:11434`.
 - **LM Studio (MLX)** — **opt-in, no auto-start**. Start the server with
@@ -269,8 +269,8 @@ LM Studio auto-evicts after idle. Doctor check 38 warns (advisory) if both big
 MLX models are resident. In the LM Studio GUI, *Settings → Auto-evict* (JIT +
 idle TTL) keeps only one resident.
 
-Ollama is also kept lazy: Phase 00 sets `OLLAMA_KEEP_ALIVE=0` so it never keeps
-a model resident between requests, and Phase 01 only eager-pulls `gemma4:e4b`
+Ollama is also kept lazy: Phase 00 sets `OLLAMA_KEEP_ALIVE=30m` so the default
+model stays warm for 30 min of inactivity, then unloads, and Phase 01 only eager-pulls `gemma4:e4b`
 + `nomic-embed-text` (qwen3.6 moved to LM Studio; LFM2.5 GGUF is no longer
 pre-pulled).
 

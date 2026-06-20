@@ -65,7 +65,7 @@ hdr "Phase 01 — inference plane"
 
 # --- Ollama: install + cross-container env-patch + start + verify (deps.sh) ---
 # ensure_ollama installs ollama if missing, patches the launchd plist for
-# cross-container access (OLLAMA_HOST=0.0.0.0 / ORIGINS=* / KEEP_ALIVE=0), starts
+# cross-container access (OLLAMA_HOST=0.0.0.0 / ORIGINS=* / KEEP_ALIVE=30m), starts
 # the service, and verifies :11434 responds. Centralizing the env-patch here (vs
 # the old Phase-00 block that was skipped on a cold install because ollama wasn't
 # installed yet) is what makes LiteLLM->ollama work on a fresh machine.

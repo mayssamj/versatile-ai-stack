@@ -223,8 +223,8 @@ fallback (the default, `local-gemma4`) and warns:
 
 This is what keeps a fresh, light 24 GB install functional before any heavy
 MLX model is pulled (and it pairs with lazy-Ollama: Phase 01 eager-pulls only
-`gemma4:e4b` + `nomic-embed-text`, and `OLLAMA_KEEP_ALIVE=0` keeps nothing
-resident).
+`gemma4:e4b` + `nomic-embed-text`, and `OLLAMA_KEEP_ALIVE=30m` keeps the
+default model warm for 30 min of inactivity, then releases it).
 
 ### The superset allowlist
 

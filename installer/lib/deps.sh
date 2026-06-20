@@ -207,8 +207,12 @@ ensure_ollama() {
 }
 
 # Patch the brew ollama launchd plist so in-stack containers can reach it
-# (OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=*) and so it never pins a model resident
-# on a 24GB box (OLLAMA_KEEP_ALIVE=0). Restarts only if a key was missing.
+# (OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=*) and keep the default model warm during a
+# work session (OLLAMA_KEEP_ALIVE=30m). KEEP_ALIVE=0 was previously used to avoid
+# pinning RAM on a 24GB box, but it forced a ~17s cold-load on EVERY call — and the
+# default model (gemma4:e4b) is only ~3.3GB resident, so a 30m idle window is cheap.
+# The real RAM lever on a constrained box is the OrbStack VM cap, not this.
+# Restarts only if a key was missing.
 _dep_ollama_patch_env() {
   local plist="$HOME/Library/LaunchAgents/homebrew.mxcl.ollama.plist"
   [[ -f "$plist" ]] || return 0   # not service-managed (rare) — nothing to patch
@@ -217,14 +221,14 @@ _dep_ollama_patch_env() {
     plutil -extract "EnvironmentVariables.$key" raw "$plist" >/dev/null 2>&1 || needs=1
   done
   (( needs )) || return 0
-  log "Patching Ollama for cross-container access (OLLAMA_HOST=0.0.0.0, ORIGINS=*, KEEP_ALIVE=0)..."
+  log "Patching Ollama for cross-container access (OLLAMA_HOST=0.0.0.0, ORIGINS=*, KEEP_ALIVE=30m)..."
   local pb=/usr/libexec/PlistBuddy
   "$pb" -c "Add :EnvironmentVariables:OLLAMA_HOST string 0.0.0.0" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_HOST 0.0.0.0" "$plist"
   "$pb" -c "Add :EnvironmentVariables:OLLAMA_ORIGINS string *" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_ORIGINS *" "$plist"
-  "$pb" -c "Add :EnvironmentVariables:OLLAMA_KEEP_ALIVE string 0" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_KEEP_ALIVE 0" "$plist"
+  "$pb" -c "Add :EnvironmentVariables:OLLAMA_KEEP_ALIVE string 30m" "$plist" 2>/dev/null || "$pb" -c "Set :EnvironmentVariables:OLLAMA_KEEP_ALIVE 30m" "$plist"
   launchctl setenv OLLAMA_HOST 0.0.0.0 2>/dev/null || true
   launchctl setenv OLLAMA_ORIGINS "*" 2>/dev/null || true
-  launchctl setenv OLLAMA_KEEP_ALIVE 0 2>/dev/null || true
+  launchctl setenv OLLAMA_KEEP_ALIVE 30m 2>/dev/null || true
   # Reload by booting the EDITED plist directly — NOT `brew services restart`, which
   # on modern Homebrew REGENERATES the plist from the formula and wipes the keys we
   # just added (the formula only declares FLASH_ATTENTION/KV_CACHE_TYPE). Verified:
