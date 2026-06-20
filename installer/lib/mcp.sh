@@ -66,7 +66,7 @@ _sg_mcp_ensure_extra() {
   fi
   log "  installing $SG_MCP_PIN inside sandbox (adds mcp==1.26.0; starlette 1.3.1->1.0.1, only affects unused 'hermes mcp serve')…"
   "$osh" sandbox exec -n "$sb" --no-tty --timeout 180 </dev/null -- \
-    python3 -m pip install "$SG_MCP_PIN" 2>&1 | tail -5 | sed $'s/\x1b\\[[0-9;]*m//g'
+    python3 -m pip install --quiet "$SG_MCP_PIN" 2>&1 | tail -5 | sed $'s/\x1b\\[[0-9;]*m//g'
   if "$osh" sandbox exec -n "$sb" --no-tty --timeout 30 </dev/null -- \
        python3 -c 'import mcp.client.streamable_http' >/dev/null 2>&1; then
     ok "  mcp.client.streamable_http import OK"
@@ -137,6 +137,7 @@ done
 echo "WIRED $okc/$n"
 [ "$okc" -ge 1 ]
 WIRE
+  chmod 600 "$stage/sg-mcp-wire.sh"  # consistency (no secret in it — token arrives on STDIN)
 
   "$osh" sandbox exec -n "$sb" --no-tty --timeout 30 </dev/null -- /bin/sh -c 'mkdir -p /sandbox/fleet-boot' >/dev/null 2>&1 || true
   if ! "$osh" sandbox upload --no-git-ignore "$sb" "$stage/sg-mcp-wire.sh" /sandbox/fleet-boot/ >/dev/null 2>&1; then

@@ -104,7 +104,17 @@ ok "Sourcegraph responding (HTTP $code)"
 # (iii) initialized + token absent/invalid + admin creds in .env: sign-in + mint
 #       (NEVER re-call site-init on an initialized instance — it fails)
 TOKEN=""
-needs_init="$(curl -s --max-time 8 "$SG_URL/" | grep -o '"needsSiteInit":true' | head -1 || true)"
+# Detect fresh-vs-initialized from GET / : a FRESH instance serves a 2xx body
+# containing "needsSiteInit":true (verified on 6.12.5040); an INITIALIZED one 302s
+# (no such marker). Validate the fetch succeeded so a transient/non-2xx response
+# isn't silently mis-classified as "initialized" and then mis-routed to sign-in.
+_root_resp="$(curl -s --max-time 8 -w '\n__C_%{http_code}' "$SG_URL/" 2>/dev/null || echo '__C_000')"
+_root_code="$(awk -F'__C_' 'NF>1{print $2}' <<<"$_root_resp" | tail -1)"
+if [[ "${_root_code:-000}" == "000" ]]; then
+  err "Sourcegraph unreachable at $SG_URL during bootstrap (HTTP 000) — it may still be initializing. Check: docker logs $NAME --tail 50, then re-run."
+  exit 1
+fi
+needs_init="$(grep -o '"needsSiteInit":true' <<<"$_root_resp" | head -1 || true)"
 
 _mint_token_with_cookie() {  # <cookiejar> → prints a user:all token (uses session cookie)
   local jar="$1" uid body
@@ -128,11 +138,12 @@ if [[ -n "$needs_init" ]]; then
   set_env SOURCEGRAPH_ADMIN_EMAIL "$SG_ADMIN_EMAIL"
   set_env SOURCEGRAPH_ADMIN_USER  "$SG_ADMIN_USER"
   set_env SOURCEGRAPH_ADMIN_PASSWORD "$SG_ADMIN_PASS"
-  jar="$(mktemp)"; trap 'rm -f "$jar"' EXIT
+  jar="$(mktemp)"; trap "rm -f '$jar'" EXIT  # path captured at set-time (credential temp file)
   # X-Requested-With is Sourcegraph's CSRF mechanism (no token-in-form). Returns a session cookie.
-  curl -s --max-time 15 -c "$jar" -X POST "$SG_URL/-/site-init" -H 'X-Requested-With: Sourcegraph' \
+  _si_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -c "$jar" -X POST "$SG_URL/-/site-init" -H 'X-Requested-With: Sourcegraph' \
     --data-urlencode "email=$SG_ADMIN_EMAIL" --data-urlencode "username=$SG_ADMIN_USER" \
-    --data-urlencode "password=$SG_ADMIN_PASS" >/dev/null
+    --data-urlencode "password=$SG_ADMIN_PASS")"
+  [[ "$_si_code" =~ ^2 ]] || warn "site-init POST returned HTTP $_si_code (expected 2xx) — token mint may fail; check $SG_URL"
   TOKEN="$(_mint_token_with_cookie "$jar")"
   [[ -n "$TOKEN" ]] || { err "site-init succeeded but token mint failed. Check $SG_URL credentials in .env."; exit 1; }
   ok "site-init complete; admin token minted (admin creds saved to .env, 0600)"
@@ -146,17 +157,18 @@ else
   SG_ADMIN_PASS="$(get_env SOURCEGRAPH_ADMIN_PASSWORD '')"
   if [[ -n "$SG_ADMIN_PASS" ]]; then
     log "initialized but token missing/invalid — signing in to re-mint…"
-    jar="$(mktemp)"; trap 'rm -f "$jar"' EXIT
+    jar="$(mktemp)"; trap "rm -f '$jar'" EXIT  # path captured at set-time (credential temp file)
     curl -s --max-time 15 -c "$jar" -X POST "$SG_URL/-/sign-in" -H 'X-Requested-With: Sourcegraph' \
       --data-urlencode "username=$SG_ADMIN_USER" --data-urlencode "password=$SG_ADMIN_PASS" >/dev/null
     TOKEN="$(_mint_token_with_cookie "$jar")"
   fi
-  [[ -n "$TOKEN" ]] || { err "Sourcegraph is initialized but no valid token/admin creds. Manual recovery: sign in at $SG_URL and create a user:all token into $TOKEN_FILE"; exit 1; }
+  [[ -n "$TOKEN" ]] || { err "Sourcegraph is initialized but no valid token/admin creds. Manual recovery: sign in at $SG_URL and create a user:all token into $TOKEN_FILE. (If this is a FRESH machine, SG may still be initializing — wait, then re-run 'vz-ai-stack.sh install sourcegraph'.)"; exit 1; }
   ok "re-minted token via admin sign-in"
 fi
 
-# Persist the token (0600). Never echoed.
-mkdir -p "$SG_DIR"; umask 077
+# Persist the token (0600) in a 0700 dir (set perms BEFORE creating — don't leave
+# ~/.sourcegraph-local world-listable on a multi-user box even though the token is 0600).
+umask 077; mkdir -p "$SG_DIR"; chmod 700 "$SG_DIR" 2>/dev/null || true
 printf '%s' "$TOKEN" > "$TOKEN_FILE"; chmod 600 "$TOKEN_FILE"
 ok "token persisted to $TOKEN_FILE (0600)"
 

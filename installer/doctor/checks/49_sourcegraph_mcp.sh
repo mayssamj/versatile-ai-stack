@@ -87,7 +87,7 @@ sourcegraph_mcp_diagnose() {
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"doctor","version":"1"}}}' 2>/dev/null || echo 000)"
     [[ "$mcp_code" == "200" ]] || fails+=("  LIVE: SG MCP initialize returned HTTP $mcp_code (expected 200 — SG down or token invalid)")
   else
-    echo "  (static checks only; set OPENSHELL_DOCTOR_SLOW=1 or run 'doctor --all' for the live reachability + MCP probe)"
+    echo "  (static checks only; set OPENSHELL_DOCTOR_SLOW=1 for the live reachability + MCP probe)"
   fi
 
   if (( ${#fails[@]} > 0 )); then

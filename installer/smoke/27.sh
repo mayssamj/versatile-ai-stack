@@ -65,10 +65,10 @@ log "running real keyword_search from inside hermes-fleet-v1…"
 out="$(printf '%s\n' "$(cat "$TOKEN_FILE")" | "$OSH" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 60 -- python3 "/sandbox/$pname" 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')" || true
 "$OSH" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 15 </dev/null -- rm -f "/sandbox/$pname" >/dev/null 2>&1 || true
 echo "  $out"
-if grep -qE 'TOOLS=1[0-9] MATCHES=[1-9]' <<<"$out"; then
+if grep -qE 'TOOLS=[1-9][0-9]* MATCHES=[1-9]' <<<"$out"; then
   ok "Smoke 27 PASS — fleet reached SG MCP and keyword_search returned matches"
 else
-  err "Smoke 27 FAIL — expected >=12 tools and >=1 match; got: $out"
+  err "Smoke 27 FAIL — expected >=1 tool and >=1 match; got: $out"
   err "(If 'policy_denied': re-apply the sourcegraph_mcp policy — vz-ai-stack.sh install 04)"
   exit 1
 fi

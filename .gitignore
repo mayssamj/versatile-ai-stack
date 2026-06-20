@@ -50,6 +50,7 @@ __pycache__/
 /data/
 /data.[0-9]*/
 /data.bak-*/
+/sourcegraph-local.bak-*.tgz
 /traces/
 /installer/state/
 /CHANGELOG.d/
