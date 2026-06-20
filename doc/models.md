@@ -367,20 +367,21 @@ extracts user representations from messages and runs them through LiteLLM at
 `AUTH_USE_AUTH=false`; data persists in `data/honcho` Postgres and never leaves
 the machine.
 
-**Deliberate exception to per-agent `models.yml` selection.** The deriver uses a
-single stack-wide model for *all* derivation (independent of each agent's
-chat-model assignment), since persona extraction wants one consistent model. It
-defaults to the canonical stack default — `models.yml .default` (`local-gemma4`,
-served by Ollama) — like every other service, and is **overridable via the
-`HONCHO_DERIVER_MODEL` env var** in the stack `.env`. The memory plane does
-**not** go through `models.yml` per-agent availability-gating.
+**Deliberate exception to per-agent `models.yml` selection.** All of Honcho's LLM
+roles (deriver, dialectic, summary, dream) use a single stack-wide model for *all*
+memory work (independent of each agent's chat-model assignment), since persona
+extraction wants one consistent model. Per platform policy they default to
+`claude-opus-4.8-sub-xhigh` (Claude subscription via Meridian; LiteLLM falls back
+to `local-gemma4` only if Meridian is down), and are **overridable via the
+`HONCHO_MODEL` env var** in the stack `.env`. The memory plane does **not** go
+through `models.yml` per-agent availability-gating.
 
-> **Default source.** `installer/phases/03_honcho.sh` reads
-> `HONCHO_DERIVER_MODEL` (falling back to `models.yml .default`) and writes it to
-> `honcho/.env` as `LLM_OPENAI_MODEL`. To use a heavier model for richer
-> personas, set `HONCHO_DERIVER_MODEL=local-qwen3.6` in `.env` (opt-in LM Studio
-> MLX — `vz-ai-stack.sh start lmstudio` + assign it), then `docker compose up -d
-> deriver` from `honcho/` to recreate the container so it reloads the env.
+> **Default source.** `installer/phases/03_honcho.sh` writes `HONCHO_MODEL`
+> (default `claude-opus-4.8-sub-xhigh`) into `honcho/.env` as the per-role
+> `*_MODEL_CONFIG__MODEL` keys. Honcho v3 reads those + `LLM_OPENAI_BASE_URL` (the
+> older `LLM_OPENAI_MODEL`/`LLM_OPENAI_API_BASE` names are silently ignored). To
+> pin a different model, set `HONCHO_MODEL=<slug>` in `.env`, then recreate so the
+> env reloads: `docker compose up -d --force-recreate api deriver` from `honcho/`.
 >
 > *(Was previously pinned to the retired `local-heavy` → `ollama_chat/qwen3.6:27b-q4_K_M`,
 > which is not pre-pulled, so every derivation hit the `local-heavy: ["local"]`

@@ -656,7 +656,7 @@ sequenceDiagram
   </div>
 </div>
 <h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)</h3>
-<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). The deriver uses the stack default model (<code>local-gemma4</code>/gemma4:e4b) like every other service, overridable via the <code>HONCHO_DERIVER_MODEL</code> env var.</p>
+<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default <code>claude-opus-4.8-sub-xhigh</code> (Claude subscription via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down), overridable via <code>HONCHO_MODEL</code>.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-10" data-action="out" title="Zoom out">−</button>
@@ -678,7 +678,7 @@ sequenceDiagram
   AG->>HO: write message (session, peer-scoped)
   HO->>PG: persist raw message
   HO->>DR: enqueue derivation
-  DR->>LL: extract user representation (model=local-gemma4, override via HONCHO_DERIVER_MODEL)
+  DR->>LL: extract user representation (model=claude-opus-4.8-sub-xhigh, override via HONCHO_MODEL)
   LL->>LH: forward
   Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
   LH-->>LL: derived facts

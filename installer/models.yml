@@ -42,21 +42,22 @@ default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) when its
 # runtime is down — so the local safety net is preserved. `default` stays ollama.
-primary: claude-opus-4.8-sub-max
+primary: claude-opus-4.8-sub-xhigh
 assignments:
-  # AI software-engineering team (9 roles). All Claude Opus subscription:
-  # manager/qa/sre/incident -> sub-xhigh; techlead/ml/frontend/backend/reviewing -> sub-max.
+  # AI software-engineering team + agents. Platform policy (2026-06-20): EVERY
+  # role uses claude-opus-4.8-sub-xhigh — the single platform default. local-gemma4
+  # is the LiteLLM offline fallback only (Meridian unavailable), never assigned.
   hermes_manager: claude-opus-4.8-sub-xhigh
-  hermes_techlead: claude-opus-4.8-sub-max
-  hermes_ml_engineer: claude-opus-4.8-sub-max
-  hermes_frontend_engineer: claude-opus-4.8-sub-max
-  hermes_backend_engineer: claude-opus-4.8-sub-max
+  hermes_techlead: claude-opus-4.8-sub-xhigh
+  hermes_ml_engineer: claude-opus-4.8-sub-xhigh
+  hermes_frontend_engineer: claude-opus-4.8-sub-xhigh
+  hermes_backend_engineer: claude-opus-4.8-sub-xhigh
   hermes_qa_test_engineer: claude-opus-4.8-sub-xhigh
-  hermes_reviewing_engineer: claude-opus-4.8-sub-max
+  hermes_reviewing_engineer: claude-opus-4.8-sub-xhigh
   hermes_sre_engineer: claude-opus-4.8-sub-xhigh
   hermes_incident_manager: claude-opus-4.8-sub-xhigh
-  pi: claude-opus-4.8-sub-max
-  deerflow: claude-opus-4.8-sub-max
+  pi: claude-opus-4.8-sub-xhigh
+  deerflow: claude-opus-4.8-sub-xhigh
   ace: claude-opus-4.8-sub-xhigh
   rlm: claude-opus-4.8-sub-xhigh
 kinds:

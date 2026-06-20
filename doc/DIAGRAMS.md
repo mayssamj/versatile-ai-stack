@@ -534,8 +534,9 @@ flowchart TB
 ## 5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)
 
 Not to be confused with [§11 Memory profiles](#11-memory-profiles--what-runs-in-each-ram-mode)
-(RAM modes). The deriver uses the stack default model (`local-gemma4`/gemma4:e4b)
-like every other service, overridable via the `HONCHO_DERIVER_MODEL` env var.
+(RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the
+platform default `claude-opus-4.8-sub-xhigh` (Claude subscription via Meridian;
+LiteLLM falls back to `local-gemma4` if Meridian is down), overridable via `HONCHO_MODEL`.
 
 ```mermaid
 sequenceDiagram
@@ -550,7 +551,7 @@ sequenceDiagram
   AG->>HO: write message (session, peer-scoped)
   HO->>PG: persist raw message
   HO->>DR: enqueue derivation
-  DR->>LL: extract user representation (model=local-gemma4, override via HONCHO_DERIVER_MODEL)
+  DR->>LL: extract user representation (model=claude-opus-4.8-sub-xhigh, override via HONCHO_MODEL)
   LL->>LH: forward
   Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
   LH-->>LL: derived facts

@@ -309,7 +309,7 @@ Transition WARN as in check 14.
 |---|---|
 | Asserts | No bare service name appears in two distinct Docker networks with different target containers. Important for multi-network containers like `honcho-api-1` (which sits on both `honcho_default` and `ai-stack`); a collision would make bare-name resolution non-deterministic. |
 | Fails when | Two networks both have a container named `litellm` (or similar), or `honcho_default` and `ai-stack` both define a `redis` that resolves to different IPs (no risk today — `redis` only exists in `honcho_default`). |
-| Auto-fix | None automated. Manual: rename the offender, or use fully-qualified DNS (`<service>.<network>`) at the call site. The Honcho compose already does this: `LLM_OPENAI_API_BASE=http://litellm.ai-stack:4000/v1`. |
+| Auto-fix | None automated. Manual: rename the offender, or use fully-qualified DNS (`<service>.<network>`) at the call site. The Honcho compose already does this: `LLM_OPENAI_BASE_URL=http://litellm.ai-stack:4000/v1`. |
 
 The honcho-api / honcho-deriver pair (both compose v1 `honcho-api` /
 `honcho-deriver` and v2 `honcho-api-1` / `honcho-deriver-1`) is on the

@@ -255,15 +255,14 @@ fail-closed. A refusal makes the agent availability-gate to `local-gemma4`. The
 one-big-MLX policy unloads any other model before load; bypass with
 `LMS_SKIP_RAM_PREFLIGHT=1`. See `installer/lib/lmstudio.sh`.
 
-The **Honcho deriver** is a deliberate exception to *per-agent* `models.yml`
-selection: it uses one stack-wide model for all derivation, regardless of each
-agent's chat-model binding, and the memory plane does not go through `models.yml`
-availability-gating. It defaults to the canonical stack default
-(`models.yml .default` = `local-gemma4`/gemma4:e4b, which is pre-pulled and
-resident) like every other service, and is **overridable via the
-`HONCHO_DERIVER_MODEL` env var** in `.env` (Phase 03 reads it and writes
-`LLM_OPENAI_MODEL` into `honcho/.env`). Set it to a heavier slug (e.g.
-`local-qwen3.6`) for richer personas when you have the RAM headroom.
+The **Honcho memory plane** is a deliberate exception to *per-agent* `models.yml`
+selection: all its LLM roles (deriver, dialectic, summary, dream) use one
+stack-wide model regardless of each agent's chat-model binding, and the memory
+plane does not go through `models.yml` availability-gating. Per platform policy it
+defaults to `claude-opus-4.8-sub-xhigh` (Claude subscription via Meridian; LiteLLM
+falls back to `local-gemma4` if Meridian is down), and is **overridable via the
+`HONCHO_MODEL` env var** in `.env` (Phase 03 writes the per-role
+`*_MODEL_CONFIG__MODEL` keys + `LLM_OPENAI_BASE_URL` into `honcho/.env`).
 
 ---
 

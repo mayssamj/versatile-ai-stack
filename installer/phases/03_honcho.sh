@@ -112,6 +112,11 @@ ok "wrote docker-compose.override.yml"
 
 # --- Patch honcho/.env to point LLM/embeddings at LiteLLM (so Phoenix sees it) ---
 # Honcho reads OpenAI-compatible env vars for its 'openai' provider.
+# NOTE (council): this section runs on a FRESH install (the precheck above fails →
+# full run). On an ALREADY-RUNNING stack the precheck short-circuits, AND a plain
+# `docker compose restart` does NOT reload env_file — so to apply an env change to
+# a live stack you must clear the stamp and/or run
+# `docker compose up -d --force-recreate api deriver` after editing honcho/.env.
 LITELLM_KEY="$(get_env LITELLM_MASTER_KEY "")"
 [[ -n "$LITELLM_KEY" ]] || { err "LITELLM_MASTER_KEY empty; run phase 00 first"; exit 1; }
 
@@ -126,24 +131,50 @@ honcho_set_env() {
     END { if (!found) print k"="v }
   ' "$envf" > "$tmp" && mv -f "$tmp" "$envf"
 }
+# Remove a key entirely, so honcho/.env never carries a stale/legacy var
+# (e.g. the pre-v3 LLM_OPENAI_API_BASE / LLM_OPENAI_MODEL names).
+honcho_unset_env() {
+  local key="$1" envf="$HONCHO_DIR/.env"
+  [[ -f "$envf" ]] || return 0
+  local tmp; tmp="$(mktemp "${envf}.XXXXXX")"
+  awk -v k="$key" '
+    /^[[:space:]]*#/ { print; next }
+    { n = index($0, "="); if (n>0 && substr($0,1,n-1)==k) next; print }
+  ' "$envf" > "$tmp" && mv -f "$tmp" "$envf"
+}
 honcho_set_env LLM_OPENAI_API_KEY  "$LITELLM_KEY"
-# Fully-qualified Docker DNS (litellm.ai-stack:4000) — required because the
-# honcho-api container joins BOTH the default and ai-stack networks; bare
-# `litellm` could collide with a name on the default network. Per D28 in
-# refactor-design-final.md.
-honcho_set_env LLM_OPENAI_API_BASE "http://litellm.ai-stack:4000/v1"
-# Honcho's deriver extracts user representations from messages. It uses the
-# stack default model (gemma4) like every other service — resolved from
-# models.yml `.default` so it tracks the canonical default — and is
-# overridable via HONCHO_DERIVER_MODEL in the stack .env.
-#   Was hardcoded `local-heavy` (qwen3.6:27b-q4_K_M), which has since been
-#   REMOVED from Ollama, so the deriver 404'd on every derivation. gemma4:e4b
-#   is fast + resident on the 24GB box. Bump HONCHO_DERIVER_MODEL to a heavier
-#   slug (e.g. local-qwen3.6) for richer personas when you have RAM headroom.
-HONCHO_DERIVER_DEFAULT="$(yq -r '.default // "local-gemma4"' "$AI_STACK/installer/models.yml" 2>/dev/null)"
-[[ -n "$HONCHO_DERIVER_DEFAULT" && "$HONCHO_DERIVER_DEFAULT" != "null" ]] || HONCHO_DERIVER_DEFAULT="local-gemma4"
-HONCHO_DERIVER_MODEL="$(get_env HONCHO_DERIVER_MODEL "$HONCHO_DERIVER_DEFAULT")"
-honcho_set_env LLM_OPENAI_MODEL    "$HONCHO_DERIVER_MODEL"
+# Global OpenAI-compatible base URL for ALL openai-transport roles (deriver,
+# dialectic, summary, dream). Honcho v3 reads LLM_OPENAI_BASE_URL — the older
+# LLM_OPENAI_API_BASE name is silently dropped (pydantic extra="ignore"), which
+# left base_url unset → every chat/dialectic call hit api.openai.com and 401'd
+# with the local key. Fully-qualified Docker DNS (litellm.ai-stack:4000) —
+# required because honcho-api joins BOTH the default and ai-stack networks; bare
+# `litellm` could collide with a name on the default network. Per D28.
+honcho_set_env LLM_OPENAI_BASE_URL "http://litellm.ai-stack:4000/v1"
+# Purge the legacy/ignored pre-v3 keys so honcho/.env never shows a stale base
+# or a stale (local-gemma4) model.
+honcho_unset_env LLM_OPENAI_API_BASE
+honcho_unset_env LLM_OPENAI_MODEL
+# Platform model policy: every text-generation role (deriver, all 5 dialectic
+# reasoning levels, summary, both dream specialists) uses the platform default
+# claude-opus-4.8-sub-xhigh (Claude subscription via Meridian). transport stays
+# the default "openai", so calls route through LiteLLM via LLM_OPENAI_BASE_URL
+# above; LiteLLM falls back to local-gemma4 only if Meridian is down. Embeddings
+# stay on text-embedding-3-small (not a chat model). Override per-deploy with
+# HONCHO_MODEL in the stack .env.
+HONCHO_MODEL="$(get_env HONCHO_MODEL "claude-opus-4.8-sub-xhigh")"
+for _hk in \
+  DERIVER_MODEL_CONFIG__MODEL \
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL \
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL \
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL \
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL \
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL \
+  SUMMARY_MODEL_CONFIG__MODEL \
+  DREAM_DEDUCTION_MODEL_CONFIG__MODEL \
+  DREAM_INDUCTION_MODEL_CONFIG__MODEL; do
+  honcho_set_env "$_hk" "$HONCHO_MODEL"
+done
 honcho_set_env AUTH_USE_AUTH       "false"
 ok "patched $HONCHO_DIR/.env to use LiteLLM"
 

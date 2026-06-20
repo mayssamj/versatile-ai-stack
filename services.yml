@@ -222,7 +222,7 @@ services:
         - bash ~/ai-stack/bin/start-honcho.sh
         - bash ~/ai-stack/bin/start-honcho.sh --recreate
         - bash ~/ai-stack/vz-ai-stack.sh status
-      "config_notes": 'Honcho''s deriver uses the stack default model (LLM_OPENAI_MODEL=local-gemma4 / gemma4:e4b in honcho/.env) like every other service — set by Phase 03 from models.yml .default and overridable via the HONCHO_DERIVER_MODEL env var (bump to local-qwen3.6 for richer personas when you have RAM headroom, then `docker compose up -d deriver` from honcho/ to reload). Also: cross-stack calls from the api/deriver use fully-qualified Docker DNS litellm.ai-stack:4000, NOT the bare litellm alias, because the api container is on both the default and ai-stack networks.'
+      "config_notes": 'All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default claude-opus-4.8-sub-xhigh (Claude subscription via Meridian; LiteLLM falls back to local-gemma4 only if Meridian is down) — set by Phase 03 via per-role *_MODEL_CONFIG__MODEL in honcho/.env, overridable via HONCHO_MODEL. Honcho v3 reads LLM_OPENAI_BASE_URL (the older LLM_OPENAI_API_BASE is silently ignored). After changing models, recreate to reload env: `docker compose up -d --force-recreate api deriver` from honcho/ (a plain restart does NOT reload env_file). Cross-stack calls use fully-qualified Docker DNS litellm.ai-stack:4000, NOT the bare litellm alias, because api/deriver join both the default and ai-stack networks.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed

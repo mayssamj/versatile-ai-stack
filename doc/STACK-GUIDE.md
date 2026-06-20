@@ -435,7 +435,7 @@ available to the researcher in May. No bespoke memory plugin per agent.
   background "deriver" worker that processes new messages asynchronously.
 - Uses LiteLLM as its LLM. Honcho's `api` and `deriver` are on multiple
   Docker networks (`honcho_default` + `ai-stack`), so the call uses
-  fully-qualified Docker DNS: `LLM_OPENAI_API_BASE=http://litellm.ai-stack:4000/v1`
+  fully-qualified Docker DNS: `LLM_OPENAI_BASE_URL=http://litellm.ai-stack:4000/v1`
   (collision-proof; bare-name resolution order across networks is
   unspec'd). All derivation cost shows up in Phoenix as a result.
 - Models humans and agents as "peers." Each agent has its own view of

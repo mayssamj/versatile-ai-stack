@@ -517,11 +517,13 @@ render_pi() {
 }
 
 # render_deerflow <effective_reasoning_model> — rewrite the two-tier models: block
-# in deer-flow/config.yaml between the markers. basic->local-gemma4 (default),
-# reasoning-><effective>. Restart deerflow only if the block changed.
+# in deer-flow/config.yaml between the markers. Platform policy (2026-06-20):
+# basic->primary (claude-opus-4.8-sub-xhigh), reasoning-><effective>. LiteLLM
+# falls back to local-gemma4 if Meridian is down. Restart deerflow only if the
+# block changed.
 render_deerflow() {
-  local reasoning="$1" default
-  default="$(default_model)"
+  local reasoning="$1" basic
+  basic="$(primary_model)"
   local df_config="$AI_STACK/deer-flow/config.yaml"
   if [[ ! -f "$df_config" ]]; then
     note "deerflow: config.yaml not present (phase 10 not run) — skipping"
@@ -529,7 +531,7 @@ render_deerflow() {
   fi
   local before after
   before="$(shasum -a 256 "$df_config" 2>/dev/null | awk '{print $1}')"
-  DF_BASIC="$default" DF_REASON="$reasoning" python3 - "$df_config" <<'PYEOF' || { warn "deerflow render failed (non-fatal)"; return 0; }
+  DF_BASIC="$basic" DF_REASON="$reasoning" python3 - "$df_config" <<'PYEOF' || { warn "deerflow render failed (non-fatal)"; return 0; }
 import os, re, sys
 path = sys.argv[1]
 basic = os.environ["DF_BASIC"]
@@ -558,13 +560,13 @@ if new != src:
 PYEOF
   after="$(shasum -a 256 "$df_config" 2>/dev/null | awk '{print $1}')"
   if [[ "$before" != "$after" ]]; then
-    ok "deerflow: two-tier models rewritten (basic=$default, reasoning=$reasoning)"
+    ok "deerflow: two-tier models rewritten (basic=$basic, reasoning=$reasoning)"
     if [[ "${MODELS_NO_RESTART:-0}" != "1" && "${DRY_RUN:-0}" != "1" ]]; then
       log "restarting deerflow (config changed)..."
       bash "$AI_STACK/vz-ai-stack.sh" start deerflow >/dev/null 2>&1 || warn "deerflow restart returned non-zero (non-fatal)"
     fi
   else
-    ok "deerflow: two-tier models already current (basic=$default, reasoning=$reasoning)"
+    ok "deerflow: two-tier models already current (basic=$basic, reasoning=$reasoning)"
   fi
 }
 

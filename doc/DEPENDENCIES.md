@@ -416,7 +416,7 @@ graph TD
 - `00 -> 00·S`: directory tree + `.env` must exist before services.yml validation.
 - `00·S -> 01`: `bin/start-litellm.sh` reads `LITELLM_MASTER_KEY` set in phase 00.
 - `01 -> 01·H`: phase 01·H mutates `litellm/config.yaml` to add `arize_phoenix` to callbacks; LiteLLM must already exist to need a callback added.
-- `01 -> 03`: Honcho is configured to point `LLM_OPENAI_API_BASE` at LiteLLM; phase 03 also generates `HONCHO_API_KEY` and queues a LiteLLM restart.
+- `01 -> 03`: Honcho is configured to point `LLM_OPENAI_BASE_URL` at LiteLLM; phase 03 also generates `HONCHO_API_KEY` and queues a LiteLLM restart.
 - `01·H -> 04·G`: phase 04·G adds `guardrails.handler` to the same callbacks list — needs to come after the Phoenix callback so the `litellm_ensure_callback` helper has the up-to-date list.
 - `04 -> 04·F`: sandbox `hermes-fleet-v1` must exist (created in 04) before the fleet bootstrap script can `openshell sandbox exec` into it.
 - `01 -> any user`: nothing else can chat-complete until LiteLLM responds.

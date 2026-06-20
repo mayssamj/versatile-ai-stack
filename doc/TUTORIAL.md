@@ -399,7 +399,7 @@ s1.add_messages([
 print("wrote facts to session-1; deriver is processing in the background...")
 PY
 
-# Give the deriver (HONCHO_DERIVER_MODEL=local-gemma4, via LiteLLM) a moment.
+# Give the deriver (claude-opus-4.8-sub-xhigh, via LiteLLM) a moment.
 sleep 20
 
 # --- read.py: a FRESH session asks what Honcho learned about the peer ---
@@ -417,11 +417,11 @@ PY
 
 **Expected.** The second script — which never sees session-1's messages — answers with something like *"The user has a 24GB M4 Mac and prefers to run local models exclusively."* The knowledge survived the session boundary because Honcho derived it onto the **peer**, not the session.
 
-**Try it live.** A first-party `/api/honcho` proxy route is planned so you can curl memory without the SDK *(planned proxy route; copy-run for now)*. Until then, the copy-run scripts above are the supported path. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (`http://phoenix:6006`); filter for the `local-gemma4` model.
+**Try it live.** A first-party `/api/honcho` proxy route is planned so you can curl memory without the SDK *(planned proxy route; copy-run for now)*. Until then, the copy-run scripts above are the supported path. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (`http://phoenix:6006`); filter for the `claude-opus-4.8-sub-xhigh` model.
 
-**Lesson.** Honcho separates *what was said* (messages on a session) from *what is known* (the peer representation). Writing is cheap and synchronous; **derivation is async** — that 20s sleep is the deriver routing your messages through LiteLLM → Ollama (`local-gemma4`) to update the representation. Peers are cross-agent and per-user: the same `mayssam` peer is visible to every agent in the `tutorial` workspace.
+**Lesson.** Honcho separates *what was said* (messages on a session) from *what is known* (the peer representation). Writing is cheap and synchronous; **derivation is async** — that 20s sleep is the deriver routing your messages through LiteLLM → the Claude subscription (`claude-opus-4.8-sub-xhigh` via Meridian; LiteLLM falls back to `local-gemma4` if Meridian is down) to update the representation. Peers are cross-agent and per-user: the same `mayssam` peer is visible to every agent in the `tutorial` workspace.
 
-**Go deeper.** Bump `HONCHO_DERIVER_MODEL` in `~/ai-stack/.env` to a heavier slug (e.g. `local-qwen3.6`) for richer personas when you have RAM headroom, then restart Honcho. Read the peer/session model in `doc/STACK-GUIDE.md` (Honcho section) and the upstream SDK in `honcho/sdks/python/`.
+**Go deeper.** Honcho's LLM roles default to `claude-opus-4.8-sub-xhigh`; override the model via `HONCHO_MODEL` in `~/ai-stack/.env` (e.g. a local slug for offline work), then recreate Honcho (`docker compose up -d --force-recreate api deriver` from `honcho/` — a plain restart won't reload env). Read the peer/session model in `doc/STACK-GUIDE.md` (Honcho section) and the upstream SDK in `honcho/sdks/python/`.
 
 ---
 

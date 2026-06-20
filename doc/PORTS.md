@@ -210,7 +210,7 @@ Each entry: ports listened on, what calls in, healthcheck command.
 - **Internal**: stateless; writes to `/traces/litellm.jsonl` (bind-mounted to `~/ai-stack/traces/`)
 - **Callers**:
   - `openwebui` → `http://litellm:4000/v1` (set via `OPENAI_API_BASE_URL`)
-  - `honcho-api-1` → `http://litellm.ai-stack:4000/v1` (fully-qualified for multi-network; set via `LLM_OPENAI_API_BASE`)
+  - `honcho-api-1` → `http://litellm.ai-stack:4000/v1` (fully-qualified for multi-network; set via `LLM_OPENAI_BASE_URL`)
   - `docs_ingestor` and `docs_mcp` → `http://litellm:4000/v1` (host-side python)
   - Hermes profiles inside OpenShell sandbox → `https://inference.local/v1` (L7 proxy to LiteLLM; sandbox-side hostname)
   - `bin/audit.sh` → `http://litellm:4000/v1/chat/completions`

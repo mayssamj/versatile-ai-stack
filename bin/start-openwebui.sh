@@ -49,7 +49,7 @@ docker run -d \
   -e OPENAI_API_BASE_URL=http://litellm:4000/v1 \
   -e OPENAI_API_KEY="$KEY" \
   -e WEBUI_AUTH=False \
-  -e DEFAULT_MODELS=claude-opus-4.8-sub-max \
+  -e DEFAULT_MODELS=claude-opus-4.8-sub-xhigh \
   -e RAG_EMBEDDING_ENGINE=ollama \
   -e RAG_OLLAMA_BASE_URL=http://ollama:11434 \
   -e RAG_EMBEDDING_MODEL=nomic-embed-text \
