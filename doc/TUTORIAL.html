@@ -679,7 +679,15 @@ PY</code></pre>
 <p><strong>Why.</strong> The model knows the public internet up to its cutoff — it does <em>not</em> know your meeting notes, your runbook, or that PDF you got this morning. Retrieval-Augmented Generation fixes that: chunk your documents, embed them into Qdrant, and retrieve the relevant chunks at query time so the answer is <strong>grounded</strong> in your sources instead of hallucinated.</p>
 <p><strong>Prereqs.</strong> Phase 02 (Qdrant) + Phase 06 (ingester + docs_mcp) complete. Confirm:</p>
 <pre><button class="copy-btn" data-copy>copy</button><code>curl -fsS http://qdrant:6333/collections &gt;/dev/null &amp;&amp; echo "qdrant up"
-curl -fsS http://docs-mcp:8765/ &gt;/dev/null 2&gt;&amp;1 &amp;&amp; echo "docs_mcp up"   # streamable-http endpoint</code></pre>
+# docs_mcp is a FastMCP streamable-HTTP server: bare / returns 404 even when healthy. The live route is
+# /mcp, which answers a bare GET with 406 (it wants the MCP handshake, not a plain GET) — that 406 IS the
+# health signal. No listener (000) or a crashed-but-listening app (5xx) therefore reports DOWN.
+code=$(curl -s -o /dev/null -w '%{http_code}' http://docs-mcp:8765/mcp)
+if [ "$code" = 406 ]; then
+  echo "docs_mcp up (/mcp -&gt; $code)"
+else
+  echo "docs_mcp DOWN (/mcp -&gt; $code)"
+fi</code></pre>
 <p><strong>Steps.</strong> Drop a file into the inbox, run the one-shot ingester (it parses via Docling, embeds via <code>embed-local</code> = nomic-embed-text, and stores in the <code>ai-stack-docs</code> Qdrant collection), then query it.</p>
 <pre><button class="copy-btn" data-copy>copy</button><code># 1. Drop a document into the inbox.
 cat &gt; ~/ai-stack/ingestor/inbox/my-runbook.md &lt;&lt;'EOF'
@@ -689,7 +697,13 @@ On-call owner is Priya. Rollback command is `aurora rollback --last`.
 EOF
 
 # 2. Run the ingester (one-shot): Docling parse -&gt; embed-local -&gt; Qdrant.
-cd ~/ai-stack/ingestor &amp;&amp; source .venv/bin/activate &amp;&amp; python ingest.py
+# ingest.py reads LITELLM_MASTER_KEY from the ENVIRONMENT (os.environ). A plain `source .env` sets it as a
+# SHELL variable only (visible to `echo`, invisible to the python child) -&gt; KeyError: 'LITELLM_MASTER_KEY'.
+# `export` promotes it to the environment python inherits. We run inside a ( subshell ) and export ONLY that
+# one key, so no other secret in .env (nor the venv/cd) leaks into your interactive session.
+( cd ~/ai-stack/ingestor &amp;&amp; source .venv/bin/activate \
+    &amp;&amp; source ~/ai-stack/.env &amp;&amp; export LITELLM_MASTER_KEY \
+    &amp;&amp; python ingest.py )
 
 # 3a. Query via docs_mcp (semantic search over ai-stack-docs).
 python - &lt;&lt;'PY'
