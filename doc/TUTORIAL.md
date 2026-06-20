@@ -433,7 +433,15 @@ PY
 
 ```bash
 curl -fsS http://qdrant:6333/collections >/dev/null && echo "qdrant up"
-curl -fsS http://docs-mcp:8765/ >/dev/null 2>&1 && echo "docs_mcp up"   # streamable-http endpoint
+# docs_mcp is a FastMCP streamable-HTTP server: bare / returns 404 even when healthy. The live route is
+# /mcp, which answers a bare GET with 406 (it wants the MCP handshake, not a plain GET) — that 406 IS the
+# health signal. No listener (000) or a crashed-but-listening app (5xx) therefore reports DOWN.
+code=$(curl -s -o /dev/null -w '%{http_code}' http://docs-mcp:8765/mcp)
+if [ "$code" = 406 ]; then
+  echo "docs_mcp up (/mcp -> $code)"
+else
+  echo "docs_mcp DOWN (/mcp -> $code)"
+fi
 ```
 
 **Steps.** Drop a file into the inbox, run the one-shot ingester (it parses via Docling, embeds via `embed-local` = nomic-embed-text, and stores in the `ai-stack-docs` Qdrant collection), then query it.
@@ -447,7 +455,13 @@ On-call owner is Priya. Rollback command is `aurora rollback --last`.
 EOF
 
 # 2. Run the ingester (one-shot): Docling parse -> embed-local -> Qdrant.
-cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py
+# ingest.py reads LITELLM_MASTER_KEY from the ENVIRONMENT (os.environ). A plain `source .env` sets it as a
+# SHELL variable only (visible to `echo`, invisible to the python child) -> KeyError: 'LITELLM_MASTER_KEY'.
+# `export` promotes it to the environment python inherits. We run inside a ( subshell ) and export ONLY that
+# one key, so no other secret in .env (nor the venv/cd) leaks into your interactive session.
+( cd ~/ai-stack/ingestor && source .venv/bin/activate \
+    && source ~/ai-stack/.env && export LITELLM_MASTER_KEY \
+    && python ingest.py )
 
 # 3a. Query via docs_mcp (semantic search over ai-stack-docs).
 python - <<'PY'
