@@ -6,6 +6,13 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ## 2026-06-19
 
+### Fixes
+
+- ollama latency + container reachability: `local-gemma4` was failing through LiteLLM (doctor check 40 → `chat_ping returned HTTP 500`). Two distinct problems, both fixed:
+  - **Reachability (the 500):** the brew-regenerated launchd plist had dropped `OLLAMA_HOST=0.0.0.0` (keeping only the formula's `FLASH_ATTENTION`/`KV_CACHE_TYPE`), so Ollama bound `127.0.0.1` and the LiteLLM container couldn't reach it at the OrbStack host-gateway (`0.250.250.254:11434`) → `Ollama_chatException`/`APIConnectionError`; with no `fallbacks:` entry for `local-gemma4`, LiteLLM surfaced it as **HTTP 500**. Re-applied the bind patch via `_dep_ollama_patch_env`'s mechanism (PlistBuddy + `launchctl bootout/bootstrap`, NOT `brew services restart`); verified bind `127.0.0.1`→`*:11434` and the LiteLLM ping 500→200.
+  - **Latency (`OLLAMA_KEEP_ALIVE` `0`→`30m`):** `=0` unloaded the model after **every** request — a ~17 s cold-reload tax on each call. Changed the installer default in `installer/lib/deps.sh::_dep_ollama_patch_env` to `30m` (warm during a work session, then release). The default `gemma4:e4b` is only ~3.3 GB resident, so keeping it warm is cheap. **Verified:** warm call 17 s → **0.63 s**. Rationale swept across `services.yml`, 11 doc references (ARCHITECTURE/OPERATIONS/STACK-GUIDE/PREREQUISITES/models/DOCTOR/USER-GUIDE/HANDOFF/DIAGRAMS.md) + `EXPLORE.html`, and `DIAGRAMS.html` regenerated (drift check green).
+  - **Operational (runtime, not in repo):** the real RAM lever was the OrbStack VM cap — `memory_mib` was `20480` (20 GB) on a 24 GB box. Lowered to `8192` (8 GB) + restarted OrbStack; all 22 containers and both fleet sandboxes (`unless-stopped`) auto-recovered, E2E ping 200. NOTE host swap is a lagging indicator (won't shrink instantly); the cap bounds future ballooning, it doesn't reclaim swapped pages.
+
 ### Features
 
 - sourcegraph (opt-in Phase 27): a local self-hosted **Sourcegraph** (`sourcegraph/server:6.12.5040`, the last single-container tag, amd64-emulated on Apple Silicon) is now **installer-managed with auto-start**, and the **Hermes fleet can search your code through it over native MCP** — durably across fleet rebuilds. `vz-ai-stack.sh install sourcegraph` is one self-contained command: deploy + idempotent bootstrap (site-init / `user:all` token mint / repo index) + auto-start + auto-wire of any existing fleet. Not in `install all` (a ~4GB emulated container is opt-in, like 21–26). Auto-start = `--restart unless-stopped` + the engine daemon's own login/boot autostart (OrbStack/Docker Desktop survive reboot; Colima/Podman need the daemon started — documented in `help sourcegraph`).

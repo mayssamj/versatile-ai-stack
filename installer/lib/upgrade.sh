@@ -425,7 +425,7 @@ up_compose() {
 up_brew() {
   local svc="$1"
   STRATEGY=brew
-  # ollama only. BINARY ONLY — never `ollama pull` (24GB RAM / KEEP_ALIVE=0).
+  # ollama only. BINARY ONLY — never `ollama pull` (24GB RAM; KEEP_ALIVE=30m warm-not-resident).
   if (( DRY )); then
     note "PLAN $svc brew-service: would: brew upgrade $svc && brew services restart $svc (binary only; NO model pull)"
     brew outdated --verbose "$svc" || true

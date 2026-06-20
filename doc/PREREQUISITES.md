@@ -30,7 +30,7 @@ vz-ai-stack.sh deps --check    # read-only; non-zero exit if anything missing/do
 | | `python3` | `command -v python3` | `brew install python3` | — |
 | | base builtins: `awk grep sed stat mktemp lsof perl plutil launchctl open sysctl curl` | `command -v` | **fail loud** (broken PATH / base system) → `xcode-select --install` | — |
 | **2 — services** | Docker engine — **OrbStack** (default) \| Docker Desktop \| Colima \| Podman | per-engine probe (e.g. `brew list --cask orbstack` + `docker info` on the engine's socket) | install the *selected* engine (OrbStack default: `brew install --cask orbstack`) | start the selected engine → wait `docker info` on its socket (≤90s) |
-| | Ollama | `command -v ollama` + `:11434/api/tags` | `brew install ollama` | patch launchd plist (`OLLAMA_HOST=0.0.0.0`, `OLLAMA_ORIGINS=*`, `OLLAMA_KEEP_ALIVE=0`) → `brew services start ollama` → wait `:11434` |
+| | Ollama | `command -v ollama` + `:11434/api/tags` | `brew install ollama` | patch launchd plist (`OLLAMA_HOST=0.0.0.0`, `OLLAMA_ORIGINS=*`, `OLLAMA_KEEP_ALIVE=30m`) → `brew services start ollama` → wait `:11434` |
 | **3 — opt-in / phase-owned** | `lms` (LM Studio), `openshell`, `blaxel`/`bl`, `unsloth`, `portless`, `cmux`, `mempalace`, `hermes`, `halo` | per-phase | each phase installs/ensures its own (often opt-in, not in `install all`) | per-phase |
 
 ## Choosing the Docker engine
@@ -86,9 +86,10 @@ Ollama defaults to binding `127.0.0.1` with a localhost-only origin allowlist, s
 in-stack containers calling `http://ollama:11434` (via `--add-host
 ollama:host-gateway`) get `403 Forbidden`. `ensure_ollama` patches the brew
 launchd plist with `OLLAMA_HOST=0.0.0.0` + `OLLAMA_ORIGINS=*` (reachable from
-containers) and `OLLAMA_KEEP_ALIVE=0` (never pin a model resident — a 24 GB box
-thrashes otherwise), then restarts the service. Idempotent: it patches + restarts
-only when a key is missing.
+containers) and `OLLAMA_KEEP_ALIVE=30m` (keep the default ~3.3 GB model warm
+for 30 min of inactivity, then release it — the real RAM lever on a 24 GB box
+is the OrbStack VM memory cap), then restarts the service. Idempotent: it patches + restarts
+only when a key is missing or set to a stale value.
 
 ## Notes
 

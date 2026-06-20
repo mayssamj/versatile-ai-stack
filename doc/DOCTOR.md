@@ -187,7 +187,7 @@ modes.
 | Fails when | Ollama isn't running, or someone `ollama rm`'d a required model, or the model never finished downloading. |
 | Auto-fix | `brew services start ollama`; `ollama pull` per missing model. On partial-pull (download corrupted), `ollama rm` first then retry. |
 
-Note: per the lazy-Ollama policy (2026-05-31, `01_inference.sh`), only `gemma4:e4b` + `nomic-embed-text` are eager-pulled. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder` — opt-in), and the legacy Ollama `qwen3.6:27b` (`local-heavy`) is no longer auto-pulled, so this check no longer requires it. `OLLAMA_KEEP_ALIVE=0` (Phase 00) keeps Ollama from holding a model resident.
+Note: per the lazy-Ollama policy (2026-05-31, `01_inference.sh`), only `gemma4:e4b` + `nomic-embed-text` are eager-pulled. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder` — opt-in), and the legacy Ollama `qwen3.6:27b` (`local-heavy`) is no longer auto-pulled, so this check no longer requires it. `OLLAMA_KEEP_ALIVE=30m` (Phase 00) keeps the default model warm for 30 min of inactivity, then releases it.
 
 ---
 

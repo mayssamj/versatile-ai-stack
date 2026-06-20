@@ -354,7 +354,7 @@ vz-ai-stack.sh model superset             # print the canonical scoped-key allow
 
 The two big MLX models (~17 GB each) **cannot be resident together** on a 24 GB box;
 LM Studio JIT-loads with idle-unload (TTL) so only one is in RAM at a time. Ollama is
-kept lazy (`OLLAMA_KEEP_ALIVE=0`, models unload right after each request). The legacy
+kept lazy (`OLLAMA_KEEP_ALIVE=30m`, the default model stays warm for 30 min of inactivity, then unloads). The legacy
 `local-heavy` (Ollama `qwen3.6:27b`) is **no longer auto-pulled** and 503s unless you
 `ollama pull` it by hand — the heavy/coder models live on LM Studio now.
 

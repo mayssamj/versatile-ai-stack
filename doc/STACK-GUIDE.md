@@ -196,8 +196,8 @@ general-reasoning (`local-qwen3.6`) and coding (`local-qwen3-coder`) models
 moved to LM Studio MLX (~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b`
 (`local-heavy`) is no longer auto-pulled. Which model each agent uses is now
 declared per-agent in `installer/models.yml` — see [models.md](models.md).
-Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=0`), so no model stays resident
-between requests.
+Ollama keeps the default model warm for 30 min of inactivity
+(`OLLAMA_KEEP_ALIVE=30m`) so repeat calls are instant, then releases it.
 
 **Where does it fit?** LiteLLM is the only thing in the stack that talks
 directly to Ollama. Everything else asks LiteLLM for the model named

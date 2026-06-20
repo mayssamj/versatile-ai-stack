@@ -44,7 +44,7 @@ services:
         - ollama pull mistral:7b-instruct-v0.3-q4_K_M
         - ollama stop gemma4:e4b
         - brew services list | awk '$1=="ollama"{print $2}'
-      "config_notes": 'Ollama is intentionally LAZY: OLLAMA_KEEP_ALIVE=0 unloads a model from RAM right after each request, and the big coder model was moved off Ollama to LM Studio. local-heavy (qwen3.6:27b) is no longer auto-pulled and 404s until you ''ollama pull'' it; on a 24GB M4 a 27B model thrashes/sticks, so use ''ollama stop'' or a brew restart to clear it and prefer local-gemma4 for quick smoke tests.'
+      "config_notes": 'Ollama is intentionally LIGHT: OLLAMA_KEEP_ALIVE=30m keeps the default model (gemma4:e4b, ~3.3GB resident) warm for 30 min of inactivity so repeat calls are instant, then releases it (KEEP_ALIVE=0 used to unload after EVERY call — a ~17s reload tax); the big coder model was moved off Ollama to LM Studio. local-heavy (qwen3.6:27b) is no longer auto-pulled and 404s until you ''ollama pull'' it; on a 24GB M4 a 27B model thrashes/sticks, so use ''ollama stop'' or a brew restart to clear it and prefer local-gemma4 for quick smoke tests.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed

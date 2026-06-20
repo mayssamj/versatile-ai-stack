@@ -461,7 +461,7 @@ flowchart LR
   HO -- "litellm.ai-stack:4000" --> HUB
 
   subgraph Runtimes[Runtimes]
-    OL["ollama :11434 (host, lazy, KEEP_ALIVE=0)<br/>local-gemma4 = default"]
+    OL["ollama :11434 (host, lazy, KEEP_ALIVE=30m)<br/>local-gemma4 = default"]
     LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local-qwen3.6 / local-qwen3-coder"]
     CLOUD["Cloud APIs - only if you pick a non-local model<br/>Anthropic / OpenAI / OpenRouter / Gemini"]
   end

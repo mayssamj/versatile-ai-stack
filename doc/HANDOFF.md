@@ -122,7 +122,7 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
 ### Inference + observability
 - **LiteLLM** (`http://litellm:4000`) — virtual-key gateway, Postgres-backed key store, Phoenix OTLP export, custom JSONL trace logger, in-built guardrails (denied-words + secrets regex). On `ai-stack` docker network.
 - **Phoenix** (`http://phoenix:6006`) — observability UI + OTLP collector. Project `ai-stack` for all traces.
-- **Ollama** — host brew service. Eager-pulled models (Phase 01 `REQUIRED_MODELS`, lazy policy 2026-05-31): `gemma4:e4b` (=`local-gemma4`, default) + `nomic-embed-text` only. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder`, ~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b` (`local-heavy`) and LFM2.5 GGUF are **no longer auto-pulled**. `OLLAMA_KEEP_ALIVE=0` (set in Phase 00) keeps Ollama from holding a model resident.
+- **Ollama** — host brew service. Eager-pulled models (Phase 01 `REQUIRED_MODELS`, lazy policy 2026-05-31): `gemma4:e4b` (=`local-gemma4`, default) + `nomic-embed-text` only. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder`, ~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b` (`local-heavy`) and LFM2.5 GGUF are **no longer auto-pulled**. `OLLAMA_KEEP_ALIVE=30m` (set in Phase 00) keeps the default model warm for 30 min of inactivity, then releases it.
 
 ### Storage
 - **FalkorDB** (`redis://falkordb:6379`, browser `http://falkordb-ui:3000`) — graph DB on Redis protocol.
