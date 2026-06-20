@@ -251,8 +251,8 @@ ai-stack-installer — usage:
                                         (enable/disable are accepted as aliases for start/stop)
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
-  00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 26 mempalace · 27 sourcegraph
+  00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 26
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
   e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model
@@ -424,7 +424,7 @@ cmd_prepare_sudo() {
 # Canonical phase order for `install all`. Single source for both the real
 # install loop and the --dry-run plan, so they can never drift.
 install_all_phase_order() {
-  echo "00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h"
+  echo "00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h 26"
 }
 
 cmd_install() {
@@ -478,8 +478,15 @@ cmd_install() {
     # - 00v (verify) runs AFTER 00n (network) so the network is up to probe.
     # - 04f (Hermes fleet) AFTER 04 (OpenShell + hermes-fleet-v1 sandbox).
     # - 04g (security layer) AFTER 04f.
-    # - 04h (agent fleet across claude-code/pi/hermes) runs LAST: it uploads into
-    #   pi-v1 (Phase 15) and widens PI_LITELLM_KEY (minted by 15) + HERMES key.
+    # - 04h (agent fleet across claude-code/pi/hermes) runs after its deps: it
+    #   uploads into pi-v1 (Phase 15) and widens PI_LITELLM_KEY (minted by 15) +
+    #   HERMES key.
+    # - 26 (mempalace) is appended LAST: a zero-dependency leaf (needs only .env/00,
+    #   LiteLLM/01, uv/14 — all earlier; nothing in the installer consumes it), so
+    #   placing it last fail-isolates it — a PyPI/network hiccup in this niche
+    #   memory tool can't block any core phase. It's a CLI tool (no daemon, no
+    #   container) that installs ZERO live side effects: the Claude Code Stop/
+    #   PreCompact capture hooks stay an explicit opt-in (bin/mempalace-hooks).
     local phases=( $(install_all_phase_order) )
     for p in "${phases[@]}"; do
       run_phase "$p" || {
@@ -537,7 +544,7 @@ install_plan() {
     fi
   done
   echo
-  [[ "$target" == "all" ]] && note "(Opt-in extras 21–27 — portless · cmux · skillspector · openagents · lmstudio · mempalace · sourcegraph — are NOT in 'install all'; install them by name.)"
+  [[ "$target" == "all" ]] && note "(Opt-in extras 21–25 · 27 — portless · cmux · skillspector · openagents · lmstudio · sourcegraph — are NOT in 'install all'; install them by name.)"
   ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
   return 0
 }

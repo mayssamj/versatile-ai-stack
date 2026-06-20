@@ -4,6 +4,15 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-20
+
+### Changed
+
+- mempalace now installed by default: **MemPalace (Phase 26) joined `install all`** — it is no longer an opt-in extra. It is appended **last** in the canonical phase order (`… 20 04h 26`), so it runs after its only deps (`.env`/00, LiteLLM/01, uv/14) and a PyPI/network hiccup in this niche tool **can't block any core phase** (fail-isolated — nothing in the installer consumes it; it's a pure leaf). Promoted because it's the **lowest-cost extra**: a CLI tool with **no daemon and no container**, ~80–300 MB on-device CoreML/ONNX embeddings that run on demand then exit (zero idle cost on a 24 GB box), and it fills the stack's verbatim-session-memory slot that Honcho/Qdrant/Lumen/FalkorDB don't. **Installing it has ZERO live side effects:** the Claude Code Stop/PreCompact capture hooks stay an explicit opt-in via `bin/mempalace-hooks` (never auto-wired) and history is not auto-backfilled — `install all` only puts the tool on the system, ready to use.
+  - Code (`vz-ai-stack.sh`): `install_all_phase_order()` appends `26`; the usage phase list + the `--dry-run` opt-in-extras note drop mempalace; the phase-order rationale comment documents the leaf / fail-isolation placement. Doctor **check 44 logic is unchanged** — its stamp-gate green-skip now covers only a pre-change stack or a partial/resumed install (a full `install all` runs Phase 26, so 44 verifies fully); prose updated accordingly. Counts: **28 core + 7 opt-in → 29 core + 6 opt-in extras** (remaining six: portless 21 · cmux 22 · skillspector 23 · openagents 24 · lmstudio 25 · sourcegraph 27). Doctor count unchanged at **49**; services unchanged at **41**.
+  - Docs: cohesion sweep across **22 doc files** — README, TUTORIAL.md (the L10½ + L29 power-user lessons reframed: MemPalace is now installed by `install all`, not "install it by name"), STACK-GUIDE, COMPONENTS, ARCHITECTURE, ATTRIBUTION, ALTERNATIVES, OPERATIONS, DEPENDENCIES, ONBOARDING, INSTALL, PORTS, TROUBLESHOOTING, DOCTOR, HANDOFF, models — plus EXPLORE.html + USER-GUIDE.html (hand-maintained) edited directly, and TUTORIAL.html + DIAGRAMS.html **regenerated** from their `.md` (both drift checks green). Dated CHANGELOG/snapshot entries and genuinely-opt-in references (the auto-save hooks, the optional refiner, the `embeddinggemma` model, LM Studio, sourcegraph/27) were deliberately left intact.
+  - **Verified:** `install all --dry-run` lists **29 phases** ending `04h → 26 mempalace`, opt-in-extras note no longer lists mempalace; `bash -n` clean on `vz-ai-stack.sh` + `44_mempalace.sh`; both HTML drift guards `in sync`; a whole-repo grep finds no stale `28 core`/`7 opt-in`/"mempalace … opt-in" *current-reference* claim (only dated-history entries remain). Developed in a git worktree while a parallel session worked TUTORIAL/RAG; reset onto current `main` first to avoid clobbering its L9 fix.
+
 ## 2026-06-19
 
 ### Fixes

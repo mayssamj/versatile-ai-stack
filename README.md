@@ -419,7 +419,7 @@ sequenceDiagram
 | Fine-tuning / training | Unsloth Studio | `unsloth` | 14 |
 | Sandboxed coding agent | Pi (Earendil) | `pi-v1` (OpenShell sandbox) | 15 |
 | Code semantic search (MCP) | Lumen (Ory) | `bin/lumen` (stdio, no port) | 16 |
-| Verbatim Claude Code session memory (CLI + MCP) | MemPalace | `bin/mempalace` (CLI + stdio MCP, no port) | 26 (opt-in) |
+| Verbatim Claude Code session memory (CLI + MCP) | MemPalace | `bin/mempalace` (CLI + stdio MCP, no port) | 26 |
 | Recursive Language Models | RLM (`rlms`) | `bin/rlm` (Docker REPL sandbox) | 18 |
 | 3D agent office | claw3d + stack-agents bridge | `claw3d` (`:4310`) | 19 |
 | Fleet chat from your phone | Hermes Telegram gateway | `@vz_hermes_controller_bot` | 20 |
@@ -607,11 +607,11 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
-- **28 core install phases (+7 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · mempalace · sourcegraph) · 41 services · 49 doctor checks.**
+- **29 core install phases (+6 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph) · 41 services · 49 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
-  the 7 opt-in extras' checks (34–38, 44, 49) pass-as-skip when not installed, check 39
+  the 6 opt-in extras' checks (34–38, 49) pass-as-skip when not installed, check 39
   (`openshell_storm`) reports the watchdog status, and check 45 (`tutorial`, always-on)
   asserts `doc/TUTORIAL.html` and `doc/DIAGRAMS.html` are self-contained and in sync with their markdown sources.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source

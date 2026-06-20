@@ -500,7 +500,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/my-experiment/search?que
 
 ---
 
-#### `mempalace` (opt-in Phase 26, CLI + MCP, no port)
+#### `mempalace` (Phase 26, CLI + MCP, no port)
 
 **What.** Local-first **verbatim** conversation memory for Claude Code sessions —
 it remembers your past sessions word-for-word (not LLM-summarized like Honcho) and
@@ -508,7 +508,7 @@ lets a new session "wake up" with that context. CLI + MCP, no daemon, no port.
 Embeddings run **LOCAL on-device** via CoreML (default `all-MiniLM-L6-v2`, 384-dim;
 `embeddinggemma` multilingual is opt-in). There are **NO cloud embeddings**. An
 optional refiner LLM can route through LiteLLM (`MEMPALACE_LITELLM_KEY`) → Phoenix.
-It is **opt-in** — NOT part of `install all`; add it with `vz-ai-stack.sh install 26`.
+It is part of `install all` (also installable by name with `vz-ai-stack.sh install 26`).
 Install is **PyPI-only** (the `mempalace.tech` domain is a malware squat — never
 install from it). Storage is local on-device ChromaDB (a Qdrant backend adapter is
 staged at `mempalace/backend-qdrant/` but not live — MemPalace 3.3.5 hardcodes
@@ -522,7 +522,7 @@ cross-agent facts; MemPalace is the verbatim-transcript complement.
 **Try this.**
 
 ```bash
-# 1. Install the opt-in phase once (NOT in `install all`). First run downloads
+# 1. Installed by `install all`; also installable on its own. First run downloads
 #    the ~80MB on-device embedding model — retry if it times out.
 bash ~/ai-stack/vz-ai-stack.sh install 26
 

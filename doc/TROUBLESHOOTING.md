@@ -615,10 +615,10 @@ bash ~/ai-stack/bin/start-hermes-telegram.sh
 
 ---
 
-## MemPalace verbatim memory (opt-in, Phase 26)
+## MemPalace verbatim memory (Phase 26)
 
-MemPalace is opt-in local-first **verbatim** conversation memory (CLI + MCP, no
-daemon, no port). Embeddings run **on-device** (CoreML); storage is on-device
+MemPalace is installed by `install all` (Phase 26) — local-first **verbatim**
+conversation memory (CLI + MCP, no daemon, no port). Embeddings run **on-device** (CoreML); storage is on-device
 ChromaDB. Install is **PyPI-only** — `mempalace.tech` is a **malware squat**, never
 install from it. Doctor check 44 green-skips when it isn't installed. The recurring
 gotchas:

@@ -451,7 +451,7 @@ routing, 31 RLM install, 32 claw3d office + bridge, 33 Hermes Telegram gateway)
 require Phases 14, 15, 16, 10, 17, 04f, 18, 19, 20. Check 33 skips cleanly
 (counts as a pass) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set.
 
-Checks 34–38 cover five of the six opt-in extras (Phases 21–25: portless, cmux,
+Checks 34–38 cover the five opt-in extras (Phases 21–25: portless, cmux,
 skillspector, openagents, lmstudio) and **pass-as-skip when the tool isn't
 installed**, so the doctor stays green on a default `install all`. Check 39
 (`openshell_storm`) verifies no OpenShell sandbox is in an expired-token CPU
@@ -459,9 +459,9 @@ storm and reports that the (warn-only-by-default) watchdog installed by Phase 04
 is loaded — it skips cleanly when OpenShell isn't present. Checks 40–43 cover the
 model↔agent binding (40), the opt-in Meridian/Claude-subscription wiring (41), the
 9-role agent fleet (42), and any pending watchdog alert (43). Check 44
-(`mempalace`) covers the sixth opt-in extra (Phase 26: verbatim Claude Code
+(`mempalace`) covers MemPalace, now a core phase (Phase 26: verbatim Claude Code
 session memory) — it verifies the tool + wrapper + launchers + palace config +
-LiteLLM key and **green-skips when MemPalace isn't installed**. Check 49
+LiteLLM key and **green-skips when Phase 26 hasn't run yet** (e.g. a stack predating the change, or a partial install). Check 49
 (`sourcegraph_mcp`) covers the seventh opt-in extra (Phase 27: local Sourcegraph
 code search wired into the Hermes fleet over MCP) — it verifies the network-policy
 stanza + fleet wiring and **skip-cleans when Sourcegraph isn't installed**.

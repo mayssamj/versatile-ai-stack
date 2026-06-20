@@ -63,9 +63,9 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
-The **7 opt-in extras** (Phases 21–27: `portless`, `cmux`, `skillspector`,
-`openagents`, `lmstudio`, `mempalace`, `sourcegraph`) are NOT part of `install all` — add them
-individually by name. Their doctor checks (34–38, 44, 49) pass-as-skip until installed.
+The **6 opt-in extras** (Phases 21–25, 27: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`, `sourcegraph`) are NOT part of `install all` — add them
+individually by name. Their doctor checks (34–38, 49) pass-as-skip until installed.
 
 ### Per-service help (`stack help`)
 
@@ -418,9 +418,9 @@ Lighter headless alternative: `pip install mlx-lm` → `mlx_lm.server`. See
 
 ---
 
-## MemPalace verbatim memory (opt-in, Phase 26)
+## MemPalace verbatim memory (Phase 26)
 
-MemPalace (Phase 26) is **opt-in** (NOT in `install all`) local-first **verbatim**
+MemPalace is installed by `install all` (Phase 26, appended last) — local-first **verbatim**
 conversation memory for Claude Code — CLI + MCP, no daemon, no host port. Embeddings
 run **on-device** (CoreML, default `all-MiniLM-L6-v2` 384-dim; `embeddinggemma`
 opt-in); there are no cloud embeddings. Storage is on-device ChromaDB. An optional

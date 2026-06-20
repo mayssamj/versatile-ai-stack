@@ -101,7 +101,7 @@ graph TD
 - `phoenix` is a soft dep — LiteLLM keeps serving if Phoenix is down (the OTLP callback fails-soft; the call still completes).
 - `halo` (the `halo-engine` CLI, exposing `bin/halo`) routes its own LLM calls through LiteLLM (local default); it does not read `traces/litellm.jsonl`.
 - `falkordb` has no current callers in this stack (reserved for future graph-memory work).
-- `mempalace` (Phase 26, opt-in CLI/MCP, no port) is local-first: its embeddings run on-device (local ONNX via CoreML, no dependency) and its only soft edge is the *optional* entity-refiner (`--extract general`), which routes through LiteLLM under `MEMPALACE_LITELLM_KEY`. Skip the refiner and MemPalace has no runtime deps at all.
+- `mempalace` (Phase 26, CLI/MCP, no port) is local-first: its embeddings run on-device (local ONNX via CoreML, no dependency) and its only soft edge is the *optional* entity-refiner (`--extract general`), which routes through LiteLLM under `MEMPALACE_LITELLM_KEY`. Skip the refiner and MemPalace has no runtime deps at all.
 - The cloud-provider edges are dotted because each call only uses one provider, chosen by `model:` in the request.
 
 ---
@@ -396,7 +396,7 @@ graph TD
   p18[Phase 18 rlm]:::opt
   p19[Phase 19 claw3d office + bridge]:::opt
   p20[Phase 20 hermes_telegram gateway]:::opt
-  p21_26[Phases 21-27 opt-in extras<br/>install BY NAME: portless ... sourcegraph]:::opt
+  p21_26[Phases 21-25, 27 opt-in extras<br/>install BY NAME: portless ... sourcegraph]:::opt
   p04h[Phase 04 H agent_fleet - RUNS LAST<br/>cross-platform 9-role fleet -> pi-v1 Phase 15 + Claude Code<br/>widens PI/HERMES virtual keys]:::sec
 
   p00 --> p00s --> p01 --> p01h

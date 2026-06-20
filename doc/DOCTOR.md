@@ -80,7 +80,7 @@ installer/doctor/checks/
 ├── 41_meridian.sh                         (Claude subscription behind LiteLLM; opt-in, Phase via start-meridian.sh)
 ├── 42_agent_fleet.sh                      (9-role fleet across claude-code + pi personas; opt-in Phase 04h)
 ├── 43_watchdog_alert.sh                   (surfaces a pending OpenShell watchdog storm/recreate-failed alert)
-├── 44_mempalace.sh                         (opt-in Phase 26; conditional green-skip when not installed)
+├── 44_mempalace.sh                         (Phase 26; conditional green-skip until Phase 26 has run)
 ├── 45_tutorial.sh                          (always-on; doc/TUTORIAL.html self-contained / link-clean / in-sync)
 ├── 46_agent_fleet_parity.sh                (always-on; shared skills + Tier-1 block + each role byte-identical across the 3 frameworks)
 ├── 47_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
@@ -593,13 +593,13 @@ silent again.
 
 ---
 
-## 44 · MemPalace verbatim-memory CLI + MCP installed (opt-in, Phase 26)
+## 44 · MemPalace verbatim-memory CLI + MCP installed (Phase 26, in `install all`)
 
 | | |
 |---|---|
 | Asserts | When Phase 26 has run, the `mempalace` tool is installed (PyPI uv-tool env), the `bin/mempalace` wrapper + the `bin/mempalace-hook-*` launchers exist, the palace config is present, and — if `MEMPALACE_LITELLM_KEY` is set (the optional refiner LLM) — that key is accepted by LiteLLM's `/v1/models`. Embeddings are on-device (CoreML); there is nothing to probe for them. |
 | Fails when | Phase 26 ran but the tool/wrapper/hook-launchers/palace config are missing, or `MEMPALACE_LITELLM_KEY` is set but rejected by LiteLLM. |
-| Green-skip | MemPalace not installed — it's opt-in, not part of `install all`, so the check passes-as-skip and the doctor stays green. |
+| Green-skip | Phase 26 hasn't run yet (a stack predating mempalace joining `install all`, or a partial/resumed install) — the check passes-as-skip so doctor stays green. |
 | Auto-fix | Surfaces `bash vz-ai-stack.sh install 26` — Phase 26 is idempotent (re-uses the uv-tool env, re-writes the wrapper + hook launchers, re-validates the refiner key). |
 
 **Backend note.** MemPalace runs on local on-device **ChromaDB** (MemPalace 3.3.5

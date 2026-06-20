@@ -12,7 +12,7 @@ service-by-service tour see [STACK-GUIDE.md](STACK-GUIDE.md); for recipes see
 bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama); --check = read-only
 bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
 sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
-bash vz-ai-stack.sh install all       # the 28 core phases (offers `setup` on first run if you skipped it)
+bash vz-ai-stack.sh install all       # the 29 core phases (offers `setup` on first run if you skipped it)
 bash vz-ai-stack.sh doctor            # 49 checks — target all green
 ```
 
@@ -58,8 +58,8 @@ stack test inference         # alias → smoke test for phase 01 (litellm)
 Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 `hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
 `halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. Run
-`stack phases` if you're not sure of a name. `install all` runs the 28 core phases
-(the 7 opt-in extras are excluded — see §5).
+`stack phases` if you're not sure of a name. `install all` runs the 29 core phases
+(the 6 opt-in extras are excluded — see §5).
 
 ---
 
@@ -138,10 +138,11 @@ view at start): `docker exec litellm tail -f /traces/litellm.jsonl`.
 
 ---
 
-## 5. Opt-in extras (Phases 21–26) — add only what you want
+## 5. Opt-in extras (Phases 21–25, 27) — add only what you want
 
-These are **not** in `install all`. Add by name; each one's doctor check (34–38, 44)
-passes-as-skip until you install it.
+These are **not** in `install all`. Add by name; each one's doctor check (34–38, 49)
+passes-as-skip until you install it. (MemPalace, Phase 26, is no longer here — it's a
+core phase installed by `install all`, appended last; see OPERATIONS.md § MemPalace.)
 
 ```bash
 stack install portless       # 21 — agent-aware dev proxy: stable name.localhost URLs
@@ -149,7 +150,7 @@ stack install cmux           # 22 — native macOS terminal for parallel agent s
 stack install skillspector   # 23 — scan an agent skill/MCP before trusting it (offline)
 stack install openagents     # 24 — OpenAgents Launcher (agn); overlaps the stack, edits shell rc
 stack install lmstudio       # 25 — LM Studio MLX runtime behind LiteLLM (CPU caveat → §6)
-stack install mempalace      # 26 — verbatim Claude Code session memory (CLI + MCP, local-only, no port)
+stack install sourcegraph    # 27 — self-hosted code search + native MCP
 
 bin/skillspector scan <path>   # after installing skillspector: offline security scan
 ```

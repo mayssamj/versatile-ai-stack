@@ -362,7 +362,7 @@ summarizer model before any action model sees it.
 
 ## Verbatim conversation memory
 
-### MemPalace (Phase 26, opt-in)
+### MemPalace (Phase 26)
 **Slot:** Local-first **verbatim** recall of past Claude Code sessions —
 CLI + MCP (29 tools) + Python lib. A spatial model
 (wings/rooms/drawers) over a temporal SQLite knowledge graph; embeddings

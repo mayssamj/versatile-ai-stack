@@ -190,7 +190,7 @@
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
-    MP["mempalace (CLI, opt-in)"]
+    MP["mempalace (CLI)"]
   end
 
   subgraph Docs[Documents]
@@ -241,7 +241,7 @@
 <p>Ollama (default, serves <code>local-gemma4</code>) and, when you opt into Phase 25, LM Studio's MLX server (<code>:1234</code>, serves the heavy <code>local-qwen3.6</code> / <code>local-qwen3-coder</code> MLX models) — plus the cloud APIs.</p>
 <ul><li>Phoenix only receives; it never sits in the request path.</li><li>Honcho and Qdrant are the long-term state. Everything else is</li></ul>
 <p>ephemeral.</p>
-<ul><li>MemPalace (Phase 26, opt-in) is <strong>CLI-only</strong> verbatim conversation</li></ul>
+<ul><li>MemPalace (Phase 26) is <strong>CLI-only</strong> verbatim conversation</li></ul>
 <p>memory: its embeddings are computed <strong>on-device</strong> (local ONNX), so it touches LiteLLM <em>only</em> for the optional refiner LLM — and not at all otherwise.</p>
 </section>
 
@@ -285,7 +285,7 @@
     HO[honcho :8000]
     QD[qdrant :6333]
     FK[falkordb :6379]
-    MP["mempalace (CLI, opt-in)"]
+    MP["mempalace (CLI)"]
   end
 
   subgraph L5[Document layer]
@@ -992,7 +992,7 @@ sequenceDiagram
 <p>embeddings are computed via LiteLLM. If you pick <code>embed-local</code> (Ollama nomic-embed) instead of <code>embed-openai-small</code>, even the embeddings stay local.</p>
 <ul><li><strong>Your memory (Honcho)</strong> never leaves the machine. The derivations</li></ul>
 <p>run via LiteLLM, so if Honcho calls a cloud model, the message content is sent to that model — but the derived facts stay in your Postgres.</p>
-<ul><li><strong>MemPalace</strong> (Phase 26, opt-in) verbatim conversation memory is</li></ul>
+<ul><li><strong>MemPalace</strong> (Phase 26) verbatim conversation memory is</li></ul>
 <p>local-by-design: its embeddings are computed <strong>on-device</strong> (local ONNX), and its store (local ChromaDB) never leaves the machine. The only thing that can leave is the <em>optional</em> refiner LLM — and only via LiteLLM, only if you enable it and point it at a cloud model.</p>
 <ul><li><strong>Traces</strong> are written to <code>traces/</code> on disk and into Phoenix's local</li></ul>
 <p>SQLite. Neither sink is internet-connected.</p>

@@ -56,7 +56,7 @@ subagents at `~/.claude/agents/<role>.md`), sharing the `team-protocol` skill.
 | `rlm`                      | `claude-opus-4.8-sub-xhigh` | rlm            | `RLM_LITELLM_KEY` |
 | `mempalace`                | `local-gemma4`      | mempalace      | `MEMPALACE_LITELLM_KEY` |
 
-**MemPalace is a partial binding.** `mempalace` (Phase 26, opt-in) is a
+**MemPalace is a partial binding.** `mempalace` (Phase 26) is a
 host-side CLI/MCP memory tool, not a chat agent. Its `MEMPALACE_LITELLM_KEY`
 (scoped to local models) is used **only** for the *optional* entity-refiner
 (`mempalace mine --extract general`); that path defaults to `local-gemma4` and

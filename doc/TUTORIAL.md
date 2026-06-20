@@ -162,7 +162,7 @@ bash vz-ai-stack.sh install 01h         # by id
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
 
-The **opt-in extras (Phases 21–27: portless · cmux · skillspector · openagents · lmstudio · mempalace · sourcegraph)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
+The **opt-in extras (Phases 21–25 · 27: portless · cmux · skillspector · openagents · lmstudio · sourcegraph)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
 
 > **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
 
@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (49 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace and check 49 covers the Sourcegraph fleet MCP when those opt-in extras are installed.
+- `doctor` targets **all green (49 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and check 49 covers the Sourcegraph fleet MCP when that opt-in extra is installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -525,11 +525,11 @@ docker exec falkordb redis-cli GRAPH.QUERY org "
 
 ---
 
-### L10½ · Verbatim conversation memory (MemPalace) · 🟡 · opt-in · ~10 min
+### L10½ · Verbatim conversation memory (MemPalace) · 🟡 · ~10 min
 
-**Why.** Honcho remembers *derived facts* about you; Qdrant RAG grounds answers in *documents*. Neither keeps the **actual transcript** of your past Claude Code sessions. MemPalace (Phase 26, opt-in) fills that fourth memory slot: it indexes your real conversations **verbatim** and lets you search and "wake up" with the relevant history. It's a local CLI (plus an MCP server with 29 tools and a Python lib) built on a spatial model (wings/rooms/drawers) over a temporal SQLite knowledge graph.
+**Why.** Honcho remembers *derived facts* about you; Qdrant RAG grounds answers in *documents*. Neither keeps the **actual transcript** of your past Claude Code sessions. MemPalace (Phase 26) fills that fourth memory slot: it indexes your real conversations **verbatim** and lets you search and "wake up" with the relevant history. It's a local CLI (plus an MCP server with 29 tools and a Python lib) built on a spatial model (wings/rooms/drawers) over a temporal SQLite knowledge graph.
 
-**Prereqs.** MemPalace is an **opt-in extra** — install it by name (it is *not* part of `install all`):
+**Prereqs.** MemPalace is installed by `install all` (Phase 26) — if you ran a full install, it's already here. To (re)install it on its own:
 
 ```bash
 vz-ai-stack.sh install mempalace        # Phase 26 — installs the `mempalace` PyPI pkg + bin/mempalace wrapper
@@ -556,7 +556,7 @@ bin/mempalace wake-up
 
 ---
 
-**Where you are now.** Your assistant has four kinds of memory: episodic/personal (Honcho), document knowledge (Qdrant RAG), relational knowledge (FalkorDB), and — opt-in — verbatim conversation recall (MemPalace) — all local, all on-device. Act IV puts agents on top of this foundation.
+**Where you are now.** Your assistant has four kinds of memory: episodic/personal (Honcho), document knowledge (Qdrant RAG), relational knowledge (FalkorDB), and verbatim conversation recall (MemPalace) — all local, all on-device. Act IV puts agents on top of this foundation.
 ## Act IV — The Fleet
 
 This is the headline act: a **9-role software-engineering team** — manager, tech lead, frontend, backend, ML, QA, reviewer, SRE, incident manager — that you talk to like colleagues. The same nine roles are realized three ways (Hermes profiles, Pi personas, Claude Code subagents), all sharing one operating contract, so you can hand a one-line task to a single specialist or ask the manager to ship a whole feature through a review-gated pipeline.
@@ -1352,7 +1352,7 @@ vz-ai-stack.sh gc
 
 **Expected.** `doctor` ends with `Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.` — many checks **auto-fix** and re-verify rather than just complaining. `upgrade --check` prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; sandbox/CLI/npm/pip rows are hidden unless `--all`). `history` prints a chronological record of every install decision.
 
-**Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, the watchdog alert 43, MemPalace 44, and the Sourcegraph fleet MCP 49). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; **check 43 (`watchdog_alert`)** surfaces any pending alert the watchdog left behind. **Check 44 (`mempalace`)** pass-as-skips until the Phase 26 opt-in extra is installed; **check 49 (`sourcegraph_mcp`)** skip-cleans until the Phase 27 opt-in extra is installed.
+**Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, the watchdog alert 43, MemPalace 44, and the Sourcegraph fleet MCP 49). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; **check 43 (`watchdog_alert`)** surfaces any pending alert the watchdog left behind. **Check 44 (`mempalace`)** pass-as-skips until Phase 26 has run (it's now part of `install all`); **check 49 (`sourcegraph_mcp`)** skip-cleans until the Phase 27 opt-in extra is installed.
 
 **The watchdog.** `bin/openshell-watchdog.sh` runs every few minutes via launchd and guards against the **token-expiry storm**: after ~8h, a sandbox's gateway token expires and the in-sandbox agent retries its log-push with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. A gateway *restart does not* refresh the token; only **recreating** the sandbox mints a fresh one. The watchdog detects the unambiguous signature (`ExpiredSignature` / reconnect-storm in recent logs, or a climbing RestartCount — meaning the sandbox is already dead). **By default it is warn-only and data-safe:** it halts the container to stop the CPU burn at once, writes an alert (surfaced by check 43), and posts a desktop notification — it does **not** delete or recreate the sandbox, because recreation discards in-sandbox state. You recreate when ready. Opt into automatic delete+recreate (capability-checked, Ready-verified, fails loud) with `AI_STACK_WATCHDOG_RECREATE=1`.
 
@@ -1378,7 +1378,7 @@ vz-ai-stack.sh reset --confirm hard --yes     # backs up data/, tears down conta
 
 ### L29 · Power-user opt-in extras · 🔴 · ~15 min
 
-**Why.** Six components ship with the stack but are **deliberately excluded from `install all`** — they're niche, they overlap with what you already have, or they idle-burn CPU/RAM. You install each **by name** when you actually want it, and (critically) you quit the heavy ones when you're done.
+**Why.** The **opt-in extras** ship with the stack but are **deliberately excluded from `install all`** — they're niche, they overlap with what you already have, or they idle-burn CPU/RAM. (MemPalace used to be one of these; it joined `install all` because it's a zero-cost CLI leaf — see L10½.) You install each **by name** when you actually want it, and (critically) you quit the heavy ones when you're done.
 
 **Prereqs.** A working stack. These are host tools / CLIs / a competing launcher — none are load-bearing, and skipping them costs you nothing.
 
@@ -1390,10 +1390,9 @@ vz-ai-stack.sh install cmux           # 22 — native macOS terminal for paralle
 vz-ai-stack.sh install skillspector   # 23 — the security scanner from L27
 vz-ai-stack.sh install openagents     # 24 — a COMPETING agent launcher (eval sandbox only)
 vz-ai-stack.sh install lmstudio       # 25 — LM Studio MLX as a 2nd local runtime behind LiteLLM
-vz-ai-stack.sh install mempalace      # 26 — verbatim conversation memory (see L10½)
 ```
 
-**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). The first five extras' doctor checks are **34–38**; MemPalace's is **check 44** — each runs only once the corresponding extra is installed.
+**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.)
 
 **Lesson — what each is, and the gotchas.**
 
@@ -1401,7 +1400,7 @@ vz-ai-stack.sh install mempalace      # 26 — verbatim conversation memory (see
 - **`cmux` (22)** — a native macOS **GUI app** (Homebrew cask from the upstream tap), not a container or daemon: there's nothing to start; you launch `cmux.app` yourself. Ships a `cmux notify` CLI for agent hooks.
 - **`openagents` (24)** — a **competing orchestration layer** ("Ollama for AI agents"). It overlaps OpenShell, the Hermes fleet, and the front-ends; we install it into its own `~/.openagents` prefix and wire it into *nothing*. Treat it as an evaluation sandbox.
 - **`lmstudio` (25)** — adds Apple's **MLX** engine as a second local runtime behind LiteLLM (home of the heavy MLX models `local-qwen3.6` / `local-qwen3-coder`). `install lmstudio` does the setup + model wiring; **`vz-ai-stack.sh start lmstudio`** starts the server when you want it (and `stop lmstudio` stops it) — no model auto-loads, so assign one in `models.yml` + `vz-ai-stack.sh model sync`. ⚠ **CPU/RAM gotchas:** LM Studio **idle-spins ~0.8 of a core** even when nothing is in flight — **quit it when you're done** (`mlx_lm.server` is a lighter alternative). On a 24 GB box, the heavy MLX slugs (`local-qwen3.6`, `local-qwen3-coder`, ~17 GB) thrash if you also have Ollama resident — load one runtime at a time. **Security:** LM Studio binds `0.0.0.0:1234` with **no auth** so the container can reach it via `host.docker.internal`, which exposes the LLM to your LAN — fine on a trusted network, otherwise firewall it.
-- **`mempalace` (26)** — local-first **verbatim** conversation memory (the L10½ lesson): a CLI + MCP server (29 tools) + Python lib that indexes your past Claude Code sessions and lets you `search`/`wake-up` over them. Embeddings are **on-device** (local ONNX), the store is local ChromaDB, and the only optional egress is a refiner LLM via LiteLLM — so it's privacy-clean by default. ⚠ **Security:** install only from PyPI (`mempalace`) or github.com/MemPalace/mempalace — `mempalace.tech` is a known malware squat.
+- **`mempalace` (26)** — *now part of `install all`* — it graduated from this opt-in list because it's a zero-cost CLI leaf (no daemon, on-device embeddings). Full coverage is in **L10½**. ⚠ **Security:** install only from PyPI (`mempalace`) or github.com/MemPalace/mempalace — `mempalace.tech` is a known malware squat.
 
 **Go deeper.** Phases `installer/phases/21_portless.sh` … `26_mempalace.sh` each carry a full rationale header. The model strategy (which slug runs where, why qwen3.6 moved off Ollama to LM Studio) is in `doc/models.md` and `doc/ALTERNATIVES.md`; MemPalace's place among the memory options is in `doc/ALTERNATIVES.md` and its attribution/license in `doc/ATTRIBUTION.md`.
 

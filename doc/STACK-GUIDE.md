@@ -1240,7 +1240,7 @@ like any other HTTP service. Deferred.
 
 ---
 
-### MemPalace (Phase 26, opt-in)
+### MemPalace (Phase 26)
 
 **What is it?** MemPalace is a **local-first, verbatim conversation memory**
 for Claude Code sessions — a CLI + MCP server (29 tools) + Python library
@@ -1306,8 +1306,8 @@ flowchart LR
   MP -. staged, not live .-> QD[qdrant :6333]
 ```
 
-**Gotcha:** Phase 26 is **opt-in** (install by name: `vz-ai-stack.sh install
-mempalace`). Because embeddings are on-device and the refiner is optional,
+**Gotcha:** Phase 26 is part of `install all` (also installable by name:
+`vz-ai-stack.sh install mempalace`). Because embeddings are on-device and the refiner is optional,
 MemPalace works fully offline with zero LiteLLM dependency unless you ask for
 `--extract general`.
 

@@ -59,7 +59,7 @@ a trace "for free."
 │      its Postgres also backs the  │   │    project "ai-stack" — every     │
 │      LiteLLM key store)           │   │    LLM call lands here for free   │
 │    MemPalace (verbatim convo mem; │   │                                   │
-│      host CLI/MCP, no port; opt-in)│   │                                   │
+│      host CLI/MCP, no port)        │   │                                   │
 └───────────────────────────────────┘   └───────────────────────────────────┘
 ```
 
@@ -124,7 +124,7 @@ niche:
   compose Postgres *also* backs the LiteLLM key store, which is why Phase 03
   (Honcho) runs before Phase 01 (LiteLLM): LiteLLM's Prisma migration needs
   Postgres at startup.
-- **MemPalace** (Phase 26, opt-in) — **local-first, verbatim conversation
+- **MemPalace** (Phase 26) — **local-first, verbatim conversation
   memory** for Claude Code sessions: a CLI + MCP server (29 tools) + Python
   library (PyPI `mempalace`, MIT). **No daemon, no network port** — it is a
   host-side tool, not a container. Its spatial model maps people/projects to
@@ -348,7 +348,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
 │   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
 │   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
-│   │   ├── 21 … 27                  — opt-in extras (install BY NAME): portless … sourcegraph
+│   │   ├── 21 … 25 · 27             — opt-in extras (install BY NAME): portless … sourcegraph
 │   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
@@ -453,8 +453,8 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-35 phase scripts (`installer/phases/00_host.sh` through `27_sourcegraph.sh`; 7 of
-them — 21–27 — are opt-in extras installed by name), each:
+35 phase scripts (`installer/phases/00_host.sh` through `27_sourcegraph.sh`; 6 of
+them — 21–25, 27 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.

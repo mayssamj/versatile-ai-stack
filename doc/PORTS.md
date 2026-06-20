@@ -174,7 +174,7 @@ These appear in `services.yml` but have no alias because they have no listener:
 | `rlm`                         | cli-only         | routes via LiteLLM (`bin/rlm`); REPL in Docker sandbox |
 | `autoreason`                  | clone-only       | research artifact (disabled)                  |
 | `blaxel_cli`                  | cli-only         | `BLAXEL_API_KEY` env                          |
-| `mempalace`                   | cli-only         | on-device (CoreML embeddings + ChromaDB); opt-in Phase 26; `bin/mempalace` + `bin/mempalace-hooks`; optional refiner via `MEMPALACE_LITELLM_KEY` |
+| `mempalace`                   | cli-only         | on-device (CoreML embeddings + ChromaDB); Phase 26; `bin/mempalace` + `bin/mempalace-hooks`; optional refiner via `MEMPALACE_LITELLM_KEY` |
 | `deerflow` (`${PORT:-2026}`)  | docker-compose   | upstream default; not yet aliased             |
 
 > **`setup` / `deps` are CLI subcommands, not services.** `vz-ai-stack.sh setup`
@@ -420,7 +420,7 @@ Phase 15 needs `/key/generate` to mint `PI_LITELLM_KEY`, which requires LiteLLM 
 - **REPL sandbox**: the REPL runs in a Docker sandbox (`python:3.11-slim`), not on the host. RLM is the substrate HALO is built on.
 - **Source**: `installer/phases/18_rlm.sh`, `bin/rlm`, `rlm/run_rlm.py`
 
-### `mempalace` (cli-only) — opt-in Phase 26
+### `mempalace` (cli-only) — Phase 26
 
 - **Listens**: none. No daemon, no host port. Local-first **verbatim** Claude Code conversation memory, CLI + MCP. Run on demand via `bin/mempalace` (`wake-up`, `search`, `mine`, `status`); auto-save hooks via `bin/mempalace-hooks` (reversible, backup-first; the `bin/mempalace-hook-*` launchers set `PATH` so GUI/launchd-spawned Claude Code finds it).
 - **Embeddings**: **on-device** (CoreML; default `all-MiniLM-L6-v2` 384-dim, `embeddinggemma` opt-in). No cloud embeddings — nothing dialed for them.
