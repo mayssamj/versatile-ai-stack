@@ -89,7 +89,7 @@ launchd plist with `OLLAMA_HOST=0.0.0.0` + `OLLAMA_ORIGINS=*` (reachable from
 containers) and `OLLAMA_KEEP_ALIVE=30m` (keep the default ~3.3 GB model warm
 for 30 min of inactivity, then release it — the real RAM lever on a 24 GB box
 is the OrbStack VM memory cap), then restarts the service. Idempotent: it patches + restarts
-only when a key is missing.
+only when a key is missing or set to a stale value.
 
 ## Notes
 

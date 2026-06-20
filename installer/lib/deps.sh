@@ -212,14 +212,18 @@ ensure_ollama() {
 # pinning RAM on a 24GB box, but it forced a ~17s cold-load on EVERY call — and the
 # default model (gemma4:e4b) is only ~3.3GB resident, so a 30m idle window is cheap.
 # The real RAM lever on a constrained box is the OrbStack VM cap, not this.
-# Restarts only if a key was missing.
+# Re-patches only if a key is MISSING *or set to a stale value* (e.g. a prior
+# install's KEEP_ALIVE=0) — a presence-only check would silently leave an old
+# value in place and never upgrade it.
 _dep_ollama_patch_env() {
   local plist="$HOME/Library/LaunchAgents/homebrew.mxcl.ollama.plist"
   [[ -f "$plist" ]] || return 0   # not service-managed (rare) — nothing to patch
-  local needs=0 key
-  for key in OLLAMA_HOST OLLAMA_ORIGINS OLLAMA_KEEP_ALIVE; do
-    plutil -extract "EnvironmentVariables.$key" raw "$plist" >/dev/null 2>&1 || needs=1
-  done
+  # Enforce the DESIRED values, not mere presence (review finding 2026-06-19):
+  # missing key OR wrong value → re-patch; all three already correct → no-op reload.
+  local needs=0
+  [[ "$(plutil -extract "EnvironmentVariables.OLLAMA_HOST"       raw "$plist" 2>/dev/null)" == "0.0.0.0" ]] || needs=1
+  [[ "$(plutil -extract "EnvironmentVariables.OLLAMA_ORIGINS"    raw "$plist" 2>/dev/null)" == "*"       ]] || needs=1
+  [[ "$(plutil -extract "EnvironmentVariables.OLLAMA_KEEP_ALIVE" raw "$plist" 2>/dev/null)" == "30m"     ]] || needs=1
   (( needs )) || return 0
   log "Patching Ollama for cross-container access (OLLAMA_HOST=0.0.0.0, ORIGINS=*, KEEP_ALIVE=30m)..."
   local pb=/usr/libexec/PlistBuddy
