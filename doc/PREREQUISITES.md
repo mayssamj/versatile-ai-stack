@@ -53,9 +53,36 @@ single `DOCKER_HOST`. Pick or change it intentionally:
 ```bash
 vz-ai-stack.sh docker-engine select        # interactive picker (then ensure + pin)
 vz-ai-stack.sh docker-engine set <id>       # pin explicitly (ensure + pin), e.g. set colima
-vz-ai-stack.sh docker-engine status         # show selected engine, resolved socket, consistency
+vz-ai-stack.sh docker-engine status         # show selected engine, resolved socket, consistency, context policy
+vz-ai-stack.sh docker-engine context status # show the global docker-context policy (switch|keep)
 vz-ai-stack.sh --engine <id> <any command>  # one-off override for a single invocation
 ```
+
+### Global `docker context` policy (no mid-run prompts)
+
+ai-stack always drives its own containers through the exported **`DOCKER_HOST`**, so
+the selected engine is correct inside the stack regardless of your global `docker
+context`. Whether to *also* point your **global** `docker context` at the stack's
+engine — so other shells/tools see it too — is a **persisted preference**,
+**`AI_STACK_DOCKER_CONTEXT`** in `.env`, never an interactive question during
+`install`/`doctor`:
+
+| Value | Behavior |
+| --- | --- |
+| `switch` *(default)* | `install`/`doctor` silently point the global context at `ai-stack-<engine>`, recording your prior context once (`AI_STACK_DOCKER_CONTEXT_PRIOR`) for a clean undo. |
+| `keep` | Your global context is never touched. |
+
+Set it non-interactively, either in `setup` (it asks once) or directly:
+
+```bash
+vz-ai-stack.sh docker-engine context switch   # auto-point global context (default)
+vz-ai-stack.sh docker-engine context keep      # never touch it (also restores the prior context now)
+```
+
+`AI_STACK_DOCKER_CONTEXT=keep vz-ai-stack.sh <cmd>` overrides it for a single run. (The
+env var shadows `.env` for as long as it is exported — handy for CI, where you may want
+`AI_STACK_DOCKER_CONTEXT=keep` so a shared runner's global context is never auto-switched;
+the stack itself is unaffected either way because `DOCKER_HOST` always wins.)
 
 Phase 00 preflight selects-before-use, so an `install all` on a fresh box pins the
 engine before any container is created. Doctor checks **48** (selection present &
@@ -133,12 +160,14 @@ live on the **previous** engine, the **docker-engine-consistency** doctor check
    OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04
    ```
 
-3. **Restore your global `docker context`** if you let the pin switch it — when
-   `engine_pin` changed the ambient context it **printed the prior context name**;
-   put it back:
+3. **Restore your global `docker context`** if the `switch` policy moved it. The
+   prior context is recorded in `AI_STACK_DOCKER_CONTEXT_PRIOR`, and the one-shot
+   restore puts it back:
 
    ```bash
-   docker context use <prior>     # the name engine_pin printed when it switched
+   vz-ai-stack.sh docker-engine context keep   # restores the recorded prior context
+   # or, manually:
+   docker context use <prior>                  # the name engine_pin printed when it switched
    ```
 
 4. **Confirm it's clean:**

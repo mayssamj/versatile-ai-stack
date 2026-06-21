@@ -83,7 +83,7 @@
 - **Colima socket path / host.docker.internal threshold:** `$HOME/.colima/<profile>/docker.sock` and the colima `host.docker.internal` wiring version threshold are documented, not verified (Colima not installed). We emit the `--add-host` flag as the portable safe default and `log` it as assumed.
 - **Docker Desktop socket:** `$HOME/.docker/run/docker.sock` (per-user) vs `/var/run/docker.sock` depends on the "default socket" setting/version; `engine_socket docker-desktop` prefers the `desktop-linux` context endpoint, then probes both paths.
 - **brew cask name churn:** Docker Desktop cask was `docker`, renamed `docker-desktop`. `engine_install docker-desktop` RESOLVES the cask token (`brew info --cask docker-desktop` → else `docker`) **before** printing the consent prompt (so the user approves the exact command that runs — INFRA minor), and falls back to `docker`. The cask-churn fallback itself is interactive-only and stays untested (requires brew network); noted, not papered over.
-- **`docker context` switch vs exported `DOCKER_HOST` (reversibility):** `engine_pin`'s consented `docker context use ai-stack-<id>` switches the user's GLOBAL context — invasive, affects every other shell/tool. Because `DOCKER_HOST` (exported by Task 8) OVERRIDES `docker context`, the context switch is effectively cosmetic inside ai-stack processes while still changing the user's ambient world. `engine_pin` therefore RECORDS the prior context (`docker context show`) before switching and prints the exact undo (`docker context use <prior>`); the rollback recipe is documented in Task 7 + the new Task 17 rollback section. Doctor 47 compares the AMBIENT context (not the doctor-exported `DOCKER_HOST`) so the check measures the real-world state other shells see.
+- **`docker context` switch vs exported `DOCKER_HOST` (reversibility):** _**Superseded 2026-06-21** — the consented prompt below was replaced by a non-interactive persisted preference `AI_STACK_DOCKER_CONTEXT` (default `switch`); `engine_pin` no longer prompts. See [`2026-06-21-docker-context-policy.md`](2026-06-21-docker-context-policy.md)._ `engine_pin`'s consented `docker context use ai-stack-<id>` switches the user's GLOBAL context — invasive, affects every other shell/tool. Because `DOCKER_HOST` (exported by Task 8) OVERRIDES `docker context`, the context switch is effectively cosmetic inside ai-stack processes while still changing the user's ambient world. `engine_pin` therefore RECORDS the prior context (`docker context show`) before switching and prints the exact undo (`docker context use <prior>`); the rollback recipe is documented in Task 7 + the new Task 17 rollback section. Doctor 47 compares the AMBIENT context (not the doctor-exported `DOCKER_HOST`) so the check measures the real-world state other shells see.
 
 ---
 
@@ -806,6 +806,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ---
 
 ## Task 7 — `engine_pin <id>` (persist .env, export DOCKER_HOST, rewrite gateway.env, offer docker context)
+
+> **Superseded 2026-06-21** — the `offer docker context` / `[y/N]` prompt shown in the
+> `engine_pin` code block below was replaced by a non-interactive persisted preference
+> (`AI_STACK_DOCKER_CONTEXT`, default `switch`) handled by a new `engine_apply_context`;
+> `engine_pin` no longer prompts. The code quoted here is the *original* design, kept for
+> history. See [`2026-06-21-docker-context-policy.md`](2026-06-21-docker-context-policy.md).
 
 **Files:**
 - Modify: `installer/lib/docker-engine.sh`

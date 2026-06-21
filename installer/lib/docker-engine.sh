@@ -364,8 +364,9 @@ EOF
 #   - set_env AI_STACK_DOCKER_ENGINE
 #   - export DOCKER_HOST (so the current process + children inherit it)
 #   - rewrite gateway.env via engine_write_gateway_env (single writer)
-#   - offer (consented; skipped under NO_PROMPT) `docker context use ai-stack-<id>`,
-#     RECORDING the prior context first so the user has an undo.
+#   - apply the global-docker-context PREFERENCE (engine_apply_context) — NEVER
+#     prompts; driven by AI_STACK_DOCKER_CONTEXT (set via `setup` / `docker-engine
+#     context`). This keeps install/doctor fully non-interactive.
 # Returns 1 (caller-recoverable) on socket/persist failure.
 engine_pin() {
   local id="$1"
@@ -381,26 +382,59 @@ engine_pin() {
     ok "wrote gateway.env (DOCKER_HOST=$sock) — restart the gateway for it to take effect"
   fi
 
-  # Offer to switch the global docker context (invasive; consented). Record the
-  # PRIOR context first and print the exact undo (reversibility).
-  if [[ "${NO_PROMPT:-0}" != "1" && -t 0 ]] && command -v docker >/dev/null 2>&1; then
-    local ctx="ai-stack-$id" prior
-    prior="$(docker context show 2>/dev/null || echo default)"
-    printf '  Also point your global `docker context` at %s (ctx: %s)? [y/N]\n' "$(engine_display "$id")" "$ctx" >&2
-    printf '    (your current context is "%s"; undo later with: docker context use %s) ' "$prior" "$prior" >&2
-    local ans; read -r ans || true
-    case "${ans:-N}" in
-      [Yy]*)
-        docker context inspect "$ctx" >/dev/null 2>&1 \
-          || docker context create "$ctx" --docker "host=$sock" --description "ai-stack $id" >/dev/null 2>&1 \
-          || docker context update "$ctx" --docker "host=$sock" >/dev/null 2>&1 || true
-        if docker context use "$ctx" >/dev/null 2>&1; then
-          ok "docker context → $ctx (previous: $prior; undo: docker context use $prior)"
-        else
-          warn "could not switch docker context"
-        fi
-        ;;
-    esac
+  engine_apply_context "$id" "$sock"
+}
+
+# engine_apply_context <id> <sock> — apply the persisted global-docker-context
+# preference. NON-INTERACTIVE by design (no `read`, no TTY gate) so install /
+# doctor never block. The preference lives in AI_STACK_DOCKER_CONTEXT:
+#   switch (default) → silently point the global `docker context` at ai-stack-<id>.
+#                      The PRIOR (non-ai-stack) context is recorded ONCE in
+#                      AI_STACK_DOCKER_CONTEXT_PRIOR so the switch is reversible.
+#   keep             → never touch the user's global docker context.
+# Resolution: the process env var (AI_STACK_DOCKER_CONTEXT) overrides the .env
+# value — a hook for tests/CI and one-off runs. Any unrecognized value is treated
+# as `keep` (fail-safe: never silently mutate the user's world on a typo).
+engine_apply_context() {
+  local id="$1" sock="$2"
+  command -v docker >/dev/null 2>&1 || return 0
+  local pref; pref="${AI_STACK_DOCKER_CONTEXT:-$(get_env AI_STACK_DOCKER_CONTEXT switch)}"
+  [[ "$pref" == "switch" ]] || return 0   # keep / unknown → leave global context untouched
+
+  local ctx="ai-stack-$id" cur
+  cur="$(docker context show 2>/dev/null || echo default)"
+  [[ "$cur" == "$ctx" ]] && return 0       # already pointed there — idempotent no-op
+
+  # Record the prior (non-ai-stack) context ONCE — the undo target. Guard against
+  # overwriting it with one of our own ai-stack-* contexts on a later switch.
+  if [[ "$cur" != ai-stack-* && -z "$(get_env AI_STACK_DOCKER_CONTEXT_PRIOR "")" ]]; then
+    set_env AI_STACK_DOCKER_CONTEXT_PRIOR "$cur" || true
+  fi
+  docker context inspect "$ctx" >/dev/null 2>&1 \
+    || docker context create "$ctx" --docker "host=$sock" --description "ai-stack $id" >/dev/null 2>&1 \
+    || docker context update "$ctx" --docker "host=$sock" >/dev/null 2>&1 || true
+  if docker context use "$ctx" >/dev/null 2>&1; then
+    local undo; undo="$(get_env AI_STACK_DOCKER_CONTEXT_PRIOR default)" || undo="default"   # inherit_errexit-safe
+    ok "docker context → $ctx (undo: docker context use $undo, or: vz-ai-stack.sh docker-engine context keep)"
+  else
+    warn "could not switch global docker context to $ctx (DOCKER_HOST still pins the stack correctly)"
+  fi
+}
+
+# engine_restore_context — undo an auto-switch: point the global docker context
+# back at the recorded prior (AI_STACK_DOCKER_CONTEXT_PRIOR). Used by
+# `docker-engine context keep`. No-op (success) when nothing to restore.
+engine_restore_context() {
+  command -v docker >/dev/null 2>&1 || return 0
+  local cur prior
+  cur="$(docker context show 2>/dev/null || echo default)"
+  [[ "$cur" == ai-stack-* ]] || return 0   # not on an ai-stack context → nothing to undo
+  prior="$(get_env AI_STACK_DOCKER_CONTEXT_PRIOR "")" || prior=""   # guard: inherit_errexit-safe
+  [[ -n "$prior" ]] || prior="default"
+  if docker context use "$prior" >/dev/null 2>&1; then
+    ok "docker context restored → $prior"
+  else
+    warn "could not restore docker context to '$prior' (try: docker context use default)"
   fi
 }
 
@@ -411,6 +445,9 @@ docker-engine — intentional Docker engine selection (orbstack|docker-desktop|c
   vz-ai-stack.sh docker-engine status            show selected engine, resolved socket, CLI/gateway consistency
   vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
   vz-ai-stack.sh docker-engine set <id>          set the engine to <id> explicitly (ensure + pin)
+  vz-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
+                                                 switch = auto-point global context at ai-stack-<engine> (default)
+                                                 keep   = never touch it (restores the prior context now)
 EOF
 }
 
@@ -427,6 +464,8 @@ _engine_status() {
   engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: vz-ai-stack.sh docker-engine select)"
   local gw; gw="$(grep -E '^DOCKER_HOST=' "${ENGINE_GATEWAY_ENV_FILE:-$HOME/.config/openshell/gateway.env}" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
   [[ "$gw" == "$sock" ]] && ok "gateway.env: == selected" || warn "gateway.env: $gw (!= $sock)"
+  local pref; pref="$(get_env AI_STACK_DOCKER_CONTEXT switch)" || pref="switch"   # inherit_errexit-safe
+  note "context:     $pref (global docker-context policy — change: docker-engine context <switch|keep>)"
   return 0
 }
 
@@ -461,6 +500,34 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         engine_ensure "$sel" || exit $?
         engine_pin "$sel" || exit $?
         ;;
+      context)
+        # Manage the global docker-context POLICY (persisted in AI_STACK_DOCKER_CONTEXT).
+        local act="${1:-status}"
+        case "$act" in
+          status)
+            local pref; pref="$(get_env AI_STACK_DOCKER_CONTEXT switch)" || pref="switch"
+            local cur="?"; command -v docker >/dev/null 2>&1 && cur="$(docker context show 2>/dev/null || echo '?')"
+            note "policy:      $pref (switch=auto-point global context at ai-stack-<engine>; keep=never touch)"
+            note "current ctx: $cur"
+            note "prior ctx:   $(get_env AI_STACK_DOCKER_CONTEXT_PRIOR '(none recorded)')"
+            ;;
+          switch)
+            set_env AI_STACK_DOCKER_CONTEXT switch || exit 1
+            ok "docker-context policy → switch"
+            local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")" || sel=""
+            if [[ -n "$sel" ]] && _engine_valid "$sel"; then
+              local sock; sock="$(engine_socket "$sel" 2>/dev/null || true)"
+              [[ -n "$sock" ]] && engine_apply_context "$sel" "$sock"
+            fi
+            ;;
+          keep)
+            set_env AI_STACK_DOCKER_CONTEXT keep || exit 1
+            ok "docker-context policy → keep"
+            engine_restore_context
+            ;;
+          *) err "docker-engine context: unknown action '$act' (want status|switch|keep)"; exit 2 ;;
+        esac
+        ;;
       set)
         local id="${1:-}"
         [[ -n "$id" ]] || { err "docker-engine set: missing <id> (want: $ENGINE_IDS)"; exit 2; }
@@ -469,7 +536,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         engine_pin "$id" || exit $?
         ;;
       ""|-h|--help|help) _engine_usage ;;
-      *) err "docker-engine: unknown subcommand '$sub' (want status|select|set)"; exit 2 ;;
+      *) err "docker-engine: unknown subcommand '$sub' (want status|select|set|context)"; exit 2 ;;
     esac
   }
   _de_main "$@"

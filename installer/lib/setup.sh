@@ -68,6 +68,25 @@ setup_prompt_one() {
   fi
 }
 
+# setup_docker_context — interactive, skippable preference for whether ai-stack
+# auto-points your GLOBAL `docker context` at the selected engine. This is the
+# ONLY place a human is asked about it: install / doctor apply the saved policy
+# silently (never prompt). Default (and Enter) = switch; 'n' = keep (non-invasive).
+setup_docker_context() {
+  # Belt-and-suspenders against NO_PROMPT even if a future refactor calls this
+  # outside setup_run's interactive gate (setup_run already enforces the ! -t 0 gate).
+  [[ "${NO_PROMPT:-0}" == "1" ]] && return 0
+  local cur; cur="$(get_env AI_STACK_DOCKER_CONTEXT switch)" || cur="switch"
+  printf '\n— Docker context —\n' >&2
+  printf '  %-30s [%s]\n      ↳ %s\n' "AI_STACK_DOCKER_CONTEXT" "$cur" \
+    "auto-point your global 'docker context' at ai-stack-<engine> (other shells see it too; ai-stack itself always uses DOCKER_HOST regardless)" >&2
+  if confirm "    Auto-switch the global docker context to the ai-stack engine?" Y; then
+    set_env AI_STACK_DOCKER_CONTEXT switch && ok "AI_STACK_DOCKER_CONTEXT=switch (.env)"
+  else
+    set_env AI_STACK_DOCKER_CONTEXT keep && ok "AI_STACK_DOCKER_CONTEXT=keep — global context left untouched (.env)"
+  fi
+}
+
 # setup_run — the `vz-ai-stack.sh setup` body. Ensures baseline, then (if
 # interactive) walks the optional-secret catalog.
 setup_run() {
@@ -127,6 +146,10 @@ setup_run() {
     if [[ "$group" != "$last_group" ]]; then printf '\n— %s —\n' "$group" >&2; last_group="$group"; fi
     setup_prompt_one "$key" "$sec" "$desc"
   done
+
+  # Non-secret operational preference: the global docker-context policy. Asked
+  # here (the one interactive place) so install/doctor stay fully non-interactive.
+  setup_docker_context
 
   echo >&2
   note "Claude subscription models (-sub, incl. opus): no API key needed — start the Meridian"

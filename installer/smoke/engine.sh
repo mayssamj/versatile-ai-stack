@@ -241,9 +241,11 @@ grep -q 'set -o pipefail' <<<"$body" || { err "engine_install body lost 'set -o 
 ok "engine_install preserves install rc (set -o pipefail) — failed brew → non-zero + 'install failed'"
 
 log "engine_pin: persists .env, rewrites gateway.env, exports DOCKER_HOST"
-GW="$(mktemp -t aistack-gw.XXXXXX)"; trap 'rm -f "$ENV_FILE" "$GW"' EXIT
-# engine_pin must honor an injected GATEWAY_ENV_FILE override + skip docker context under NO_PROMPT.
-( NO_PROMPT=1 ENGINE_GATEWAY_ENV_FILE="$GW" engine_pin orbstack ) >/dev/null 2>&1 \
+GW="$(mktemp -t aistack-gw.XXXXXX)"
+CTX_LOG="$(mktemp -t aistack-ctxlog.XXXXXX)"; trap 'rm -f "$ENV_FILE" "$GW" "$CTX_LOG"' EXIT
+# engine_pin must honor an injected GATEWAY_ENV_FILE override. Pin context policy to
+# `keep` here so the test NEVER touches the runner's real global docker context.
+( AI_STACK_DOCKER_CONTEXT=keep ENGINE_GATEWAY_ENV_FILE="$GW" engine_pin orbstack ) >/dev/null 2>&1 \
   || { err "engine_pin orbstack failed"; exit 1; }
 [[ "$(get_env AI_STACK_DOCKER_ENGINE "")" == orbstack ]] || { err ".env not pinned"; exit 1; }
 grep -qx "OPENSHELL_DRIVERS=docker" "$GW" || { err "gateway.env missing drivers line"; exit 1; }
@@ -270,6 +272,78 @@ grep -qx "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" "$GW" \
 mode2="$(stat -f '%Lp' "$GW" 2>/dev/null || stat -c '%a' "$GW" 2>/dev/null)"
 [[ "$mode2" == "600" ]] || { err "idempotent no-op changed gateway.env mode to '$mode2'"; exit 1; }
 ok "engine_write_gateway_env idempotent (unchanged → return 1; content+mode preserved)"
+
+log "context policy: preference-driven, NEVER prompts (keep=no-op, switch=switch+record-prior, idempotent, restore)"
+# Structural guard for the ACTUAL UX bug: engine_pin / engine_apply_context must
+# contain no interactive `read` — install/doctor must never block on a context prompt.
+ctxbody="$(declare -f engine_pin engine_apply_context engine_restore_context)"
+grep -qE '(^|[^_[:alnum:]])read([^_[:alnum:]]|$)' <<<"$ctxbody" \
+  && { err "engine_pin/apply_context must NOT prompt — found a 'read' (the UX regression)"; exit 1; } || true
+# Stub `docker` so the policy logic is exercised fully OFFLINE without mutating the
+# runner. FAKE_CTX feeds `docker context show`; every call is logged to CTX_LOG.
+docker() {
+  printf '%s\n' "$*" >>"$CTX_LOG"
+  [[ "$1 $2" == "context show" ]] && { printf '%s\n' "${FAKE_CTX:-default}"; return 0; }
+  return 0
+}
+# keep → must NOT touch the global context at all.
+: > "$CTX_LOG"
+( AI_STACK_DOCKER_CONTEXT=keep engine_apply_context orbstack "unix://x" ) >/dev/null 2>&1
+grep -q 'context use' "$CTX_LOG" && { err "keep policy switched the context (must be a no-op)"; exit 1; } || true
+# switch (current=default) → points at ai-stack-orbstack AND records the prior context once.
+: > "$CTX_LOG"; set_env AI_STACK_DOCKER_CONTEXT_PRIOR "" >/dev/null 2>&1 || true
+( FAKE_CTX=default AI_STACK_DOCKER_CONTEXT=switch engine_apply_context orbstack "unix://$HOME/.orbstack/run/docker.sock" ) >/dev/null 2>&1
+grep -q 'context use ai-stack-orbstack' "$CTX_LOG" || { err "switch policy did not point context at ai-stack-orbstack"; exit 1; }
+[[ "$(get_env AI_STACK_DOCKER_CONTEXT_PRIOR "")" == "default" ]] || { err "switch policy did not record prior context for undo"; exit 1; }
+# switch (already on ai-stack-orbstack) → idempotent no-op (no re-switch).
+: > "$CTX_LOG"
+( FAKE_CTX=ai-stack-orbstack AI_STACK_DOCKER_CONTEXT=switch engine_apply_context orbstack "unix://x" ) >/dev/null 2>&1
+grep -q 'context use' "$CTX_LOG" && { err "switch policy re-switched when already on ai-stack ctx (not idempotent)"; exit 1; } || true
+# restore → from an ai-stack ctx, switches back to the recorded prior.
+: > "$CTX_LOG"; set_env AI_STACK_DOCKER_CONTEXT_PRIOR "default" >/dev/null 2>&1 || true
+( FAKE_CTX=ai-stack-orbstack engine_restore_context ) >/dev/null 2>&1
+grep -q 'context use default' "$CTX_LOG" || { err "restore did not return to the prior context"; exit 1; }
+# restore → when NOT on an ai-stack ctx, do nothing.
+: > "$CTX_LOG"
+( FAKE_CTX=default engine_restore_context ) >/dev/null 2>&1
+grep -q 'context use' "$CTX_LOG" && { err "restore must be a no-op when not on an ai-stack context"; exit 1; } || true
+# unknown/typo value → must fail SAFE to keep (never silently mutate the user's world).
+: > "$CTX_LOG"
+( FAKE_CTX=default AI_STACK_DOCKER_CONTEXT=garbage engine_apply_context orbstack "unix://x" ) >/dev/null 2>&1
+grep -q 'context use' "$CTX_LOG" && { err "unknown policy 'garbage' switched the context (must fail-safe to keep/no-op)"; exit 1; } || true
+unset -f docker   # MUST NOT leak into the real-docker tests below
+declare -F docker >/dev/null 2>&1 && { err "docker stub leaked past its block (unset -f docker did not take)"; exit 1; } || true
+ok "context policy correct (keep no-op · switch+record-prior · idempotent · restore · unknown→keep · no prompt · stub unset)"
+
+# CLI dispatch: `docker-engine context <act>` routing through the real entrypoint.
+log "context CLI dispatch: status prints policy, unknown action exits 2"
+CENV="$(mktemp -t aistack-cenv.XXXXXX)"; printf 'AI_STACK_DOCKER_CONTEXT=keep\n' > "$CENV"
+cstatus="$(ENV_FILE="$CENV" bash "$AI_STACK/installer/lib/docker-engine.sh" context status 2>&1 || true)"
+grep -qE 'policy:.*keep' <<<"$cstatus" || { err "context status missing 'policy: keep': $cstatus"; rm -f "$CENV"; exit 1; }
+ENV_FILE="$CENV" bash "$AI_STACK/installer/lib/docker-engine.sh" context bogus >/dev/null 2>&1 \
+  && { err "context bogus should exit non-zero"; rm -f "$CENV"; exit 1; } || true
+rm -f "$CENV"
+ok "context CLI dispatch correct (status reads policy; unknown action rejected)"
+
+# setup_docker_context: skipped under NO_PROMPT; persists switch on Y, keep on n.
+log "setup_docker_context: NO_PROMPT skip + Y→switch / n→keep persistence"
+( set -Eeuo pipefail
+  SENV="$(mktemp -t aistack-senv.XXXXXX)"; trap 'rm -f "$SENV"' EXIT
+  ENV_FILE="$SENV"
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/env.sh"
+  source "$AI_STACK/installer/lib/docker-engine.sh"; source "$AI_STACK/installer/lib/setup.sh"
+  # NO_PROMPT → no write, no prompt.
+  NO_PROMPT=1 setup_docker_context >/dev/null 2>&1
+  [[ -z "$(get_env AI_STACK_DOCKER_CONTEXT "")" ]] || { echo "NO_PROMPT setup_docker_context wrote a value" >&2; exit 1; }
+  # Stub confirm to drive the two branches deterministically (no TTY needed).
+  confirm() { return 0; }   # simulate Y
+  setup_docker_context >/dev/null 2>&1
+  [[ "$(get_env AI_STACK_DOCKER_CONTEXT "")" == switch ]] || { echo "Y did not persist switch" >&2; exit 1; }
+  confirm() { return 1; }   # simulate n
+  setup_docker_context >/dev/null 2>&1
+  [[ "$(get_env AI_STACK_DOCKER_CONTEXT "")" == keep ]] || { echo "n did not persist keep" >&2; exit 1; }
+) || { err "setup_docker_context coverage failed"; exit 1; }
+ok "setup_docker_context: NO_PROMPT skips; Y→switch, n→keep persisted"
 
 ok "Task 1 registry-pure tests passed"
 

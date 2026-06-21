@@ -233,6 +233,9 @@ ai-stack-installer — usage:
     vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
                                         (orbstack|docker-desktop|colima|podman); idempotent
     vz-ai-stack.sh docker-engine set <id>   pin the engine explicitly to <id> (ensure + pin)
+    vz-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
+                                        (switch=auto-point at ai-stack-<engine>, default; keep=never touch).
+                                        Also set non-interactively via 'setup'.
     vz-ai-stack.sh doctor [<service>]       diagnose & offer fixes
     vz-ai-stack.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
     vz-ai-stack.sh adopt <service>          take ownership of a foreign container

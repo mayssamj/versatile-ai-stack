@@ -50,6 +50,11 @@ fleets/workspaces), and **doctor** to detect and fix the situations this creates
 
 ## Key design decisions (from brainstorming)
 
+> **Superseded (2026-06-21):** decision 2's *consented prompt* to switch the global
+> `docker context` was replaced by a persisted, non-interactive preference
+> (`AI_STACK_DOCKER_CONTEXT`, default `switch`). `engine_pin` no longer prompts. See
+> [`2026-06-21-docker-context-policy.md`](2026-06-21-docker-context-policy.md).
+
 1. **Engine scope:** all four — OrbStack, Docker Desktop, Colima, Podman.
 2. **Pinning strategy:** *both* — always pin explicitly via a derived
    `DOCKER_HOST` (non-invasive guarantee) **and** offer (with consent) to switch

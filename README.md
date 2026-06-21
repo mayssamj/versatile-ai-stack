@@ -447,7 +447,10 @@ bash ~/ai-stack/vz-ai-stack.sh setup               # interactive .env / API-key 
 # Pick the Docker engine the WHOLE stack runs on (OrbStack default; also Docker
 # Desktop / Colima / Podman). Pins AI_STACK_DOCKER_ENGINE → one DOCKER_HOST for
 # every container + the OpenShell gateway. (Any command also takes `--engine <id>`.)
-bash ~/ai-stack/vz-ai-stack.sh docker-engine select   # interactive picker (also: status | set <id>)
+bash ~/ai-stack/vz-ai-stack.sh docker-engine select   # interactive picker (also: status | set <id> | context)
+# Whether to also point your GLOBAL `docker context` at the stack engine is a saved
+# preference (AI_STACK_DOCKER_CONTEXT: switch=default | keep), set in `setup` or via
+# `docker-engine context <switch|keep>` — never an interactive prompt during install/doctor.
 
 # Install/re-run one phase by NAME or number (run `phases` to list id→name)
 bash ~/ai-stack/vz-ai-stack.sh install phoenix     # == install 01h
