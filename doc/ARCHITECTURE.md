@@ -347,12 +347,12 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
 │   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
 │   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
-│   │   ├── 21 … 25 · 27 · 28 · 29   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork
+│   │   ├── 21 … 25 · 27 · 28 · 29 · 30   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand
 │   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (45 today; 39–45 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial)
+│   │   └── checks/                  — one file per failure mode (54 today; 39–53 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh
@@ -375,7 +375,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 51_openwork.sh  — full list in doc/DOCTOR.md (53 checks total)
+│   │       └── 23_… 53_container_liveness.sh  — full list in doc/DOCTOR.md (54 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
@@ -453,7 +453,7 @@ immediately.
 
 The old install guide was an HTML doc with 18 sections. The new installer has
 37 phase scripts (`installer/phases/00_host.sh` through `29_openwork.sh`; 8 of
-them — 21–25, 27–29 — are opt-in extras installed by name), each:
+them — 21–25, 27–30 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.

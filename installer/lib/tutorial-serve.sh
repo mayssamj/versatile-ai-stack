@@ -79,9 +79,46 @@ if (( REVOKE_ONLY )); then
   revoke_key; exit 0
 fi
 
+# Pre-flight the port BEFORE minting a key. A previous tutorial-serve whose
+# terminal was closed (no Ctrl-C) orphans its proxy, which keeps LISTENing on the
+# port; the old code then minted a key, failed to bind ("Errno 48: Address already
+# in use"), revoked, and exited 1. Now: if OUR stale proxy holds the port, stop it
+# and reuse the port; if a FOREIGN process holds it, fail with a clear message
+# (and no wasted mint) pointing at --port.
+ensure_port_free() {
+  local port="$1" holders pid cmd killed=0 i
+  command -v lsof >/dev/null 2>&1 || return 0   # can't check — let bind try (old behavior)
+  holders="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+  [[ -z "$holders" ]] && return 0
+  for pid in $holders; do
+    cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
+    if [[ "$cmd" == *tutorial_proxy.py* || "$cmd" == *tutorial-serve.sh* ]]; then
+      warn "Port $port held by a stale tutorial-serve (PID $pid) — stopping it."
+      kill "$pid" 2>/dev/null || true
+      killed=1
+    else
+      err "Port $port is already in use by PID $pid — not a tutorial-serve process:"
+      err "  $cmd"
+      err "Free that port, or pick another: vz-ai-stack.sh tutorial-serve --port <N>"
+      exit 1
+    fi
+  done
+  (( killed )) || return 0
+  for i in $(seq 1 12); do            # wait up to ~6s for the stale instance to release
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
+    sleep 0.5
+  done
+  err "Port $port still busy after stopping the stale instance — retry, or use --port <N>."
+  exit 1
+}
+
 [[ -n "$MASTER" ]] || { err "LITELLM_MASTER_KEY missing from .env — run 'vz-ai-stack.sh install 01' first."; exit 1; }
 curl -sf --max-time 5 "$LITELLM/health/readiness" >/dev/null 2>&1 || curl -sf --max-time 5 "$LITELLM/v1/models" -H "Authorization: Bearer $MASTER" >/dev/null 2>&1 \
   || { err "LiteLLM not reachable at $LITELLM — start it: bash $AI_STACK/bin/start-litellm.sh"; exit 1; }
+
+# Free the port (stop a stale own-instance / fail clearly on a foreign holder)
+# BEFORE minting, so a port conflict can never strand a freshly-minted key.
+ensure_port_free "$PORT"
 
 # Revoke any stale key from a previous run, then mint a fresh ephemeral one.
 revoke_key

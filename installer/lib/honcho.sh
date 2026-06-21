@@ -26,7 +26,7 @@ honcho_peer_exists() {
   honcho_is_up || return 2
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-    "$HONCHO_BASE_URL/v3/workspaces/$HONCHO_WORKSPACE/peers/$peer" 2>/dev/null || echo 000)
+    "$HONCHO_BASE_URL/v3/workspaces/$HONCHO_WORKSPACE/peers/$peer" 2>/dev/null || true)
   case "$code" in
     2??) return 0 ;;
     404) return 1 ;;
@@ -41,7 +41,7 @@ honcho_peer_ensure() {
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
     -X POST "$HONCHO_BASE_URL/v3/workspaces/$HONCHO_WORKSPACE/peers" \
     -H 'Content-Type: application/json' \
-    -d "{\"id\":\"$peer\"}" 2>/dev/null || echo 000)
+    -d "{\"id\":\"$peer\"}" 2>/dev/null || true)
   case "$code" in
     2??|409) return 0 ;;
     *) return 1 ;;

@@ -44,7 +44,7 @@ resolve_openshell() {
 OSH="$(resolve_openshell)"
 
 # --- tiny HTTP/GraphQL helpers ----------------------------------------------
-_sg_http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 6 "$1" 2>/dev/null || echo 000; }
+_sg_http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 6 "$1" 2>/dev/null || true; }
 # _sg_gql <token> <query-json>  — POST a GraphQL request; prints raw JSON.
 _sg_gql() {
   curl -s --max-time 15 -X POST "$SG_URL/.api/graphql" \

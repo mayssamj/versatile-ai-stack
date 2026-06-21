@@ -85,7 +85,7 @@ litellm_keystore_fix() {
   # (5) verify LiteLLM can reach the DB again (401 auth-required or 200 ⇒ DB
   #     healthy; 503 ⇒ still down). LiteLLM reconnects on its own once PG is up.
   for i in $(seq 1 20); do
-    local code; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://litellm:4000/v1/models 2>/dev/null || echo 000)"
+    local code; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://litellm:4000/v1/models 2>/dev/null || true)"
     if [[ "$code" == "401" || "$code" == "200" ]]; then
       ok "LiteLLM key-store recovered (HTTP $code) — keys validate again."
       return 0

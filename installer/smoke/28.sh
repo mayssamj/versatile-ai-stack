@@ -27,7 +27,7 @@ ver="$("$AW" version 2>/dev/null | head -1)"; [[ -n "$ver" ]] && ok "aionui-web 
   || { err "aionui-web not runnable"; exit 1; }
 
 # 3. WebUI serves 200 on loopback
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT/" 2>/dev/null || echo 000)"
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT/" 2>/dev/null || true)"
 [[ "$code" == "200" ]] && ok "WebUI serves HTTP 200 on http://127.0.0.1:$PORT" \
   || { err "WebUI not serving 200 on :$PORT (got $code) — 'vz-ai-stack.sh start aionui'; log: installer/state/aionui-web.launchd.log"; exit 1; }
 
@@ -39,7 +39,7 @@ curl -sf --max-time 6 -H "Authorization: Bearer $key" http://litellm:4000/v1/mod
   || { err "AIONUI_LITELLM_KEY rejected by LiteLLM /v1/models"; exit 1; }
 chat_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/v1/chat/completions \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || echo 000)"
+  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || true)"
 [[ "$chat_code" == "200" ]] && ok "AIONUI_LITELLM_KEY completes a chat through LiteLLM (local-gemma4, HTTP 200)" \
   || warn "chat completion returned HTTP $chat_code (key valid for /v1/models; the model may be down — advisory, not a hard fail)"
 

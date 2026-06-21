@@ -35,7 +35,7 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "litellm" in
   || { err "opencode.json invalid or missing the LiteLLM provider"; exit 1; }
 
 # 3. daemon serves 200 on loopback /health
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT/health" 2>/dev/null || echo 000)"
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT/health" 2>/dev/null || true)"
 [[ "$code" == "200" ]] && ok "OpenWork daemon serves HTTP 200 on http://127.0.0.1:$PORT/health" \
   || { err "OpenWork daemon not serving 200 on :$PORT/health (got $code) — 'vz-ai-stack.sh start openwork'; log: installer/state/openwork.launchd.log"; exit 1; }
 
@@ -47,7 +47,7 @@ curl -sf --max-time 6 -H "Authorization: Bearer $key" http://litellm:4000/v1/mod
   || { err "OPENWORK_LITELLM_KEY rejected by LiteLLM /v1/models"; exit 1; }
 chat_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/v1/chat/completions \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || echo 000)"
+  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || true)"
 [[ "$chat_code" == "200" ]] && ok "OPENWORK_LITELLM_KEY completes a chat through LiteLLM (local-gemma4, HTTP 200)" \
   || warn "chat completion returned HTTP $chat_code (key valid for /v1/models; the model may be down — advisory, not a hard fail)"
 

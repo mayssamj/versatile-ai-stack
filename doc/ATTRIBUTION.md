@@ -93,7 +93,7 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **remnic-hermes** | https://github.com/joshuaswarren/remnic | MIT | Remnic MemoryProvider plugin for Hermes Agent. PyPI `remnic-hermes`. |
 | **autoreason** | https://github.com/NousResearch/autoreason | **None (all rights reserved)** | NousResearch; no LICENSE file. Reference only — do not redistribute. |
 
-## Opt-in experimental extras (Phases 21–25 · 27–29)
+## Opt-in experimental extras (Phases 21–25 · 27–30)
 | Component | Upstream | License | Notes |
 |---|---|---|---|
 | **portless** | https://github.com/vercel-labs/portless | Apache-2.0 | Vercel Labs. Global npm CLI; ships a Claude Code skill. |
