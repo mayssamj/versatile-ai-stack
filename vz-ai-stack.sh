@@ -661,7 +661,7 @@ cmd_logs()    { docker logs "$1" "${2:-}"; }
 cmd_gc()      { worktree_guard gc; bash "$AI_STACK/installer/lib/gc.sh"; }
 cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
-cmd_upgrade() { bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }
+cmd_upgrade() { worktree_guard upgrade; bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree
 # Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
 cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 # Serves doc/FLEET.html on loopback to review+edit agent-profiles/ in a browser.

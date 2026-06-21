@@ -56,7 +56,9 @@ embeddings:
   # MEMPALACE_EMBEDDING_MODEL accepts (verified vs the installed mempalace pkg —
   # embedding.py resolves `embeddinggemma`, else minilm; config.py default minilm),
   # NOT the HF repo name. minilm's HF model is all-MiniLM-L6-v2 (provenance only).
-  # Both yield 384-dim at runtime (embeddinggemma truncates via MRL).
+  # minilm yields 384-dim at runtime (verified). embeddinggemma is EXPECTED to
+  # truncate to 384 via MRL but is NOT code-pinned here — hence `unverified: true`
+  # on embed-gemma; confirm the live vector size before a dim-pinned assignment.
   embed-minilm:       { runtime: onnx,   served: minilm,                                dim: 384,  via: ondevice, device: coreml,            kind: text }
   embed-gemma:        { runtime: onnx,   served: embeddinggemma,                        dim: 384,  via: ondevice, device: coreml,            kind: text, unverified: true }
   embed-openai-small: { runtime: openai, served: text-embedding-3-small,               dim: 1536, via: litellm,  route: embed-openai-small, kind: text }
