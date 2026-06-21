@@ -575,7 +575,7 @@ ok "13: doctor 02 engine-aware add-host path correct"
 # 46_agent_fleet_parity.sh merged FIRST. So this feature's two checks were renumbered
 # to 47 (consistency) + 48 (selection), final count 48. The pre-existing
 # 46_agent_fleet_parity.sh MUST remain present + intact (no collision with our files).
-log "doctor: 46_agent_fleet_parity intact, 47 + 48 present, count == 48, single 47_/48_ ordinals"
+log "doctor: 46_agent_fleet_parity intact, 47 + 48 present, count >= 48 (engine baseline), single 47_/48_ ordinals"
 [[ -f "$AI_STACK/installer/doctor/checks/46_agent_fleet_parity.sh" ]] || { err "46_agent_fleet_parity missing (fleet-parity check clobbered)"; exit 1; }
 grep -q 'CHECKS+=(agent_fleet_parity)' "$AI_STACK/installer/doctor/checks/46_agent_fleet_parity.sh" || { err "46_agent_fleet_parity not registered (intact check)"; exit 1; }
 [[ -f "$AI_STACK/installer/doctor/checks/47_docker_engine_consistency.sh" ]] || { err "47 missing"; exit 1; }
@@ -585,12 +585,16 @@ grep -q 'CHECKS+=(agent_fleet_parity)' "$AI_STACK/installer/doctor/checks/46_age
   || { err "duplicate 47_ ordinal — collision"; exit 1; }
 [[ "$(ls "$AI_STACK"/installer/doctor/checks/48_*.sh | wc -l | tr -d ' ')" == 1 ]] \
   || { err "duplicate 48_ ordinal — collision"; exit 1; }
+# Floor, not exact: the docker-engine checks (47/48) live within a suite that GROWS
+# as new checks are added (e.g. 05a embedding pushed it to 50). This test owns 47/48,
+# not the grand total — assert the baseline so deletions below it are caught, but
+# don't re-break on every legitimate check addition (that count is doctor.sh's job).
 n="$(ls "$AI_STACK"/installer/doctor/checks/*.sh | wc -l | tr -d ' ')"
-[[ "$n" == 48 ]] || { err "expected 48 check files, found $n"; exit 1; }
+[[ "$n" -ge 48 ]] || { err "expected >= 48 check files (docker-engine baseline), found $n"; exit 1; }
 # Both new check NAMES register.
 grep -q 'CHECKS+=(docker_engine_consistency)' "$AI_STACK/installer/doctor/checks/47_docker_engine_consistency.sh" || { err "47 check not registered"; exit 1; }
 grep -q 'CHECKS+=(docker_engine_selection)'  "$AI_STACK/installer/doctor/checks/48_docker_engine_selection.sh"  || { err "48 check not registered"; exit 1; }
-ok "doctor 46_agent_fleet_parity intact + 47/48 present, 48 checks total, single 47_/48_ ordinals"
+ok "doctor 46_agent_fleet_parity intact + 47/48 present, >=48 checks total, single 47_/48_ ordinals"
 
 # Behavioral guard for check 48's GREEN path: diagnose MUST return 0 when a valid,
 # installed engine is pinned. The original Task-14 test was STATIC (presence /
