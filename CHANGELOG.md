@@ -6,6 +6,10 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ## 2026-06-21
 
+### Hardening
+
+- **Fail-fast config-validation preflight + documentation-drift sweep** (`feat/harden-docs`): `preflight()` now runs a new `config_validate` (in `installer/lib/validate.sh`) that validates `services.yml` + `installer/models.yml` parse cleanly (+ structural sanity: `.services`/`.models` are maps) BEFORE any phase runs — so a YAML typo aborts with a clear, actionable error instead of hard-failing mid-phase under `set -e` (the class that hung `install all` at phase 26 on a one-character models.yml typo). New smoke `installer/smoke/config_validate.sh` (valid accepted; stray-quote / missing-colon / bad-structure rejected — 4/4). Read-only + idempotent; skips if `yq` isn't on PATH yet; verified it accepts the live configs. Multi-agent audit (3 read-only auditors: docs-drift · install-resilience · tutorial-coverage). Doc-drift fixed: `48/48`→`51/51` (README/INSTALL/USER-GUIDE), the EXPLORE subtitle (41→42 services · 50→52 cards), DOCTOR.md now lists check **50 (aionui)**, opt-in-extra ranges now include Phase 28 (COMPONENTS/TUTORIAL). Doctor cleaned to **50/51** (`model sync` wired the new models; the stale 06:42 OpenShell storm alert cleared after verifying the sandbox Ready + relay-live) — the 1 remaining red is a user WIP model (`local-gemma4-mlx`: MLX format on the `ollama` runtime → not servable; move to `lmstudio` or remove).
+
 ### Features
 
 - **AionUi — desktop + WebUI Cowork workspace (opt-in Phase 28)** (`feat/aionui-integration`): adds [AionUi](https://github.com/iOfficeAI/AionUi) as opt-in Phase 28 — a local Cowork workspace that runs multiple agents over your stack. Three planks (spec: `doc/specs/2026-06-20-aionui-integration.md`; §24 council chose **Design X — host-native**):

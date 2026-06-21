@@ -170,6 +170,14 @@ preflight() {
     err "Host dependencies could not be ensured. Fix the error(s) above and re-run."
     exit 2
   }
+
+  # Fail-fast config guardrail: a malformed services.yml / models.yml (e.g. a YAML
+  # typo) must abort HERE with a clear, actionable error — NOT hard-fail mid-phase
+  # under `set -e` (the 2026-06-21 models.yml-typo-hung-install class). Read-only.
+  config_validate || {
+    err "Config validation failed — fix the file(s) above and re-run. Nothing was installed."
+    exit 2
+  }
 }
 
 # --- subcommand dispatch -----------------------------------------------------
