@@ -776,6 +776,33 @@ _browser_open() {
     can_open=1
   fi
   if (( can_open )); then
+    # If the URL host is a friendly name not yet in /etc/hosts (prepare-sudo not run
+    # for a newly added alias), fall back to 127.0.0.1 — loopback host services bind
+    # there, so the open still works; the friendly hostname kicks in after prepare-sudo.
+    local _host="${url#*://}"; _host="${_host%%[:/]*}"
+    if [[ -n "$_host" && ! "$_host" =~ ^[0-9.]+$ && "$_host" != localhost ]] \
+       && ! awk -v h="$_host" '$1!~/^#/{for(i=2;i<=NF;i++) if($i==h) f=1} END{exit !f}' /etc/hosts 2>/dev/null; then
+      local _old="//$_host" _new="//127.0.0.1"
+      url="${url/$_old/$_new}"
+      note "(hostname '$_host' not in /etc/hosts yet — opening 127.0.0.1; run 'sudo vz-ai-stack.sh prepare-sudo' for the friendly name)"
+    fi
+    # Token-gated UIs (services.yml `open_url_token_env`, e.g. openwork): open the
+    # PRE-TOKENED url via a 0600 temp redirect so the token never lands in argv/ps/
+    # logs. The UI persists it to localStorage, so later bare-url opens connect too.
+    local tok_env tok
+    tok_env="$(SVC="$svc" yq -r '.services[strenv(SVC)].open_url_token_env // ""' "$SERVICES_YML" 2>/dev/null || true)"
+    [[ -n "$tok_env" && "$tok_env" != "null" ]] && tok="$(get_env "$tok_env" '' 2>/dev/null || true)"
+    if [[ -n "${tok:-}" ]]; then
+      local _td _f
+      if _td="$(mktemp -d -t aistack-open 2>/dev/null)"; then
+        _f="$_td/open.html"
+        ( umask 077; printf '<!doctype html><meta http-equiv="refresh" content="0;url=%s#token=%s"><body>opening %s…</body>\n' "$url" "$tok" "$svc" > "$_f" )
+        chmod 600 "$_f" 2>/dev/null || true
+        "$launcher" "$_f" >/dev/null 2>&1 || true
+        ( sleep 8; [[ -n "$_td" ]] && rm -rf "$_td" ) >/dev/null 2>&1 &   # cleanup once the browser has read it
+        return 0
+      fi
+    fi
     "$launcher" "$url" 2>/dev/null || true
   else
     note "(no browser opened — headless/CI; open it yourself: $url)"

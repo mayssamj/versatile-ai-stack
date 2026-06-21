@@ -185,6 +185,9 @@ lo0_ensure_aliases() {
   local a ip
   for a in "${ALIASES_LIST[@]}"; do
     ip="${ALIAS_IP[$a]}"
+    # Host loopback services (openwork/aionui) use 127.0.0.1 — the lo0 PRIMARY,
+    # always present; there is no 127.0.10.x alias to bind for them.
+    [[ "$ip" == "127.0.0.1" ]] && continue
     if ! grep -qxF "$ip" <<<"$already_bound"; then
       missing+=("$ip")
     fi
@@ -206,6 +209,7 @@ lo0_remove_aliases() {
   local a ip
   for a in "${ALIASES_LIST[@]}"; do
     ip="${ALIAS_IP[$a]}"
+    [[ "$ip" == "127.0.0.1" ]] && continue   # NEVER remove the lo0 primary (host services share it)
     sudo ifconfig lo0 -alias "$ip" >/dev/null 2>&1 || true
   done
 }
@@ -244,6 +248,7 @@ XML_HEADER
     local a ip first=1
     for a in "${ALIASES_LIST[@]}"; do
       ip="${ALIAS_IP[$a]}"
+      [[ "$ip" == "127.0.0.1" ]] && continue   # lo0 primary — already bound at boot
       if (( first )); then first=0; else printf ' ; '; fi
       printf '/sbin/ifconfig lo0 alias %s up' "$ip"
     done

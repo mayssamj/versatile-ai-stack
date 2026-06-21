@@ -1099,7 +1099,7 @@ services:
     bind: 127.0.0.1
     port: 25808
     health: http://127.0.0.1:25808/
-    open_url: http://127.0.0.1:25808
+    open_url: http://aionui:25808
     consumes_env:
       - AIONUI_LITELLM_KEY
       - AIONUI_WEB_VERSION
@@ -1130,7 +1130,8 @@ services:
     bind: 127.0.0.1
     port: 8787
     health: http://127.0.0.1:8787/health
-    open_url: http://127.0.0.1:8787/ui
+    open_url: http://openwork:8787/ui
+    open_url_token_env: OPENWORK_CLIENT_TOKEN   # `start openwork` opens the pre-tokened URL securely → UI persists it to localStorage (no manual token). Hostname needs `prepare-sudo`.
     consumes_env:
       - OPENWORK_LITELLM_KEY
       - OPENWORK_CLIENT_TOKEN
