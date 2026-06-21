@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 53 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 54 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -705,6 +705,21 @@ Graceful by design — skip-clean (pass) when OpenWork's Phase 29 hasn't run (no
 ## 52 · understand-mcp answers a real graph query (opt-in)
 
 Graceful by design — skip-clean (pass) when Understand-Anything's Phase 30 hasn't run (no `installer/state/phase_30*.done` stamp), so it never red-bars a stack that didn't opt into codebase knowledge graphs. When installed it verifies the plugin core is built (`~/.understand-anything-plugin/packages/core/dist`) and the `understand-mcp` shim deps are present. If a knowledge graph is committed (`.understand-anything/knowledge-graph.json`) it runs a TRUE end-to-end query — `project_summary` through the real `@understand-anything/core` code path — and surfaces graph staleness (graph commit vs HEAD) plus the http daemon's health on `:7081`. If no graph is committed yet it passes with an actionable note (run `/understand .` from the MAIN checkout and commit the graph) rather than red-barring. Fix: `vz-ai-stack.sh install understand` (rebuilds the plugin core + shim, re-registers the stdio MCP, restarts the daemon).
+
+---
+
+## 53 · Every stack container that EXISTS is running & healthy
+
+The census/liveness axis — distinct from check 12 (ownership: foreign/adopt) and check 16 (connectivity: on the ai-stack network). It exists because per-feature checks are a curated allowlist, not a census: a container nobody wrote a check for (or whose check probes config, not liveness) can die invisibly. This was the gap that let `autofyn-agent` crash-loop and `llm_guard` die for hours while doctor reported all-green.
+
+| | |
+|---|---|
+| Asserts | Every stack-owned container that EXISTS is running and not broken. **Census** = union of the `ai-stack.managed=true` label, membership of the `ai-stack` network, and the compose-project set DERIVED from `services.yml` (`type: compose`/`docker-compose` → `project:` or basename of `path:`) ∪ a hardcoded floor. `openshell-*` is excluded (owned by checks 24/39/43). |
+| Fails when | Any owned container is `restarting` (crash-loop), `exited`/`dead`, or `unhealthy` (healthcheck failing). Names each broken container + its state. |
+| Auto-fix | **None** (conservative). A crash-loop almost always needs a real fix (e.g. a bind-mounted source drifted behind its image) — auto-restarting would re-mask the failure. Surfaces `docker logs <name> --tail 50` / `docker restart <name>` guidance, and reminds you to use `docker ps -a` (an OOM-killed container exits and vanishes from plain `docker ps`). |
+| Scope | Covers containers that EXIST but are broken. Does **not** yet assert a full expected-set (a service that never started at all) — stated follow-up. |
+
+Smoke: `vz-ai-stack.sh test 53` — 10 cases covering every census signal + every broken state (exited/restarting/unhealthy) + negatives (healthy, starting-grace, foreign, openshell).
 
 ---
 
