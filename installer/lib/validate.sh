@@ -69,3 +69,34 @@ require_port_free() {
   fi
   return 0
 }
+
+# config_validate — fail-fast guardrail (2026-06-21 resilience hardening). Validate
+# that the declarative configs PARSE cleanly BEFORE any phase runs, so a YAML typo
+# (a stray quote / missing colon in services.yml or models.yml) aborts with a clear,
+# actionable error instead of hard-aborting mid-phase under `set -e` — the class that
+# hung `install all` at phase 26 on a one-character models.yml typo. Read-only +
+# idempotent. Skips gracefully if yq isn't on PATH yet (preflight ensures it).
+config_validate() {
+  command -v yq >/dev/null 2>&1 || { warn "config_validate: yq not on PATH yet — skipping"; return 0; }
+  local rc=0 f msg
+  for f in "$AI_STACK/services.yml" "$AI_STACK/installer/models.yml"; do
+    [[ -f "$f" ]] || continue
+    if ! yq -e '.' "$f" >/dev/null 2>&1; then
+      msg="$(yq -e '.' "$f" 2>&1 | head -1)"
+      err "Config does not parse as YAML: ${f#"$AI_STACK"/}"
+      err "  ↳ ${msg:-invalid YAML}"
+      err "  Fix it (often a stray quote or a missing ':'), then re-run."
+      rc=1
+    fi
+  done
+  # Structural sanity (only if the files parsed): the top-level maps the installer relies on.
+  if (( rc == 0 )) && [[ -f "$AI_STACK/services.yml" ]]; then
+    yq -e '.services | type == "!!map"' "$AI_STACK/services.yml" >/dev/null 2>&1 \
+      || { err "services.yml: top-level '.services:' is missing or not a map."; rc=1; }
+  fi
+  if (( rc == 0 )) && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+    yq -e '.models | type == "!!map"' "$AI_STACK/installer/models.yml" >/dev/null 2>&1 \
+      || { err "models.yml: top-level '.models:' is missing or not a map."; rc=1; }
+  fi
+  return $rc
+}

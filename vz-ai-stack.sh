@@ -170,6 +170,14 @@ preflight() {
     err "Host dependencies could not be ensured. Fix the error(s) above and re-run."
     exit 2
   }
+
+  # Fail-fast config guardrail: a malformed services.yml / models.yml (e.g. a YAML
+  # typo) must abort HERE with a clear, actionable error — NOT hard-fail mid-phase
+  # under `set -e` (the 2026-06-21 models.yml-typo-hung-install class). Read-only.
+  config_validate || {
+    err "Config validation failed — fix the file(s) above and re-run. Nothing was installed."
+    exit 2
+  }
 }
 
 # --- subcommand dispatch -----------------------------------------------------
@@ -268,7 +276,7 @@ ai-stack-installer — usage:
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 26
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
   e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model   ·   vz-ai-stack.sh help embedding
@@ -566,7 +574,7 @@ install_plan() {
     fi
   done
   echo
-  [[ "$target" == "all" ]] && note "(Opt-in extras 21–25 · 27 — portless · cmux · skillspector · openagents · lmstudio · sourcegraph — are NOT in 'install all'; install them by name.)"
+  [[ "$target" == "all" ]] && note "(Opt-in extras 21–25 · 27 · 28 · 29 — portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork — are NOT in 'install all'; install them by name.)"
   ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
   return 0
 }
