@@ -81,3 +81,7 @@ openshell/fleet-bootstrap/
 
 # ── Personal convenience launchers (local-only, not shared) ──
 run-mem-palace.sh
+
+# ── Playwright MCP runtime output (transient per-run console logs + page snapshots;
+#    the Playwright MCP itself is a Claude Code plugin in ~/.claude, nothing repo-side) ──
+.playwright-mcp/
