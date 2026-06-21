@@ -318,6 +318,34 @@ model_list:
       api_key: meridian
       extra_body:
         effort: ultracode
+  - model_name: local-gemma4-mlx
+    litellm_params:
+      model: ollama_chat/gemma4:e4b-mlx
+      api_base: http://ollama:11434
+  - model_name: local-nemotron-3-nano
+    litellm_params:
+      model: ollama_chat/nemotron-3-nano:4b
+      api_base: http://ollama:11434
+  - model_name: local-gemma-4-12b-it
+    litellm_params:
+      model: openai/gemma-4-12b-it
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
+  - model_name: local-nvidia-nemotron-3-nano
+    litellm_params:
+      model: openai/nvidia-nemotron-3-nano-30b-a3b-mlx
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
+  - model_name: local-nemotron-3-nano-4b
+    litellm_params:
+      model: openai/nvidia/nemotron-3-nano-4b
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
+  - model_name: local-qwen3.6-27b-mtplx-optimized-speed
+    litellm_params:
+      model: openai/qwen3.6-27b-mtplx-optimized-speed
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
 litellm_settings:
   # Custom callback writes each call to /traces/litellm.jsonl
   # (mounted to ~/ai-stack/traces on host).

@@ -22,6 +22,36 @@ models:
     big: true
     ttl: 1800
     note: "~17.2GB MLX. Cannot coexist with local-qwen3.6 on 24GB."
+  local-gemma4-mlx:
+    runtime: ollama
+    served: gemma4:e4b-mlx
+    big: false
+    note: "9.6G -- default gemma4 with mlx support for mac gpus"
+  local-nemotron-3-nano:
+    runtime: ollama
+    served: nemotron-3-nano:4b
+    big: no
+    note: "2.8G -- tiny"
+  local-gemma-4-12b-it:
+    runtime: lmstudio
+    served: gemma-4-12b-it
+    big: false
+    note: "7.56G - params: 12B"
+  local-nvidia-nemotron-3-nano:
+    runtime: lmstudio
+    served: nvidia-nemotron-3-nano-30b-a3b-mlx
+    big: true
+    note: "params: 30B -- 17.79G"
+  local-nemotron-3-nano-4b:
+    runtime: lmstudio
+    served: nvidia/nemotron-3-nano-4b
+    big: false
+    note: "params: 4B -- 2.84G"
+  local-qwen3.6-27b-mtplx-optimized-speed:
+    runtime: lmstudio
+    served: qwen3.6-27b-mtplx-optimized-speed
+    big: true
+    note: "params 27B -- 16.42G"
   # Claude SUBSCRIPTION via the Meridian host daemon (no API key). runtime:
   # meridian renders openai/<served> @ host.docker.internal:3456 + effort in
   # extra_body. One entry per effort level (output_config.effort; budget_tokens
