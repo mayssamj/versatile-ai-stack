@@ -45,7 +45,20 @@ LUMEN_URL="https://github.com/ory/lumen/releases/download/v${LUMEN_VERSION}/${LU
 LUMEN_SHA256="367aa8b50b1cc605801a03a814a6f953342fa1a0116074f132d32ef61c441b13"
 LUMEN_DIR="$AI_STACK/vendor/lumen"
 LUMEN_BIN="$LUMEN_DIR/$LUMEN_ASSET"
+# Embedding model. DURABLE: read the `served` id of the embedder assigned to
+# `lumen` in installer/models.yml (set via `vz-ai-stack.sh embedding assign lumen
+# <model>`) so a re-install honors a re-point. The hardcoded default below is the
+# FALLBACK — a missing models.yml / embeddings section / yq never breaks the phase.
 LUMEN_EMBED_MODEL="ordis/jina-embeddings-v2-base-code"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  # Resolve the assignment to a key FIRST (`// ""` so a missing assignments map
+  # coerces to ""), THEN look up its served id. A bare `.embeddings[.x.lumen]`
+  # would index by `null` when the section is absent and yq returns EVERY value
+  # (a multi-line blob that defeats the fallback) — so the `as $k` guard is
+  # load-bearing. Empty on any miss -> the hardcoded fallback above stands.
+  _le="$(yq -r '(.embedding_assignments.lumen // "") as $k | .embeddings[$k].served // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  [[ -n "$_le" && "$_le" != "null" ]] && LUMEN_EMBED_MODEL="$_le"
+fi
 LUMEN_INDEX_ROOT="$HOME/.local/share/lumen"
 
 precheck() {

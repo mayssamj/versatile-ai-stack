@@ -38,6 +38,39 @@ models:
   claude-sonnet-4.6-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
   claude-sonnet-4.6-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
   claude-sonnet-4.6-sub-ultracode: {runtime: meridian, served: claude-sonnet-4-6, effort: ultracode, big: false, note: "Claude subscription (Sonnet 4.6), ultracode effort (coding-focused, highest tier)."}
+# EMBEDDING models (separate plane from the chat `models:` above — different
+# registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
+# vector size the model emits; `kind` is text|code (a code-tuned embedder degrades
+# general prose and vice-versa). `via` is the call path: litellm (an embedding
+# route in litellm/config.yaml — `route:` names it), ollama (direct pull), or
+# ondevice (no network hop; CoreML on Apple Silicon). DIM is load-bearing: the
+# docs collection (Qdrant `ai-stack-docs`) is pinned to its embedder's dim, so a
+# dim change is a destructive re-ingest (see `embedding` GUARD + phase-06 ingest.py).
+embeddings:
+  embed-nomic:        { runtime: ollama, served: nomic-embed-text,                     dim: 768,  via: litellm,  route: embed-local,        kind: text }
+  # jina-v2-base-code emits 768-dim per its HF model card; NOT pinned anywhere in
+  # this repo, so `dim: 768` here is UNVERIFIED against local code (verify before
+  # relying on it for a docs/openwebui assignment — Lumen keeps its own index).
+  embed-jina-code:    { runtime: ollama, served: ordis/jina-embeddings-v2-base-code,   dim: 768,  via: ollama,                              kind: code, unverified: true }
+  # On-device (MemPalace) embedders: `served` is the EXACT token MemPalace's
+  # MEMPALACE_EMBEDDING_MODEL accepts (verified vs the installed mempalace pkg —
+  # embedding.py resolves `embeddinggemma`, else minilm; config.py default minilm),
+  # NOT the HF repo name. minilm's HF model is all-MiniLM-L6-v2 (provenance only).
+  # Both yield 384-dim at runtime (embeddinggemma truncates via MRL).
+  embed-minilm:       { runtime: onnx,   served: minilm,                                dim: 384,  via: ondevice, device: coreml,            kind: text }
+  embed-gemma:        { runtime: onnx,   served: embeddinggemma,                        dim: 768,  via: ondevice, device: coreml,            kind: text }
+  embed-openai-small: { runtime: openai, served: text-embedding-3-small,               dim: 1536, via: litellm,  route: embed-openai-small, kind: text }
+  embed-openai-large: { runtime: openai, served: text-embedding-3-large,               dim: 3072, via: litellm,  route: embed-openai-large, kind: text }
+# Per-service embedder assignments. Read at install time by each owning phase
+# (06_documents / 16_lumen / 26_mempalace / bin/start-openwebui) with the phase's
+# current hardcoded value as the fallback, so a missing section never breaks a
+# phase. Re-point with `vz-ai-stack.sh embedding assign <service> <model>`.
+embedding_assignments:
+  docs:      embed-nomic
+  openwebui: embed-nomic
+  lumen:     embed-jina-code
+  mempalace: embed-minilm
+  honcho:    embed-openai-small
 default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) when its

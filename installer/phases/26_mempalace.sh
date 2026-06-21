@@ -66,6 +66,20 @@ MP_CONFIG_FILE="$MP_CONFIG_DIR/config.json"
 # we don't default to it. First mine downloads the model once (retry if the
 # download times out — it is resumable on re-run).
 MP_EMBED_MODEL="${MEMPALACE_EMBEDDING_MODEL:-minilm}"
+# DURABLE: when MEMPALACE_EMBEDDING_MODEL isn't set in the env, read the `served`
+# token of the embedder assigned to `mempalace` in installer/models.yml (set via
+# `vz-ai-stack.sh embedding assign mempalace <model>`) so a re-install honors a
+# re-point. For the on-device embedders `served` IS the exact MemPalace token
+# (minilm / embeddinggemma) — not the HF name — so it's handed through verbatim,
+# the same idiom as docs/openwebui/lumen. The `${...:-minilm}` above stays the
+# fallback; the `as $k` guard makes a missing assignments/embeddings section
+# resolve to "" (a bare index-by-null returns ALL values), so a missing section
+# never breaks the phase. An explicit env var still wins over models.yml.
+if [[ -z "${MEMPALACE_EMBEDDING_MODEL:-}" ]] \
+   && [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _me="$(yq -r '(.embedding_assignments.mempalace // "") as $k | .embeddings[$k].served // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  [[ -n "$_me" && "$_me" != "null" ]] && MP_EMBED_MODEL="$_me"
+fi
 MP_EMBED_DEVICE="${MEMPALACE_EMBEDDING_DEVICE:-coreml}"   # Apple Neural Engine on M4
 
 # Resolve the uv-installed mempalace binary (uv tool install → ~/.local/bin).

@@ -21,7 +21,7 @@ rlm_install_diagnose() {
   local k; k="$(get_env RLM_LITELLM_KEY '')"
   [[ -n "$k" ]] || { echo "RLM_LITELLM_KEY missing from .env — re-run 'install 18'"; return 1; }
   curl -sf --max-time 5 -H "Authorization: Bearer $k" http://litellm:4000/v1/models >/dev/null 2>&1 \
-    || { echo "RLM_LITELLM_KEY rejected by LiteLLM (revoked/rotated?) — re-run 'install 18'"; return 1; }
+    || { if declare -F litellm_db_down >/dev/null && litellm_db_down; then echo "LiteLLM key-store DOWN (503 no_db_connection) — heal the DB (check 05a), do NOT re-mint."; return 1; fi; echo "RLM_LITELLM_KEY rejected by LiteLLM (revoked/rotated?) — re-run 'install 18'"; return 1; }
   return 0
 }
 

@@ -38,6 +38,20 @@ mkdir -p "$AI_STACK/data/openwebui"
 # first boot downloading sentence-transformers/all-MiniLM-L6-v2 from HuggingFace —
 # which, on a cold volume after `reset --hard`, leaves the HTTP server unstarted
 # (doctor alias probe gets HTTP 000, container reported unhealthy). Local + offline.
+# DURABLE: read the `served` id of the embedder assigned to `openwebui` in
+# installer/models.yml (set via `vz-ai-stack.sh embedding assign openwebui <model>`)
+# so a restart honors a re-point. Hardcoded default = the FALLBACK; a missing
+# models.yml / embeddings section / yq never breaks the start. NB: the RAG engine
+# stays `ollama`, so the value must be an Ollama-pulled model name.
+RAG_EMBEDDING_MODEL="nomic-embed-text"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  # Resolve the assignment key FIRST (`// ""`), THEN its served id. A bare
+  # `.embeddings[.x.openwebui]` indexes by `null` when the section is absent and
+  # yq returns EVERY value (a blob that defeats the fallback) — the `as $k` guard
+  # is load-bearing. Empty on any miss -> the hardcoded fallback above stands.
+  _oe="$(yq -r '(.embedding_assignments.openwebui // "") as $k | .embeddings[$k].served // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  [[ -n "$_oe" && "$_oe" != "null" ]] && RAG_EMBEDDING_MODEL="$_oe"
+fi
 docker run -d \
   --name "$NAME" \
   --label "ai-stack.managed=true" \
@@ -52,7 +66,7 @@ docker run -d \
   -e DEFAULT_MODELS=claude-opus-4.8-sub-xhigh \
   -e RAG_EMBEDDING_ENGINE=ollama \
   -e RAG_OLLAMA_BASE_URL=http://ollama:11434 \
-  -e RAG_EMBEDDING_MODEL=nomic-embed-text \
+  -e RAG_EMBEDDING_MODEL="$RAG_EMBEDDING_MODEL" \
   -p "${ALIAS_IP[openwebui]}":"${ALIAS_HOST_PORT[openwebui]}":"${ALIAS_CONTAINER_PORT[openwebui]}" \
   -v "$AI_STACK/data/openwebui:/app/backend/data" \
   "$IMAGE" \

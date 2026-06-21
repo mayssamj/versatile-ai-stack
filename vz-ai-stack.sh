@@ -98,6 +98,7 @@ fi
 # (defines log/err/lock), then env, docker, validate, prompt, litellm.
 # shellcheck source=installer/lib/common.sh
 source "$LIB/common.sh"
+source "$LIB/worktree.sh"
 source "$LIB/env.sh"
 source "$LIB/docker-engine.sh"
 
@@ -206,6 +207,16 @@ ai-stack-installer — usage:
     vz-ai-stack.sh model assign all <m>     blanket-assign EVERY agent to <m> (before→after + models.yml.bak), then sync
     vz-ai-stack.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
                                         (opt-in; NOT run by 'install all'. --dry-run / --no-restart)
+    vz-ai-stack.sh embedding list [--json]  list embedding models (registry) + per-service assignments
+    vz-ai-stack.sh embedding show [<svc>]   current assignment(s) + consistency status
+    vz-ai-stack.sh embedding assign <svc> <m>   assign an embedder to a service (docs|openwebui|lumen|
+                                        mempalace|honcho); [--dry-run] [--force]. Refuses changing `docs`
+                                        to a different vector dim (Qdrant collection is dim-pinned) w/o
+                                        --force; warns on code/text kind mismatch.
+    vz-ai-stack.sh embedding global <m>     set the general-text embedder for docs+openwebui; [--dry-run]
+                                        [--force]. Refuses code-tuned (lumen) / on-device (mempalace).
+                                        (assignments live in models.yml .embeddings/.embedding_assignments;
+                                        re-run the owning service phase to apply.)
     vz-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
     vz-ai-stack.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
     vz-ai-stack.sh fleet remove <name>      remove a fleet profile (reverses add)
@@ -255,7 +266,7 @@ Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phase
   opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
-  e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model
+  e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model   ·   vz-ai-stack.sh help embedding
 Per-SERVICE help:  vz-ai-stack.sh help <service>   (what it is · config · usage; `help services` lists them)
 EOF
 }
@@ -446,6 +457,12 @@ cmd_install() {
     return $?
   fi
 
+  # Refuse to operate the LIVE stack from a git worktree. Incident 2026-06-20:
+  # containers bind-mount paths under $AI_STACK (honcho Postgres data, autofyn
+  # workspace, …); installing from a worktree binds them to the worktree, and
+  # removing it later breaks the running stack. --dry-run above is exempt (no-op).
+  worktree_guard install
+
   preflight
   lock_acquire
 
@@ -625,6 +642,7 @@ cmd_phases() {
 cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; bash "$AI_STACK/installer/smoke/${id}.sh"; }
 cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
+cmd_embedding() { bash "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
 cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
 cmd_help() {
@@ -637,7 +655,7 @@ cmd_help() {
   # message it prints, but don't let it trip the ERR trap into the user's output.
   bash "$AI_STACK/installer/lib/help.sh" "$@" || true
 }
-cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
+cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $?; }
 cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
 cmd_gc()      { bash "$AI_STACK/installer/lib/gc.sh"; }
@@ -774,6 +792,10 @@ cmd_start() {
     _list_startable_services
     exit 2
   fi
+
+  # Refuse starting the LIVE stack from a git worktree (see the cmd_install note):
+  # start scripts (re)create containers that bind-mount paths under $AI_STACK.
+  worktree_guard "start $svc"
 
   # Step 1: enumerated pre-flight setup check (claw3d, lmstudio).
   _ensure_setup "$svc"
@@ -1082,6 +1104,7 @@ main() {
     phases|steps|list) cmd_phases ;;
     status)            cmd_status "$@" ;;
     model)             cmd_model "$@" ;;
+    embedding|embeddings) cmd_embedding "$@" ;;
     fleet)             cmd_fleet "$@" ;;
     docker-engine)     cmd_docker_engine "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;

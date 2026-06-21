@@ -59,6 +59,10 @@ mempalace_diagnose() {
   fi
   if ! curl -sf --max-time 5 -H "Authorization: Bearer $key" \
        http://litellm:4000/v1/models >/dev/null 2>&1; then
+    if declare -F litellm_db_down >/dev/null && litellm_db_down; then
+      echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / start honcho-database); do NOT re-mint."
+      return 1
+    fi
     echo "MEMPALACE_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via Phase 26"
     return 1
   fi

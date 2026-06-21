@@ -19,9 +19,14 @@ source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
 source "$AI_STACK/installer/lib/prompt.sh"
 source "$AI_STACK/installer/lib/litellm.sh"
+source "$AI_STACK/installer/lib/worktree.sh"
 
 declare -ag CHECKS=()
 declare -Ag CHECK_TITLE=()
+# Checks may set AUTOHEAL[<name>]=1 to mark a SAFE, idempotent fix that doctor
+# applies automatically (no Y/n prompt). Used for self-healing the LiteLLM
+# key-store (05a). Still skipped under NO_PROMPT (report-only stays read-only).
+declare -Ag AUTOHEAL=()
 
 # Source every check file. Each must append to CHECKS + set CHECK_TITLE.
 for f in "$AI_STACK"/installer/doctor/checks/*.sh; do
@@ -54,19 +59,34 @@ for __check in "${CHECKS[@]}"; do
   # auto-answer the fix prompts) leaks into the probe and corrupts it —
   # producing false failures (seen on checks 25/30/33). The confirm prompt
   # below still reads the real stdin, so auto-fix answers keep working.
-  if "${__check}_diagnose" </dev/null >/dev/null 2>&1; then
+  # Run each check in a SUBSHELL ( … ) so nothing it does — a stray `exit`, an
+  # errexit abort, a failing command-substitution — can kill the doctor LOOP.
+  # Before this, one misbehaving check (e.g. when LiteLLM was down) aborted the
+  # whole run mid-way, leaving most checks unrun. Now the loop always completes.
+  if ( "${__check}_diagnose" ) </dev/null >/dev/null 2>&1; then
     printf '%s\n' "${C_GREEN}✓${C_RESET}"
     passed=$((passed+1))
   else
     printf '%s\n' "${C_RED}✗${C_RESET}"
     failed=$((failed+1))
-    # Re-run to show the user the actual failure detail.
-    "${__check}_diagnose" </dev/null 2>&1 | sed 's/^/      /' || true
+    # Re-run to show the user the actual failure detail (also subshell-isolated).
+    ( "${__check}_diagnose" ) </dev/null 2>&1 | sed 's/^/      /' || true
     if declare -F "${__check}_fix" >/dev/null; then
       if [[ "${NO_PROMPT:-0}" == "1" ]]; then
         note "    (auto-fix available; NO_PROMPT=1 so skipping)"
+      elif [[ "${AUTOHEAL[$__check]:-0}" == "1" ]]; then
+        # SAFE, idempotent self-heal (e.g. the LiteLLM key-store): apply
+        # AUTOMATICALLY — no prompt. This failure class is meant to resolve
+        # itself, and the recovery is non-destructive + worktree-guarded.
+        note "    auto-healing (safe, idempotent — no prompt)…"
+        if ( "${__check}_fix" </dev/null ); then
+          ok   "    auto-healed."
+          fixed=$((fixed+1))
+        else
+          err "    auto-heal attempt failed."
+        fi
       elif confirm "    Auto-fix available. Apply?" Y; then
-        if "${__check}_fix" </dev/null; then
+        if ( "${__check}_fix" </dev/null ); then
           ok   "    fixed."
           fixed=$((fixed+1))
         else

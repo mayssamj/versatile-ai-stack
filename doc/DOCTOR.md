@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 49 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 50 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 49
+stack doctor                    # all 50
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -42,6 +42,7 @@ installer/doctor/checks/
 ├── 03_env_valid.sh
 ├── 04_phoenix_endpoint_set.sh
 ├── 05_litellm_env_loaded.sh
+├── 05a_litellm_keystore.sh                   (LiteLLM key-store / Postgres reachable; AUTO-HEALS)
 ├── 06_arize_phoenix_callback.sh
 ├── 07_guardrails_file_or_remove.sh
 ├── 08_ollama_models.sh
@@ -156,6 +157,23 @@ embedded DNS.
 
 This check is the in-container twin of check 04; they catch different failure
 modes.
+
+---
+
+## 05a · LiteLLM key-store (Postgres) reachable + self-heal
+
+| | |
+|---|---|
+| Asserts | honcho-database Postgres (LiteLLM's virtual-key store) is reachable; runs BEFORE the per-phase key checks so the root heals first. |
+| Fails when | LiteLLM returns HTTP 503 `no_db_connection`, OR Postgres :5432 is unreachable (honcho-database down). |
+| Auto-fix | AUTO-HEALS automatically (AUTOHEAL — no Y/n prompt): idempotent `docker compose up -d database` from `honcho/`. NON-destructive (never rm/volume-wipe), bounded waits, verifies Postgres + LiteLLM recovered. Worktree-guarded; fail-open if honcho absent. |
+
+This check is why the per-phase key checks (29 ace, 30 hermes, 31 rlm,
+44 mempalace) now report "key-store DOWN — heal the DB (05a)" instead of
+"re-mint" on a 503: a 503 `no_db_connection` means the virtual-key store is
+down, not that the key was revoked — re-minting against a down DB can't
+succeed, so the de-conflated checks point you at the root (05a heals it
+automatically) rather than at a dead-end re-mint.
 
 ---
 

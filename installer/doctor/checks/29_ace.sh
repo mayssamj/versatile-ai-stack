@@ -43,6 +43,10 @@ ace_diagnose() {
   fi
   if ! curl -sf --max-time 5 -H "Authorization: Bearer $ace_key" \
        http://litellm:4000/v1/models >/dev/null 2>&1; then
+    if declare -F litellm_db_down >/dev/null && litellm_db_down; then
+      echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / start honcho-database); do NOT re-mint."
+      return 1
+    fi
     echo "ACE_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via Phase 17"
     return 1
   fi

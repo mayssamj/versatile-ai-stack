@@ -65,6 +65,43 @@ log "Installing requirements (may take a couple of minutes)..."
 uv pip install --python .venv/bin/python -r requirements.txt 2>&1 | tail -5 \
   || { err "pip install failed"; exit 1; }
 
+# DURABLE embedder resolution. ingest.py + mcp_server.py are COUPLED — both
+# target the same Qdrant `ai-stack-docs` collection, pinned to one vector dim. We
+# resolve the embedder assigned to `docs` in installer/models.yml (set via
+# `vz-ai-stack.sh embedding assign docs <model>`) so a re-install honors a
+# re-point: EMBED_MODEL <- the LiteLLM `route` of that embedder, EMBED_DIM <- its
+# `dim`. The hardcoded values below (embed-local / 768) are the FALLBACK — a
+# missing models.yml / embeddings section / yq leaves them untouched, so the
+# phase never breaks. The two .py files are written from a QUOTED heredoc (so the
+# Python body's $/`/{} are NOT shell-expanded); we therefore bake the resolved
+# values in with a portable temp+mv rewrite of the two literal lines AFTER each
+# heredoc, NOT by interpolating into the heredoc. (`as $k` guards a missing
+# section: a bare index-by-null returns ALL values.) WARNING: changing the dim of
+# an EXISTING, populated collection is a one-way destructive re-ingest — the
+# ingest.py below refuses it unless AI_STACK_FORCE_RECREATE=1.
+DOCS_EMBED_MODEL="embed-local"
+DOCS_EMBED_DIM=768
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  _dem="$(yq -r '(.embedding_assignments.docs // "") as $k | .embeddings[$k].route // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  _ded="$(yq -r '(.embedding_assignments.docs // "") as $k | .embeddings[$k].dim   // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+  [[ -n "$_dem" && "$_dem" != "null" ]] && DOCS_EMBED_MODEL="$_dem"
+  [[ "$_ded" =~ ^[1-9][0-9]*$ ]] && DOCS_EMBED_DIM="$_ded"
+fi
+note "docs embedder: EMBED_MODEL=$DOCS_EMBED_MODEL EMBED_DIM=$DOCS_EMBED_DIM (from models.yml .embedding_assignments.docs; fallback embed-local/768)"
+
+# _bake_embed_literals <pyfile> — portable (temp+mv, no BSD/GNU sed -i divergence)
+# rewrite of the two pinned literals in a generated .py. Anchored to line start so
+# it can't touch a comment or substring. EMBED_DIM only exists in ingest.py; the
+# mcp_server.py call is a harmless no-op there.
+_bake_embed_literals() {
+  local f="$1" tmp
+  tmp="$(mktemp "${f}.XXXXXX")" || { warn "embedder bake: mktemp failed for $f (leaving defaults)"; return 0; }
+  sed -E \
+    -e "s|^EMBED_MODEL = \"[^\"]*\"|EMBED_MODEL = \"${DOCS_EMBED_MODEL}\"|" \
+    -e "s|^EMBED_DIM([[:space:]]*)= [0-9]+|EMBED_DIM\1= ${DOCS_EMBED_DIM}|" \
+    "$f" > "$tmp" && mv -f "$tmp" "$f" || { warn "embedder bake: rewrite failed for $f (leaving defaults)"; rm -f "$tmp"; return 0; }
+}
+
 # --- ingest.py: ingestor/inbox → Qdrant ---
 cat > ingest.py <<'PY'
 """Sweep ~/ai-stack/ingestor/inbox/, parse via Docling, embed via LiteLLM, store in Qdrant.
@@ -233,6 +270,12 @@ if __name__ == "__main__":
 PY
 
 ok "wrote ingest.py + mcp_server.py"
+
+# Bake the resolved embedder into BOTH coupled files (EMBED_MODEL in each;
+# EMBED_DIM in ingest.py). Keeps the writer (quoted heredoc) safe while honoring
+# the models.yml assignment. No-op when the assignment matches the defaults.
+_bake_embed_literals ingest.py
+_bake_embed_literals mcp_server.py
 
 # --- Start docs_mcp as a background daemon (alias docs-mcp:8765) -----------
 # Phase 06 owns the venv; bin/start-docs_mcp.sh owns daemonization (PID file,
