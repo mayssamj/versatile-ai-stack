@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 51 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 52 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 51
+stack doctor                    # all 52
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -86,7 +86,9 @@ installer/doctor/checks/
 ├── 46_agent_fleet_parity.sh                (always-on; shared skills + Tier-1 block + each role byte-identical across the 3 frameworks)
 ├── 47_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
 ├── 48_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
-└── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
+├── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
+├── 50_aionui.sh                             (opt-in Phase 28; skip-clean when AionUi not installed)
+└── 51_openwork.sh                           (opt-in Phase 29; skip-clean when OpenWork not installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -684,6 +686,18 @@ and the `docker-engine` subcommand.
 ## 49 · Sourcegraph fleet MCP wired (opt-in)
 
 Graceful by design — skip-clean (pass) when Sourcegraph isn't installed (no `~/.sourcegraph-local/sg-token`), so it never red-bars a stack that didn't opt into code search. When SG IS installed it checks, fast: the `sourcegraph_mcp` network-policy stanza is present in `openshell/policies/hermes-fleet-v1.yaml` (drift guard — the 04_openshell.sh heredoc regenerates that file, and a stanza-less copy would silently drop fleet→SG reachability on the next `install 04`), and — if a Hermes fleet sandbox is Ready — that `hermes_manager` actually carries the `mcp_servers.sourcegraph` stanza (fleet wired). With `--all` / `OPENSHELL_DOCTOR_SLOW=1` it adds a LIVE probe: the sandbox can reach SG through the landlock (not `policy_denied`) and SG's MCP `initialize` returns HTTP 200 with the token. It never uses `hermes mcp test` (verified buggy against this SG — its probe sends a malformed `Accept` and 400s). Fix: `vz-ai-stack.sh install sourcegraph` (deploy + bootstrap + wire), or `install 04f` (wire an existing fleet), or `install 04` (re-apply the policy stanza if the LIVE policy lacks it).
+
+---
+
+## 50 · AionUi WebUI healthy + LiteLLM key valid (opt-in)
+
+Graceful by design — skip-clean (pass) when AionUi's Phase 28 hasn't run (no `installer/state/phase_28*.done` stamp), so it never red-bars a stack that didn't opt into the AionUi Cowork workspace. When installed it checks: the `aionui` desktop cask is present; the prebuilt `aionui-web` binary exists; the WebUI daemon serves HTTP 200 on the loopback `:25808`; and the minted `AIONUI_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware so a down key-store reads as "heal the DB", not "bad key"). Fix: `vz-ai-stack.sh start aionui` or `install 28` (both idempotent).
+
+---
+
+## 51 · OpenWork daemon healthy + LiteLLM key valid (opt-in)
+
+Graceful by design — skip-clean (pass) when OpenWork's Phase 29 hasn't run (no `installer/state/phase_29*.done` stamp), so it never red-bars a stack that didn't opt into the OpenWork Cowork workspace. When installed it checks: the `openwork` orchestrator binary resolves on PATH / npm-global and `--version` runs; the seeded `~/.openwork-stack/opencode.json` exists; the headless daemon serves HTTP 200 on the loopback `:8787/health`; and the minted `OPENWORK_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware). Fix: `vz-ai-stack.sh start openwork` or `install 29` (both idempotent). First start downloads the OpenCode sidecars — give it a minute before re-checking.
 
 ---
 

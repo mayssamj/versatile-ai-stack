@@ -93,7 +93,7 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **remnic-hermes** | https://github.com/joshuaswarren/remnic | MIT | Remnic MemoryProvider plugin for Hermes Agent. PyPI `remnic-hermes`. |
 | **autoreason** | https://github.com/NousResearch/autoreason | **None (all rights reserved)** | NousResearch; no LICENSE file. Reference only — do not redistribute. |
 
-## Opt-in experimental extras (Phases 21–25 · 27)
+## Opt-in experimental extras (Phases 21–25 · 27–29)
 | Component | Upstream | License | Notes |
 |---|---|---|---|
 | **portless** | https://github.com/vercel-labs/portless | Apache-2.0 | Vercel Labs. Global npm CLI; ships a Claude Code skill. |
@@ -102,6 +102,8 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **OpenAgents Launcher** | https://github.com/openagents-org/openagents | Apache-2.0 | Hosted Workspace (workspace.openagents.org) carries its own terms; the local launcher/`agn` is Apache-2.0. Installer fetches from a moving branch (no checksum) + edits your shell rc. |
 | **LM Studio** | https://lmstudio.ai/ | **Proprietary, free for personal + commercial** (since 2025-07; no license needed) | App is closed-source; the `lms` CLI is MIT and Apple's **MLX** framework is MIT. Enterprise/Teams tier is paid; the desktop app + headless server are free for work use. Serves `local-lfm2-mlx` (LFM2.5 weights = LFM Open License, $10M cap — see Model weights). ⚠️ Opt-in (Phase 25): the desktop app idle-spins ~0.8–1 core even stopped — quit it when done (`lms server stop` + Cmd-Q); headless alternative is `mlx_lm.server` (pip `mlx-lm`). |
 | **MemPalace** | https://github.com/MemPalace/mempalace | MIT | PyPI `mempalace`. Local-first **verbatim** conversation memory for Claude Code sessions — CLI + MCP server (29 tools) + Python lib; a spatial model (wings/rooms/drawers) over a temporal SQLite knowledge graph. Embeddings are **local ONNX on-device** (CoreML; default `all-MiniLM-L6-v2`, `embeddinggemma` opt-in) — no cloud; an optional refiner LLM routes via LiteLLM (`MEMPALACE_LITELLM_KEY`). Storage is local ChromaDB (a Qdrant backend adapter is staged at `mempalace/backend-qdrant/` per RFC-001, conformance-tested vs live Qdrant, but **not yet live** — 3.3.5 hardcodes ChromaBackend). Two upstream hook scripts (`mempal_save_hook.sh`, `mempal_precompact_hook.sh`) are **vendored verbatim** under `mempalace/hooks/` (see `mempalace/VENDORED.md`). Core phase — installed by `install all` (Phase 26). **Security:** install only from PyPI / GitHub — the domain `mempalace.tech` is a known malware squat. |
+| **AionUi** | https://github.com/iOfficeAI/AionUi | Apache-2.0 | iOfficeAI. brew `--cask aionui` (desktop) + the prebuilt `aionui-web` WebUI server (GitHub Releases, SHA256-verified). Cowork workspace; chats with OpenAI-compatible models + drives CLI agents over ACP. Opt-in (Phase 28); loopback-only WebUI daemon. |
+| **OpenWork** | https://github.com/different-ai/openwork | **MIT** (the `/ee` dir is Fair Source — not shipped) | Different AI, Inc. Open-source alternative to Claude Cowork, **powered by OpenCode**. The stack installs the headless `openwork-orchestrator` (npm; a prebuilt Bun-compiled standalone binary, npm integrity-checked) which self-manages OpenCode (downloads its sidecars; opencode pinned `v1.17.3` via the orchestrator). OpenCode config is `@ai-sdk/openai-compatible` → LiteLLM. Opt-in (Phase 29); loopback-only daemon, `--approval manual`. |
 
 ## Platform & protocols
 | Component | Upstream | License | Notes |

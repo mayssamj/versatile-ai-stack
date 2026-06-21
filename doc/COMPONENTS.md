@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **29 core install phases** (+7 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `sourcegraph`, `aionui`), **42 services** (`services.yml`), **51 doctor checks**.
+- **29 core install phases** (+8 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`), **43 services** (`services.yml`), **52 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -77,8 +77,8 @@ FalkorDB, LFM2, etc.).
 | **paperclip↔honcho plugin** | Wires Paperclip into Honcho memory | — |
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
-## Opt-in experimental extras (Phases 21–25 · 27 — NOT in `install all`)
-Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 49 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
+## Opt-in experimental extras (Phases 21–25 · 27–29 — NOT in `install all`)
+Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 49 + 50 + 51 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
 | Component | What it is | Install |
 |---|---|---|
 | **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `vz-ai-stack.sh install portless` |
@@ -86,6 +86,8 @@ Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34�
 | **SkillSpector** | NVIDIA scanner that vets agent skills/MCP for prompt-injection/tool-poisoning *before* install (offline by default) | `vz-ai-stack.sh install skillspector` → `bin/skillspector scan <path>` |
 | **OpenAgents Launcher** | "Ollama for AI agents" (`agn`); ⚠️ overlaps the stack — NOT wired into LiteLLM/sandboxes; installs to `~/.openagents` | `vz-ai-stack.sh install openagents` |
 | **LM Studio (MLX)** | 2nd local runtime behind LiteLLM (`:1234`) — Apple MLX engine. Home of the two big MLX models `local-qwen3.6` + `local-qwen3-coder` (~17 GB each, JIT-loaded one-at-a-time with idle TTL). `install lmstudio` is **assignment-driven**: it loads ONLY MLX models actually assigned to an agent in `models.yml` — it does NOT auto-load anything otherwise. The `local-lfm2-mlx` demo model (LFM2.5, *working tool-calling*) is **opt-in** via `LMS_LOAD_LFM2=1`. Ollama stays default; lmstudio-assigned agents fall back to `local-gemma4` when this is down. Start the server with `vz-ai-stack.sh start lmstudio` (idempotent; no model auto-loads — assign one in `models.yml` + `model sync`). ⚠️ The desktop app idle-spins ~0.8–1 core even stopped — run only when needed and **quit it when done** (`vz-ai-stack.sh stop lmstudio` + Cmd-Q); headless alt: `mlx_lm.server` | `vz-ai-stack.sh install lmstudio` (setup + model wiring) · `start lmstudio` (run) |
+| **AionUi** | Local Cowork workspace — desktop app (brew `--cask aionui`) + a headless WebUI server (prebuilt `aionui-web`, loopback `:25808`). Chats with any OpenAI-compatible model and drives CLI agents in parallel over ACP. `install aionui` adds the cask + WebUI daemon + a model-scoped LiteLLM key + host `hermes-agent[acp]`. Loopback-only. | `vz-ai-stack.sh install aionui` · `start aionui` |
+| **OpenWork** | Local Cowork workspace built on the **OpenCode** engine — the stack runs its headless orchestrator (prebuilt `openwork-orchestrator` binary, npm) as a loopback browser UI on `:8787`. File-centric agentic work with skills/plugins/MCP, approval-gated. `install openwork` npm-installs the binary + mints a model-scoped LiteLLM key + pre-seeds `~/.openwork-stack/opencode.json` (LiteLLM provider). Self-manages OpenCode (no separate install). Loopback-only, `--approval manual`. | `vz-ai-stack.sh install openwork` · `start openwork` |
 
 ## Platform
 | Component | What it is |
