@@ -189,10 +189,12 @@ ai-stack-installer — usage:
                                           vz-ai-stack.sh install 01h
                                           vz-ai-stack.sh install phoenix
                                           vz-ai-stack.sh install hermes_telegram  (alias: telegram)
+                                          vz-ai-stack.sh install docs_ingestor    (a 'status' service name → its phase)
     vz-ai-stack.sh install [all] --dry-run  preview ONLY: host-deps status + the ordered
                                           phases (done vs would-run). Changes nothing. (alias --plan)
     vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
-    vz-ai-stack.sh test <phase>             run smoke tests for one phase (id or name)
+    vz-ai-stack.sh test <phase|service>     run smoke tests for one phase (id, name, or a
+                                          service name → its owning phase's smoke)
     vz-ai-stack.sh deps [--check]           show the host dependency map; install/start
                                           what's missing (--check = read-only, CI exit code)
     vz-ai-stack.sh setup                    interactive .env / API-key bootstrap (alias: keys);
@@ -610,6 +612,29 @@ resolve_phase_script() {
   if (( ${#matches[@]} > 1 )); then
     err "Phase '$sel' is ambiguous — matches: ${matches[*]##*/}"; return 1
   fi
+
+  # 4. service-name -> its owning phase. `status` lists SERVICES (services.yml);
+  #    many are sub-components installed BY a phase whose name differs
+  #    (docs_ingestor -> 06_documents, litellm_guardrails_* -> 04g_security,
+  #    lumen_mcp -> 16_lumen). If the selector is such a service, resolve to its
+  #    declared `phase:` so the name shown in `status` is directly installable.
+  #    Reached ONLY after every phase id/name/alias match above fails, so those
+  #    always win and existing behavior is unchanged — this purely rescues names
+  #    that would otherwise bail with "no phase matches".
+  local phase_id base name
+  phase_id="$(SVC="$sel" yq -r '.services[strenv(SVC)].phase // ""' "${SERVICES_YML:-$AI_STACK/services.yml}" 2>/dev/null || true)"
+  # Guard the glob below: a phase id is digits + an optional lowercase suffix (00,
+  # 01h, 04g). Rejecting anything else stops a malformed services.yml `phase:` (e.g.
+  # a stray `*`) from glob-matching an arbitrary phase via the find -name pattern.
+  if [[ "$phase_id" =~ ^[0-9][0-9a-z]*$ ]]; then
+    script="$(find "$dir" -maxdepth 1 -name "${phase_id}_*.sh" -print -quit 2>/dev/null)"
+    if [[ -n "$script" ]]; then
+      base="$(basename "$script" .sh)"; name="${base#*_}"
+      printf "→ '%s' is installed by phase %s (%s) — resolving there\n" "$sel" "$phase_id" "$name" >&2
+      printf '%s' "$script"; return 0
+    fi
+  fi
+
   return 1
 }
 
@@ -636,6 +661,7 @@ cmd_phases() {
   done < <(find "$AI_STACK/installer/phases" -maxdepth 1 -name '*.sh' | sort)
   echo
   echo "Use either form:  vz-ai-stack.sh install <id>   |   vz-ai-stack.sh install <name>"
+  echo "A service name shown in 'status' also works — it resolves to the phase that installs it."
   echo "Aliases: litellm=inference, telegram=hermes_telegram, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
 }
 
