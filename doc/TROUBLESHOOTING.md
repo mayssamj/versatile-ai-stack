@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the 45 known failure modes the doctor handles, see [DOCTOR.md](DOCTOR.md).
+For the doctor's 54 checks, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---

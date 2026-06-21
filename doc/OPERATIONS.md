@@ -34,7 +34,7 @@ stack <cmd> --help  /  stack help <cmd> # focused per-command usage (bare `help`
 stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
 stack fleet list|add|remove|new|destroy # Hermes 9-role fleet manager (see models.md / STACK-GUIDE)
-stack doctor                            # 47 health checks + auto-fix offers
+stack doctor                            # 54 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container
@@ -63,9 +63,9 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
-The **8 opt-in extras** (Phases 21–25, 27–29: `portless`, `cmux`, `skillspector`,
-`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`) are NOT part of `install all` — add them
-individually by name. Their doctor checks (34–38, 49, 50, 51) pass-as-skip until installed.
+The **9 opt-in extras** (Phases 21–25, 27–30: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`) are NOT part of `install all` — add them
+individually by name. Their doctor checks (34–38, 49, 50, 51, 52) pass-as-skip until installed.
 
 ### Per-service help (`stack help`)
 

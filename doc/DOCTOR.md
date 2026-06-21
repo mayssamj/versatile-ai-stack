@@ -7,7 +7,7 @@ and what the fix does.
 Run filtered:
 
 ```bash
-stack doctor                    # all 52
+stack doctor                    # all 54
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -89,7 +89,8 @@ installer/doctor/checks/
 ├── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
 ├── 50_aionui.sh                             (opt-in Phase 28; skip-clean when AionUi not installed)
 ├── 51_openwork.sh                           (opt-in Phase 29; skip-clean when OpenWork not installed)
-└── 52_understand.sh                         (opt-in Phase 30; skip-clean when no knowledge graph committed)
+├── 52_understand.sh                         (opt-in Phase 30; skip-clean when no knowledge graph committed)
+└── 53_container_liveness.sh                 (census: every managed container EXISTS + running & healthy)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
