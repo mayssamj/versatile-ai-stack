@@ -285,6 +285,7 @@ log "Smoke-test: curl http://host.docker.internal:4000/v1/models with PI_LITELLM
 PROBE_OUT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- \
    curl -s --max-time 5 -H "Authorization: Bearer $PI_KEY_FOR_PROBE" -o /dev/null \
    -w '%{http_code}' http://host.docker.internal:4000/v1/models 2>/dev/null || true)"
+PROBE_OUT="${PROBE_OUT:-000}"
 case "$PROBE_OUT" in
   200) ok "LiteLLM reachable via virtual key (HTTP 200, models allowlisted)" ;;
   000) warn "LiteLLM unreachable from sandbox — check policy ($POLICY) + LiteLLM dual-bind" ;;

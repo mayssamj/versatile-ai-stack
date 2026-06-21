@@ -7,7 +7,7 @@
 CHECKS+=(claw3d)
 CHECK_TITLE[claw3d]="claw3d office + stack-agents bridge healthy (Phase 19)"
 
-_claw3d_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$1" 2>/dev/null || true; }
+_claw3d_code() { local c; c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$1" 2>/dev/null || true)"; printf '%s' "${c:-000}"; }
 
 claw3d_diagnose() {
   local bridge="http://127.0.0.1:${CLAW3D_BRIDGE_PORT:-7780}"

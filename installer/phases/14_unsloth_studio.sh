@@ -41,6 +41,7 @@ precheck() {
   port_listening 8898 || return 1
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8898/ 2>/dev/null || true)
+  code="${code:-000}"
   [[ "$code" != "000" ]] || return 1
   return 0
 }
