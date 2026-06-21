@@ -24,6 +24,20 @@ _mb_litellm_up() { curl -sf --max-time 3 http://litellm:4000/health/readiness >/
 _mb_lms_up()     { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
 _mb_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
 
+# One master-key chat_ping. Echoes the HTTP code (or "000" on connect/timeout).
+# $1=model  $2=master-key  $3=max-time(s, default 30). NOTE: do NOT add `|| echo 000`
+# — curl's %{http_code} already emits 000 on timeout, so the old `|| echo 000`
+# produced "000000" (a doubled string that no '== 200' test could ever match and
+# that rendered as a confusing false failure). `${code:-000}` covers the empty case.
+_mb_chat_ping() {
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "${3:-30}" \
+    http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $2" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" 2>/dev/null)"
+  printf '%s' "${code:-000}"
+}
+
 _mb_osh() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
   elif command -v openshell >/dev/null 2>&1; then command -v openshell
@@ -115,12 +129,33 @@ models_binding_diagnose() {
       _mb_meridian_up || advisory="${advisory}    (advisory) meridian model '$m' — Meridian daemon down; agents availability-gate to the default\n"
       continue
     fi
-    # chat_ping (max_tokens 1)
-    local code
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-      http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $master" \
-      -H 'Content-Type: application/json' \
-      -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" 2>/dev/null || echo 000)"
+    # chat_ping (max_tokens 1). Lazy local runtimes (ollama) cold-LOAD the model on
+    # the first call: on a CPU-capped box that first ping can exceed a tight timeout
+    # and return 000 even though the model is fine — a false RED. Two-part fix:
+    #   (a) a non-200 first ping for ollama gets ONE warm-retry with a generous
+    #       budget (the first ping started the load; the retry waits it out);
+    #   (b) after each ollama model we `ollama stop` its weights so the NEXT ollama
+    #       model in the loop gets a CLEAN slot. Without (b), a small resident model
+    #       + a larger next model makes ollama stall in a request-triggered eviction
+    #       queue that exceeds ANY fixed retry budget (empirically >300s) — the real
+    #       cause of the multi-model false red. Each model is thus tested in
+    #       ISOLATION, which is what "does this model serve?" actually means.
+    # A genuinely broken model still fails BOTH pings → real breakage is caught;
+    # only cold-start is absorbed. ($m is a config-controlled models.yml key; if a
+    # name could ever contain a `"`/`\`, _mb_chat_ping's JSON body would need
+    # jq-escaping — today they're safe identifiers. A missing `runtime:` field →
+    # rt!="ollama" → single-ping fallback, never a crash.) lmstudio/meridian don't
+    # retry (lmstudio-down is advisory below; meridian is never chat_pinged).
+    local code served
+    code="$(_mb_chat_ping "$m" "$master" 30)"
+    if [[ "$code" != "200" && "$rt" == "ollama" ]]; then
+      code="$(_mb_chat_ping "$m" "$master" 120)"
+    fi
+    # Unload this ollama model so the next one tests in isolation (see (b) above).
+    if [[ "$rt" == "ollama" ]] && command -v ollama >/dev/null 2>&1; then
+      served="$(yq -r ".models.\"$m\".served" "$yml" 2>/dev/null)"
+      [[ -n "$served" && "$served" != "null" ]] && ollama stop "$served" >/dev/null 2>&1 || true
+    fi
     if [[ "$code" != "200" ]]; then
       if [[ "$rt" == "lmstudio" && "$lms_up" != "1" ]]; then
         advisory="${advisory}    (advisory) lmstudio model '$m' not servable — LM Studio :1234 down (HTTP $code)\n"
