@@ -49,7 +49,7 @@ diff, a blocked attack.
 ---
 ## Act I — Arrival
 
-This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 41 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
+This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 42 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
 ---
 
@@ -63,7 +63,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 
 1. The one thing to internalize: every AI request funnels through **LiteLLM at `http://litellm:4000/v1`**. Point any app, agent, or `curl` at that one endpoint and you get model routing, scoped keys, and call-by-call tracing for free.
 2. Everything is **local-first**: models, memory, traces, and documents all stay on your machine. It works fully offline; cloud is opt-in only when you hand it your own keys.
-3. The ~41 services sort into layers:
+3. The ~42 services sort into layers:
    - **Inference plane** — LiteLLM (the hub), Ollama (local models), Phoenix (tracing).
    - **Storage + memory** — Honcho (conversation memory + Postgres), Qdrant (vectors), FalkorDB (graph).
    - **Agents + fleets** — the Hermes fleet, Pi, OpenShell sandbox, DeerFlow, ACE, RLM, HALO.
@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (50 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and check 49 covers the Sourcegraph fleet MCP when that opt-in extra is installed.
+- `doctor` targets **all green (51 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and check 49 covers the Sourcegraph fleet MCP when that opt-in extra is installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -1330,7 +1330,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (50 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (51 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
@@ -1390,9 +1390,11 @@ vz-ai-stack.sh install cmux           # 22 — native macOS terminal for paralle
 vz-ai-stack.sh install skillspector   # 23 — the security scanner from L27
 vz-ai-stack.sh install openagents     # 24 — a COMPETING agent launcher (eval sandbox only)
 vz-ai-stack.sh install lmstudio       # 25 — LM Studio MLX as a 2nd local runtime behind LiteLLM
+vz-ai-stack.sh install sourcegraph    # 27 — local Sourcegraph code search + fleet MCP
+vz-ai-stack.sh install aionui         # 28 — AionUi desktop + WebUI Cowork workspace (multi-agent GUI)
 ```
 
-**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.)
+**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.)
 
 **Lesson — what each is, and the gotchas.**
 
@@ -1401,6 +1403,7 @@ vz-ai-stack.sh install lmstudio       # 25 — LM Studio MLX as a 2nd local runt
 - **`openagents` (24)** — a **competing orchestration layer** ("Ollama for AI agents"). It overlaps OpenShell, the Hermes fleet, and the front-ends; we install it into its own `~/.openagents` prefix and wire it into *nothing*. Treat it as an evaluation sandbox.
 - **`lmstudio` (25)** — adds Apple's **MLX** engine as a second local runtime behind LiteLLM (home of the heavy MLX models `local-qwen3.6` / `local-qwen3-coder`). `install lmstudio` does the setup + model wiring; **`vz-ai-stack.sh start lmstudio`** starts the server when you want it (and `stop lmstudio` stops it) — no model auto-loads, so assign one in `models.yml` + `vz-ai-stack.sh model sync`. ⚠ **CPU/RAM gotchas:** LM Studio **idle-spins ~0.8 of a core** even when nothing is in flight — **quit it when you're done** (`mlx_lm.server` is a lighter alternative). On a 24 GB box, the heavy MLX slugs (`local-qwen3.6`, `local-qwen3-coder`, ~17 GB) thrash if you also have Ollama resident — load one runtime at a time. **Security:** LM Studio binds `0.0.0.0:1234` with **no auth** so the container can reach it via `host.docker.internal`, which exposes the LLM to your LAN — fine on a trusted network, otherwise firewall it.
 - **`mempalace` (26)** — *now part of `install all`* — it graduated from this opt-in list because it's a zero-cost CLI leaf (no daemon, on-device embeddings). Full coverage is in **L10½**. ⚠ **Security:** install only from PyPI (`mempalace`) or github.com/MemPalace/mempalace — `mempalace.tech` is a known malware squat.
+- **`aionui` (28)** — a local **Cowork workspace**: the desktop app (`brew --cask aionui`) plus a headless **WebUI server** (the prebuilt `aionui-web` binary, loopback `:25808`, managed by `start aionui`) that runs multiple agents side-by-side over your stack. `install aionui` adds the cask + the WebUI daemon + a model-scoped LiteLLM key + host `hermes-agent[acp]` (so AionUi auto-detects a built-in `hermes`). One-time UI wiring: Settings → Models → Add Model → **Custom** → Base URL `http://127.0.0.1:4000/v1` + the `AIONUI_LITELLM_KEY` from `.env` + your model IDs. ⚠ Loopback-only (auth is disabled in local mode — never expose `:25808` off-box); the desktop app is a GUI — **quit it when done**.
 
 **Go deeper.** Phases `installer/phases/21_portless.sh` … `26_mempalace.sh` each carry a full rationale header. The model strategy (which slug runs where, why qwen3.6 moved off Ollama to LM Studio) is in `doc/models.md` and `doc/ALTERNATIVES.md`; MemPalace's place among the memory options is in `doc/ALTERNATIVES.md` and its attribution/license in `doc/ATTRIBUTION.md`.
 
