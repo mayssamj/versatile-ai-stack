@@ -29,7 +29,7 @@ precheck() {
   # Use /api/health (paperclip's documented health endpoint); accept any
   # non-000 response as "alive" — startup may transiently return non-200.
   local code
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:3100/api/health 2>/dev/null || echo 000)
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:3100/api/health 2>/dev/null || true)
   [[ "$code" != "000" ]] || return 1
   return 0
 }

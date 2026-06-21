@@ -28,13 +28,17 @@ _mb_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-345
 # $1=model  $2=master-key  $3=max-time(s, default 30). NOTE: do NOT add `|| echo 000`
 # — curl's %{http_code} already emits 000 on timeout, so the old `|| echo 000`
 # produced "000000" (a doubled string that no '== 200' test could ever match and
-# that rendered as a confusing false failure). `${code:-000}` covers the empty case.
+# that rendered as a confusing false failure). The `|| true` is REQUIRED: under
+# doctor's set -e + inherit_errexit, a bare `code="$(curl …)"` ABORTS the check
+# when curl exits non-zero (timeout/connection refused) — `|| true` makes the
+# substitution exit 0 (curl's -w still printed "000"); `${code:-000}` covers the
+# rare empty/binary-error case. (`|| true` not `|| echo 000` — the latter doubles.)
 _mb_chat_ping() {
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "${3:-30}" \
     http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $2" \
     -H 'Content-Type: application/json' \
-    -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" 2>/dev/null)"
+    -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" 2>/dev/null || true)"
   printf '%s' "${code:-000}"
 }
 

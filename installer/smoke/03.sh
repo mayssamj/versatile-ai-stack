@@ -42,7 +42,7 @@ WS="smoke-$$"
 status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
   -X POST -H "Content-Type: application/json" \
   -d "{\"id\":\"$WS\"}" \
-  http://honcho:8000/v1/workspaces 2>/dev/null || echo 000)"
+  http://honcho:8000/v1/workspaces 2>/dev/null || true)"
 case "$status" in
   200|201) ok "workspace create $WS → $status" ;;
   409)     ok "workspace already exists ($status) — API responsive" ;;

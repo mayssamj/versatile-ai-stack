@@ -284,7 +284,7 @@ PI_KEY_FOR_PROBE="$(get_env PI_LITELLM_KEY '')"
 log "Smoke-test: curl http://host.docker.internal:4000/v1/models with PI_LITELLM_KEY from inside sandbox..."
 PROBE_OUT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- \
    curl -s --max-time 5 -H "Authorization: Bearer $PI_KEY_FOR_PROBE" -o /dev/null \
-   -w '%{http_code}' http://host.docker.internal:4000/v1/models 2>/dev/null || echo 000)"
+   -w '%{http_code}' http://host.docker.internal:4000/v1/models 2>/dev/null || true)"
 case "$PROBE_OUT" in
   200) ok "LiteLLM reachable via virtual key (HTTP 200, models allowlisted)" ;;
   000) warn "LiteLLM unreachable from sandbox — check policy ($POLICY) + LiteLLM dual-bind" ;;

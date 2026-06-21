@@ -84,7 +84,7 @@ sourcegraph_mcp_diagnose() {
     mcp_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 -X POST http://localhost:7080/.api/mcp \
       -H "Authorization: token $(cat "$tok_file")" -H 'Content-Type: application/json' \
       -H 'Accept: application/json, text/event-stream' \
-      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"doctor","version":"1"}}}' 2>/dev/null || echo 000)"
+      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"doctor","version":"1"}}}' 2>/dev/null || true)"
     [[ "$mcp_code" == "200" ]] || fails+=("  LIVE: SG MCP initialize returned HTTP $mcp_code (expected 200 — SG down or token invalid)")
   else
     echo "  (static checks only; set OPENSHELL_DOCTOR_SLOW=1 for the live reachability + MCP probe)"

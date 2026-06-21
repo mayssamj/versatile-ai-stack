@@ -84,7 +84,7 @@ bootstrap_phoenix_api_key() {
   container_running phoenix || return 0
   # Auth on? — /v1/projects returns 401 if yes.
   local status
-  status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://phoenix:6006/v1/projects 2>/dev/null || echo 000)"
+  status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://phoenix:6006/v1/projects 2>/dev/null || true)"
   [[ "$status" == "401" ]] || return 0   # auth off, or alias not yet wired
   local key; key="$(get_env PHOENIX_API_KEY "")"
   [[ -n "$key" ]] && return 0   # already set
