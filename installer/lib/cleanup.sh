@@ -70,6 +70,25 @@ du_k()  { du -sk "$1" 2>/dev/null | awk '{print $1}'; }                  # size 
 human() { local k=$1; awk -v k="$k" 'BEGIN{ s="KMGT"; v=k; i=1;
            while(v>=1024 && i<4){v/=1024;i++}; printf "%.1f%s", v, substr(s,i,1) }'; }
 
+# in_use <dir> — true if a LIVE process belongs to the SERVICE that owns this
+# artifact, so deleting it would break a running service. We match the artifact's
+# PARENT (service) dir, not the artifact dir itself: a `node claw3d/server/index.js`
+# loads from claw3d/node_modules but its argv only shows ".../claw3d/", and Next.js
+# serves claw3d/.next the same way — a dir-level match would MISS both and delete
+# them out from under the live UI. Matching the parent also covers the binary-under-
+# artifact case (python from .venv/bin, embedded-postgres under node_modules). This
+# is deliberately broad: over-skipping a safe dir (user stops the service, re-runs)
+# beats deleting a live one. Snapshot ps ONCE; fixed-string match.
+PS_SNAPSHOT="$(ps -axo command= 2>/dev/null || true)"
+# FAIL-OPEN: an empty snapshot (ps unavailable) → can't prove in-use → not skipped.
+# That's the safe bias for a disk tool (it just declines to over-protect). The
+# empty-svc guard stops a hypothetical root-level artifact from grepping bare "/"
+# (which would match every process and permanently lock the dir). Council P0-B.
+in_use() {
+  local svc="${1%/*}"
+  [[ -n "$svc" && -n "$PS_SNAPSHOT" ]] && grep -qF -- "$svc/" <<<"$PS_SNAPSHOT"
+}
+
 # find_artifacts <pattern-args...> — emit TAB-tagged lines: "E<TAB>dir" for
 # eligible (delete), "S<TAB>dir" for pattern-matched-but-REFUSED (report only).
 # The consumer reads these in the PARENT shell, so the skipped list survives —
@@ -85,7 +104,9 @@ find_artifacts() {
     # that parent — skip it to avoid noise + double-counting (e.g. a bundled
     # dist/ deep inside node_modules/.pnpm/...).
     case "$d" in */node_modules/*|*/.venv/*|*/venv/*) continue ;; esac
-    if eligible "$d"; then printf 'E\t%s\n' "$d"
+    if eligible "$d"; then
+      if in_use "$d"; then printf 'U\t%s\n' "$d"   # eligible but a live process runs from it
+      else                 printf 'E\t%s\n' "$d"; fi
     else printf 'S\t%s\n' "$d"; fi
   done < <(find "$ROOT" \
               -path "$ROOT/.git" -prune -o \
@@ -94,6 +115,7 @@ find_artifacts() {
               -type d \( "$@" \) -prune -print 2>/dev/null)
 }
 SKIPPED=()
+IN_USE=()
 
 # report_category <label> <reinstall-hint> <find-pattern-args...>
 GRAND_K=0
@@ -102,7 +124,11 @@ report_category() {
   local tag path dirs=()
   # Consume in the PARENT shell so SKIPPED[] persists (see find_artifacts).
   while IFS=$'\t' read -r tag path; do
-    case "$tag" in E) dirs+=("$path") ;; S) SKIPPED+=("$path") ;; esac
+    case "$tag" in
+      E) dirs+=("$path") ;;
+      S) SKIPPED+=("$path") ;;
+      U) IN_USE+=("$path") ;;
+    esac
   done < <(find_artifacts "$@")
   (( ${#dirs[@]} == 0 )) && return 0
   local sub_k=0 k d
@@ -113,6 +139,9 @@ report_category() {
     if (( DO_DELETE )); then
       # re-check eligibility right before rm (catches a .gitignore / tracking
       # change between scan and delete); warn — never silently — on a failed rm.
+      # NB: in_use() is NOT re-checked here — a service that STARTS between the
+      # scan and this rm (on an already-eligible dir) isn't caught; that's the
+      # accepted snapshot-once TOCTOU window (Council P1-C). Stop services first.
       if eligible "$d"; then rm -rf -- "$d" || warn "could not remove $d"; fi
     fi
   done
@@ -140,6 +169,13 @@ fi
 if (( ${#SKIPPED[@]} > 0 )); then
   warn "Skipped ${#SKIPPED[@]} pattern-matching dir(s) that are TRACKED / not gitignored (left untouched):"
   for s in "${SKIPPED[@]}"; do printf '    - %s\n' "${s#"$ROOT"/}"; done
+fi
+
+# Live-process guard: regenerable dirs a running service is using are SKIPPED by
+# default (deleting them mid-run breaks the service) — never counted in the total.
+if (( ${#IN_USE[@]} > 0 )); then
+  warn "Skipped ${#IN_USE[@]} dir(s) backed by a LIVE process (stop the service first, then re-run):"
+  for u in "${IN_USE[@]}"; do printf '    - %s\n' "${u#"$ROOT"/}"; done
 fi
 
 # --- docker (opt-in) ---------------------------------------------------------
