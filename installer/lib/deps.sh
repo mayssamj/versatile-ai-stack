@@ -181,6 +181,43 @@ ensure_docker_engine() {
 # (phases 00/01, etc.). Now a thin wrapper that honors the selected engine.
 ensure_orbstack() { ensure_docker_engine "$@"; }
 
+# _dep_orbstack_caps — pin the OrbStack VM resource caps on a RAM-constrained box
+# (defaults tuned for M4/24GB). The OrbStack VM cap is the real RAM lever (see the
+# _dep_ollama_patch_env note). These caps DRIFT back toward host-max across OrbStack
+# updates; on 24GB an oversized VM causes host swap thrash + the orbstack-helper
+# page-fault CPU storm (the recurring "OrbStack 200% CPU"). Re-pin only if a value
+# has drifted ABOVE the ceiling (idempotent no-op otherwise). We deliberately do NOT
+# auto-restart OrbStack here — that would stop running containers mid-install; the
+# new cap applies on the next OrbStack restart, and we say so.
+AI_STACK_ORB_CPU_MAX="${AI_STACK_ORB_CPU_MAX:-8}"
+AI_STACK_ORB_MEM_MIB_MAX="${AI_STACK_ORB_MEM_MIB_MAX:-6144}"
+_dep_orbstack_caps() {
+  command -v orb >/dev/null 2>&1 || return 0
+  # get_env (env.sh) may not be loaded if deps.sh is sourced standalone — guard it.
+  local eng
+  if declare -F get_env >/dev/null 2>&1; then
+    eng="$(get_env AI_STACK_DOCKER_ENGINE orbstack 2>/dev/null || echo orbstack)"
+  else
+    eng="${AI_STACK_DOCKER_ENGINE:-orbstack}"
+  fi
+  [[ "$eng" == "orbstack" ]] || return 0
+  local cur_cpu cur_mem changed=0 cfg
+  cfg="$(orb config show 2>/dev/null)" || return 0
+  cur_cpu="$(awk -F': ' '/^cpu:/{print $2; exit}' <<<"$cfg")"
+  cur_mem="$(awk -F': ' '/^memory_mib:/{print $2; exit}' <<<"$cfg")"
+  if [[ "$cur_cpu" =~ ^[0-9]+$ ]] && (( cur_cpu > AI_STACK_ORB_CPU_MAX )); then
+    orb config set cpu "$AI_STACK_ORB_CPU_MAX" >/dev/null 2>&1 && changed=1
+  fi
+  if [[ "$cur_mem" =~ ^[0-9]+$ ]] && (( cur_mem > AI_STACK_ORB_MEM_MIB_MAX )); then
+    orb config set memory_mib "$AI_STACK_ORB_MEM_MIB_MAX" >/dev/null 2>&1 && changed=1
+  fi
+  if (( changed )); then
+    warn "OrbStack VM caps drifted above the ceiling on a constrained box — re-pinned to cpu=${AI_STACK_ORB_CPU_MAX}, memory_mib=${AI_STACK_ORB_MEM_MIB_MAX}MiB (raise via AI_STACK_ORB_CPU_MAX / AI_STACK_ORB_MEM_MIB_MAX on a bigger box)."
+    warn "Caps apply on the NEXT OrbStack restart — for the current session run 'orb stop' (OrbStack auto-restarts on next docker use). Prevents the swap-thrash / 200% CPU storm."
+  fi
+  return 0
+}
+
 # ensure_ollama — install Ollama, configure it for cross-container access + lazy
 # memory, start it, and verify it responds. Centralized here so the env-patch
 # ALWAYS runs right after install (it used to be in Phase 00, gated on ollama
@@ -259,6 +296,7 @@ _dep_ollama_patch_env() {
 bootstrap_host_deps() {
   ensure_core_tools || return 1
   ensure_orbstack   || return 1
+  _dep_orbstack_caps || true   # pin VM caps on a constrained box (idempotent; non-fatal)
   return 0
 }
 

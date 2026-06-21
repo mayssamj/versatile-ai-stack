@@ -868,9 +868,12 @@ cmd_start() {
       fi
       return "$rc"
     fi
-    # rc==0: the script started fresh OR self-reported idempotent ("already running").
-    # Flip to fresh (browser-open eligible) only when it did NOT say "already running".
-    if printf '%s' "$captured" | grep -qi "already running"; then
+    # rc==0: the script started fresh OR reconciled in place (recreate_guard's
+    # idempotent paths print "already running" or "was stopped — restarted"). Flip to
+    # fresh (browser-open eligible) ONLY on a genuine fresh create — a reconciled or
+    # already-up container must NOT pop a browser tab (matters when `start`/install
+    # recovers a whole stopped stack: dozens of tabs otherwise).
+    if printf '%s' "$captured" | grep -qiE "already running|was stopped"; then
       _START_FRESH=0
     else
       _START_FRESH=1
