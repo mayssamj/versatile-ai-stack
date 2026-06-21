@@ -70,10 +70,18 @@ network_policies:
     binaries:
       - { path: "/**" }
 
-  # Sourcegraph MCP — local self-hosted Sourcegraph code-search server (opt-in
-  # Phase 27), reached at host.docker.internal:7080. GENERATED MIRROR: the
-  # authoritative copy is the heredoc in installer/phases/04_openshell.sh, which
-  # regenerates this file on every Phase 04 run. Keep byte-identical to it.
+  # Sourcegraph MCP — local self-hosted Sourcegraph code-search MCP server
+  # (opt-in Phase 27). Hermes profiles reach it at host.docker.internal:7080
+  # (= the Mac's 127.0.0.1:7080, where start-sourcegraph.sh publishes). Without
+  # this stanza the deny-by-default landlock returns 403 ("policy_denied") to the
+  # MCP POST. Egress only; harmless when SG isn't installed (nothing dials 7080).
+  # This stanza lives HERE (the heredoc) as the SINGLE SOURCE OF TRUTH — the
+  # `cat > "$POLICY"` above regenerates openshell/policies/hermes-fleet-v1.yaml
+  # from it on every Phase 04 run, so the committed YAML is a generated mirror,
+  # NOT a second hand-edited copy. (§24 council 2026-06-20: the intermittent live
+  # policy revert was a stanza-less re-apply of this generated file; keeping the
+  # stanza in the generator is what makes SG reachability durable across
+  # install/recreate. Phase 27 also live-applies it as an immediate backstop.)
   sourcegraph_mcp:
     name: sourcegraph-mcp
     endpoints:
