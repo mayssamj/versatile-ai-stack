@@ -3,7 +3,7 @@
 #
 # WHY THIS EXISTS
 #   OpenWork (powered by OpenCode) runs headless via `openwork serve`, which spawns
-#   opencode + openwork-server and serves a browser UI on http://127.0.0.1:8787.
+#   opencode + openwork-server and serves a browser UI on http://127.0.0.1:8787/ui.
 #   This launcher runs it as a managed, loopback-only host daemon so you can reach
 #   the Cowork workspace in a browser, with the stack's start/stop/doctor funnel.
 #
