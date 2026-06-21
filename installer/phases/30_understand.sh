@@ -93,12 +93,22 @@ export UNDERSTAND_PLUGIN_ROOT="$PLUGIN_LINK"
 # 3. build the plugin core (marketplace path has no dist/) ---------------------------
 if [[ ! -f "$PLUGIN_LINK/packages/core/dist/index.js" ]]; then
   log "Building @understand-anything/core (first run can take 3–5 min — tree-sitter native builds)…"
-  # NOT --frozen-lockfile: the upstream marketplace copy can ship a pnpm-lock.yaml that
-  # diverges from its package.json (observed live: vite ^6.0.0 vs ^6.4.2), which we do
-  # not control — frozen hard-fails a clean install. A lenient install reconciles it.
+  # Security: PIN by default — `--frozen-lockfile` first so the committed lockfile is
+  # honored (no silent registry re-resolution). Only if the UPSTREAM marketplace copy
+  # ships a lockfile that diverges from its own package.json (observed live: vite ^6.0.0
+  # vs ^6.4.2 — not something we control) do we fall back to a lenient install, and we
+  # LOG that fallback loudly. Note: this build path is RARELY hit — resolve_plugin_root
+  # prefers an already-built copy (the user's cache), so a clean machine with the plugin
+  # installed skips this entirely. We cannot use --ignore-scripts: the plugin's
+  # tree-sitter deps require build scripts to compile their native bindings.
   # set -o pipefail inside the subshell so a failing pnpm isn't masked by `tail`.
-  ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm install 2>&1 | tail -8 ) \
-    || { err "pnpm install failed in plugin root ($PLUGIN_LINK) — see output above."; exit 1; }
+  if ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm install --frozen-lockfile 2>&1 | tail -8 ); then
+    :
+  else
+    warn "frozen-lockfile install failed (upstream marketplace lockfile diverged from its package.json) — retrying ONCE with lenient resolution (re-resolves the divergent dep; logged for audit)."
+    ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm install 2>&1 | tail -8 ) \
+      || { err "pnpm install failed in plugin root ($PLUGIN_LINK) — see output above."; exit 1; }
+  fi
   ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm --filter @understand-anything/core run build 2>&1 | tail -8 ) \
     || { err "pnpm build of @understand-anything/core failed — see output above."; exit 1; }
   [[ -f "$PLUGIN_LINK/packages/core/dist/index.js" ]] || { err "core build produced no dist/index.js"; exit 1; }
