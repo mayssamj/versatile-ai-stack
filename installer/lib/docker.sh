@@ -124,10 +124,21 @@ mark_ready() {
   docker update --label-add "ai-stack.partial=false" "$name" >/dev/null 2>&1 || true
 }
 
-# Conservative recreate guard:
-#   Returns 0 (proceed) if container does not exist.
-#   Returns 0 (proceed) if FORCE_RECREATE=1 or --recreate flag.
-#   Otherwise prints help and returns 1 — caller bails.
+# Idempotent recreate / reconcile guard.
+#   Returns 0 (caller proceeds to `docker run`) when the container does NOT exist,
+#     or when --recreate / FORCE_RECREATE=1 (after backup + rm).
+#   For an EXISTING container WE OWN (ai-stack.managed=true) and no --recreate, we
+#     reconcile in place and `exit 0` the calling start script (NO docker run):
+#       - already running -> no-op success ("already running")
+#       - stopped         -> `docker start` (preserves data/volumes) ("was stopped — restarted")
+#     This is what makes every bin/start-*.sh idempotent, so `install`/`start`
+#     RECOVER a stopped stack (e.g. after you stop containers to free CPU) instead
+#     of aborting the phase. start scripts are always run as a subprocess
+#     (`bash "$script"`, never sourced — verified cmd_start + phase scripts), so the
+#     exit is contained; cmd_start maps the "already running"/fresh distinction from
+#     the printed message.
+#   For a FOREIGN container (not managed by us) -> refuse (return 1); the caller
+#     bails so we never touch something we did not create.
 recreate_guard() {
   local name="$1" recreate_flag="${2:-}"
   if container_exists "$name"; then
@@ -137,12 +148,22 @@ recreate_guard() {
       record "recreated container $name"
       return 0
     fi
-    # Container exists. Refuse silent destruction.
-    warn "Container '$name' already exists."
-    if container_running "$name"; then
-      warn "Status: running."
+    if container_managed "$name"; then
+      if container_running "$name"; then
+        ok "$name already running (use --recreate to rebuild)"
+        exit 0
+      fi
+      if docker start "$name" >/dev/null 2>&1; then
+        ok "$name was stopped — restarted, data preserved (use --recreate to rebuild)"
+        record "reconciled stopped container $name (docker start)"
+        exit 0
+      fi
+      warn "$name exists but failed to start; rebuild with: bash bin/start-${name}.sh --recreate"
+      return 1
     fi
-    warn "To replace (will backup state for stateful services): bash bin/start-${name}.sh --recreate"
+    # Foreign container — never silently destroy something we don't own.
+    warn "Container '$name' already exists and is NOT managed by ai-stack."
+    warn "Adopt it (vz-ai-stack.sh adopt $name) or replace: bash bin/start-${name}.sh --recreate"
     return 1
   fi
   return 0
