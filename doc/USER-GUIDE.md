@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 48/48 ✓
+# 1. Confirm the stack is healthy. Target: 51/51 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.

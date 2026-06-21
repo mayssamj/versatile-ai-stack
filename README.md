@@ -26,7 +26,7 @@ The fastest way to grasp what this stack can do: open **[`doc/EXPLORE.html`](doc
 in any browser. It's a **single self-contained file** — no server, no build, no internet —
 so you can just double-click it; it even works offline straight from `file://`.
 
-> **AI-Stack Explorer** — *“All 41 installed services · 50 cards across 7 tiers · self-contained — works offline from file://”*
+> **AI-Stack Explorer** — *“All 42 installed services · 52 cards across 7 tiers · self-contained — works offline from file://”*
 
 It renders an interactive, searchable card for **every** service — what it is, why you'd
 reach for it, and a copy-paste demo — grouped into seven color-coded tiers:
@@ -206,7 +206,7 @@ sudo bash vz-ai-stack.sh prepare-sudo
 #    Preview first with `install all --dry-run` (alias --plan) — read-only, changes nothing.
 bash vz-ai-stack.sh install all
 
-# 5. Verify everything is healthy. Expect 48/48.
+# 5. Verify everything is healthy. Expect 51/51.
 bash vz-ai-stack.sh doctor
 ```
 

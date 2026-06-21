@@ -86,7 +86,8 @@ installer/doctor/checks/
 ├── 46_agent_fleet_parity.sh                (always-on; shared skills + Tier-1 block + each role byte-identical across the 3 frameworks)
 ├── 47_docker_engine_consistency.sh         (no split-brain: ambient CLI + gateway.env + managed containers on the selected engine)
 ├── 48_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
-└── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
+├── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
+└── 50_aionui.sh                             (opt-in Phase 28; skip-clean when AionUi not installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See

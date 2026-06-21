@@ -77,7 +77,7 @@ FalkorDB, LFM2, etc.).
 | **paperclip↔honcho plugin** | Wires Paperclip into Honcho memory | — |
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
-## Opt-in experimental extras (Phases 21–25 · 27 — NOT in `install all`)
+## Opt-in experimental extras (Phases 21–25 · 27–28 — NOT in `install all`)
 Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 49 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
 | Component | What it is | Install |
 |---|---|---|

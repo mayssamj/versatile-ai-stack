@@ -108,7 +108,7 @@ bash vz-ai-stack.sh verify
 # every phase ✓already-complete vs •would-run and changes nothing.
 bash vz-ai-stack.sh install all
 
-# Step 6 — verify everything is healthy. Expect 48/48.
+# Step 6 — verify everything is healthy. Expect 51/51.
 bash vz-ai-stack.sh doctor
 ```
 
