@@ -82,8 +82,22 @@ if [[ -z "${MEMPALACE_EMBEDDING_MODEL:-}" ]] \
 fi
 MP_EMBED_DEVICE="${MEMPALACE_EMBEDDING_DEVICE:-coreml}"   # Apple Neural Engine on M4
 
-# Resolve the uv-installed mempalace binary (uv tool install → ~/.local/bin).
-mp_bin() { command -v mempalace 2>/dev/null || echo "$HOME/.local/bin/mempalace"; }
+# Resolve the RAW uv-installed mempalace tool — NEVER the bin/mempalace wrapper.
+# ~/ai-stack/bin can precede ~/.local/bin on PATH, so `command -v mempalace` may return
+# the WRAPPER ($MP_WRAPPER); running it for a simple --version self-execs the wrapper
+# into an infinite loop (this hung Phase 26 / install all). Prefer the uv tool path;
+# fall back to a PATH lookup that excludes the wrapper.
+mp_bin() {
+  local b="$HOME/.local/bin/mempalace"
+  if [[ ! -x "$b" ]]; then
+    b="$(command -v mempalace 2>/dev/null || true)"
+    [[ -n "$b" && ! "$b" -ef "$MP_WRAPPER" ]] || b="$HOME/.local/bin/mempalace"
+  fi
+  printf '%s' "$b"
+}
+
+# Run a command with a hard timeout (macOS lacks coreutils `timeout`). rc 142 on deadline.
+_bounded() { local s="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$s" "$@"; }
 
 precheck() {
   [[ -x "$(mp_bin)" ]] || command -v mempalace >/dev/null 2>&1 || return 1
@@ -191,8 +205,14 @@ cat > "$MP_WRAPPER" <<WRAPEOF
 set -Eeuo pipefail
 AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 _mp_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
-MP_BIN="\$(command -v mempalace 2>/dev/null || echo "\$HOME/.local/bin/mempalace")"
-[[ -x "\$MP_BIN" ]] || { echo "mempalace not installed — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
+# Resolve the RAW uv tool, NEVER this wrapper: ~/ai-stack/bin may precede ~/.local/bin
+# on PATH, so 'command -v mempalace' can return THIS script and exec'ing it would
+# self-recurse into a hang. Prefer the uv path; exclude self.
+MP_BIN="\$HOME/.local/bin/mempalace"
+if [[ ! -x "\$MP_BIN" || "\$MP_BIN" -ef "\${BASH_SOURCE[0]}" ]]; then
+  MP_BIN="\$(command -v mempalace 2>/dev/null || true)"
+fi
+[[ -n "\$MP_BIN" && -x "\$MP_BIN" && ! "\$MP_BIN" -ef "\${BASH_SOURCE[0]}" ]] || { echo "mempalace tool not found (only the wrapper is on PATH) — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
 
 _key="\$(_mp_get_env MEMPALACE_LITELLM_KEY)"
 export MEMPALACE_EMBEDDING_MODEL="\${MEMPALACE_EMBEDDING_MODEL:-$MP_EMBED_MODEL}"
@@ -228,8 +248,8 @@ SEEDEOF
   # --no-llm keeps init offline + non-interactive; </dev/null declines the
   # post-init "mine now?" prompt. Entity refinement at mine time uses the
   # LiteLLM env from the wrapper. The palace store lives at ~/.mempalace/palace.
-  "$MP_WRAPPER" init "$MP_SEED_DIR" --yes --no-llm </dev/null 2>&1 | tail -8 \
-    || warn "mempalace init reported issues — inspect; palace may still be usable"
+  _bounded 90 "$MP_WRAPPER" init "$MP_SEED_DIR" --yes --no-llm </dev/null 2>&1 | tail -8 \
+    || warn "mempalace init did not finish in 90s or reported issues (a first-run embedding-model fetch may be proxy-blocked) — palace may still be usable; re-run 'install 26' when network allows"
 fi
 if [[ -f "$MP_CONFIG_FILE" ]]; then
   chmod 0700 "$MP_CONFIG_DIR" 2>/dev/null || true
@@ -268,13 +288,17 @@ LAUNCHEOF
   ok "wrote $_path"
 done
 
-# --- 7. Smoke test ---
-if ! "$MP_WRAPPER" --help >/dev/null 2>&1; then
-  err "bin/mempalace --help failed — wrapper broken; phase will not stamp."
-  exit 1
+# --- 7. Smoke test (leaf-safe: bounded; a slow first-run embedding init must NOT hang
+# or hard-fail this opt-in leaf — the tool itself was verified at step 1). ---
+if _bounded 30 "$MP_WRAPPER" --help >/dev/null 2>&1; then
+  ok "bin/mempalace --help: smoke-test passed"
+else
+  warn "bin/mempalace --help did not pass within 30s — tool is installed (version OK above) but the wrapper's first run was slow (embedding-model fetch may be proxy-blocked). Verify later: bin/mempalace --help"
 fi
-ok "bin/mempalace --help: smoke-test passed"
 
+# Structural gate before stamping: the leaf-safe smoke can warn-and-continue on a slow
+# first-run model fetch, but a genuinely missing/non-executable wrapper must NOT stamp.
+[[ -x "$MP_WRAPPER" ]] || { err "bin/mempalace wrapper missing or not executable — phase will not stamp."; exit 1; }
 stamp_mark "$PHASE"
 record "phase 26 complete: MemPalace installed + virtual key + wrapper + palace + hook launchers"
 ok "Phase 26 — MemPalace — complete"

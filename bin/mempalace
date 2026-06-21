@@ -10,8 +10,14 @@
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _mp_get_env() { grep -E "^$1=" "$AI_STACK/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
-MP_BIN="$(command -v mempalace 2>/dev/null || echo "$HOME/.local/bin/mempalace")"
-[[ -x "$MP_BIN" ]] || { echo "mempalace not installed — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
+# Resolve the RAW uv tool, NEVER this wrapper: ~/ai-stack/bin may precede ~/.local/bin
+# on PATH, so 'command -v mempalace' can return THIS script and exec'ing it would
+# self-recurse into a hang. Prefer the uv path; exclude self.
+MP_BIN="$HOME/.local/bin/mempalace"
+if [[ ! -x "$MP_BIN" || "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]]; then
+  MP_BIN="$(command -v mempalace 2>/dev/null || true)"
+fi
+[[ -n "$MP_BIN" && -x "$MP_BIN" && ! "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]] || { echo "mempalace tool not found (only the wrapper is on PATH) — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
 
 _key="$(_mp_get_env MEMPALACE_LITELLM_KEY)"
 export MEMPALACE_EMBEDDING_MODEL="${MEMPALACE_EMBEDDING_MODEL:-minilm}"
@@ -21,5 +27,5 @@ export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://litellm:4000/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-$_key}"
 export LLM_ENDPOINT="${LLM_ENDPOINT:-http://litellm:4000/v1}"
 export LLM_KEY="${LLM_KEY:-$_key}"
-export LLM_MODEL="${LLM_MODEL:-local-gemma4}"
+export LLM_MODEL="${LLM_MODEL:-claude-opus-4.8-sub-xhigh}"
 exec "$MP_BIN" "$@"
