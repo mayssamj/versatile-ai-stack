@@ -14,6 +14,9 @@ lo0_aliases_diagnose() {
   already_bound="$(ifconfig lo0 2>/dev/null | awk '/inet 127\.0\.10\./ {print $2}')"
   for a in "${ALIASES_LIST[@]}"; do
     ip="${ALIAS_IP[$a]}"
+    # 127.0.0.1 (host loopback services like openwork/aionui) is the lo0 primary —
+    # always bound, never a 127.0.10.x alias. Not a missing-alias condition.
+    [[ "$ip" == "127.0.0.1" ]] && continue
     if ! grep -qxF "$ip" <<<"$already_bound"; then
       missing+=("$ip")
     fi

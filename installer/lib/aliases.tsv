@@ -28,7 +28,13 @@ autofyn		127.0.10.13	http		3400		3400		07		autofyn
 paperclip	127.0.10.14	http		3100		3100		08		paperclip
 # phoenix-otlp-http	127.0.10.15	http		4318		4318		01h		phoenix
 unsloth		127.0.10.16	http		8898		8898		14		unsloth
-# NOTE — the newer host services are INTENTIONALLY loopback-only (no /etc/hosts alias):
+openwork	127.0.0.1	http	8787	8787	29	openwork
+aionui	127.0.0.1	http	25808	25808	28	aionui
+# NOTE — openwork/aionui (above) get a NAMED alias mapped to 127.0.0.1 (their actual
+#        loopback bind) so the Mac browses http://openwork:8787/ui instead of the raw IP.
+#        They use 127.0.0.1 (NOT a 127.0.10.x alias) because the daemons bind 127.0.0.1;
+#        the lo0-bind step + doctor checks 19/20 skip 127.0.0.1 by design.
+# The following host services stay INTENTIONALLY alias-free (reached at localhost:PORT):
 #   • claw3d UI (:4310)     — claw3d REFUSES to bind a public host without
 #                             STUDIO_ACCESS_TOKEN (its own security), so it binds
 #                             127.0.0.1; reach it at http://localhost:4310.

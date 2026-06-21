@@ -185,6 +185,9 @@ lo0_ensure_aliases() {
   local a ip
   for a in "${ALIASES_LIST[@]}"; do
     ip="${ALIAS_IP[$a]}"
+    # Host loopback services (openwork/aionui) use 127.0.0.1 — the lo0 PRIMARY,
+    # always present; there is no 127.0.10.x alias to bind for them.
+    [[ "$ip" == "127.0.0.1" ]] && continue
     if ! grep -qxF "$ip" <<<"$already_bound"; then
       missing+=("$ip")
     fi

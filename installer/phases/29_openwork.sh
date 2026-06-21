@@ -194,7 +194,7 @@ ok "smoke: openwork installed + daemon healthy on http://127.0.0.1:$OW_PORT/heal
 stamp_mark "$PHASE"
 record "phase 29 complete: openwork-orchestrator daemon + scoped LiteLLM key + seeded opencode.json"
 ok "Phase 29 — OpenWork — complete"
-note "WebUI:    open http://127.0.0.1:$OW_PORT/ui — connect by appending #token=<your OPENWORK_CLIENT_TOKEN from .env> (a minimal 'Toy UI' harness; the polished Cowork UI is the optional desktop app)"
+note "WebUI:    'vz-ai-stack.sh start openwork' opens it PRE-AUTHED (no token to type) at http://openwork:$OW_PORT/ui — run 'sudo vz-ai-stack.sh prepare-sudo' once for the openwork hostname (until then it opens http://127.0.0.1:$OW_PORT/ui). Minimal 'Toy UI' harness; the polished Cowork UI is the optional desktop app."
 note "Models:   pre-seeded via $OW_OPENCODE_JSON → LiteLLM (claude-opus-4.8-sub-xhigh, local-gemma4, …)"
 note "Workspace: $OW_WORKDIR   (per-stack; separate from your personal ~/.config/opencode)"
 note "Heads-up (24GB): the orchestrator + its OpenCode sidecars stay resident — 'stop openwork' when done, especially alongside AionUi or heavy local models."
