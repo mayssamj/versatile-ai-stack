@@ -104,6 +104,26 @@ rc=0; AI_STACK="$NOGIT" bash "$CLEANUP" >/dev/null 2>&1 || rc=$?
 check "non-git dir aborts (exit 2)" test "$rc" -eq 2
 rm -rf "$NOGIT"
 
+# 9. LIVE-process guard: a gitignored node_modules with a running process rooted
+#    inside it MUST be skipped (not deleted) even with --yes, and reported.
+mkdir -p "$TMP/live/node_modules/bin"
+# A harmless long-lived process whose argv contains the dir path (so `ps -axo
+# command=` shows "<dir>/..."), exactly how node/python/postgres appear in ps.
+# The '; :' compound keeps bash from exec-replacing itself with sleep (which would
+# drop the $0 marker path from argv).
+bash -c 'sleep 30; :' "$TMP/live/node_modules/bin/marker" &
+LIVEPID=$!
+sleep 0.3   # let ps see it
+liveout="$(AI_STACK="$TMP" bash "$CLEANUP" --node 2>&1)"
+check "dry-run flags the in-use dir as LIVE"  bash -c "grep -qi 'LIVE process' <<<\"\$1\"" _ "$liveout"
+AI_STACK="$TMP" bash "$CLEANUP" --node --yes >/dev/null 2>&1
+check "--yes SPARES the in-use node_modules"  test -d "$TMP/live/node_modules"
+kill "$LIVEPID" 2>/dev/null || true; wait "$LIVEPID" 2>/dev/null || true
+# Once the process is gone, it becomes deletable.
+liveout2="$(AI_STACK="$TMP" bash "$CLEANUP" --node 2>&1)"
+check "after process exits, dir is reclaimable" \
+  bash -c "grep -q 'live/node_modules' <<<\"\$1\" && ! grep -qi 'LIVE process' <<<\"\$1\"" _ "$liveout2"
+
 echo
 if (( fail == 0 )); then ok "cleanup smoke PASSED ($pass checks)"; exit 0
 else err "cleanup smoke FAILED ($fail of $((pass+fail)))"; exit 1; fi
