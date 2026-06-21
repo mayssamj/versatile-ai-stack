@@ -375,7 +375,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 49_sourcegraph_mcp.sh  — full list in doc/DOCTOR.md (50 checks total)
+│   │       └── 23_… 49_sourcegraph_mcp.sh  — full list in doc/DOCTOR.md (51 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
@@ -452,8 +452,8 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-35 phase scripts (`installer/phases/00_host.sh` through `27_sourcegraph.sh`; 6 of
-them — 21–25, 27 — are opt-in extras installed by name), each:
+36 phase scripts (`installer/phases/00_host.sh` through `28_aionui.sh`; 7 of
+them — 21–25, 27–28 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.

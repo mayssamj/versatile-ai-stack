@@ -1086,6 +1086,37 @@ services:
         "at": "2026-06-20T00:00:00Z"
         "source": phase-27-sourcegraph
         "reviewed": true
+  aionui:
+    enabled: true # Phase 28 (opt-in) — AionUi desktop + WebUI Cowork workspace
+    type: node-bg
+    desc: "AionUi — desktop + browser Cowork workspace over your stack (LiteLLM models + Hermes agent via ACP)"
+    phase: "28"
+    # Host service: the desktop app is a brew cask; the WebUI server is the prebuilt
+    # `aionui-web` standalone binary run as a loopback launchd daemon
+    # (bin/start-aionui.sh). NOT a container / NOT on the ai-stack bridge → doctor
+    # check 16 (bridge membership) does not apply.
+    network: host
+    bind: 127.0.0.1
+    port: 25808
+    health: http://127.0.0.1:25808/
+    open_url: http://127.0.0.1:25808
+    consumes_env:
+      - AIONUI_LITELLM_KEY
+      - AIONUI_WEB_VERSION
+    help:
+      "what": "AionUi is a local Cowork workspace — a desktop app (brew --cask aionui) AND a headless WebUI server (the prebuilt, bun-compiled `aionui-web` standalone at http://127.0.0.1:25808). It chats with any OpenAI-compatible model and drives CLI agents (Claude Code, Hermes, …) in parallel over ACP — an agent workspace, not just a chat box."
+      "why": "Reach for it when you want a GUI to run multiple agents side-by-side over your stack: every LiteLLM model in a desktop/browser UI, plus the Hermes agent auto-detected on PATH. Complements Open WebUI (single-model chat), claw3d, and the fleet CLI."
+      "usage":
+        - vz-ai-stack.sh install aionui
+        - vz-ai-stack.sh start aionui          # ensures the WebUI daemon + opens http://127.0.0.1:25808
+        - open -a AionUi                         # the native desktop app (quit when done)
+        - vz-ai-stack.sh help aionui
+        - vz-ai-stack.sh stop aionui
+      "config_notes": "OPT-IN (NOT in `install all`). The WebUI server is the prebuilt `aionui-web` binary (GitHub Releases, SHA256-verified) at ~/.local/share/aionui-web, run as a loopback launchd daemon (com.ai-stack.aionui-web) on :25808 — bound to 127.0.0.1 ONLY (aioncore disables auth in local mode; never expose off-box). Data at ~/.aionui-web (separate from the desktop app's ~/Library/Application Support/AionUi). WIRE YOUR MODELS (one-time, UI-driven — AionUi stores provider config in its own SQLite, not file-seedable): Settings → Models → Add Model → Custom → Base URL http://127.0.0.1:4000/v1 + the AIONUI_LITELLM_KEY from .env + model IDs (claude-opus-4.8-sub-xhigh, local-gemma4, …). HERMES BRIDGE (Design X): host hermes-agent[acp] puts `hermes` on PATH; AionUi auto-detects it — point it at LiteLLM via `hermes model`. Pin the WebUI version with AIONUI_WEB_VERSION."
+      "_gen":
+        "at": "2026-06-21T00:00:00Z"
+        "source": phase-28-aionui
+        "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:
