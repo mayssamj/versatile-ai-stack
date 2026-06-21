@@ -16,6 +16,10 @@ port_collisions_diagnose() {
   # Build the pair list from aliases.tsv (host-side IPs).
   local pairs=()
   for a in "${ALIASES_LIST[@]}"; do
+    # 127.0.0.1 host daemons (openwork/aionui) legitimately bind their port on the
+    # lo0 primary — that is the OWNING daemon, not a foreign collision. (This check
+    # is about non-docker processes camping on our 127.0.10.x pairs.)
+    [[ "${ALIAS_IP[$a]}" == "127.0.0.1" ]] && continue
     pairs+=("${ALIAS_IP[$a]}:${ALIAS_HOST_PORT[$a]}")
   done
   pairs+=("${extra_pairs[@]}")
