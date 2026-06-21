@@ -78,3 +78,6 @@ ORBSTACK_CPU_BASELINE_*.md
 # ── OpenShell fleet staging — build artifacts (reset-cleared, 04f-regenerated from agent-profiles/) ──
 openshell/fleet-souls/
 openshell/fleet-bootstrap/
+
+# ── Personal convenience launchers (local-only, not shared) ──
+run-mem-palace.sh
