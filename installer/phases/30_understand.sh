@@ -37,18 +37,22 @@ PLUGIN_LINK="$HOME/.understand-anything-plugin"
 SHIM_DIR="$AI_STACK/understand-mcp"
 MCP_PORT="$(get_env UNDERSTAND_MCP_PORT '7081')"
 
-# --- resolve the installed plugin root (never the version-pinned cache path) ---------
+# --- resolve the REAL installed plugin root (the symlink we manage is an OUTPUT, never
+#     a candidate — else a re-run resolves to PLUGIN_LINK and we self-link it). Prefer a
+#     root that is ALREADY BUILT (has dist/index.js) so we reuse the user's prebuilt
+#     cache copy and skip the slow/fragile marketplace build. -----------------------------
 resolve_plugin_root() {
-  local c
-  for c in "${UNDERSTAND_PLUGIN_ROOT:-}" "$PLUGIN_LINK" \
-           "$HOME/.claude/plugins/marketplaces/understand-anything/understand-anything-plugin"; do
-    [[ -n "$c" && -f "$c/packages/core/package.json" ]] && { echo "$c"; return 0; }
-  done
-  local base="$HOME/.claude/plugins/cache/understand-anything/understand-anything" v
+  local c base="$HOME/.claude/plugins/cache/understand-anything/understand-anything" v
+  local -a cands=()
+  [[ -n "${UNDERSTAND_PLUGIN_ROOT:-}" ]] && cands+=("$UNDERSTAND_PLUGIN_ROOT")
+  cands+=("$HOME/.claude/plugins/marketplaces/understand-anything/understand-anything-plugin")
   if [[ -d "$base" ]]; then
-    v="$(ls "$base" 2>/dev/null | grep -E '^[0-9]' | sort -r | head -1)"
-    [[ -n "$v" && -f "$base/$v/packages/core/package.json" ]] && { echo "$base/$v"; return 0; }
+    for v in $(ls "$base" 2>/dev/null | grep -E '^[0-9]' | sort -rV); do cands+=("$base/$v"); done
   fi
+  # Pass 1: an already-built root (skips the build entirely).
+  for c in "${cands[@]}"; do [[ -f "$c/packages/core/dist/index.js" ]] && { echo "$c"; return 0; }; done
+  # Pass 2: any root with the core package (will be built below).
+  for c in "${cands[@]}"; do [[ -f "$c/packages/core/package.json" ]] && { echo "$c"; return 0; }; done
   return 1
 }
 
