@@ -754,6 +754,15 @@ vz-ai-stack.sh start claw3d    # health-gated composite: start bridge → wait /
 
 `start claw3d` is a **health-gated composite**: it starts the bridge first, waits for its `/health`, *then* brings up the UI and opens the browser — so you never land on "UI up, bridge dead, broken Connect". It's idempotent, and `stop claw3d` brings both the UI and the bridge down. (Not set up yet? `start` offers to run the one-time clone+npm for you; or run `vz-ai-stack.sh install claw3d` first.)
 
+**At the Connect screen (`/office`).** On first load `http://localhost:4310` redirects to `/office` and shows a "Remote gateway" form. `start-claw3d.sh` already wrote the right config (`NEXT_PUBLIC_GATEWAY_URL=http://127.0.0.1:7780`, adapter `custom`), so you just confirm and connect:
+
+1. **Backend:** click **Custom backend** (or **Claw3D runtime** — both use the bridge's direct "custom HTTP runtime" seam; `custom` is what your `.env` sets).
+2. **Upstream URL:** `http://127.0.0.1:7780` — the bridge, normally pre-filled.
+3. **Upstream token:** leave **blank** — it's optional for the custom/claw3d/hermes/local/demo backends.
+4. Click **Connect**.
+
+Ignore the **"Run locally (optional)"** section (`npx openclaw gateway run …`, `npm run demo-gateway`) — those spin up a *different* gateway. You already have the bridge on `:7780`; you connect *to* it, you don't start another. The 3D office and agent presence load on Connect; an individual agent that shows **`[<name> unavailable]`** means its OpenShell relay isn't live (a relay/sandbox state, not a Connect-screen problem) — see L13's note on the relay.
+
 The bridge is the clever bit: it implements claw3d's "custom HTTP runtime" contract (`/health`, `/state`, `/registry`, `/v1/chat/completions`) and routes chat **authentically** to every isolated agent through **one** upstream — the nine Hermes roles (`openshell exec → hermes --profile X`), Pi (`pi -p` in `pi-v1`), and DeerFlow (LangGraph `:2026`). So one office surfaces agents that otherwise live in separate sandboxes. The bridge runs on the host (`127.0.0.1:7780`), logs no prompts, and fails fast with "agent unavailable" if the OpenShell relay is down rather than hanging the UI.
 
 > **Try it (live demo via bridge; copy-run if bridge not running):** the office is point-and-click, but the bridge underneath is just the L12 `curl` — walk over to any agent's desk in the 3D office and chat, and you're hitting `POST /v1/chat/completions` with that agent's `role`.

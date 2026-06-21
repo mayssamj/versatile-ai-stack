@@ -240,6 +240,12 @@ ai-stack-installer — usage:
     vz-ai-stack.sh logs <service> [-f]      tail logs from a service
     vz-ai-stack.sh history                  assemble CHANGELOG.d/* into one view
     vz-ai-stack.sh gc                       list/clean partial container orphans
+    vz-ai-stack.sh cleanup [--yes]          reclaim disk: remove REGENERABLE artifacts
+                                        (node_modules, .venv, build caches). DRY-RUN by
+                                        default — previews sizes; --yes deletes. Scope with
+                                        --node/--venv/--caches; --docker also prunes dangling
+                                        docker layers; --all = everything. (gc = orphan
+                                        containers; cleanup = disk artifacts.)
     vz-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
     vz-ai-stack.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
                                         (or all enabled), type-dispatched
@@ -296,7 +302,7 @@ usage_for() {
 is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
-    setup|keys|verify|adopt|apply-restarts|logs|history|gc|migrate-v2|upgrade|\
+    setup|keys|verify|adopt|apply-restarts|logs|history|gc|cleanup|migrate-v2|upgrade|\
     tutorial-serve|fleet-studio|reset|start|run|enable|stop|disable|docker-engine|help) return 0 ;;
     *) return 1 ;;
   esac
@@ -685,6 +691,7 @@ cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $
 cmd_adopt()   { worktree_guard adopt; bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
 cmd_gc()      { worktree_guard gc; bash "$AI_STACK/installer/lib/gc.sh"; }
+cmd_cleanup() { bash "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default
 cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
 cmd_upgrade() { worktree_guard upgrade; bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree
@@ -1147,6 +1154,7 @@ main() {
     logs)              cmd_logs "$@" ;;
     history)           cmd_history ;;
     gc)                cmd_gc ;;
+    cleanup)           cmd_cleanup "$@" ;;
     migrate-v2)        cmd_migrate_v2 ;;
     upgrade)           cmd_upgrade "$@" ;;
     tutorial-serve)    cmd_tutorial_serve "$@" ;;
