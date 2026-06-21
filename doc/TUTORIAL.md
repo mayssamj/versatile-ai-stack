@@ -91,7 +91,7 @@ open doc/EXPLORE.html
 
 - macOS on **Apple Silicon** (M1 or newer; tested on M4 24 GB).
 - [Homebrew](https://brew.sh/).
-- A Docker engine — **OrbStack** by default, or Docker Desktop / Colima / Podman (pick one with `vz-ai-stack.sh docker-engine select`; the choice is pinned in `AI_STACK_DOCKER_ENGINE`). The installer can `brew install` the OrbStack cask if it's missing.
+- A Docker engine — **OrbStack** by default, or Docker Desktop / Colima / Podman (pick one with `vz-ai-stack.sh docker-engine select`; the choice is pinned in `AI_STACK_DOCKER_ENGINE`). The installer can `brew install` the OrbStack cask if it's missing. `install`/`doctor` never stop to ask about Docker: by default they also point your **global `docker context`** at the chosen engine (so a bare `docker` in any shell hits the stack), recording the prior context for a clean undo. Opt out anytime with `vz-ai-stack.sh docker-engine context keep` (or set it once in `setup`).
 - The CLI tools the preflight pins: `node`, `python3`/`uv`, `yq`, plus `jq`, `git`, `curl`, `openssl` (most are auto-installed by Phase 00; missing ones are reported with the exact `brew install` line).
 - Everything works **local-only** — zero cloud keys required to get a healthy stack.
 
