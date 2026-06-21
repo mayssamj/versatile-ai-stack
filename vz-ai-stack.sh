@@ -264,6 +264,8 @@ ai-stack-installer — usage:
                                         + safe 'Try it live' proxy (ephemeral local-only key)
     vz-ai-stack.sh fleet-studio [--port N] [--no-open]   review+edit agent-profiles/ in a
                                         browser (live read+write via File System Access API)
+    vz-ai-stack.sh understand-dashboard [path] [--no-open] [--port N]   interactive
+                                        knowledge-graph dashboard (Phase 30; default path = stack repo)
     vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
@@ -314,7 +316,7 @@ is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
     setup|keys|verify|adopt|apply-restarts|logs|history|gc|cleanup|migrate-v2|upgrade|\
-    tutorial-serve|fleet-studio|reset|start|run|enable|stop|disable|docker-engine|help) return 0 ;;
+    tutorial-serve|fleet-studio|understand-dashboard|reset|start|run|enable|stop|disable|docker-engine|help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -710,6 +712,8 @@ cmd_upgrade() { worktree_guard upgrade; bash "$AI_STACK/installer/lib/upgrade.sh
 cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 # Serves doc/FLEET.html on loopback to review+edit agent-profiles/ in a browser.
 cmd_fleet_studio() { bash "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
+# Serves the Understand-Anything knowledge-graph dashboard (Phase 30) for a repo.
+cmd_understand_dashboard() { bash "$AI_STACK/installer/lib/understand-dashboard.sh" "$@"; }
 
 # cmd_start <svc> — invoke bin/start-<svc>.sh (the canonical per-service
 # launcher). All managed services have one. For docker-compose services
@@ -1170,6 +1174,7 @@ main() {
     upgrade)           cmd_upgrade "$@" ;;
     tutorial-serve)    cmd_tutorial_serve "$@" ;;
     fleet-studio)      cmd_fleet_studio "$@" ;;
+    understand-dashboard) cmd_understand_dashboard "$@" ;;
     reset)             cmd_reset "$@" ;;
     run|start|enable)  cmd_start "$@" ;;
     stop|disable)      cmd_stop "$@" ;;

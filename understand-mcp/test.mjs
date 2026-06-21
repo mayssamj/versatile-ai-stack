@@ -55,6 +55,12 @@ check("read_node_source returns real source", typeof src.source === "string" && 
 const bad = TOOLS.read_node_source(state, { id: "file:../../etc/passwd" });
 check("read_node_source rejects unknown id", !!bad.error);
 
+// REAL path-escape: inject a node whose filePath traverses out of sourceRoot.
+state.graph.nodes.push({ id: "file:evil", type: "file", name: "evil", filePath: "../../../../../../etc/passwd", lineRange: [1, 1], summary: "x", tags: [], complexity: "simple" });
+const esc = TOOLS.read_node_source(state, { id: "file:evil" });
+check("read_node_source rejects path traversal", !!esc.error && /escape|not present/.test(esc.error), esc.error || JSON.stringify(esc));
+state.graph.nodes.pop();
+
 const layers = TOOLS.list_layers(state);
 check("list_layers returns layers", Array.isArray(layers.layers) && layers.layers.length > 0);
 

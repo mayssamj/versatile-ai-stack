@@ -10,7 +10,7 @@
 //   UNDERSTAND_GRAPH_FILE   — direct path to a knowledge-graph.json (testing/fixtures)
 //   UNDERSTAND_SOURCE_ROOT  — root the source files live under (defaults to GRAPH_ROOT)
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve, isAbsolute, sep } from "node:path";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -137,9 +137,12 @@ export const TOOLS = {
     const rel = node.filePath;
     if (isAbsolute(rel)) return { error: `unexpected absolute filePath in graph: ${rel}` };
     const abs = resolve(state.sourceRoot, rel);
-    const rootAbs = resolve(state.sourceRoot);
-    if (abs !== rootAbs && !abs.startsWith(rootAbs + sep)) return { error: `path escapes source root: ${rel}` };
     if (!existsSync(abs)) return { error: `source file not present on this host: ${rel} (the MCP server must run where the source lives)` };
+    // Resolve symlinks on BOTH sides before the containment check — a lexical
+    // prefix check is bypassable if a path component is a symlink out of the root.
+    const realAbs = realpathSync(abs);
+    const realRoot = realpathSync(resolve(state.sourceRoot));
+    if (realAbs !== realRoot && !realAbs.startsWith(realRoot + sep)) return { error: `path escapes source root: ${rel}` };
     const pad = Number.isInteger(context) ? context : 0;
     const lines = readFileSync(abs, "utf8").split("\n");
     const start = Math.max(1, node.lineRange[0] - pad);

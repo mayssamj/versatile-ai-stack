@@ -1,0 +1,5 @@
+# The Understand-Anything knowledge graph is a generated artifact: large JSON that
+# changes wholesale on every /understand run. Mark it generated + suppress diffs so it
+# doesn't drown `git diff`/blame/PR reviews. It is still committed (the shared artifact).
+.understand-anything/knowledge-graph.json linguist-generated=true -diff
+.understand-anything/meta.json           linguist-generated=true -diff

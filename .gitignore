@@ -85,3 +85,11 @@ run-mem-palace.sh
 # ── Playwright MCP runtime output (transient per-run console logs + page snapshots;
 #    the Playwright MCP itself is a Claude Code plugin in ~/.claude, nothing repo-side) ──
 .playwright-mcp/
+
+# ── Understand-Anything (Phase 30) — COMMIT the graph, ignore the scratch ──
+# The knowledge graph (+ meta/config) is the shared, committed artifact consumed by
+# all runtimes. The scratch dirs, fingerprints, and embeddings are regenerable noise.
+.understand-anything/intermediate/
+.understand-anything/tmp/
+.understand-anything/fingerprints.json
+.understand-anything/*.embeddings.json

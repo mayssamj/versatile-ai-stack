@@ -164,3 +164,86 @@ WIRE
   fi
   return 0
 }
+
+# ── Understand-Anything MCP (Phase 30) ──────────────────────────────────────────────
+# Wire the Hermes fleet to the host's understand-mcp HTTP server so fleet agents can
+# query the committed knowledge graph (graph_search / read_node_source / …). Same
+# mechanism as Sourcegraph: a host-loopback HTTP MCP reached at host.docker.internal,
+# wired per-profile in ONE uploaded in-sandbox script. GATED on the token being set in
+# .env — absent -> skip+warn, return 0 (fleet stays green; understand is opt-in).
+UNDERSTAND_MCP_PORT_DEFAULT=7081
+
+# configure_hermes_mcp_understand <osh> <sandbox> [port]
+configure_hermes_mcp_understand() {
+  local osh="$1" sb="$2" port="${3:-$UNDERSTAND_MCP_PORT_DEFAULT}"
+  local token; token="$(get_env UNDERSTAND_MCP_TOKEN '')"
+  if [[ -z "$token" ]]; then
+    note "Understand MCP: UNDERSTAND_MCP_TOKEN absent from .env — skipping fleet wiring."
+    note "  Install + wire it with:  vz-ai-stack.sh install understand"
+    return 0
+  fi
+  local url="http://host.docker.internal:${port}/mcp"
+  log "Wiring Hermes fleet -> Understand MCP ($url)…"
+  if ! _sg_mcp_ensure_extra "$osh" "$sb"; then
+    warn "Understand MCP: could not enable the mcp SDK in the sandbox — wiring skipped (re-run after fixing PyPI egress)."
+    return 1
+  fi
+
+  # Stage the per-profile wiring script. URL is arg 1 (port-templated on the host);
+  # the literal ${MCP_UNDERSTAND_TOKEN} is single-quoted so the in-sandbox sh does NOT
+  # expand it (Hermes interpolates from .env at connect time). Token via STDIN only.
+  local stage="${AI_STACK:-$HOME/ai-stack}/openshell/fleet-bootstrap"
+  mkdir -p "$stage"
+  cat > "$stage/understand-mcp-wire.sh" <<'WIRE'
+#!/bin/sh
+# Wire default + each profile in "$@" (after URL) to the Understand MCP server.
+# Usage: understand-mcp-wire.sh <URL> [profile ...]   (token on STDIN)
+URL="$1"; shift
+read -r T
+[ -n "$T" ] || { echo "understand-mcp-wire: empty token on STDIN" >&2; exit 1; }
+[ -n "$URL" ] || { echo "understand-mcp-wire: empty URL" >&2; exit 1; }
+_wire() {  # $1=HERMES_HOME dir   $2=profile-flag ("" or "--profile <name>")
+  home="$1"; pflag="$2"
+  mkdir -p "$home"; touch "$home/.env"
+  grep -v '^MCP_UNDERSTAND_TOKEN=' "$home/.env" > "$home/.env.new" 2>/dev/null || true
+  printf 'MCP_UNDERSTAND_TOKEN=%s\n' "$T" >> "$home/.env.new"
+  mv "$home/.env.new" "$home/.env"; chmod 600 "$home/.env"
+  hermes $pflag config set mcp_servers.understand.url "$URL" >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.understand.headers.Authorization 'token ${MCP_UNDERSTAND_TOKEN}' >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.understand.connect_timeout 5 >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.understand.enabled true >/dev/null 2>&1 || return 1
+}
+n=0; okc=0
+n=$((n+1)); if _wire "$HOME/.hermes" ""; then okc=$((okc+1)); echo "ok default"; else echo "FAIL default"; fi
+for p in "$@"; do
+  n=$((n+1))
+  if _wire "$HOME/.hermes/profiles/$p" "--profile $p"; then okc=$((okc+1)); echo "ok $p"; else echo "FAIL $p"; fi
+done
+echo "WIRED $okc/$n"
+[ "$okc" -ge 1 ]
+WIRE
+  chmod 600 "$stage/understand-mcp-wire.sh"
+
+  "$osh" sandbox exec -n "$sb" --no-tty --timeout 30 </dev/null -- /bin/sh -c 'mkdir -p /sandbox/fleet-boot' >/dev/null 2>&1 || true
+  if ! "$osh" sandbox upload --no-git-ignore "$sb" "$stage/understand-mcp-wire.sh" /sandbox/fleet-boot/ >/dev/null 2>&1; then
+    warn "Understand MCP: could not upload the wiring script to the sandbox — skipped."
+    return 0
+  fi
+
+  local roster; roster="$(_sg_roster "$osh" "$sb" | tr '\n' ' ')"
+  local out
+  out="$(printf '%s\n' "$token" | "$osh" sandbox exec -n "$sb" --no-tty --timeout 90 -- \
+    /bin/sh /sandbox/fleet-boot/understand-mcp-wire.sh "$url" $roster 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
+  local summary; summary="$(grep -oE 'WIRED [0-9]+/[0-9]+' <<<"$out" | tail -1)"
+  if [[ -n "$summary" ]]; then
+    grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
+    if grep -q '^FAIL ' <<<"$out"; then
+      warn "Understand MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install 04f')"
+    else
+      ok "Understand MCP: $summary profiles wired"
+    fi
+  else
+    warn "Understand MCP: wiring produced no summary (relay issue?). Output: $(tail -1 <<<"$out")"
+  fi
+  return 0
+}
