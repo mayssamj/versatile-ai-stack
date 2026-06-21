@@ -1,0 +1,18 @@
+{
+  "name": "@ai-stack/understand-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Thin MCP server exposing an Understand-Anything knowledge graph (read-only, headless) over stdio and HTTP, for cross-runtime consumption (host Claude Code/Pi + Hermes fleet).",
+  "bin": {
+    "understand-mcp": "bin.mjs"
+  },
+  "scripts": {
+    "start:stdio": "node bin.mjs --stdio",
+    "start:http": "node bin.mjs --http",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}
