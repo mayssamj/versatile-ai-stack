@@ -49,7 +49,7 @@ diff, a blocked attack.
 ---
 ## Act I — Arrival
 
-This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 43 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
+This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 44 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
 ---
 
@@ -63,7 +63,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 
 1. The one thing to internalize: every AI request funnels through **LiteLLM at `http://litellm:4000/v1`**. Point any app, agent, or `curl` at that one endpoint and you get model routing, scoped keys, and call-by-call tracing for free.
 2. Everything is **local-first**: models, memory, traces, and documents all stay on your machine. It works fully offline; cloud is opt-in only when you hand it your own keys.
-3. The ~43 services sort into layers:
+3. The ~44 services sort into layers:
    - **Inference plane** — LiteLLM (the hub), Ollama (local models), Phoenix (tracing).
    - **Storage + memory** — Honcho (conversation memory + Postgres), Qdrant (vectors), FalkorDB (graph).
    - **Agents + fleets** — the Hermes fleet, Pi, OpenShell sandbox, DeerFlow, ACE, RLM, HALO.
@@ -162,7 +162,7 @@ bash vz-ai-stack.sh install 01h         # by id
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
 
-The **opt-in extras (Phases 21–25 · 27–29: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
+The **opt-in extras (Phases 21–25 · 27–30: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
 
 > **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
 
@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (52 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 cover the Sourcegraph fleet MCP / AionUi / OpenWork when those opt-in extras are installed.
+- `doctor` targets **all green (53 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -1339,7 +1339,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (52 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (53 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
