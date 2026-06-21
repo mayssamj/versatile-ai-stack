@@ -206,7 +206,7 @@ sudo bash vz-ai-stack.sh prepare-sudo
 #    Preview first with `install all --dry-run` (alias --plan) — read-only, changes nothing.
 bash vz-ai-stack.sh install all
 
-# 5. Verify everything is healthy. Expect 52/52.
+# 5. Verify everything is healthy. Expect 53/53.
 bash vz-ai-stack.sh doctor
 ```
 

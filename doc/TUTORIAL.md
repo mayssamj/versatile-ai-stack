@@ -75,7 +75,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 open doc/EXPLORE.html
 ```
 
-**Expected.** `doc/EXPLORE.html` opens in your browser: a searchable card for every service (50 cards across 7 color-coded tiers — more cards than services by design, since Hermes expands into its profiles), each with what it is, why you'd reach for it, and a copy-paste demo. Nothing on the page phones home.
+**Expected.** `doc/EXPLORE.html` opens in your browser: a searchable card for every service (54 cards across 7 color-coded tiers — more cards than services by design, since Hermes expands into its profiles), each with what it is, why you'd reach for it, and a copy-paste demo. Nothing on the page phones home.
 
 **Lesson.** One endpoint (`litellm:4000`), local-first, services grouped in layers. Hold that picture and the rest of the install is just bringing those layers up in order.
 

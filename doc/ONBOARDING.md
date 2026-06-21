@@ -13,7 +13,7 @@ bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, O
 bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
 sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
 bash vz-ai-stack.sh install all       # the 29 core phases (offers `setup` on first run if you skipped it)
-bash vz-ai-stack.sh doctor            # 52 checks — target all green
+bash vz-ai-stack.sh doctor            # 53 checks — target all green
 ```
 
 A plain `install all` runs `deps` for you and offers `setup` on a first run, so on a

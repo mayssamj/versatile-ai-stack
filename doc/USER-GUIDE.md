@@ -6,7 +6,7 @@ A practical, comprehensive tour of every component in `~/ai-stack` for the
 for it, and the literal command to type.
 
 **Audience.** Senior engineer who has installed the stack but hasn't used
-this specific combination of 43 services. Not a programming novice — no
+this specific combination of 44 services. Not a programming novice — no
 "what is an LLM" explanations. The reader is assumed to be Mayssam
 returning after a break, a Veza teammate trying it for the first time, or
 a Claude session asked to operate the stack.
@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 52/52 ✓
+# 1. Confirm the stack is healthy. Target: 53/53 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
@@ -2196,6 +2196,13 @@ bash ~/ai-stack/vz-ai-stack.sh history
 # Cleanup partial container orphans
 bash ~/ai-stack/vz-ai-stack.sh gc
 
+# Reclaim disk — delete REGENERABLE artifacts (node_modules / .venv / build caches; --docker opt-in).
+# DRY-RUN by default (shows what it would remove + total); add --yes to actually delete. Only deletes a
+# dir if it is git-ignored, pattern-matched, AND has zero tracked files under it; data/ + worktrees are
+# hard-excluded; it SKIPS any dir a live service is using. Scope flags: --node/--venv/--caches/--docker/--all.
+bash ~/ai-stack/vz-ai-stack.sh cleanup            # preview (safe)
+bash ~/ai-stack/vz-ai-stack.sh cleanup --yes      # delete the regenerable artifacts
+
 # Resets (destructive; require --confirm)
 bash ~/ai-stack/vz-ai-stack.sh reset --confirm soft   # state + bin/  (keeps .env)
 bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard   # + managed containers + data + OpenShell
@@ -2269,7 +2276,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 52/52 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 53/53 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 

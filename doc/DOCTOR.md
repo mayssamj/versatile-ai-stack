@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 52 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 53 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -88,7 +88,8 @@ installer/doctor/checks/
 ├── 48_docker_engine_selection.sh           (AI_STACK_DOCKER_ENGINE present, valid, still installed)
 ├── 49_sourcegraph_mcp.sh                    (opt-in Phase 27; skip-clean when Sourcegraph not installed)
 ├── 50_aionui.sh                             (opt-in Phase 28; skip-clean when AionUi not installed)
-└── 51_openwork.sh                           (opt-in Phase 29; skip-clean when OpenWork not installed)
+├── 51_openwork.sh                           (opt-in Phase 29; skip-clean when OpenWork not installed)
+└── 52_understand.sh                         (opt-in Phase 30; skip-clean when no knowledge graph committed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -698,6 +699,12 @@ Graceful by design — skip-clean (pass) when AionUi's Phase 28 hasn't run (no `
 ## 51 · OpenWork daemon healthy + LiteLLM key valid (opt-in)
 
 Graceful by design — skip-clean (pass) when OpenWork's Phase 29 hasn't run (no `installer/state/phase_29*.done` stamp), so it never red-bars a stack that didn't opt into the OpenWork Cowork workspace. When installed it checks: the `openwork` orchestrator binary resolves on PATH / npm-global and `--version` runs; the seeded `~/.openwork-stack/opencode.json` exists; the headless daemon serves HTTP 200 on the loopback `:8787/health`; and the minted `OPENWORK_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware). Fix: `vz-ai-stack.sh start openwork` or `install 29` (both idempotent). First start downloads the OpenCode sidecars — give it a minute before re-checking.
+
+---
+
+## 52 · understand-mcp answers a real graph query (opt-in)
+
+Graceful by design — skip-clean (pass) when Understand-Anything's Phase 30 hasn't run (no `installer/state/phase_30*.done` stamp), so it never red-bars a stack that didn't opt into codebase knowledge graphs. When installed it verifies the plugin core is built (`~/.understand-anything-plugin/packages/core/dist`) and the `understand-mcp` shim deps are present. If a knowledge graph is committed (`.understand-anything/knowledge-graph.json`) it runs a TRUE end-to-end query — `project_summary` through the real `@understand-anything/core` code path — and surfaces graph staleness (graph commit vs HEAD) plus the http daemon's health on `:7081`. If no graph is committed yet it passes with an actionable note (run `/understand .` from the MAIN checkout and commit the graph) rather than red-barring. Fix: `vz-ai-stack.sh install understand` (rebuilds the plugin core + shim, re-registers the stdio MCP, restarts the daemon).
 
 ---
 

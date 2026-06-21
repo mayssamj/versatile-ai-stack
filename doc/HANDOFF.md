@@ -167,7 +167,7 @@ hermes_workspace) may re-open the browser; `start claw3d_bridge` (underscore) is
 - `upgrade <service|all> [--dry-run] | --check [--all|--json] | --outdated` — type-dispatched upgrade; `--check` is a read-only "what's outdated?" registry-digest scan
 - `tutorial-serve [--port N] [--ttl 30m] [--revoke]` — serve doc/TUTORIAL.html + a safe live-demo proxy (ephemeral local-only LiteLLM key, server-side; see [TUTORIAL.md](TUTORIAL.md))
 - `help` / `--help` (full subcommand list) · `<cmd> --help` / `help <cmd>` (focused per-command usage, NEW 2026-06-04 `df371a3`) · `help <service>` / `help services` / `help regen [<svc>] [--apply] [--check] [--model <m>] [--force]` — per-service help (NEW 2026-06-03). `help <svc>` prints **what it is** (authored prose) · **how it's configured** (computed LIVE from services.yml/aliases/env-key names — never `.env` _values_) · **how to use**. Prose lives in `services.yml` `help:` blocks (**38 seeded** from doc/EXPLORE.html's verified prose). `help regen` drafts/refreshes prose via the stack's own LiteLLM (default model `local-gemma4`, override `--model` or `HELP_REGEN_MODEL`), writes a STAGED overlay + unified diff; `--apply` merges it back (atomic `yq -i`). `--check` is a CI lint (NOT a doctor check). Lib: `installer/lib/help.sh`.
-- `doctor [<filter>]` — 52 checks, per-check auto-fix
+- `doctor [<filter>]` — 53 checks, per-check auto-fix
 - `adopt <svc>` — claim a foreign container with docker-cp backup
 - `start <svc>` / `stop <svc>` — invoke `bin/start-<svc>.sh` / `bin/stop-<svc>.sh` (added 2026-05-29 for deerflow)
 - `<svc> start` / `<svc> stop` — reverse-form shortcut (e.g. `stack deerflow start`)
@@ -437,7 +437,7 @@ bash ~/ai-stack/vz-ai-stack.sh install all --dry-run
 # 3. Install everything (30–60 min depending on docker pulls)
 bash ~/ai-stack/vz-ai-stack.sh install all
 
-# 4. Verify (52/52 expected — #05a litellm_keystore AUTOHEALS the LiteLLM key-store/Postgres (runs before the per-phase key checks); MemPalace check #44 runs once Phase 26 is installed (green-skips only on a pre-change/partial install); #45 tutorial is always-on; #46 = agent_fleet_parity; #47/#48 = docker-engine consistency/selection; #49 sourcegraph_mcp skip-cleans when SG not installed; #50 aionui skip-cleans when AionUi not installed; #51 openwork skip-cleans when OpenWork not installed)
+# 4. Verify (53/53 expected — #05a litellm_keystore AUTOHEALS the LiteLLM key-store/Postgres (runs before the per-phase key checks); MemPalace check #44 runs once Phase 26 is installed (green-skips only on a pre-change/partial install); #45 tutorial is always-on; #46 = agent_fleet_parity; #47/#48 = docker-engine consistency/selection; #49 sourcegraph_mcp skip-cleans when SG not installed; #50 aionui skip-cleans when AionUi not installed; #51 openwork skip-cleans when OpenWork not installed; #52 understand skip-cleans / passes-with-note until a knowledge graph is committed)
 bash ~/ai-stack/vz-ai-stack.sh doctor
 ```
 
@@ -484,7 +484,7 @@ bash ~/ai-stack/vz-ai-stack.sh install all   # resumes from where it left off
 ## 10. If something's broken — diagnosis order
 
 1. `stack status` — most things land here. Check for false alarms (see §3.7 — should be fixed but worth verifying for new services).
-2. `stack doctor` — 52 checks, each with auto-fix offer.
+2. `stack doctor` — 53 checks, each with auto-fix offer.
 3. [DOCTOR.md](DOCTOR.md) — what each check means.
 4. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — less common issues.
 5. `docker logs <container>` — actual error here.
@@ -507,14 +507,14 @@ If you keep these as constraints, you'll write the right code.
 | File | Purpose |
 |---|---|
 | `vz-ai-stack.sh` | Entry point, phase dispatcher, lock + bash5 gate |
-| `services.yml` | Single source of truth: 43 services with type/enabled/path/port/project/process_pattern/etc. (schema `version: 2`) |
+| `services.yml` | Single source of truth: 44 services with type/enabled/path/port/project/process_pattern/etc. (schema `version: 2`) |
 | `installer/lib/aliases.tsv` | Canonical alias table (alias, IP, protocol, host_port, container_port, phase, service_key) |
 | `installer/lib/env.sh` | `.env` upserts (atomic mv), `get_env`/`set_env`. **`env_ensure_baseline`** generates `LITELLM_MASTER_KEY` + `PHOENIX_SECRET` + service-URL defaults; SHARED by Phase 00 and `setup` so both converge on identical baseline `.env`. |
 | `installer/lib/deps.sh` | Backs `vz-ai-stack.sh deps [--check]` — host-dependency bootstrap (verify → install → start → re-verify: brew/yq/jq/node/orbstack/ollama). See `doc/PREREQUISITES.md`. |
 | `installer/lib/setup.sh` | Backs `vz-ai-stack.sh setup` (alias `keys`) — interactive, skippable `.env`/API-key bootstrap. Calls `env_ensure_baseline` first, then an optional-secret catalog (all skippable, 0600, never echoed). |
 | `installer/lib/openshell.sh` | Hang-resilient OpenShell sandbox create. `openshell_sandbox_ensure` backgrounds `create`, polls `sandbox get` for `Phase=Ready`, kills the hung create CLI, retries/escalates. Used by Phases 04 + 15. |
 | `installer/phases/NN_*.sh` | One per phase. `precheck()` → work → `stamp_mark` |
-| `installer/doctor/checks/NN_*.sh` | One per failure mode (**52 checks**). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix`. Check **05a `litellm_keystore`** (AUTOHEAL — auto-recovers the LiteLLM key-store/Postgres before the per-phase key checks) + **44 `mempalace`** (Phase 26; green-skips until Phase 26 has run) + **45 `tutorial`** (always-on; validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`) + **46 `agent_fleet_parity`** (always-on; wraps `check_fleet_parity.sh` — 7 skills + Tier-1 + role bodies identical ×3) + **47 `docker_engine_consistency`** (no split-brain across ambient CLI / gateway.env / managed containers) + **48 `docker_engine_selection`** (`AI_STACK_DOCKER_ENGINE` present + valid + installed) + **49 `sourcegraph_mcp`** (opt-in Phase 27; skip-cleans when Sourcegraph not installed) + **50 `aionui`** (opt-in Phase 28; skip-cleans when AionUi not installed) + **51 `openwork`** (opt-in Phase 29; skip-cleans when OpenWork not installed). |
+| `installer/doctor/checks/NN_*.sh` | One per failure mode (**53 checks**). Each defines `CHECKS+=(name)` + `<name>_diagnose` + `<name>_fix`. Check **05a `litellm_keystore`** (AUTOHEAL — auto-recovers the LiteLLM key-store/Postgres before the per-phase key checks) + **44 `mempalace`** (Phase 26; green-skips until Phase 26 has run) + **45 `tutorial`** (always-on; validates `doc/TUTORIAL.html` via `build_tutorial_html.py --check`) + **46 `agent_fleet_parity`** (always-on; wraps `check_fleet_parity.sh` — 7 skills + Tier-1 + role bodies identical ×3) + **47 `docker_engine_consistency`** (no split-brain across ambient CLI / gateway.env / managed containers) + **48 `docker_engine_selection`** (`AI_STACK_DOCKER_ENGINE` present + valid + installed) + **49 `sourcegraph_mcp`** (opt-in Phase 27; skip-cleans when Sourcegraph not installed) + **50 `aionui`** (opt-in Phase 28; skip-cleans when AionUi not installed) + **51 `openwork`** (opt-in Phase 29; skip-cleans when OpenWork not installed) + **52 `understand`** (opt-in Phase 30; skip-cleans, or passes-with-note until a knowledge graph is committed). |
 | `installer/smoke/NN.sh` | End-to-end smoke per phase |
 | `installer/state/` | Stamps, restart queue, lock dir, daemon PID files |
 | `ingestor/inbox/`, `ingestor/processed/` | Ingestion drop dirs (formerly `docs/inbox` + `docs/processed`; there is no top-level `docs/` anymore). Drop files to ingest into `~/ai-stack/ingestor/inbox`. |

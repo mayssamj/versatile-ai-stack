@@ -375,7 +375,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 51_openwork.sh  — full list in doc/DOCTOR.md (52 checks total)
+│   │       └── 23_… 51_openwork.sh  — full list in doc/DOCTOR.md (53 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
