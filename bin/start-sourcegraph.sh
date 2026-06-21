@@ -57,10 +57,16 @@ mkdir -p "$SG_DIR/config" "$SG_DIR/data"
 
 # Resource caps (carried from the verified live run): an amd64-emulated container
 # must never become a CPU/RAM floor on a 24GB M-series box (project_cpu_gotchas).
+# Labels: `ai-stack.managed` (lifecycle: reset/gc/status track it) + the phase +
+# `ai-stack.bridge-exempt` — SG is a host-port service (127.0.0.1:7080, reached via
+# host.docker.internal), intentionally NOT on the ai-stack bridge (absent from
+# aliases.tsv; dials no stack service). The exempt label tells doctor check 16 to
+# skip the ai-stack-network-membership requirement for it (it would else false-flag).
 docker run -d \
   --name "$NAME" \
   --label "ai-stack.managed=true" \
   --label "ai-stack.phase=$PHASE" \
+  --label "ai-stack.bridge-exempt=true" \
   --platform "$PLATFORM" \
   --restart unless-stopped \
   --cpus 4 --memory 4g --memory-swap 4g \

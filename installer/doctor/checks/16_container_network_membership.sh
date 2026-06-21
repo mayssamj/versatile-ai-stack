@@ -6,9 +6,16 @@ container_network_membership_diagnose() {
   # Bail early if docker daemon isn't up — check 01 will fire its own error.
   docker info >/dev/null 2>&1 || { echo "docker daemon not reachable"; return 1; }
 
-  local offenders=() name nets
+  local offenders=() name nets exempt
   while IFS= read -r name; do
     [[ -z "$name" ]] && continue
+    # Host-port services (e.g. sourcegraph) declare `ai-stack.bridge-exempt=true`:
+    # they're reached via host.docker.internal, are absent from aliases.tsv, and
+    # dial no stack service, so they intentionally do NOT join the ai-stack bridge.
+    # Skip them (else they false-flag this check). The label is an explicit opt-in,
+    # so a genuinely-misconfigured alias service can never hide behind it.
+    exempt="$(docker inspect "$name" --format '{{index .Config.Labels "ai-stack.bridge-exempt"}}' 2>/dev/null || true)"
+    [[ "$exempt" == "true" ]] && continue
     nets="$(docker inspect "$name" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)"
     if ! grep -qw "ai-stack" <<<"$nets"; then
       offenders+=("$name (networks: ${nets:-<none>})")
