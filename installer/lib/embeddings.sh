@@ -33,7 +33,9 @@ shopt -s inherit_errexit 2>/dev/null || true
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 
-MODELS_YML="$AI_STACK/installer/models.yml"
+# Overridable (mirrors the ENV_FILE idiom) so smoke tests can run the real write
+# path against a THROWAWAY copy; defaults to the repo's canonical models.yml.
+MODELS_YML="${MODELS_YML:-$AI_STACK/installer/models.yml}"
 
 # The services that carry an embedder assignment. Each maps to an owning phase
 # whose `install <phase>` re-reads models.yml (see DURABILITY in those files):
@@ -136,7 +138,7 @@ owning_phase() {
     openwebui) echo "bash bin/start-openwebui.sh   (restart Open WebUI)" ;;
     lumen)     echo "vz-ai-stack.sh install 16   (re-pulls + re-points Lumen)" ;;
     mempalace) echo "vz-ai-stack.sh install 26   (re-renders the mempalace wrapper)" ;;
-    honcho)    echo "vz-ai-stack.sh install 03   (re-points honcho via LiteLLM)" ;;
+    honcho)    echo "(none yet — phase 03 does NOT read this assignment; recorded only, see WARN below)" ;;
     *)         echo "vz-ai-stack.sh install <owning-phase>" ;;
   esac
 }
@@ -346,6 +348,15 @@ cmd_assign() {
   fi
 
   note "assign embedding: $svc  ${before:-(unset)} -> $model  (dim=$(emb_dim "$model"), kind=$(emb_kind "$model"))"
+
+  # honcho is RECORDED-ONLY: phase 03 does not (yet) read embedding_assignments.honcho,
+  # so the write below changes the registry but NOTHING applies it. Be honest — don't
+  # let the operator believe `install 03` will re-point honcho's embedder.
+  if [[ "$svc" == "honcho" ]]; then
+    warn "honcho assignment is RECORDED ONLY — no phase consumes it yet. This writes models.yml"
+    warn "but does NOT change honcho's live embedder; 'install 03' will NOT apply it until phase-03"
+    warn "is wired to read it (and honcho needs a 1536->768 pgvector migration to switch to a local embedder)."
+  fi
 
   # Run the GUARD. A refusal (return 1) blocks the write unless --force.
   if ! guard_assignment "$svc" "$model" "$force"; then

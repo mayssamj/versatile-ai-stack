@@ -656,9 +656,9 @@ cmd_help() {
   bash "$AI_STACK/installer/lib/help.sh" "$@" || true
 }
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $?; }
-cmd_adopt()   { bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
+cmd_adopt()   { worktree_guard adopt; bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { docker logs "$1" "${2:-}"; }
-cmd_gc()      { bash "$AI_STACK/installer/lib/gc.sh"; }
+cmd_gc()      { worktree_guard gc; bash "$AI_STACK/installer/lib/gc.sh"; }
 cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
 cmd_upgrade() { bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }
@@ -1029,6 +1029,7 @@ cmd_migrate_v2() {
 }
 
 cmd_apply_restarts() {
+  worktree_guard apply-restarts   # recreates containers (bin/start-*.sh --recreate) — never from a worktree
   local f="$AI_STACK/installer/state/restarts-needed.txt"
   if [[ ! -s "$f" ]]; then
     ok "No queued restarts."
@@ -1067,6 +1068,7 @@ cmd_reset() {
       *) warn "reset: ignoring unknown flag '$a'" ;;
     esac
   done
+  worktree_guard reset   # tears down / re-binds data paths under $AI_STACK — never from a worktree
   bash "$AI_STACK/installer/lib/reset.sh" "$tier"
 }
 

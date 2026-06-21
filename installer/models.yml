@@ -58,7 +58,7 @@ embeddings:
   # NOT the HF repo name. minilm's HF model is all-MiniLM-L6-v2 (provenance only).
   # Both yield 384-dim at runtime (embeddinggemma truncates via MRL).
   embed-minilm:       { runtime: onnx,   served: minilm,                                dim: 384,  via: ondevice, device: coreml,            kind: text }
-  embed-gemma:        { runtime: onnx,   served: embeddinggemma,                        dim: 768,  via: ondevice, device: coreml,            kind: text }
+  embed-gemma:        { runtime: onnx,   served: embeddinggemma,                        dim: 384,  via: ondevice, device: coreml,            kind: text, unverified: true }
   embed-openai-small: { runtime: openai, served: text-embedding-3-small,               dim: 1536, via: litellm,  route: embed-openai-small, kind: text }
   embed-openai-large: { runtime: openai, served: text-embedding-3-large,               dim: 3072, via: litellm,  route: embed-openai-large, kind: text }
 # Per-service embedder assignments. Read at install time by each owning phase
