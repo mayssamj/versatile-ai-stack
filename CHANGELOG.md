@@ -4,6 +4,16 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-21
+
+### Fixes
+
+- **`install` / `start` now RECOVER a stopped stack — `recreate_guard` is idempotent** (`fix/stack-recovery`): a managed container that existed but was **stopped** (e.g. after you stop containers to free CPU) made `recreate_guard` refuse ("already exists — use --recreate") → the start script `exit 1` → the `set -Eeuo` phase **aborted**. That is exactly why `install all` failed at **phase 02 (storage / falkordb+qdrant)** after stopping containers. `recreate_guard` now **reconciles** managed containers: `docker start` a stopped one (data/volumes preserved), no-op an already-running one, still **refuse FOREIGN** (unmanaged) containers, `--recreate` backup-then-rebuild path unchanged. One helper repairs all 7 `bin/start-*.sh`; `cmd_start` no longer pops a browser tab for a reconciled (was-stopped) service. New smoke `installer/smoke/recreate_guard.sh` pins every state (stopped→start, running→noop, foreign→refuse, absent→proceed, docker-start-fails→refuse). §24 council (adversarial+security · architect · QA) → SHIP-WITH-FIXES; all must-fixes folded in (browser-open suppression, `get_env` guard, crash-loop test, this entry).
+
+### Changed
+
+- **OrbStack VM caps pinned on a constrained box — curbs the recurring "200% CPU"** (`fix/stack-recovery`): the recurring orbstack-helper CPU storm is host **swap thrash** from an oversized VM whose caps **drift back** toward host-max across OrbStack updates (root-caused live: cpu had drifted to 12, memory to 8192 on a 24 GB box with swap 15.4/16 GB full). New `_dep_orbstack_caps` (deps.sh, called from `bootstrap_host_deps`, mirrors the `_dep_ollama_patch_env` drift-patcher) **re-pins** `cpu<=8` / `memory_mib<=6144` when they drift above the ceiling — idempotent, overridable via `AI_STACK_ORB_CPU_MAX` / `AI_STACK_ORB_MEM_MIB_MAX`, applies on the next OrbStack restart (never auto-restarts mid-install). Caps were also set live this session (cpu 8 / mem 6144).
+
 ## 2026-06-20
 
 ### Features
