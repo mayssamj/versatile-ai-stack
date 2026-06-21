@@ -83,7 +83,7 @@ So `services.yml` has **one** `openwork` entry whose daemon/health is the orches
 
 ## 7. Security requirements (NON-NEGOTIABLE)
 
-1. **Scoped-minimal LiteLLM key.** Mint a key limited to the models OpenWork needs. Never reuse the master or the `hermes-fleet` key. Store via `set_env` (0600 `.env`); never rm the key on teardown (never-rm-env rule). The key reaches OpenCode only via `{env:OPENWORK_LITELLM_KEY}` in `opencode.json` + the daemon env — it is **not** written literally into any config file.
+1. **Scoped-minimal LiteLLM key.** Mint a key limited to the models OpenWork needs. Never reuse the master or the `hermes-fleet` key. Store via `set_env` (0600 `.env`); never rm the key on teardown (never-rm-env rule). The key reaches OpenCode via `{env:OPENWORK_LITELLM_KEY}` in `opencode.json` — the literal key is **not** written into `opencode.json`. It IS baked into the launchd plist's `EnvironmentVariables` so the daemon can inject it; the plist is `chmod 600` (same posture as `.env`).
 2. **`openwork serve` binds `127.0.0.1` only.** Never `--remote-access` / `0.0.0.0`. `--openwork-host 127.0.0.1` + `--opencode-host 127.0.0.1` explicit.
 3. **Tokens via env, never argv/stdout.** `--openwork-token` / `--openwork-host-token` generated with `openssl rand`, persisted to `.env` 0600, passed as **env vars** to the daemon (never as CLI flags → not in `ps`), never printed to stdout / logs / shell history. Do not pass `--json` in the daemon (it would print live secrets).
 4. **`--approval manual` on the host.** No `--approval auto` for a host daemon — agentic file/shell actions require explicit approval (the orchestrator exposes `openwork approvals list/reply`). `--sandbox docker|container` is a documented future hardening, not v1.

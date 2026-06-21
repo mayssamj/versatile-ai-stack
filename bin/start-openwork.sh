@@ -63,10 +63,13 @@ _envval() {
 }
 
 # Resolve the openwork binary without a login shell (launchd has a minimal PATH).
+# Includes the openagents node prefix ($HOME/.openagents/nodejs/bin) because the
+# stack's `npm i -g` honours that custom prefix — the binary lands THERE, not in a
+# default bin dir, and launchd's PATH wouldn't otherwise see it.
 _find_bin() {
   command -v openwork 2>/dev/null && return 0
   local p
-  for p in "$HOME/.local/bin/openwork" "/opt/homebrew/bin/openwork" "/usr/local/bin/openwork"; do
+  for p in "$HOME/.local/bin/openwork" "$HOME/.openagents/nodejs/bin/openwork" "/opt/homebrew/bin/openwork" "/usr/local/bin/openwork"; do
     [[ -x "$p" ]] && { echo "$p"; return 0; }
   done
   if command -v npm >/dev/null 2>&1; then
@@ -74,7 +77,11 @@ _find_bin() {
   fi
   echo ""
 }
-OPENWORK_BIN="$(_find_bin)"
+# Prefer an OPENWORK_BIN baked into the launchd plist env: _do_install resolves the
+# absolute path in the user shell (full PATH) and bakes it in, so the daemon never
+# has to re-resolve under launchd's minimal PATH — the fix for the "openwork not
+# found" KeepAlive respawn loop when npm uses a custom prefix.
+OPENWORK_BIN="${OPENWORK_BIN:-$(_find_bin)}"
 
 _listening() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | grep -q LISTEN; }
 # `|| true`: lsof exits 1 when nothing matches; guard against tripping set -e.
@@ -125,7 +132,8 @@ _do_install() {
     <key>OPENWORK_LITELLM_KEY</key><string>$litellm_key</string>
     <key>OPENWORK_CLIENT_TOKEN</key><string>$client_tok</string>
     <key>OPENWORK_HOST_TOKEN</key><string>$host_tok</string>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>OPENWORK_BIN</key><string>$OPENWORK_BIN</string>
+    <key>PATH</key><string>$(dirname "$OPENWORK_BIN"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key><string>$LOG</string>
   <key>StandardErrorPath</key><string>$LOG</string>
