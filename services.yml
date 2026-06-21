@@ -1117,6 +1117,38 @@ services:
         "at": "2026-06-21T00:00:00Z"
         "source": phase-28-aionui
         "reviewed": true
+  openwork:
+    enabled: true # Phase 29 (opt-in) — OpenWork headless OpenCode-powered Cowork workspace
+    type: node-bg
+    desc: "OpenWork — headless OpenCode-powered Cowork workspace over your stack (browser UI, LiteLLM models, skills/plugins/MCP, approval-gated)"
+    phase: "29"
+    # Host service: the headless orchestrator (npm-installed prebuilt `openwork`
+    # binary) run as a loopback launchd daemon (bin/start-openwork.sh). It self-
+    # manages OpenCode (downloads its sidecars) — NOT a container, NOT on the
+    # ai-stack bridge → doctor check 16 (bridge membership) does not apply.
+    network: host
+    bind: 127.0.0.1
+    port: 8787
+    health: http://127.0.0.1:8787/health
+    open_url: http://127.0.0.1:8787
+    consumes_env:
+      - OPENWORK_LITELLM_KEY
+      - OPENWORK_CLIENT_TOKEN
+      - OPENWORK_HOST_TOKEN
+      - OPENWORK_VERSION
+    help:
+      "what": "OpenWork is a local Cowork workspace built on the OpenCode engine — an open-source alternative to Claude Cowork. The stack runs its HEADLESS orchestrator (the prebuilt `openwork-orchestrator` binary, npm-installed) as a loopback browser UI at http://127.0.0.1:8787. It does file-centric agentic work with skills/plugins/MCP over your stack's models, with an auditable approval flow. (A desktop app exists too — documented as an optional alternate UI, not managed by the stack.)"
+      "why": "Reach for it when you want a browser Cowork workspace that's powered by OpenCode (skills, opencode plugins, MCP servers, file diffs, approval-gated tool calls) over every LiteLLM model — file-first agentic work, not just chat. Complements Open WebUI (single-model chat), AionUi (ACP multi-agent GUI), and claw3d (fronts the fleet roles)."
+      "usage":
+        - vz-ai-stack.sh install openwork
+        - vz-ai-stack.sh start openwork        # ensures the daemon + opens http://127.0.0.1:8787
+        - vz-ai-stack.sh help openwork
+        - vz-ai-stack.sh stop openwork
+      "config_notes": "OPT-IN (NOT in `install all`). The managed service is the HEADLESS orchestrator: `npm i -g openwork-orchestrator` installs a prebuilt Bun-compiled standalone binary (npm integrity-checked) that SELF-MANAGES OpenCode (downloads opencode/openwork-server/opencode-router sidecars on first run → the stack adds NO `opencode` host dependency). Run as a loopback launchd daemon (com.ai-stack.openwork) on :8787, health-gated on /health 200 — bound to 127.0.0.1 ONLY (never --remote-access; --approval manual so agentic actions need explicit approval). MODELS ARE PRE-SEEDED (file-based, unlike AionUi): Phase 29 writes ~/.openwork-stack/opencode.json with a LiteLLM provider (@ai-sdk/openai-compatible, base URL http://127.0.0.1:4000/v1, apiKey via {env:OPENWORK_LITELLM_KEY} — the literal key is NEVER on disk). Client/host tokens are openssl-generated, kept in .env (0600) and passed via env (never argv → not in `ps`). Pin the version with OPENWORK_VERSION. Per-stack workspace ~/.openwork-stack (separate from your personal ~/.config/opencode). DESKTOP APP (optional): download from https://github.com/different-ai/openwork/releases and point its OpenCode at the same provider config. Wiring the Hermes fleet / stack MCP servers in is a documented follow-up (Phase 29b)."
+      "_gen":
+        "at": "2026-06-21T00:00:00Z"
+        "source": phase-29-openwork
+        "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:
