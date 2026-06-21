@@ -89,9 +89,12 @@ export UNDERSTAND_PLUGIN_ROOT="$PLUGIN_LINK"
 # 3. build the plugin core (marketplace path has no dist/) ---------------------------
 if [[ ! -f "$PLUGIN_LINK/packages/core/dist/index.js" ]]; then
   log "Building @understand-anything/core (first run can take 3–5 min — tree-sitter native builds)…"
+  # NOT --frozen-lockfile: the upstream marketplace copy can ship a pnpm-lock.yaml that
+  # diverges from its package.json (observed live: vite ^6.0.0 vs ^6.4.2), which we do
+  # not control — frozen hard-fails a clean install. A lenient install reconciles it.
   # set -o pipefail inside the subshell so a failing pnpm isn't masked by `tail`.
-  ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm install --frozen-lockfile 2>&1 | tail -8 ) \
-    || { err "pnpm install failed in plugin root ($PLUGIN_LINK) — see output above (if the lockfile diverged, the marketplace copy may need a refresh)."; exit 1; }
+  ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm install 2>&1 | tail -8 ) \
+    || { err "pnpm install failed in plugin root ($PLUGIN_LINK) — see output above."; exit 1; }
   ( cd "$PLUGIN_LINK" && set -o pipefail && pnpm --filter @understand-anything/core run build 2>&1 | tail -8 ) \
     || { err "pnpm build of @understand-anything/core failed — see output above."; exit 1; }
   [[ -f "$PLUGIN_LINK/packages/core/dist/index.js" ]] || { err "core build produced no dist/index.js"; exit 1; }
