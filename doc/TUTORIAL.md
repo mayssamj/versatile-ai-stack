@@ -157,7 +157,7 @@ bash vz-ai-stack.sh install phoenix     # by name
 bash vz-ai-stack.sh install 01h         # by id
 ```
 
-**Expected.** The installer walks phases **00 → 20** in order, printing `==> phase <id>` lines. Two ordering details matter:
+**Expected.** The installer walks phases **00 → 20, then 26 (MemPalace)** in order, printing `==> phase <id>` lines. Two ordering details matter:
 
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
@@ -166,7 +166,7 @@ The **opt-in extras (Phases 21–25 · 27: portless · cmux · skillspector · o
 
 > **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
 
-**Lesson.** One re-runnable command, phases 00→20, extras by name. Ordering (Honcho before LiteLLM) is handled for you; if a phase fails it tells you how to resume.
+**Lesson.** One re-runnable command, phases 00→20 plus 26 (MemPalace), extras by name. Ordering (Honcho before LiteLLM) is handled for you; if a phase fails it tells you how to resume.
 
 **Go deeper.** [`doc/INSTALL.md` § 1. Bootstrap](../doc/INSTALL.md) · [`doc/INSTALL.md` § 3. Post-install](../doc/INSTALL.md) (the optional/best-effort upstream phases).
 
@@ -264,7 +264,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 
 **Try it live.** The HTML panel proxies through two server-side routes so the browser never holds a token: `GET /api/models` (forwarded to `/v1/models`) populates the model picker, and `POST /api/chat` (forwarded to `/v1/chat/completions`) sends your prompt. Pick `local-gemma4`, send "HUB-OK", then switch the picker to a `claude-*-sub-*` model and watch the same panel route to a different runtime.
 
-**Lesson.** One endpoint, one auth header, every model — the `model` field is the only thing that changes between a 9.6GB local Gemma and a Claude subscription. The model strategy is deliberate: `local-gemma4` (Ollama, ~9.6GB) stays resident-free and always answers; `local-qwen3.6` / `local-qwen3-coder` are big MLX models (~17GB each) on LM Studio that **cannot coexist on a 24GB box**; the `claude-*-sub-*` routes spend no local RAM at all (the work happens on Anthropic's side via Meridian). That RAM reality is why the default is the small local model and everything heavy is opt-in.
+**Lesson.** One endpoint, one auth header, every model — the `model` field is the only thing that changes between a 9.6GB local Gemma and a Claude subscription. The model strategy is deliberate: `local-gemma4` (Ollama, ~9.6GB) stays warm for 30 minutes after each call (`OLLAMA_KEEP_ALIVE=30m`, so a follow-up answers in well under a second) then unloads, and always answers; `local-qwen3.6` / `local-qwen3-coder` are big MLX models (~17GB each) on LM Studio that **cannot coexist on a 24GB box**; the `claude-*-sub-*` routes spend no local RAM at all (the work happens on Anthropic's side via Meridian). That RAM reality is why the default is the small local model and everything heavy is opt-in.
 
 **Go deeper.** For a *persistent* ChatGPT-style chat UI (not just this lesson's panel), bring up **Open WebUI**: `vz-ai-stack.sh start openwebui`, then open `http://openwebui:8080`. Its model picker lists the same `claude-*-sub-*` subscription routes (they need the Meridian daemon up — `bash bin/start-meridian.sh`) right alongside the local models. Also: [doc/models.md](../doc/models.md) (the four runtimes, the base-URL-by-caller table), [doc/OPERATIONS.md](../doc/OPERATIONS.md).
 
