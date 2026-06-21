@@ -122,6 +122,7 @@ If multiple agents are active, you are responsible for ensuring all of them rema
 
 24.4 You need to orchestrate this cooperation process, and manage a debate and brainstorming after all three of you reach a decision. You need to collect feedback and debate until you all come to a consensus and an agreed-upon conclusion. Then proceed autonomously. Report the decision and debate points and their results.
 
-25. Use Git worktrees to isolate parallel work.
-- Use worktrees (either automatically or with the applicable skills) when applicable. You should guard a repo / workspace from colliding edit from multiple agents in different branches at the same time.
+25. Use Git worktrees to isolate ALL branch work — always, by default.
+- ALWAYS create and work in a dedicated git worktree before editing code on a branch. This is the default behavior, not a "when applicable" judgment call — never edit a branch in-place in the shared main checkout. In-place branch edits let a parallel session/agent hijack HEAD between staging and commit (so commits land on the wrong branch) and let edits from different branches collide. A worktree gives each task its own isolated working directory and HEAD, which makes those collisions impossible. Prefer the native worktree tool / the applicable skill over raw `git worktree add`.
+- Pair this with the live-stack rule, and do NOT conflate them: ALWAYS EDIT branch code in a worktree, but only OPERATE the live stack (install / start / doctor / compose / recreate) from the MAIN checkout — containers bind-mount the workspace path, so running the stack from a worktree breaks it when the worktree is removed. Edit in the worktree; run the stack from main; offline tests run fine in the worktree. Never use "running the stack from a worktree is risky" to justify editing in-place.
 
