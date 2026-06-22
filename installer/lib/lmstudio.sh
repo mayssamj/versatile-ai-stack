@@ -117,6 +117,10 @@ lms_is_served() {
 #   lmstudio => model: openai/<served>,      api_base: http://host.docker.internal:<LMS_PORT>/v1, api_key: lm-studio
 #   meridian => model: openai/<served>,      api_base: http://host.docker.internal:<MERIDIAN_PORT>/v1,
 #               api_key: meridian, extra_body: {effort: <effort>}  (Claude subscription, no API key)
+#   openai   => model: openai/<served>,      api_key: os.environ/OPENAI_API_KEY [+ reasoning_effort: <effort>]
+#               (metered GPT; api_key is a LITERAL env-ref sentinel, never shell-expanded)
+#   codex-bridge => model: openai/<served>,  api_base: http://host.docker.internal:<CODEX_BRIDGE_PORT>/v1,
+#               api_key: codex-bridge, rpm/tpm (int) [+ reasoning_effort: <effort>]  (ChatGPT subscription)
 lms_register_model() {
   local model_name="$1" served="$2" runtime="$3" effort="${4:-}"
   command -v yq >/dev/null 2>&1 || { err "yq not on PATH (Phase 00 installs it)"; return 1; }
@@ -148,6 +152,30 @@ lms_register_model() {
     # holds the real OAuth). Default effort to the model id default if unset.
     MN="$model_name" SV="$served" MP="${MERIDIAN_PORT:-3456}" EF="${effort:-high}" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(MP) + "/v1", "api_key": "meridian", "extra_body": {"effort": strenv(EF)}}' "$tmp" \
       || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
+  elif [[ "$runtime" == "openai" ]]; then
+    # Metered OpenAI API. api_key MUST stay the literal env-ref sentinel
+    # "os.environ/OPENAI_API_KEY" (LiteLLM resolves it at load) — NEVER a shell
+    # expansion of the real key. Optional effort -> reasoning_effort (a recognized
+    # OpenAI param; drop_params:true drops it where unsupported).
+    MN="$model_name" SV="$served" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_key": "os.environ/OPENAI_API_KEY"}' "$tmp" \
+      || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
+    if [[ -n "$effort" ]]; then
+      MN="$model_name" EF="$effort" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.reasoning_effort) = strenv(EF)' "$tmp" \
+        || { rm -f "$tmp"; err "yq set reasoning_effort failed for $model_name"; return 1; }
+    fi
+  elif [[ "$runtime" == "codex-bridge" ]]; then
+    # GPT on the ChatGPT subscription via the codex-bridge host daemon
+    # (bin/start-codex-bridge.sh). Dummy api_key (the bridge holds the OAuth).
+    # rpm/tpm are INTEGER literals (a strenv string would churn the SHA -> false
+    # CHANGED -> needless LiteLLM restart every sync). Optional effort ->
+    # reasoning_effort, but its passthrough to the Codex backend is UNVERIFIED
+    # (see the models.yml note) — the metered `openai` runtime is the verified one.
+    MN="$model_name" SV="$served" CP="${CODEX_BRIDGE_PORT:-3457}" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(CP) + "/v1", "api_key": "codex-bridge", "rpm": 6, "tpm": 60000}' "$tmp" \
+      || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
+    if [[ -n "$effort" ]]; then
+      MN="$model_name" EF="$effort" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.reasoning_effort) = strenv(EF)' "$tmp" \
+        || { rm -f "$tmp"; err "yq set reasoning_effort failed for $model_name"; return 1; }
+    fi
   else
     MN="$model_name" SV="$served" PRT="$LMS_PORT" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(PRT) + "/v1", "api_key": "lm-studio"}' "$tmp" \
       || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
