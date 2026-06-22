@@ -4,6 +4,14 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-22
+
+### Added
+
+- **GPT-5.x first-class assignable (`model assign … openai-gpt-5.5[-sub]`) + one-command bridge `enable`** (`feat/gpt5-assignable`): you can now `vz-ai-stack.sh model assign <agent|all> <gpt-id>` with GPT-5.x ids and set the platform default to GPT-5.5 in one command. Extends the model-binding engine with two new runtimes — `openai` (metered `OPENAI_API_KEY`) and `codex-bridge` (your ChatGPT subscription via `bin/start-codex-bridge.sh`). `installer/models.yml` declares `openai-gpt-5.5`/`-pro`/`openai-gpt-5.4` (runtime `openai`) + `openai-gpt-5.5-sub`/`openai-gpt-5.4-sub` (runtime `codex-bridge`); an optional `effort:` maps to OpenAI `reasoning_effort` (`none|low|medium|high|xhigh`; **xhigh = max**, baked into 5.5). `models.sh` validate()/register + `lms_register_model` gained explicit render branches (the `api_key` keeps the literal `os.environ/OPENAI_API_KEY` sentinel; `rpm`/`tpm` are INT literals; `reasoning_effort` omitted when absent → idempotent, no needless LiteLLM restart). `resolve_effective` **availability-gates** the new runtimes: `openai` → `default` (local-gemma4) when `OPENAI_API_KEY` is absent, `codex-bridge` → `default` when the bridge daemon is down (probed like Meridian) — a pending line, never a hard fail, never a silent metered fallback. New **`bin/start-codex-bridge.sh enable`** = `codex login` (if needed, TTY-guarded) + install + LiteLLM reload, then prints the assign command. New short HOWTO **`doc/GPT5.md`**; `models.md` corrected (these are assignable now, not config-only). Hermetic smoke `installer/smoke/models-gpt.sh` (9/9: literal sentinel, int rpm/tpm, optional-effort omit, idempotency). §24 council of 3 (architect + qa/infra + adversarial) → SHIP-WITH-FIXES; all blocking items applied (two availability gates, int rpm/tpm, literal sentinel, `model_effort` null-normalize for the no-effort `pro` case). Live-verified from main: `model assign all openai-gpt-5.5-sub` re-points 13 agents; the metered **and subscription** paths both answer E2E (the sub path is now proven — the bridge is live: `SUB-OK`, `finish=stop`); `reasoning_effort` is accepted on the sub route (honoring unobservable — the metered route is the verified-effort one); 2nd `model sync` = UNCHANGED. DEFERRED (tracked): per-key `max_budget` cap for metered cloud (QA flag; bounded today by the `rpm` guard + your own OpenAI limits; the `-sub` route avoids metered spend). No new service/doctor check — counts unchanged (56 checks; check 55 already covers the bridge).
+
+---
+
 ## 2026-06-21
 
 ### Fixed

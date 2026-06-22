@@ -68,6 +68,22 @@ models:
   claude-sonnet-4.6-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
   claude-sonnet-4.6-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
   claude-sonnet-4.6-sub-ultracode: {runtime: meridian, served: claude-sonnet-4-6, effort: ultracode, big: false, note: "Claude subscription (Sonnet 4.6), ultracode effort (coding-focused, highest tier)."}
+  # OpenAI GPT-5.x — ASSIGNABLE (`vz-ai-stack.sh model assign <agent> <name>`). Two
+  # routes to the same models: runtime `openai` = your metered OPENAI_API_KEY;
+  # runtime `codex-bridge` = your ChatGPT SUBSCRIPTION via the codex-bridge daemon
+  # (bin/start-codex-bridge.sh, no metered cost). `effort` (optional) maps to OpenAI's
+  # reasoning_effort (none|low|medium|high|xhigh); xhigh = max thinking. The KEY is the
+  # LiteLLM model_name AND the assign id (e.g. `model assign all openai-gpt-5.5`).
+  # Hand-declared here (NOT via `model add`, which is LM-Studio-only / local-* names).
+  # The metered `openai` route is the VERIFIED max-reasoning path; effort passthrough on
+  # the `codex-bridge` route is UNVERIFIED (the Codex backend may ignore it). `openai`
+  # gates to `default` when OPENAI_API_KEY is absent; `codex-bridge` gates when the
+  # bridge daemon is down (both render local-gemma4 + a pending line, never a hard fail).
+  openai-gpt-5.5:     {runtime: openai,       served: gpt-5.5,     effort: xhigh, big: false, note: "OpenAI GPT-5.5 — metered API key, MAX reasoning (xhigh)."}
+  openai-gpt-5.5-pro: {runtime: openai,       served: gpt-5.5-pro,                big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
+  openai-gpt-5.4:     {runtime: openai,       served: gpt-5.4,     effort: high,  big: false, note: "OpenAI GPT-5.4 — metered API key, high reasoning."}
+  openai-gpt-5.5-sub: {runtime: codex-bridge, served: gpt-5.5,     effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
+  openai-gpt-5.4-sub: {runtime: codex-bridge, served: gpt-5.4,     effort: high,  big: false, note: "GPT-5.4 on your ChatGPT SUBSCRIPTION (codex-bridge). effort passthrough unverified."}
 # EMBEDDING models (separate plane from the chat `models:` above — different
 # registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
 # vector size the model emits; `kind` is text|code (a code-tuned embedder degrades
