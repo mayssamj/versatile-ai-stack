@@ -293,3 +293,95 @@ bare name — bare `http://litellm/` is unaffected; trusted HTTPS moves to
 Container-side bare-name/HTTPS; fronting redis/gRPC on the host; replacing
 `name:port`; automatic (non-opt-in) CA trust; System-keychain trust; public/LAN
 exposure (loopback only).
+
+## 14. v3 addendum — second §24 panel (fresh red-team + implementation-readiness)
+
+Both reviewers: **SHIP-WITH-FIXES**, no architectural change. Fixes folded:
+
+**Dotless-HTTPS risk DOWNGRADED HIGH → MEDIUM (researched).** Chromium
+`cert_verify_proc.cc` gates the single-label rejection on
+`is_issued_by_known_root && IsHostnameNonUnique`; a `tls internal` CA is not a
+known root, so the check never fires → `https://litellm/` (literal bare name)
+should be browser-trusted. The `.test` dotted companion stays as the M0b
+fallback but is expected unused. **M0b must quit+reopen Chrome after
+`ingress trust`** (Chrome reads the trust store only at startup) or it's a false
+fail. Sources: chromium cert_verify_proc.cc; Caddy automatic-https docs.
+
+**Caddy config (supersedes §4 ambiguity):**
+- Use the **explicit two-site form** (separate `http://name` + `https://name`
+  blocks). Drop the "OR `auto_https disable_redirects`" alternative.
+- Pin the **admin endpoint** in global options (`admin localhost:2019` or a unix
+  socket) — `caddy reload` requires it; root-daemon and user-CLI must agree on
+  it. Security note: it is an unauthenticated local control plane — prefer a
+  unix socket with restricted perms.
+- Generate a site **per qualifying alias ROW** (not per service): filter is
+  `ALIAS_PROTOCOL==http && ALIAS_IP=~^127\.0\.10\.` on the alias row → includes
+  `falkordb-ui` (.8), excludes `falkordb` (redis, .7). Never dedup by port or
+  service_key.
+- Generate sites for **all** qualifying rows regardless of upstream liveness; a
+  down opt-in service (unsloth/autofyn) yields a **502 by design** (the AC-2
+  no-collision proof needs the bind to exist while the upstream is down).
+- `tls internal` mints the CA at config-load (verify in M0b), not first request.
+
+**Concrete names / wiring (supersedes §5 placeholders):**
+- Opt-in phase = **`installer/phases/31_ingress.sh`** (31 = next free; 30 is max).
+  NOT in `install_all_phase_order()`. Reachable via `install ingress` / `install
+  31` (suffix resolver, `vz-ai-stack.sh:621`). Installs caddy itself
+  (portless-shaped soft-fail when brew/caddy absent) — NOT via `deps.sh`.
+- Doctor check = next free prefix **`55_bare_hostname_ingress.sh`** (55 files
+  today, max index 54; `55_` is free); registered registry-free via the
+  `checks/*.sh` glob (`doctor.sh:32`). Registered-check count **55 → 56**; bump
+  `DOCTOR.md` + `ARCHITECTURE.md`.
+- CLI: `bin/ingress` = lumen-style `exec bash "$AI_STACK/installer/lib/ingress.sh" "$@"`;
+  `cmd_ingress()` = docker-engine-style `bash …/ingress.sh "$@"`. (The two
+  precedents differ — docker-engine has no `bin/` wrapper.) Wire **three**
+  `vz-ai-stack.sh` sites: recognized-subcommands (~319), dispatch `case` (~1189),
+  help block (~244).
+- Single generator **`ingress_generate_caddyfile`** (cmp-before-write,
+  `aliases_load`-driven). `00n_networking.sh` calls it **only when
+  `command -v caddy`** (CI/no-caddy hosts stay byte-identical — AC-6); `00n`
+  never touches the daemon. `31_ingress`'s `ingress up` calls the same generator,
+  then `caddy validate` → `caddy reload`.
+- Teardown function **`ingress_teardown`** (bootout + rm plist + rm Caddyfile +
+  rm logs; best-effort `lsof -iTCP:80/:443` + SIGKILL an owned surviving caddy +
+  assert empty). Hook in `reset.sh` **hard** tier behind a `declare -F` guard
+  (mirror the `lo0_uninstall_persistence_plist` call at `reset.sh:425`). CA
+  `untrust` + `~/Library/Application Support/Caddy` wipe in **nuke**.
+
+**Lifecycle / decoupling:**
+- Caddyfile generation is pure text (needs no lo0) — decouple from "after lo0
+  binds"; only the **daemon wrapper** waits (bounded `until ifconfig lo0 | grep -q
+  127.0.10.1`; 5 lines, not a binary) for the alias IPs.
+- `ingress trust` triggers a macOS **GUI auth dialog** (login-keychain trust is
+  interactive — not sudo, not TTY); must run in a GUI session. CI smoke uses
+  `curl --cacert <root>` and never exercises real keychain trust.
+
+**Paperclip is a special THREE-hop case:** browser → caddy(`127.0.10.14:80`) →
+existing relay(`127.0.10.14:3100`) → paperclip(`127.0.0.1:3100`). Works (distinct
+ports on the shared IP; loopback mode bypasses paperclip's Host allowlist), but
+its upstream is a host relay, not an OrbStack publish — so the §3
+"engine-independent / consumes a published port" framing is paperclip-exempt.
+Document the hop; confirm the `%{local_ip}` proof survives a down relay.
+
+**Doctor `%{local_ip}` proof refinement:** assert BOTH connect-success AND the
+expected local IP — distinguish "connected to `127.0.10.1`, got 502" (PASS:
+isolation holds) from "connection refused" (FAIL: caddy not listening).
+
+**`bin/url` + docs UX:** when ingress is up, `bin/url <name>` prints all live
+forms (`http://name/`, `http://name:port/`, `https://name/` or `…/.test` per
+M0b); PORTS.md/TROUBLESHOOTING.md carry the decision tree; add `EXPLORE.html` to
+the doc-bump list; CHANGELOG via `bin/ai-stack-changelog.sh add feat` (not a
+manual edit). Opt-in stays the default (AC-6).
+
+**Build order (TDD, smallest-first):** (0) M0 spike + M0b browser gate →
+(1) **pure `ingress_generate_caddyfile` + AC-4 tests** [zero-privilege, TDD this
+FIRST] → (2) `ingress up`/`status` foreground HTTP-only (AC-1a, AC-2) →
+(3) root daemon plist + wrapper (AC-6, reboot-sim) → (4) reload-not-restart +
+failure isolation (M1, M3) → (5) HTTPS + login-keychain trust (AC-1b) →
+(6) phase 31 + CLI + doctor 55 + reset wiring (AC-5) → (7) docs + `bin/url` + CHANGELOG.
+
+**Single-Caddy decision (orchestrator, debated):** keep one Caddy for both
+HTTP and TLS. A per-IP relay-for-HTTP + Caddy-for-TLS split would add a second
+generator/lifecycle/teardown/doctor-check; the "one bad site aborts all 13" risk
+it would avoid is already covered by the `caddy validate` gate. Single-tool wins
+on total surface.
