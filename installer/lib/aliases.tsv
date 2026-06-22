@@ -12,6 +12,14 @@
 #   http://litellm:4000  (both sides)
 #   http://phoenix:6006  (both sides)
 #   redis://falkordb:6379  (both sides)
+#
+# 2026-06-21 — the OPT-IN host ingress (Phase 31; `vz-ai-stack.sh ingress up`)
+# ADDS port-free Mac-browser URLs http://litellm/ + https://litellm/ on top of
+# the above, via a host-native Caddy that binds each service's OWN
+# 127.0.10.x:80/:443 (a HOST process, NOT a docker --publish — so it sidesteps
+# the OrbStack *:80 wildcard described above). name:port + container URLs are
+# unchanged. HTTP rows on a 127.0.10.x IP get a site; redis/grpc + 127.0.0.1
+# rows are excluded. Spec: doc/specs/2026-06-21-bare-hostname-ingress.md
 litellm		127.0.10.1	http		4000		4000		01		litellm
 phoenix		127.0.10.2	http		6006		6006		01h		phoenix
 phoenix-otlp	127.0.10.3	grpc		4317		4317		01h		phoenix
