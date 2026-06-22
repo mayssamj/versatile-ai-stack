@@ -150,9 +150,9 @@ alias-free) — **explicitly excluded**; the generator must emit **no** site for
 | Generation hook | `installer/phases/00n_networking.sh` | may **generate** the Caddyfile (cheap, no daemon) after lo0 binds; must **not** bootstrap the daemon |
 | Opt-in phase | new `NN_ingress.sh` (own phase) | NOT in `install_all_phase_order()`; opt-in like other extras; daemon (re)started here AFTER service phases, via `ingress up` |
 | Dependency | host `caddy` | `brew install caddy` (standard build); phase-owned; graceful no-op when brew/caddy absent (CI) |
-| Doctor | `installer/doctor/checks/55_bare_hostname_ingress.sh` (new) | count 55 → **56**; `[skip]` when caddy absent; surfaces `caddy version`; see §7 |
+| Doctor | `installer/doctor/checks/56_bare_hostname_ingress.sh` (new) | count 56 → **57**; `[skip]` when caddy absent; surfaces `caddy version`; see §7 |
 | Teardown | `installer/lib/reset.sh` | tiered — see §6/§9 |
-| Docs | aliases.tsv header, `doc/PORTS.md`, `doc/ARCHITECTURE.md`, `doc/TROUBLESHOOTING.md`, README, `DOCTOR.md`, check-count 55→56 | reflect the port-free form |
+| Docs | aliases.tsv header, `doc/PORTS.md`, `doc/ARCHITECTURE.md`, `doc/TROUBLESHOOTING.md`, README, `DOCTOR.md`, check-count 56→57 | reflect the port-free form |
 
 ### Daemon plist (must DIVERGE from `lo0_install_persistence_plist`)
 The loopback plist is a one-shot (`KeepAlive=false`, `network.sh:239`). A
@@ -193,7 +193,7 @@ trust anchor to the current user and avoids a machine-wide cert-minting surface.
   warns until `vz-ai-stack.sh ingress trust`.
 - `ingress untrust` removes it; `reset … nuke` calls it. Fully reversible.
 
-## 7. Doctor check (`55_bare_hostname_ingress.sh`)
+## 7. Doctor check (`56_bare_hostname_ingress.sh`)
 
 `[skip]` cleanly when caddy is not installed (opt-in; mirror
 `34_portless.sh:18`). When present, `diagnose` (informational):
@@ -287,7 +287,7 @@ bare name — bare `http://litellm/` is unaffected; trusted HTTPS moves to
 - **M5 teardown:** `reset hard` then `nuke` per AC-5; assert CA gone
   (`security find-certificate`), data dir wiped, no log leaks.
 - **M6 doctor:** check registered, `[skip]` when caddy absent, AC-2 live; count
-  bumped 55→56 in DOCTOR.md + ARCHITECTURE.md.
+  bumped 56→57 in DOCTOR.md + ARCHITECTURE.md.
 
 ## 13. Non-goals
 Container-side bare-name/HTTPS; fronting redis/gRPC on the host; replacing
@@ -328,9 +328,9 @@ fail. Sources: chromium cert_verify_proc.cc; Caddy automatic-https docs.
   NOT in `install_all_phase_order()`. Reachable via `install ingress` / `install
   31` (suffix resolver, `vz-ai-stack.sh:621`). Installs caddy itself
   (portless-shaped soft-fail when brew/caddy absent) — NOT via `deps.sh`.
-- Doctor check = next free prefix **`55_bare_hostname_ingress.sh`** (55 files
-  today, max index 54; `55_` is free); registered registry-free via the
-  `checks/*.sh` glob (`doctor.sh:32`). Registered-check count **55 → 56**; bump
+- Doctor check = next free prefix **`56_bare_hostname_ingress.sh`** (56 files
+  today, max index 55 (codex); `56_` is free); registered registry-free via the
+  `checks/*.sh` glob (`doctor.sh:32`). Registered-check count **56 → 57**; bump
   `DOCTOR.md` + `ARCHITECTURE.md`.
 - CLI: `bin/ingress` = lumen-style `exec bash "$AI_STACK/installer/lib/ingress.sh" "$@"`;
   `cmd_ingress()` = docker-engine-style `bash …/ingress.sh "$@"`. (The two
@@ -378,7 +378,7 @@ manual edit). Opt-in stays the default (AC-6).
 FIRST] → (2) `ingress up`/`status` foreground HTTP-only (AC-1a, AC-2) →
 (3) root daemon plist + wrapper (AC-6, reboot-sim) → (4) reload-not-restart +
 failure isolation (M1, M3) → (5) HTTPS + login-keychain trust (AC-1b) →
-(6) phase 31 + CLI + doctor 55 + reset wiring (AC-5) → (7) docs + `bin/url` + CHANGELOG.
+(6) phase 31 + CLI + doctor 56 + reset wiring (AC-5) → (7) docs + `bin/url` + CHANGELOG.
 
 **Single-Caddy decision (orchestrator, debated):** keep one Caddy for both
 HTTP and TLS. A per-IP relay-for-HTTP + Caddy-for-TLS split would add a second

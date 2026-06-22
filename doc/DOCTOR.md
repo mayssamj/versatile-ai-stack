@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 56 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 57 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 56
+stack doctor                    # all 57
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
