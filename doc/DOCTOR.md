@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 55 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 56 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 55
+stack doctor                    # all 56
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -91,7 +91,8 @@ installer/doctor/checks/
 ├── 51_openwork.sh                           (opt-in Phase 29; skip-clean when OpenWork not installed)
 ├── 52_understand.sh                         (opt-in Phase 30; skip-clean when no knowledge graph committed)
 ├── 53_container_liveness.sh                 (census: every managed container EXISTS + running & healthy)
-└── 54_openshell_gateway.sh                  (OpenShell gateway up on :17670 & brew-manageable)
+├── 54_openshell_gateway.sh                  (OpenShell gateway up on :17670 & brew-manageable)
+└── 55_codex_bridge.sh                       (opt-in; GPT-5.x on your ChatGPT subscription — skip-clean when not installed)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -737,6 +738,25 @@ Two gaps no other check covered. The gateway is a **host launchd process, not a 
 | Note | This is the check behind the install-time warning users asked about: the warning is informational (the gateway can still be up), but it means brew-managed lifecycle is off. Run `brew trust nvidia/openshell` to restore it, then this check goes green. |
 
 Smoke: `vz-ai-stack.sh test 54` — 8 hermetic cases (stubs `port_listening`/`brew`): not-installed skip, up+manageable green, up+untrusted red, up+no-service red, down+untrusted red, down+manageable red, up+brew-absent red, up+stopped green.
+
+---
+
+## 55 · Codex bridge — GPT-5.x on your ChatGPT subscription (opt-in)
+
+The OpenAI analog of check 41 (Meridian). Opt-in + **ToS-gray**. Lets Open WebUI
+(and anything behind LiteLLM) chat on your `codex login` OAuth with no metered key:
+Open WebUI → LiteLLM → codex-bridge (host `127.0.0.1:3457`) → ChatGPT backend. See
+[`bin/start-codex-bridge.sh`](../bin/start-codex-bridge.sh).
+
+| | |
+|---|---|
+| Asserts | When the bridge is enabled (`bin/start-codex-bridge.sh install`), its launchd job is loaded, the local endpoint (`127.0.0.1:3457/v1/models`) is healthy, and LiteLLM serves the `openai-gpt-5.*-sub` models. Liveness uses the free `/v1/models` surface (no ChatGPT quota); a real-completion auth probe is **opt-in only** (`CODEX_BRIDGE_DEEP_CHECK=1`) so a routine `doctor` never spends your rate-limited window. Never prints a token. |
+| Fails when | The launchd job is loaded but the endpoint is unhealthy (common cause: ChatGPT OAuth expired — re-run `npx --yes @openai/codex login`, then `start-codex-bridge.sh restart`), or the endpoint is healthy but the `openai-gpt-5.*-sub` models aren't served by LiteLLM (recreate LiteLLM to reload config). |
+| Advisory-green | Bridge not installed, or installed but the daemon wasn't enabled (no launchd job, port closed) — it's opt-in. Never prints a token. |
+| Note | ⚠ Unlike Meridian (Anthropic's **official** SDK), this wraps the ChatGPT **product** backend (`chatgpt.com/backend-api/codex`) — unofficial use, **single personal account only**, real account-suspension risk. The metered `openai-gpt-5.5`/`5.4` (`OPENAI_API_KEY`) path is the supported default; the bridge only avoids metered cost. |
+
+Mirrors check 41's philosophy: green unless something you clearly opted into is
+genuinely broken. See [models.md](models.md) for setup + the full risk disclosure.
 
 ---
 

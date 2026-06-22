@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 55/55 ✓
+# 1. Confirm the stack is healthy. Target: 56/56 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
@@ -2276,7 +2276,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 55/55 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 56/56 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 
