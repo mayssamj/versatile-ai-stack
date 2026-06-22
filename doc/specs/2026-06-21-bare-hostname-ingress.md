@@ -1,0 +1,295 @@
+# Bare-hostname host ingress (`http(s)://litellm/`) — design
+
+**Date:** 2026-06-21
+**Status:** DESIGN v2 — hardened by §24 council (adversarial + infra/SRE + architect). Pending user review.
+**Branch:** `feat/bare-hostname-ingress`
+**Prior art:** 2026-05-28 native-port revert (aliases.tsv header); 2026-05-29 council deferral of a single front-door (`bin/url` shipped); `bin/start-paperclip.sh` host-relay precedent (see §3).
+
+---
+
+## 1. Problem
+
+Every service is reached today as `name:port` — `http://litellm:4000` on the Mac
+(`/etc/hosts` → `127.0.10.1`) and inside containers (Docker embedded DNS on the
+`ai-stack` bridge). The user wants, **in addition**, to reach services by **bare
+hostname on the default port from the Mac browser**:
+
+- `http://litellm/`   (port 80, no port number)
+- `https://litellm/`  (port 443, **trusted** cert — no browser warning)
+
+…while `http://litellm:4000/` keeps working unchanged, container-to-container
+traffic is untouched, and redis/gRPC are not broken.
+
+## 2. Binding constraints (verified)
+
+1. **OrbStack `*:80` wildcard.** `docker --publish 127.0.10.X:80:Y` from
+   multiple containers collapses to one `*:80` host listener (reproduced live
+   2026-06-21; aliases.tsv header). **No design may publish :80 from multiple
+   containers.**
+2. **Native ports are not unique.** `honcho` & `llm-guard` are both `:8000`;
+   `falkordb-ui` & `workspace` are both `:3000` (`aliases.tsv:24-27`). Routing
+   must be by destination **IP** (each service owns a `127.0.10.x`), never by
+   port.
+3. **`/etc/hosts` repoint breaks `:port`.** Only **`litellm`** is dual-bound to
+   `127.0.0.1` (`bin/start-litellm.sh:196-197`, a Phase-15 side-effect). Every
+   other `127.0.10.x` HTTP service publishes on its own IP **only** — repointing
+   their aliases to a shared proxy IP would break `phoenix:6006`,
+   `qdrant:6333`, etc. **`/etc/hosts` stays as-is.** (`sourcegraph` is *not*
+   relevant here: it is `localhost:7080`, single-bound, alias-free,
+   `bridge-exempt` — `bin/start-sourcegraph.sh:15-22` — so it has no
+   `127.0.10.x` IP to bind and is out of scope.)
+4. **macOS privileged ports.** Binding `<1024` (80/443) requires root.
+
+## 3. Decision (user-approved 2026-06-21)
+
+**Hybrid, host-only.** Keep the machine-to-machine layer untouched; add a host
+ingress only for the Mac-browser nicety.
+
+- Container↔container and `name:port` stay **exactly as today**. No proxy in the
+  hot path → no new SPOF on the constantly-called `litellm`, no added latency,
+  no migration of the 8 compose files.
+- A **host-native Caddy process** binds each HTTP service's own
+  `127.0.10.x:80`/`:443` and reverse-proxies to that service's existing
+  native-port publish.
+
+**Out of scope (accepted gap):** bare-name / HTTPS *from inside a container*.
+Nothing in the stack consumes container-side HTTPS today (Pi, honcho, openwebui
+dial `http://…:<port>/`). If ever needed → a per-consumer secondary network, not
+a global change.
+
+### Why host process, not a container — and why it's low-risk
+A host-native process binding **distinct loopback IPs** on :80/:443 gets distinct
+sockets and never traverses OrbStack's VM port-forwarder, so the `*:80` wildcard
+cannot apply. A container cannot bind `127.0.10.1:80` without a `--publish`
+(→ wildcard), and the single-publish alternative forces the `/etc/hosts` repoint
+that constraint #3 forbids.
+
+**In-repo precedent (de-risks the whole design):** `bin/start-paperclip.sh:61-104`
+*already* runs a host process binding `127.0.10.14:3100` → `127.0.0.1:3100` (a
+`nohup node` relay, no sudo, no VM forwarder), live today behind
+`http://paperclip:3100` (`doc/PORTS.md:344`). So "a host process binds distinct
+`127.0.10.x` sockets" is **already proven in production** for a non-80 port. The
+only unproven delta is port 80 specifically — and the wildcard is a VM-*publish*
+artifact, not a host-*socket* one. The §8 spike is therefore **confirmation, not
+a gamble** (risk LOW).
+
+### Why this is safe where the 2026-05-29 front-door was deferred
+That council deferred a *single shared-listener* proxy for: host-header
+smuggling, a shared-listener wrong-backend trap, and the CA-trust risk. The
+**per-IP** host-process design **structurally eliminates the first two** —
+`127.0.10.1:80` serves *only* litellm, so there is no shared listener and no
+`Host:` to spoof. The CA risk is contained by opt-in, **login-keychain** trust
+(§6).
+
+## 4. Architecture
+
+```
+Mac browser                               Host (macOS)                          OrbStack VM
+http://litellm/      ──/etc/hosts──▶ 127.0.10.1:80  ──┐
+https://litellm/     ──/etc/hosts──▶ 127.0.10.1:443 ──┴─ caddy (root launchd) ─▶ 127.0.10.1:4000 ─▶ litellm container
+http://litellm:4000/ ──/etc/hosts──▶ 127.0.10.1:4000 ───────(unchanged OrbStack publish)─────────▶ litellm container
+http://phoenix/      ──/etc/hosts──▶ 127.0.10.2:80  ──── caddy ─▶ 127.0.10.2:6006 ─▶ phoenix container
+…one site per HTTP service, bound to that service's own IP…
+```
+
+**One Caddy process.** Config generated by reusing `network.sh::aliases_load`
+(the single source of truth — NOT a second parser) for every alias where
+`ALIAS_PROTOCOL==http && ALIAS_IP=~^127\.0\.10\.`. Per service, two site blocks:
+
+```caddyfile
+# HTTP — NO auto-redirect to HTTPS (else http://litellm/ would 308 away)
+http://litellm {
+    bind 127.0.10.1
+    reverse_proxy 127.0.10.1:4000
+}
+# HTTPS — site address is the HOSTNAME so the cert SAN == "litellm"; bind pins the socket
+https://litellm {
+    bind 127.0.10.1
+    tls internal
+    reverse_proxy 127.0.10.1:4000
+}
+```
+
+- **Site key = hostname** (drives cert SAN), **`bind` = IP** (drives socket). An
+  IP-keyed site would mint a `127.0.10.1`-SAN cert and mismatch `https://litellm/`.
+- **`:80` must not auto-redirect.** Emit the HTTP site separately (above) or set
+  `auto_https disable_redirects` globally — required for AC-1.
+- **Upstream = `ip:native_port`** from the `.tsv`; plaintext (all current
+  `127.0.10.x` http services are plaintext-on-loopback).
+- **`/etc/hosts` unchanged.** Per-IP isolation preserved and extended to :80/:443.
+
+### In-scope HTTP services (13)
+litellm·4000, phoenix·6006, docs-mcp·8765, qdrant·6333, honcho·8000,
+falkordb-ui·3000, openwebui·8080, workspace·3000, hermes-gw·8642, llm-guard·8000,
+autofyn·3400, paperclip·3100, unsloth·8898.
+*(Generator must emit two services sharing a native port as two distinct site
+blocks on their two IPs — never dedup by port. See AC-4.)*
+
+### Untouched / excluded
+`falkordb` (redis·6379), `phoenix-otlp` (gRPC·4317) — no port-80 concept.
+`openwork`/`aionui` (shared `127.0.0.1`) and `sourcegraph` (`localhost:7080`,
+alias-free) — **explicitly excluded**; the generator must emit **no** site for
+`127.0.0.1` (a negative assertion in the doctor check — AC-4).
+
+### What works / what breaks
+
+| URL form | Mac host | Inside a container |
+|---|---|---|
+| `http://litellm:4000/` | ✅ unchanged | ✅ unchanged |
+| `http://litellm/` | ✅ new (caddy) — high confidence | ❌ out of scope |
+| `https://litellm/` | ⚠️ new — **gated on M0b** (browser-trust of dotless cert) | ❌ out of scope |
+| `redis://falkordb:6379`, `phoenix-otlp:4317` | ✅ unchanged | ✅ unchanged |
+
+## 5. Components, lifecycle & CLI
+
+| Concern | File | Notes |
+|---|---|---|
+| Generator + control lib | `installer/lib/ingress.sh` (new) | `aliases_load`-driven Caddyfile gen; up/down/trust/untrust/status; dual-mode (run-direct + sourced), mirroring `installer/lib/docker-engine.sh` |
+| CLI | `vz-ai-stack.sh ingress <up\|down\|trust\|untrust\|status>` + `bin/ingress` | **NOT** `start/stop` — those are `services.yml`-allowlisted (`vz-ai-stack.sh:725`); a host daemon doesn't fit. Mirror the `docker-engine` subcommand shape. |
+| Root daemon | `/Library/LaunchDaemons/com.ai-stack.ingress.plist` | see lifecycle below — **diverges** from the one-shot loopback plist |
+| Generation hook | `installer/phases/00n_networking.sh` | may **generate** the Caddyfile (cheap, no daemon) after lo0 binds; must **not** bootstrap the daemon |
+| Opt-in phase | new `NN_ingress.sh` (own phase) | NOT in `install_all_phase_order()`; opt-in like other extras; daemon (re)started here AFTER service phases, via `ingress up` |
+| Dependency | host `caddy` | `brew install caddy` (standard build); phase-owned; graceful no-op when brew/caddy absent (CI) |
+| Doctor | `installer/doctor/checks/55_bare_hostname_ingress.sh` (new) | count 55 → **56**; `[skip]` when caddy absent; surfaces `caddy version`; see §7 |
+| Teardown | `installer/lib/reset.sh` | tiered — see §6/§9 |
+| Docs | aliases.tsv header, `doc/PORTS.md`, `doc/ARCHITECTURE.md`, `doc/TROUBLESHOOTING.md`, README, `DOCTOR.md`, check-count 55→56 | reflect the port-free form |
+
+### Daemon plist (must DIVERGE from `lo0_install_persistence_plist`)
+The loopback plist is a one-shot (`KeepAlive=false`, `network.sh:239`). A
+long-running `caddy run` needs the opposite:
+- `ProgramArguments`: a small **wrapper** that (a) waits, bounded, for
+  `127.0.10.1` to appear on `lo0` (avoids the boot-order race where caddy binds
+  before the loopback daemon runs → `EADDRNOTAVAIL`), then (b) `exec`s the
+  **absolute** caddy path (`/opt/homebrew/bin/caddy run --config <gen> --adapter caddyfile`;
+  launchd has no brew PATH).
+- `KeepAlive` = `{ Crashed: true }` (restart on crash, NOT on clean `down`/bootout).
+- `ThrottleInterval` ≥ 10 (a config that passes validate but fails at runtime
+  must not spin launchd).
+- **Both** `StandardOutPath` and `StandardErrorPath` (a bad-config reason prints
+  to stdout). Caddy's own rolling logger handles request logs (§9 F2):
+  `log { output file … { roll_size 10MiB roll_keep 3 } }`.
+- `RunAtLoad=true`. Install via the existing root-install + `bootstrap system`
+  path with the **non-interactive sudo deferral** to `prepare-sudo`
+  (`network.sh:279-284`).
+
+### Generation & rollout (idempotent — repo idiom)
+- Generate to a temp file; `cmp -s` against the live Caddyfile (mirror
+  `network.sh:270`, `hosts_ensure_block:357`). Unchanged → **return 0, no sudo,
+  no reload**.
+- Changed → `caddy validate --config <tmp>` **first** (a single malformed site
+  aborts the whole file → would take down all 13). Red validate → keep old
+  config, warn, do not reload. Green → `caddy reload` (zero-downtime; keeps the
+  :80 socket up). Daemon `bootout/bootstrap` is only for plist changes.
+
+## 6. HTTPS trust model (opt-in, login keychain)
+
+`tls internal` issues per-host certs from Caddy's local CA. Trust is **opt-in**
+and scoped to the **user login keychain** (not the machine-wide System keychain):
+`security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db`
+(Caddy's `trust` defaults to System — the helper overrides it). This limits the
+trust anchor to the current user and avoids a machine-wide cert-minting surface.
+
+- **Default install does NOT install the CA.** `ingress up` works; `https://`
+  warns until `vz-ai-stack.sh ingress trust`.
+- `ingress untrust` removes it; `reset … nuke` calls it. Fully reversible.
+
+## 7. Doctor check (`55_bare_hostname_ingress.sh`)
+
+`[skip]` cleanly when caddy is not installed (opt-in; mirror
+`34_portless.sh:18`). When present, `diagnose` (informational):
+1. caddy installed (print `caddy version`) + daemon loaded
+   (`launchctl print system/com.ai-stack.ingress`).
+2. **No-collision proof that survives stopped services** — do NOT compare
+   response *bodies* (a 502 from two down services looks identical). Instead
+   assert the responding socket IP differs:
+   `curl -o /dev/null -sw '%{local_ip}' --resolve litellm:80:127.0.10.1 http://litellm/`
+   must be `127.0.10.1`, and the phoenix probe `127.0.10.2` — distinct IPs prove
+   no `*:80` collapse regardless of upstream health.
+3. `https://litellm/` returns 200 with `--cacert <caddy root>` (or trusted).
+`fix` → `vz-ai-stack.sh ingress up` (+ `ingress trust` hint).
+
+## 8. Gating milestones (run BEFORE building)
+
+**M0 — host-process per-IP spike (confirmation, blocking).**
+Pre-check `sudo lsof -nP -iTCP:80 -sTCP:LISTEN` is empty (no pre-existing `*:80`).
+Then two trivial listeners on `127.0.10.1:80` + `127.0.10.2:80`; one sudo to
+bind :80; reversible. `curl --resolve` each → distinct `%{local_ip}` ⇒ PASS.
+Identical ⇒ **BLOCK** (do NOT silently pivot — the pf fallback is a *different*
+architecture needing its own teardown spec before it's acceptable). Risk LOW
+given the paperclip precedent (§3), but still run it (SOUL §1).
+
+**M0b — dotless-HTTPS browser-trust gate (the council's #1 risk, blocking the
+HTTPS half only).** After a minimal caddy + `ingress trust`, open
+`https://litellm/` in **real Mac Chrome AND Safari** (not curl — curl bypasses
+browser name policy). If accepted → HTTPS bare-name is delivered. If rejected
+(`ERR_CERT_COMMON_NAME_INVALID` on the dotless SAN) → **fall back**: add a
+*dotted* companion alias (e.g. `litellm.test`, RFC 6761 reserved) alongside the
+bare name — bare `http://litellm/` is unaffected; trusted HTTPS moves to
+`https://litellm.test/`. AC-1's HTTPS clause is conditional on M0b's outcome.
+
+## 9. Risks & mitigations
+
+| Risk | Sev | Mitigation |
+|---|---|---|
+| Dotless `litellm` HTTPS cert browser-rejected | **HIGH** | M0b browser gate + dotted-companion fallback; HTTP half unaffected |
+| Boot-order race (caddy binds before lo0 alias) | MED | wrapper waits for `127.0.10.1` on lo0; `KeepAlive{Crashed}` |
+| Daemon dies on first crash (cloned one-shot plist) | MED | plist diverges: `KeepAlive{Crashed}`, `ThrottleInterval` |
+| One bad site aborts all 13 | MED | `caddy validate` before promote; reload-not-restart |
+| CA trust surface | MED | opt-in, **login** keychain, `untrust`/nuke reverses |
+| Per-IP :80 host-bind hypothesis wrong | LOW | paperclip precedent + M0 spike; pf fallback (own spec) |
+| Unbounded log growth | LOW | Caddy rolling logger; launchd std paths for fatals only |
+| caddy crash → bare-name down | LOW | only the nicety layer; `name:port` + container paths unaffected |
+| Drift from aliases.tsv | LOW | generated via `aliases_load`; doctor asserts generated==live |
+| Non-OrbStack engine | LOW | caddy consumes each service's already-published loopback port → engine-independent; re-run M0 on engine swap |
+
+## 10. Reversibility / teardown (tiered — SOUL §8)
+
+| Item | reset tier |
+|---|---|
+| `launchctl bootout system com.ai-stack.ingress` + rm plist | **hard** (a loaded daemon re-grabs :80/:443 after reboot → collides with next install; the `HOST_DAEMONS` lsof sweep at `reset.sh:168-175` will NOT catch a launchd daemon — needs an explicit bootout) |
+| generated Caddyfile + logs | **hard** |
+| CA `ingress untrust` (login keychain) | **nuke** |
+| `~/Library/Application Support/Caddy` (CA key + per-host certs) | **nuke** |
+| `brew uninstall caddy` | opt-in only (other users may depend on it) |
+
+## 11. Acceptance criteria
+- **AC-1a (HTTP, blocking):** from the Mac, `http://litellm/` reaches litellm
+  (200, no redirect) and `http://litellm:4000/` still reaches litellm.
+- **AC-1b (HTTPS, gated on M0b):** `https://litellm/` (or the dotted fallback)
+  is browser-trusted after `ingress trust`; cert SAN == the served hostname.
+- **AC-2:** `http://litellm/` and `http://phoenix/` resolve to distinct socket
+  IPs simultaneously (no `*:80` collapse) — proven via `%{local_ip}`, robust to a
+  stopped upstream.
+- **AC-3:** `litellm:4000`, `falkordb:6379`, and container↔container traffic are
+  byte-for-byte unchanged.
+- **AC-4:** Caddyfile is generated via `aliases_load`; two services sharing a
+  native port produce two site blocks; **no** site is emitted for a `127.0.0.1`
+  alias (openwork/aionui excluded); appending an http row + regen adds exactly
+  one site with no hand-edit; generated==live (drift check).
+- **AC-5:** `reset hard` boots out the daemon + frees :80/:443 (`lsof` empty) +
+  removes the Caddyfile; `reset nuke` additionally untrusts the CA + wipes the
+  Caddy data dir; services still reachable on `name:port` throughout.
+- **AC-6 (opt-in):** a default install with ingress disabled is byte-identical to
+  today (`launchctl print … com.ai-stack.ingress` not loaded).
+
+## 12. Test plan (mirror `installer/smoke/*.sh`)
+- **M1 idempotency:** generate twice → 2nd is a no-op (no sudo); malformed row →
+  `caddy validate` fails → live config preserved.
+- **M2 smoke:** caddy installed + validate passes; daemon loaded; AC-2
+  no-collision (litellm + phoenix, headless `--resolve`/`%{local_ip}`); AC-3
+  regression byte-compare; `curl --cacert … https://litellm/` 200.
+- **M3 failure-path:** kill litellm container → `http://litellm/` 502 but
+  `http://phoenix/` still 200 (isolation), daemon stays up; corrupt Caddyfile →
+  reload rejected, old config still serving; bad bind → `ThrottleInterval` caps
+  respawn.
+- **M4 reboot persistence:** simulate via bootout+bootstrap → RunAtLoad rebinds
+  :80/:443; `http://litellm/` 200 with no re-install.
+- **M5 teardown:** `reset hard` then `nuke` per AC-5; assert CA gone
+  (`security find-certificate`), data dir wiped, no log leaks.
+- **M6 doctor:** check registered, `[skip]` when caddy absent, AC-2 live; count
+  bumped 55→56 in DOCTOR.md + ARCHITECTURE.md.
+
+## 13. Non-goals
+Container-side bare-name/HTTPS; fronting redis/gRPC on the host; replacing
+`name:port`; automatic (non-opt-in) CA trust; System-keychain trust; public/LAN
+exposure (loopback only).
