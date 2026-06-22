@@ -352,7 +352,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (54 today; 39–53 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness)
+│   │   └── checks/                  — one file per failure mode (55 today; 39–54 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness, openshell_gateway)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh
@@ -375,7 +375,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 53_container_liveness.sh  — full list in doc/DOCTOR.md (54 checks total)
+│   │       └── 23_… 54_openshell_gateway.sh  — full list in doc/DOCTOR.md (55 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
