@@ -60,6 +60,36 @@ model_list:
       model: openai/gpt-5.3-codex
       api_key: os.environ/OPENAI_API_KEY
   # ============================================================
+  # CLOUD CHAT — OpenAI on your ChatGPT SUBSCRIPTION (no metered key).
+  # OPT-IN + ToS-GRAY. Routed through the codex-bridge host daemon
+  # (bin/start-codex-bridge.sh → openai-oauth proxy → Codex backend →
+  # your ChatGPT plan). Same host.docker.internal pattern as Meridian;
+  # `api_key` is a DUMMY (the bridge holds the OAuth, not LiteLLM). The
+  # `-sub` suffix = SUBSCRIPTION (your ChatGPT plan, NOT OPENAI_API_KEY).
+  # These answer ONLY when the bridge is up (`npx @openai/codex login` +
+  # `bin/start-codex-bridge.sh install`); otherwise they fail over to
+  # local-gemma4 (NOT to the metered key — never silently bills your card).
+  # Rate-limited by your ChatGPT plan (Plus ≈ 15–80 GPT-5.5 msgs / 5h); the
+  # rpm/tpm below are a soft burst-guard (for a hard cap add router_settings:
+  # optional_pre_call_checks: [enforce_model_rate_limits]). NOTE: the served
+  # model id (gpt-5.5/gpt-5.4) is passed through to the Codex backend — verify
+  # it answers at activation; adjust `model:` or the bridge `--models` if not.
+  # ============================================================
+  - model_name: openai-gpt-5.5-sub
+    litellm_params:
+      model: openai/gpt-5.5
+      api_base: http://host.docker.internal:3457/v1
+      api_key: codex-bridge
+      rpm: 6
+      tpm: 60000
+  - model_name: openai-gpt-5.4-sub
+    litellm_params:
+      model: openai/gpt-5.4
+      api_base: http://host.docker.internal:3457/v1
+      api_key: codex-bridge
+      rpm: 6
+      tpm: 60000
+  # ============================================================
   # CLOUD CHAT — OpenRouter (Anthropic models routed via OR)
   # Note: OpenRouter slugs use DOTS not hyphens.
   # `-fast` variants verified: 2.5x faster output, same quality.
@@ -381,6 +411,11 @@ litellm_settings:
     - claude-sonnet-4.6-sub-high: ["local-gemma4"]
     - claude-sonnet-4.6-sub-max: ["local-gemma4"]
     - claude-sonnet-4.6-sub-ultracode: ["local-gemma4"]
+    # Codex bridge (ChatGPT subscription). Fail over to local-gemma4 ONLY —
+    # never to the metered openai-gpt-5.* (no surprise card billing). If both
+    # the bridge AND Ollama are down the caller gets a 503 (same as Meridian).
+    - openai-gpt-5.5-sub: ["local-gemma4"]
+    - openai-gpt-5.4-sub: ["local-gemma4"]
     # Legacy local + cross-model cloud chains, retained for reference. local-heavy
     # and claude-opus-4.7 ARE in the model_list; the openrouter-*/openai-gpt-5.5*
     # targets need provider API keys that are absent by default, so those hops

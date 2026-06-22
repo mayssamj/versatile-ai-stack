@@ -159,6 +159,36 @@ the start command for each.
     and `techlead`, `ml_engineer`, `frontend_engineer`, `backend_engineer`,
     `reviewing_engineer` on `claude-opus-4.8-sub-max` (see the assignment table above).
     All availability-gate to `default` (local-gemma4) when Meridian is down.
+- **Codex bridge (ChatGPT subscription)** — **opt-in, no API key, ⚠ ToS-gray**.
+  The OpenAI analog of Meridian: a host daemon (`bin/start-codex-bridge.sh`,
+  launchd-supervised on `127.0.0.1:3457`) running the `openai-oauth` proxy, which
+  reuses the OAuth that `codex login` caches in `~/.codex/auth.json`
+  (auto-refreshed) to reach GPT-5.x on your **ChatGPT Plus/Pro plan** instead of a
+  metered key. LiteLLM dials it exactly like Meridian
+  (`http://host.docker.internal:3457/v1`, dummy key). Models: `openai-gpt-5.5-sub`
+  / `openai-gpt-5.4-sub` (the `-sub` suffix = subscription, distinct from the
+  metered `openai-gpt-5.5` / `openai-gpt-5.4`).
+  Enable: `npx --yes @openai/codex login && bash bin/start-codex-bridge.sh install`
+  (the `install` step shows a one-time risk banner you must accept).
+  - **⚠ Unlike Meridian** (which uses Anthropic's *official* Agent SDK), this
+    wraps the ChatGPT *product* backend (`chatgpt.com/backend-api/codex`) —
+    **unofficial** automated use. Real, non-recoverable risk: OpenAI may
+    **suspend the ChatGPT account** you use day to day. **Single personal account
+    only** — pooling/sharing is a clear ToS violation. It can break without notice
+    when OpenAI changes the backend. The metered `OPENAI_API_KEY` path
+    (`openai-gpt-5.5`/`5.4`) already works and stays the supported default; this
+    only avoids metered cost.
+  - **Rate-limited by your plan** (Plus ≈ 15–80 GPT-5.5 msgs / 5h) — a
+    secondary/occasional route, not a fleet workhorse. A soft `rpm`/`tpm`
+    burst-guard is set on the model entries.
+  - **Config-only + master-key-reachable.** Unlike Meridian these are NOT in
+    `installer/models.yml` / the fleet scoped-key superset — they're hand-authored
+    in `litellm/config.yaml` like every other cloud model, so Open WebUI + scripts
+    (master key) can use them but fleet agents cannot (by design). They fail over
+    to `local-gemma4` when the bridge is down (**never** to the metered key — no
+    surprise card billing). Doctor check 55 reports health (advisory-green when not
+    installed; never prints a token).
+  - **Loopback-only** (holds a live OAuth — do not expose off-box).
 
 ## Workflow
 
