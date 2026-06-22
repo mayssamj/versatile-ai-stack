@@ -59,5 +59,29 @@ after=$(AI_STACK="$AI_STACK" AI_STACK_ALIASES_TSV="$tmp" bash -c \
 rm -f "$tmp"
 if [[ "$after" == "$((n_http+1))" ]]; then ok "append row -> +1 site ($n_http -> $after)"; else err "append: expected $((n_http+1)), got $after"; fail=1; fi
 
+# --- Slice 2/3 — daemon plist diverges from one-shot; lo0-wait wrapper; idempotent writer ---
+plist="$(ingress_plist_content)"
+want "$plist" "<string>com.ai-stack.ingress</string>"
+want "$plist" "<key>Crashed</key>"            # KeepAlive-on-crash (not a bare true, not the one-shot false)
+want "$plist" "<key>ThrottleInterval</key>"
+want "$plist" "<key>StandardOutPath</key>"
+want "$plist" "<key>StandardErrorPath</key>"
+want "$plist" "ingress-run.sh"                # ProgramArguments points at the wrapper
+wantnot "$plist" "<false/>"                   # must NOT clone the loopback one-shot's KeepAlive=false
+
+wrap="$(ingress_wrapper_content)"
+want "$wrap" "ifconfig lo0"
+want "$wrap" "127.0.10.1"
+want "$wrap" "run --config"
+want "$wrap" "Caddyfile.ai-stack"
+if grep -q -- '-ge 120' <<<"$wrap"; then ok "wrapper: bounded lo0 wait"; else err "wrapper: unbounded wait"; fail=1; fi
+
+wd="$(mktemp -d)"; dest="$wd/Caddyfile"
+ingress_write_caddyfile "$dest" >/dev/null 2>&1 || { err "writer failed"; fail=1; }
+if [[ -f "$dest" && "$(grep -c '^http://' "$dest")" == "13" ]]; then ok "writer: wrote 13 sites"; else err "writer: bad output"; fail=1; fi
+w2="$(ingress_write_caddyfile "$dest" 2>&1)"
+if grep -q "already current" <<<"$w2"; then ok "writer: idempotent (2nd run = no-op)"; else err "writer: not idempotent"; fail=1; fi
+rm -rf "$wd"
+
 echo
 if [[ $fail -eq 0 ]]; then ok "ingress generator smoke PASSED"; exit 0; else err "ingress generator smoke FAILED"; exit 1; fi
