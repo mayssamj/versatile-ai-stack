@@ -15,7 +15,7 @@ _bhi_local_ip() {  # echo the local socket IP curl used to reach <alias>:80 on <
 }
 
 bare_hostname_ingress_diagnose() {
-  if ! command -v caddy >/dev/null 2>&1; then
+  if ! command -v caddy >/dev/null 2>&1 && [[ ! -x /opt/homebrew/bin/caddy && ! -x /usr/local/bin/caddy ]]; then
     echo "ingress not installed — run 'vz-ai-stack.sh install ingress' for port-free http(s)://litellm/. [skip]"
     return 0
   fi

@@ -45,8 +45,12 @@ ingress_caddy_bin() {
   local c
   c="$(command -v caddy 2>/dev/null || true)"
   [[ -n "$c" ]] && { printf '%s' "$c"; return 0; }
-  [[ -x /opt/homebrew/bin/caddy ]] && { printf '%s' /opt/homebrew/bin/caddy; return 0; }
-  printf 'caddy'
+  # sudo resets PATH (drops /opt/homebrew) — probe the known Homebrew locations
+  # so the daemon-install path works under `sudo ingress up`.
+  for c in /opt/homebrew/bin/caddy /usr/local/bin/caddy; do
+    [[ -x "$c" ]] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
 }
 
 # ingress_alias_in_scope <alias> — true iff this alias ROW gets a port-free site:
@@ -145,8 +149,9 @@ ingress_write_caddyfile() {
   mkdir -p "$(dirname "$dest")"
   tmp="$(mktemp)" || return 1
   if ! ingress_caddyfile_content > "$tmp"; then rm -f "$tmp"; err "ingress: generation failed"; return 1; fi
-  if command -v caddy >/dev/null 2>&1; then
-    caddy validate --config "$tmp" --adapter caddyfile >/dev/null 2>&1 \
+  local cbin; cbin="$(ingress_caddy_bin || true)"
+  if [[ -n "$cbin" ]]; then
+    "$cbin" validate --config "$tmp" --adapter caddyfile >/dev/null 2>&1 \
       || { rm -f "$tmp"; err "ingress: generated Caddyfile failed validation — keeping existing"; return 1; }
   fi
   if [[ -f "$dest" ]] && cmp -s "$tmp" "$dest"; then
@@ -158,8 +163,9 @@ ingress_write_caddyfile() {
 
 # ingress_status — report what's installed/loaded (offline-safe; no privilege).
 ingress_status() {
-  if command -v caddy >/dev/null 2>&1; then
-    ok "caddy: $(ingress_caddy_bin) ($(caddy version 2>/dev/null | head -1))"
+  local cbin; cbin="$(ingress_caddy_bin || true)"
+  if [[ -n "$cbin" ]]; then
+    ok "caddy: $cbin ($("$cbin" version 2>/dev/null | head -1))"
   else
     warn "caddy: not installed — run 'brew install caddy'"
   fi
@@ -214,7 +220,7 @@ ingress_install_daemon() {
 # ingress_up — the main entrypoint: ensure caddy, (re)generate+validate the
 # Caddyfile, then reload a running daemon (zero-downtime) or install a fresh one.
 ingress_up() {
-  command -v caddy >/dev/null 2>&1 || { err "caddy not installed — run 'brew install caddy'"; return 1; }
+  ingress_caddy_bin >/dev/null || { err "caddy not installed — run 'brew install caddy'"; return 1; }
   ingress_write_caddyfile || return 1
   if launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
     ingress_reload || return 1
@@ -227,9 +233,9 @@ ingress_up() {
 # ingress_reload — push a config change with zero downtime via the admin socket;
 # fall back to a daemon (re)install if the admin endpoint is unreachable.
 ingress_reload() {
-  command -v caddy >/dev/null 2>&1 || { err "caddy not installed"; return 1; }
+  local cbin; cbin="$(ingress_caddy_bin)" || { err "caddy not installed"; return 1; }
   ingress_write_caddyfile || return 1
-  if caddy reload --config "$INGRESS_CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
+  if "$cbin" reload --config "$INGRESS_CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
     ok "ingress: caddy reloaded (zero-downtime)"
   else
     warn "ingress: caddy reload failed (admin socket unreachable?) — reinstalling daemon"
