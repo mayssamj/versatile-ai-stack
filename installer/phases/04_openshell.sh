@@ -339,7 +339,46 @@ if [[ -n "$state" ]]; then
       ;;
   esac
 else
-  warn "openshell is not registered as a brew service (uv-installed only?). Gateway must be started manually."
+  # `brew services list` has no openshell row. TWO distinct causes — name the real
+  # one instead of guessing "(uv-installed only?)":
+  #   1. UNTRUSTED TAP: recent Homebrew REFUSES to load a formula from an untrusted
+  #      third-party tap (nvidia/openshell), so `brew services list` SILENTLY omits
+  #      openshell even though the formula + its launchd plist are installed and the
+  #      gateway may already be running. Taking this branch surrenders lifecycle
+  #      management (engine-switch restart above + crash recovery in lib/openshell.sh).
+  #      Restoring it is `brew trust nvidia/openshell` — a SECURITY decision (trusts
+  #      the tap to run arbitrary Ruby), so we DO NOT auto-trust; we tell the user.
+  #   2. No brew service at all (uv/pipx install, or a formula without a service).
+  _bsi="$(brew services info openshell 2>&1 || true)"
+  if grep -qiE 'untrusted tap|Refusing to load formula.*openshell' <<<"$_bsi"; then
+    warn "openshell brew service is INVISIBLE: Homebrew won't load formula 'nvidia/openshell/openshell' (untrusted tap)."
+    warn "  Consequence: the installer can't manage the gateway via brew services —"
+    warn "  engine-switch restart + crash recovery are DISABLED until you trust the tap."
+    warn "  Restore (SECURITY decision — trusts the tap to run code): brew trust nvidia/openshell"
+    # SAFE fallback so the gateway still comes up: bootstrap the EXISTING launchd
+    # plist IFF it exists AND the gateway isn't already listening. Never restart a
+    # LIVE gateway here (a restart errors ALL sandboxes — fleet-durability rule).
+    _osh_plist="$HOME/Library/LaunchAgents/homebrew.mxcl.openshell.plist"
+    if ! gateway_listening && [[ -f "$_osh_plist" ]]; then
+      log "gateway not up — bootstrapping existing launchd plist (brew-independent)…"
+      # bootstrap loads it if unregistered; if it's already registered-but-dead,
+      # bootstrap returns "already loaded", so kickstart -k restarts the crashed job.
+      # SAFE: the `! gateway_listening` guard means nothing healthy depends on it, so a
+      # restart can't error live sandboxes (fleet-durability rule). `launchctl load` is
+      # NOT used — deprecated on macOS 12+ for GUI-domain jobs.
+      if launchctl bootstrap "gui/$(id -u)" "$_osh_plist" 2>/dev/null; then
+        log "launchctl bootstrap: ok"
+      elif launchctl kickstart -k "gui/$(id -u)/homebrew.mxcl.openshell" 2>/dev/null; then
+        log "launchctl kickstart: ok (plist was already registered)"
+      else
+        warn "launchctl bootstrap + kickstart both failed — gateway may stay down; check: tail -50 $(brew --prefix 2>/dev/null || echo /opt/homebrew)/var/log/openshell.log"
+      fi
+    fi
+  else
+    warn "openshell is not registered as a brew service (uv/pipx install, or the formula has no service)."
+    warn "  No brew-managed lifecycle — the gateway must be started manually if it isn't already up."
+  fi
+  warn "doctor check 'openshell_gateway' will report this until it's resolved: vz-ai-stack.sh doctor openshell_gateway"
 fi
 
 # --- Wait for the gateway port to come up ----------------------------------

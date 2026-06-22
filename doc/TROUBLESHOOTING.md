@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the doctor's 54 checks, see [DOCTOR.md](DOCTOR.md).
+For the doctor's 55 checks, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---

@@ -1,19 +1,19 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 54 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 55 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 54
+stack doctor                    # all 55
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
 stack doctor pi                 # only the Pi sandbox + virtual key checks (24-26)
 stack doctor lumen              # only the Lumen MCP check (27)
-stack doctor openshell          # only the OpenShell CPU-storm check (39)
+stack doctor openshell          # both OpenShell checks: CPU-storm (39) + gateway liveness (54)
 NO_PROMPT=1 stack doctor        # report-only, skip all auto-fixes
 OPENSHELL_DOCTOR_SLOW=1 stack doctor  # also run check 25's slow negative probes
 ```
@@ -90,7 +90,8 @@ installer/doctor/checks/
 ├── 50_aionui.sh                             (opt-in Phase 28; skip-clean when AionUi not installed)
 ├── 51_openwork.sh                           (opt-in Phase 29; skip-clean when OpenWork not installed)
 ├── 52_understand.sh                         (opt-in Phase 30; skip-clean when no knowledge graph committed)
-└── 53_container_liveness.sh                 (census: every managed container EXISTS + running & healthy)
+├── 53_container_liveness.sh                 (census: every managed container EXISTS + running & healthy)
+└── 54_openshell_gateway.sh                  (OpenShell gateway up on :17670 & brew-manageable)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -721,6 +722,21 @@ The census/liveness axis — distinct from check 12 (ownership: foreign/adopt) a
 | Scope | Covers containers that EXIST but are broken. Does **not** yet assert a full expected-set (a service that never started at all) — stated follow-up. |
 
 Smoke: `vz-ai-stack.sh test 53` — 10 cases covering every census signal + every broken state (exited/restarting/unhealthy) + negatives (healthy, starting-grace, foreign, openshell).
+
+---
+
+## 54 · OpenShell gateway up on :17670 & brew-manageable
+
+Two gaps no other check covered. The gateway is a **host launchd process, not a container**, so the container-liveness census (check 53) explicitly excludes `openshell-*` and never sees it; check 39 only catches the in-sandbox token-storm. And recent Homebrew **refuses to load a formula from an untrusted third-party tap** (`nvidia/openshell`), so `brew services list` silently omits openshell even when its formula + launchd plist are installed and the gateway is running — which is why Phase 04 prints `openshell is not registered as a brew service` while the gateway works fine. This check makes both visible.
+
+| | |
+|---|---|
+| Asserts | The openshell binary is installed → the gateway port (`:17670`) is **listening** AND openshell is **manageable via brew services** (so engine-switch restart + crash recovery work). Pass-as-skip when openshell isn't installed. |
+| Fails when | (a) **DOWN** — nothing listening on `:17670` (the fleet can't run); or (b) **UP but unmanageable** — `brew services` can't see openshell, because the `nvidia/openshell` tap is untrusted (Homebrew won't load the formula) or there's no brew service at all (uv/pipx install). In the untrusted case the gateway still WORKS (DEGRADED, not an outage), so this is a *latent* failure surfaced as a red — the harness has no WARN state, and a green here would re-create the "doctor doesn't detect it" blind spot. |
+| Auto-fix | **None — by design.** The remediation for the untrusted-tap case is `brew trust nvidia/openshell`, which tells Homebrew to load and **execute** that tap's arbitrary Ruby — a security-posture change (team-protocol §5). It must be a human decision, never auto-healed. The diagnose detail prints the exact command (and the brew-independent `launchctl bootstrap` fallback for a down gateway). |
+| Note | This is the check behind the install-time warning users asked about: the warning is informational (the gateway can still be up), but it means brew-managed lifecycle is off. Run `brew trust nvidia/openshell` to restore it, then this check goes green. |
+
+Smoke: `vz-ai-stack.sh test 54` — 8 hermetic cases (stubs `port_listening`/`brew`): not-installed skip, up+manageable green, up+untrusted red, up+no-service red, down+untrusted red, down+manageable red, up+brew-absent red, up+stopped green.
 
 ---
 
