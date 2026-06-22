@@ -244,6 +244,9 @@ ai-stack-installer — usage:
     vz-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
                                         (switch=auto-point at ai-stack-<engine>, default; keep=never touch).
                                         Also set non-interactively via 'setup'.
+    vz-ai-stack.sh ingress <up|down|reload|status|trust|untrust>   bare-hostname host ingress
+                                        (OPT-IN; gives the Mac browser port-free http(s)://litellm/ etc.
+                                        'up' needs sudo to bind :80/:443; 'trust' = local CA for https://).
     vz-ai-stack.sh doctor [<service>]       diagnose & offer fixes
     vz-ai-stack.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
     vz-ai-stack.sh adopt <service>          take ownership of a foreign container
@@ -316,7 +319,7 @@ is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
     setup|keys|verify|adopt|apply-restarts|logs|history|gc|cleanup|migrate-v2|upgrade|\
-    tutorial-serve|fleet-studio|understand-dashboard|reset|start|run|enable|stop|disable|docker-engine|help) return 0 ;;
+    tutorial-serve|fleet-studio|understand-dashboard|reset|start|run|enable|stop|disable|docker-engine|ingress|help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -690,6 +693,7 @@ cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_embedding() { bash "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
 cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
+cmd_ingress() { bash "$AI_STACK/installer/lib/ingress.sh" "$@"; }
 cmd_help() {
   # bare `help` → the full command list (same as --help; "what can I do?").
   if [[ -z "${1:-}" ]]; then usage; return 0; fi
@@ -1187,6 +1191,7 @@ main() {
     embedding|embeddings) cmd_embedding "$@" ;;
     fleet)             cmd_fleet "$@" ;;
     docker-engine)     cmd_docker_engine "$@" ;;
+    ingress)           cmd_ingress "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
     deps)              cmd_deps "$@" ;;
     setup|keys)        cmd_setup "$@" ;;

@@ -334,6 +334,10 @@ case "$TIER" in
     rm -f "$AI_STACK"/installer/state/*.alert
     rm -rf "$AI_STACK"/CHANGELOG.d/*
     rm -rf "$AI_STACK"/data/{phoenix,falkor,qdrant,honcho,openwebui}/*
+    # Bare-hostname host ingress (Phase 31, opt-in): a launchd daemon isn't a
+    # HOST_DAEMONS pidfile, so teardown_host_daemons can't catch it — bootout the
+    # root Caddy daemon + remove its plist/Caddyfile/logs + free :80/:443.
+    [[ -f "$AI_STACK/installer/lib/ingress.sh" ]] && bash "$AI_STACK/installer/lib/ingress.sh" teardown hard || true
     ok "hard reset complete. Backups under data.bak-${ts}/"
     note "/etc/hosts ai-stack block left in place (run 'reset --confirm nuke' to remove)."
     ;;
@@ -426,6 +430,9 @@ case "$TIER" in
       log "Removing loopback persistence plist..."
       lo0_uninstall_persistence_plist || warn "plist uninstall reported failure (continuing)"
     fi
+    # Bare-hostname ingress (Phase 31): bootout the root Caddy daemon, remove its
+    # plist/Caddyfile/logs, untrust the local CA + wipe the Caddy data dir.
+    [[ -f "$AI_STACK/installer/lib/ingress.sh" ]] && bash "$AI_STACK/installer/lib/ingress.sh" teardown nuke || true
     if command -v ollama >/dev/null; then
       log "Removing all Ollama models..."
       ollama list 2>/dev/null | awk 'NR>1{print $1}' | while IFS= read -r m; do

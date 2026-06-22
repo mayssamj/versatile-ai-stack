@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# bin/ingress — bare-hostname host ingress control (http(s)://litellm/).
+# Thin wrapper around installer/lib/ingress.sh (same as `vz-ai-stack.sh ingress`).
+#
+#   ingress up            generate Caddyfile + (re)start the host daemon (sudo to bind :80/:443)
+#   ingress down          stop the daemon (plist stays; 'up' restarts)
+#   ingress reload        push a Caddyfile change with zero downtime
+#   ingress status        show caddy / Caddyfile / daemon state
+#   ingress trust|untrust (un)trust the local CA in your LOGIN keychain (for https://)
+#   ingress teardown <hard|nuke>
+#   ingress generate | print-caddyfile | print-plist | print-wrapper
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bash "$AI_STACK/installer/lib/ingress.sh" "$@"
