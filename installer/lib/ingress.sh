@@ -175,17 +175,155 @@ ingress_status() {
   fi
 }
 
+# --- Live commands (execute only with caddy + sudo; E2E-gated on M0/M0b) -----
+
+# ingress_install_daemon — install the wrapper (0755) + root plist (0644)
+# idempotently, mirroring lo0_install_persistence_plist (cmp-before-write +
+# EUID/sudo-defer), then (re)bootstrap into the system domain.
+ingress_install_daemon() {
+  mkdir -p "$(dirname "$INGRESS_WRAPPER")"
+  local wtmp; wtmp="$(mktemp)" || return 1
+  ingress_wrapper_content > "$wtmp"
+  if [[ ! -f "$INGRESS_WRAPPER" ]] || ! cmp -s "$wtmp" "$INGRESS_WRAPPER"; then
+    mv "$wtmp" "$INGRESS_WRAPPER"; chmod 0755 "$INGRESS_WRAPPER"
+  else rm -f "$wtmp"; fi
+
+  local ptmp; ptmp="$(mktemp)" || return 1
+  ingress_plist_content > "$ptmp"
+  if [[ -f "$INGRESS_PLIST" ]] && cmp -s "$ptmp" "$INGRESS_PLIST" \
+       && launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
+    rm -f "$ptmp"; ok "ingress daemon already current + loaded"; return 0
+  fi
+  if (( EUID != 0 )) && ! sudo -n true 2>/dev/null; then
+    rm -f "$ptmp"
+    warn "ingress daemon needs sudo to (re)install; sudo unavailable non-interactively."
+    note "Run 'sudo bash vz-ai-stack.sh ingress up' to install the port-80 daemon."
+    return 0
+  fi
+  local SUDO=""; (( EUID != 0 )) && SUDO="sudo"
+  $SUDO install -m 644 -o root -g wheel "$ptmp" "$INGRESS_PLIST" \
+    || { err "install failed for $INGRESS_PLIST"; rm -f "$ptmp"; return 1; }
+  rm -f "$ptmp"
+  $SUDO launchctl bootout system "$INGRESS_PLIST" 2>/dev/null || true
+  $SUDO launchctl bootstrap system "$INGRESS_PLIST" 2>/dev/null \
+    || $SUDO launchctl load "$INGRESS_PLIST" 2>/dev/null \
+    || { err "launchctl bootstrap failed for $INGRESS_LABEL"; return 1; }
+  ok "ingress daemon installed + bootstrapped: $INGRESS_LABEL"
+}
+
+# ingress_up — the main entrypoint: ensure caddy, (re)generate+validate the
+# Caddyfile, then reload a running daemon (zero-downtime) or install a fresh one.
+ingress_up() {
+  command -v caddy >/dev/null 2>&1 || { err "caddy not installed — run 'brew install caddy'"; return 1; }
+  ingress_write_caddyfile || return 1
+  if launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
+    ingress_reload || return 1
+  else
+    ingress_install_daemon || return 1
+  fi
+  ingress_status
+}
+
+# ingress_reload — push a config change with zero downtime via the admin socket;
+# fall back to a daemon (re)install if the admin endpoint is unreachable.
+ingress_reload() {
+  command -v caddy >/dev/null 2>&1 || { err "caddy not installed"; return 1; }
+  ingress_write_caddyfile || return 1
+  if caddy reload --config "$INGRESS_CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
+    ok "ingress: caddy reloaded (zero-downtime)"
+  else
+    warn "ingress: caddy reload failed (admin socket unreachable?) — reinstalling daemon"
+    ingress_install_daemon
+  fi
+}
+
+# ingress_down — stop the daemon (plist stays; 'ingress up' restarts it).
+ingress_down() {
+  if [[ -f "$INGRESS_PLIST" ]]; then
+    local SUDO=""; (( EUID != 0 )) && SUDO="sudo"
+    $SUDO launchctl bootout system "$INGRESS_PLIST" 2>/dev/null \
+      || $SUDO launchctl unload "$INGRESS_PLIST" 2>/dev/null || true
+    ok "ingress daemon stopped (plist remains)"
+  else
+    note "ingress daemon not installed"
+  fi
+}
+
+# _ingress_ca_crt — locate Caddy's local root CA cert (the daemon runs as root,
+# so its data dir is root's home; fall back to the user's). Echo path or fail.
+_ingress_ca_crt() {
+  [[ -n "${INGRESS_CA_CRT:-}" ]] && { printf '%s' "$INGRESS_CA_CRT"; return 0; }
+  local p
+  for p in \
+    "/var/root/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+    "$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt"; do
+    if [[ -f "$p" ]] || sudo test -f "$p" 2>/dev/null; then printf '%s' "$p"; return 0; fi
+  done
+  return 1
+}
+
+# ingress_trust — install Caddy's local root CA into the USER LOGIN keychain
+# (NOT system-wide), so https://litellm/ is browser-trusted for this user only.
+# Triggers a macOS GUI auth dialog (login-keychain trust is interactive — must
+# run in a GUI session). M0b-verified.
+ingress_trust() {
+  local crt; crt="$(_ingress_ca_crt)" \
+    || { err "Caddy root CA not found — start the ingress first ('ingress up')"; return 1; }
+  local tmp; tmp="$(mktemp).crt"
+  sudo cat "$crt" > "$tmp" 2>/dev/null || cp "$crt" "$tmp" 2>/dev/null \
+    || { err "cannot read Caddy root CA at $crt"; rm -f "$tmp"; return 1; }
+  security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$tmp" \
+    && ok "ingress: Caddy root CA trusted in login keychain (quit+reopen the browser)" \
+    || { err "ingress trust failed (GUI auth required?)"; rm -f "$tmp"; return 1; }
+  rm -f "$tmp"
+}
+
+# ingress_untrust — remove the Caddy root CA from the login keychain.
+ingress_untrust() {
+  local crt; crt="$(_ingress_ca_crt)" || { note "no Caddy root CA to untrust"; return 0; }
+  local tmp; tmp="$(mktemp).crt"; sudo cat "$crt" > "$tmp" 2>/dev/null || cp "$crt" "$tmp" 2>/dev/null || true
+  security remove-trusted-cert "$tmp" 2>/dev/null || true
+  security delete-certificate -c "Caddy Local Authority" "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null || true
+  rm -f "$tmp"
+  ok "ingress: Caddy root CA untrusted (login keychain)"
+}
+
+# ingress_teardown <tier> — reverse install. hard: stop daemon + remove plist +
+# wrapper + Caddyfile + logs, free :80/:443. nuke: also untrust CA + wipe Caddy
+# data dir. Best-effort + loud; SIGKILL a surviving owned caddy. (reset.sh hook)
+ingress_teardown() {
+  local tier="${1:-hard}" SUDO=""; (( EUID != 0 )) && SUDO="sudo"
+  ingress_down
+  $SUDO rm -f "$INGRESS_PLIST" "$INGRESS_WRAPPER" "$INGRESS_CADDYFILE" \
+              "$INGRESS_LOG_OUT" "$INGRESS_LOG_ERR" 2>/dev/null || true
+  # Free :80/:443 if a caddy we own lingers.
+  local pid
+  for pid in $(lsof -nP -iTCP:80 -iTCP:443 -sTCP:LISTEN -t 2>/dev/null | sort -u); do
+    ps -o comm= -p "$pid" 2>/dev/null | grep -qi caddy && { $SUDO kill -9 "$pid" 2>/dev/null || true; }
+  done
+  if [[ "$tier" == "nuke" ]]; then
+    ingress_untrust 2>/dev/null || true
+    $SUDO rm -rf "/var/root/Library/Application Support/Caddy" \
+                 "$HOME/Library/Application Support/Caddy" 2>/dev/null || true
+  fi
+  ok "ingress: torn down ($tier)"
+}
+
 # --- CLI (run-direct only) --------------------------------------------------
-# Live subcommands (up/down/reload/trust/untrust) land in Slices 4-5; the
-# offline generators are wired now so they're exercisable + testable today.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   _cmd="${1:-status}"; shift 2>/dev/null || true
   case "$_cmd" in
+    up)               ingress_up "$@" ;;
+    down)             ingress_down "$@" ;;
+    reload)           ingress_reload "$@" ;;
+    status)           ingress_status ;;
+    trust)            ingress_trust "$@" ;;
+    untrust)          ingress_untrust "$@" ;;
+    teardown)         ingress_teardown "$@" ;;
     generate)         ingress_write_caddyfile "$@" ;;
     print-caddyfile)  ingress_caddyfile_content ;;
     print-plist)      ingress_plist_content ;;
     print-wrapper)    ingress_wrapper_content ;;
-    status)           ingress_status ;;
-    *) err "ingress: unknown subcommand '$_cmd' (generate|print-caddyfile|print-plist|print-wrapper|status)"; exit 2 ;;
+    *) err "ingress: unknown subcommand '$_cmd' (up|down|reload|status|trust|untrust|teardown|generate|print-*)"; exit 2 ;;
   esac
 fi
