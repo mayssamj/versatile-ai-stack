@@ -34,11 +34,12 @@ if [[ -n "$ws_container" ]]; then
     # Sessions sidebar regression guard. The dashboard-backed Sessions API must
     # return a JSON list, not a 500. A loopback-pinned dashboard (the pre-fix
     # default) made the workspace fall back to the gateway path and crash with
-    # "Cannot read properties of undefined (reading 'map')". Both the agent and
-    # workspace images float on :latest, so a future pull can silently re-break
-    # this — assert it here so a regression is LOUD at install time, not a dead
-    # sidebar the user only discovers in the browser. (Localhost no-login UI, so
-    # the host request needs no token; warn-not-fail to match the optional-UI posture.)
+    # "Cannot read properties of undefined (reading 'map')". The agent + workspace
+    # images are now digest-pinned (the pin guard below catches drift), and the
+    # workspace runs a hardened image, but assert the live result here so any
+    # regression is LOUD at install time, not a dead sidebar the user only
+    # discovers in the browser. (Localhost no-login UI, so the host request needs
+    # no token; warn-not-fail to match the optional-UI posture.)
     sess_raw="$(curl -s -w '\nHTTPSTATUS:%{http_code}' --max-time 10 http://workspace:3000/api/sessions 2>/dev/null)"
     sess_code="$(printf '%s' "$sess_raw" | grep -o 'HTTPSTATUS:[0-9]*' | cut -d: -f2)"
     sess_body="$(printf '%s' "$sess_raw" | sed 's/HTTPSTATUS:[0-9]*$//')"
@@ -46,6 +47,27 @@ if [[ -n "$ws_container" ]]; then
       ok "Hermes Workspace /api/sessions returns 200 with a sessions list (dashboard path live)"
     else
       warn "Hermes Workspace /api/sessions returned HTTP ${sess_code:-000} without a sessions list — the sidebar will show 'failed to load sessions'. Expect HERMES_DASHBOARD_HOST=0.0.0.0 + HERMES_DASHBOARD_INSECURE=1 in hermes-workspace/docker-compose.override.yml; re-run 'vz-ai-stack.sh install 05'."
+    fi
+    # No-:latest pin guard (the root cause was two :latest images drifting out of
+    # contract: agent {data} vs workspace {items}). Assert the EFFECTIVE compose
+    # config digest-pins the agent (@sha256:) and runs the hardened workspace
+    # image — fast + deterministic. Check @sha256: PRESENCE (a bare semver tag is
+    # as driftable as :latest).
+    ws_dir="$AI_STACK/hermes-workspace"
+    if [[ -f "$ws_dir/docker-compose.yml" ]]; then
+      eff="$( (cd "$ws_dir" && docker compose config 2>/dev/null) )"
+      if printf '%s' "$eff" | grep -qE 'nousresearch/hermes-agent.*@sha256:'; then
+        ok "hermes-agent image is digest-pinned (no :latest drift)"
+      else
+        warn "hermes-agent is NOT digest-pinned in the effective compose config (:latest drift risk) — re-run 'vz-ai-stack.sh install 05'"
+      fi
+      if printf '%s' "$eff" | grep -q 'hermes-workspace:aistack-hardened'; then
+        ok "hermes-workspace runs the hardened image (gateway sessions .map guard)"
+      elif printf '%s' "$eff" | grep -qE 'hermes-workspace@sha256:'; then
+        warn "hermes-workspace is on the pinned base WITHOUT the hardening (a dashboard outage will 500 the sidebar) — re-run 'vz-ai-stack.sh install 05' to rebuild the hardened image"
+      else
+        warn "hermes-workspace image is not pinned (:latest drift risk) — re-run 'vz-ai-stack.sh install 05'"
+      fi
     fi
   else
     warn "Hermes Workspace container running but http://workspace:3000 did not respond"
