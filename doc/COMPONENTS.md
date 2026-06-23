@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **29 core install phases** (+9 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`), **44 services** (`services.yml`), **55 doctor checks**.
+- **29 core install phases** (+11 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`), **46 services** (`services.yml`), **59 doctor checks**.
 - Phases accept a **name or number**: `vz-ai-stack.sh install phoenix` == `install 01h`. Run `vz-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -77,7 +77,7 @@ FalkorDB, LFM2, etc.).
 | **paperclip↔honcho plugin** | Wires Paperclip into Honcho memory | — |
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
-## Opt-in experimental extras (Phases 21–25 · 27–30 — NOT in `install all`)
+## Opt-in experimental extras (Phases 21–25 · 27–30 · 32 · 34 — NOT in `install all`)
 Install individually by name: `vz-ai-stack.sh install <name>`. Doctor checks 34–38 + 49 + 50 + 51 + 52 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
 | Component | What it is | Install |
 |---|---|---|

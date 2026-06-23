@@ -93,7 +93,7 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **remnic-hermes** | https://github.com/joshuaswarren/remnic | MIT | Remnic MemoryProvider plugin for Hermes Agent. PyPI `remnic-hermes`. |
 | **autoreason** | https://github.com/NousResearch/autoreason | **None (all rights reserved)** | NousResearch; no LICENSE file. Reference only — do not redistribute. |
 
-## Opt-in experimental extras (Phases 21–25 · 27–30)
+## Opt-in experimental extras (Phases 21–25 · 27–30 · 32 · 34)
 | Component | Upstream | License | Notes |
 |---|---|---|---|
 | **portless** | https://github.com/vercel-labs/portless | Apache-2.0 | Vercel Labs. Global npm CLI; ships a Claude Code skill. |
@@ -104,6 +104,8 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **MemPalace** | https://github.com/MemPalace/mempalace | MIT | PyPI `mempalace`. Local-first **verbatim** conversation memory for Claude Code sessions — CLI + MCP server (29 tools) + Python lib; a spatial model (wings/rooms/drawers) over a temporal SQLite knowledge graph. Embeddings are **local ONNX on-device** (CoreML; default `all-MiniLM-L6-v2`, `embeddinggemma` opt-in) — no cloud; an optional refiner LLM routes via LiteLLM (`MEMPALACE_LITELLM_KEY`). Storage is local ChromaDB (a Qdrant backend adapter is staged at `mempalace/backend-qdrant/` per RFC-001, conformance-tested vs live Qdrant, but **not yet live** — 3.3.5 hardcodes ChromaBackend). Two upstream hook scripts (`mempal_save_hook.sh`, `mempal_precompact_hook.sh`) are **vendored verbatim** under `mempalace/hooks/` (see `mempalace/VENDORED.md`). Core phase — installed by `install all` (Phase 26). **Security:** install only from PyPI / GitHub — the domain `mempalace.tech` is a known malware squat. |
 | **AionUi** | https://github.com/iOfficeAI/AionUi | Apache-2.0 | iOfficeAI. brew `--cask aionui` (desktop) + the prebuilt `aionui-web` WebUI server (GitHub Releases, SHA256-verified). Cowork workspace; chats with OpenAI-compatible models + drives CLI agents over ACP. Opt-in (Phase 28); loopback-only WebUI daemon. |
 | **OpenWork** | https://github.com/different-ai/openwork | **MIT** (the `/ee` dir is Fair Source — not shipped) | Different AI, Inc. Open-source alternative to Claude Cowork, **powered by OpenCode**. The stack installs the headless `openwork-orchestrator` (npm; a prebuilt Bun-compiled standalone binary, npm integrity-checked) which self-manages OpenCode (downloads its sidecars; opencode pinned `v1.17.3` via the orchestrator). OpenCode config is `@ai-sdk/openai-compatible` → LiteLLM. Opt-in (Phase 29); loopback-only daemon, `--approval manual`. |
+| **MetaGPT** | https://github.com/FoundationAgents/MetaGPT | **MIT** | FoundationAgents (geekan/*). Multi-agent "software company" sim (PM→architect→engineer→QA). Host uv venv (py3.11); installer pins `metagpt==0.8.2` with `--prerelease=allow` (semantic-kernel pre-release dep) + `typer>=0.12`. Routes through LiteLLM (scoped key) → Phoenix. Opt-in (Phase 32). |
+| **OASIS** | https://github.com/camel-ai/oasis | Apache-2.0 | CAMEL-AI. Large-scale social-media agent swarm sim (≤1M agents upstream), built on CAMEL. Host uv venv (py3.11); `camel-oasis`. Routes through LiteLLM (scoped key) → Phoenix. Opt-in (Phase 34). |
 
 ## Platform & protocols
 | Component | Upstream | License | Notes |
