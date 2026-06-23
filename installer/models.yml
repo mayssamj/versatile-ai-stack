@@ -123,7 +123,7 @@ default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) when its
 # runtime is down — so the local safety net is preserved. `default` stays ollama.
-primary: claude-opus-4.8-sub-xhigh
+primary: claude-opus-4.8-sub-max
 assignments:
   # AI software-engineering team + agents. Platform policy (2026-06-23): EVERY
   # role uses claude-opus-4.8-sub-max — the single platform default. local-gemma4
