@@ -79,11 +79,11 @@ models:
   # the `codex-bridge` route is UNVERIFIED (the Codex backend may ignore it). `openai`
   # gates to `default` when OPENAI_API_KEY is absent; `codex-bridge` gates when the
   # bridge daemon is down (both render local-gemma4 + a pending line, never a hard fail).
-  openai-gpt-5.5:     {runtime: openai,       served: gpt-5.5,     effort: xhigh, big: false, note: "OpenAI GPT-5.5 — metered API key, MAX reasoning (xhigh)."}
-  openai-gpt-5.5-pro: {runtime: openai,       served: gpt-5.5-pro,                big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
-  openai-gpt-5.4:     {runtime: openai,       served: gpt-5.4,     effort: high,  big: false, note: "OpenAI GPT-5.4 — metered API key, high reasoning."}
-  openai-gpt-5.5-sub: {runtime: codex-bridge, served: gpt-5.5,     effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
-  openai-gpt-5.4-sub: {runtime: codex-bridge, served: gpt-5.4,     effort: high,  big: false, note: "GPT-5.4 on your ChatGPT SUBSCRIPTION (codex-bridge). effort passthrough unverified."}
+  openai-gpt-5.5: {runtime: openai, served: gpt-5.5, effort: xhigh, big: false, note: "OpenAI GPT-5.5 — metered API key, MAX reasoning (xhigh)."}
+  openai-gpt-5.5-pro: {runtime: openai, served: gpt-5.5-pro, big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
+  openai-gpt-5.4: {runtime: openai, served: gpt-5.4, effort: high, big: false, note: "OpenAI GPT-5.4 — metered API key, high reasoning."}
+  openai-gpt-5.5-sub: {runtime: codex-bridge, served: gpt-5.5, effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
+  openai-gpt-5.4-sub: {runtime: codex-bridge, served: gpt-5.4, effort: high, big: false, note: "GPT-5.4 on your ChatGPT SUBSCRIPTION (codex-bridge). effort passthrough unverified."}
 # EMBEDDING models (separate plane from the chat `models:` above — different
 # registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
 # vector size the model emits; `kind` is text|code (a code-tuned embedder degrades
@@ -93,11 +93,11 @@ models:
 # docs collection (Qdrant `ai-stack-docs`) is pinned to its embedder's dim, so a
 # dim change is a destructive re-ingest (see `embedding` GUARD + phase-06 ingest.py).
 embeddings:
-  embed-nomic:        { runtime: ollama, served: nomic-embed-text,                     dim: 768,  via: litellm,  route: embed-local,        kind: text }
+  embed-nomic: {runtime: ollama, served: nomic-embed-text, dim: 768, via: litellm, route: embed-local, kind: text}
   # jina-v2-base-code emits 768-dim per its HF model card; NOT pinned anywhere in
   # this repo, so `dim: 768` here is UNVERIFIED against local code (verify before
   # relying on it for a docs/openwebui assignment — Lumen keeps its own index).
-  embed-jina-code:    { runtime: ollama, served: ordis/jina-embeddings-v2-base-code,   dim: 768,  via: ollama,                              kind: code, unverified: true }
+  embed-jina-code: {runtime: ollama, served: ordis/jina-embeddings-v2-base-code, dim: 768, via: ollama, kind: code, unverified: true}
   # On-device (MemPalace) embedders: `served` is the EXACT token MemPalace's
   # MEMPALACE_EMBEDDING_MODEL accepts (verified vs the installed mempalace pkg —
   # embedding.py resolves `embeddinggemma`, else minilm; config.py default minilm),
@@ -105,20 +105,20 @@ embeddings:
   # minilm yields 384-dim at runtime (verified). embeddinggemma is EXPECTED to
   # truncate to 384 via MRL but is NOT code-pinned here — hence `unverified: true`
   # on embed-gemma; confirm the live vector size before a dim-pinned assignment.
-  embed-minilm:       { runtime: onnx,   served: minilm,                                dim: 384,  via: ondevice, device: coreml,            kind: text }
-  embed-gemma:        { runtime: onnx,   served: embeddinggemma,                        dim: 384,  via: ondevice, device: coreml,            kind: text, unverified: true }
-  embed-openai-small: { runtime: openai, served: text-embedding-3-small,               dim: 1536, via: litellm,  route: embed-openai-small, kind: text }
-  embed-openai-large: { runtime: openai, served: text-embedding-3-large,               dim: 3072, via: litellm,  route: embed-openai-large, kind: text }
+  embed-minilm: {runtime: onnx, served: minilm, dim: 384, via: ondevice, device: coreml, kind: text}
+  embed-gemma: {runtime: onnx, served: embeddinggemma, dim: 384, via: ondevice, device: coreml, kind: text, unverified: true}
+  embed-openai-small: {runtime: openai, served: text-embedding-3-small, dim: 1536, via: litellm, route: embed-openai-small, kind: text}
+  embed-openai-large: {runtime: openai, served: text-embedding-3-large, dim: 3072, via: litellm, route: embed-openai-large, kind: text}
 # Per-service embedder assignments. Read at install time by each owning phase
 # (06_documents / 16_lumen / 26_mempalace / bin/start-openwebui) with the phase's
 # current hardcoded value as the fallback, so a missing section never breaks a
 # phase. Re-point with `vz-ai-stack.sh embedding assign <service> <model>`.
 embedding_assignments:
-  docs:      embed-nomic
+  docs: embed-nomic
   openwebui: embed-nomic
-  lumen:     embed-jina-code
+  lumen: embed-jina-code
   mempalace: embed-minilm
-  honcho:    embed-openai-small
+  honcho: embed-openai-small
 default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) when its
@@ -128,19 +128,19 @@ assignments:
   # AI software-engineering team + agents. Platform policy (2026-06-20): EVERY
   # role uses claude-opus-4.8-sub-xhigh — the single platform default. local-gemma4
   # is the LiteLLM offline fallback only (Meridian unavailable), never assigned.
-  hermes_manager: claude-opus-4.8-sub-xhigh
-  hermes_techlead: claude-opus-4.8-sub-xhigh
-  hermes_ml_engineer: claude-opus-4.8-sub-xhigh
-  hermes_frontend_engineer: claude-opus-4.8-sub-xhigh
-  hermes_backend_engineer: claude-opus-4.8-sub-xhigh
-  hermes_qa_test_engineer: claude-opus-4.8-sub-xhigh
-  hermes_reviewing_engineer: claude-opus-4.8-sub-xhigh
-  hermes_sre_engineer: claude-opus-4.8-sub-xhigh
-  hermes_incident_manager: claude-opus-4.8-sub-xhigh
-  pi: claude-opus-4.8-sub-xhigh
-  deerflow: claude-opus-4.8-sub-xhigh
-  ace: claude-opus-4.8-sub-xhigh
-  rlm: claude-opus-4.8-sub-xhigh
+  hermes_manager: openai-gpt-5.5-sub
+  hermes_techlead: openai-gpt-5.5-sub
+  hermes_ml_engineer: openai-gpt-5.5-sub
+  hermes_frontend_engineer: openai-gpt-5.5-sub
+  hermes_backend_engineer: openai-gpt-5.5-sub
+  hermes_qa_test_engineer: openai-gpt-5.5-sub
+  hermes_reviewing_engineer: openai-gpt-5.5-sub
+  hermes_sre_engineer: openai-gpt-5.5-sub
+  hermes_incident_manager: openai-gpt-5.5-sub
+  pi: openai-gpt-5.5-sub
+  deerflow: openai-gpt-5.5-sub
+  ace: openai-gpt-5.5-sub
+  rlm: openai-gpt-5.5-sub
 kinds:
   hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates"}
   hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}
