@@ -56,6 +56,9 @@ __pycache__/
 /metagpt/
 /oasis/
 /logs/
+# bin/<svc> wrappers are install-generated + machine-path (regenerable, like bin/lumen) — never commit
+/bin/metagpt
+/bin/oasis
 /sourcegraph-local.bak-*.tgz
 /traces/
 /installer/state/
