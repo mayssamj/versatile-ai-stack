@@ -937,6 +937,86 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 **Lesson.** Tier 3 isn't only researchers — it's also *light* automation. AutoFyn gives you an isolated autonomous coder; Paperclip gives you a personal orchestrator that, wired to Honcho, stops re-asking "what were we doing?" The plugin is the smallest possible integration: zero code, one toggle, and the L8 memory plane does the rest.
 
 **Go deeper.** AutoFyn's agent app binds `0.0.0.0:8500` inside the container regardless of env — never set `AGENT_PORT` elsewhere or the healthcheck targets a closed port and AutoFyn shows unhealthy forever. Paperclip's `pnpm dev` binds `127.0.0.1:3100` only; the `paperclip` alias works via a tiny Node TCP relay. The Honcho plugin is activated *inside the UI* (not by the installer) and won't appear in `stack status`.
+
+---
+
+### L20½ · Agent-swarm simulations — agents in a world · 🟡 · ~15 min
+
+**Why.** Tiers 1–3 gave you agents that *do a job*. This is the playground: **swarms of agents that live in a world** — they converse, role-play, post, react to *each other*, and you watch the emergent behavior. Three **opt-in** host-venv simulators ship with the stack, each a different shape of "swarm." None are in `install all`; every agent call routes through **LiteLLM** on a scoped key, so you watch the whole swarm think in **Phoenix**.
+
+**Which tool.**
+
+| Tool | Best for | Install | First run |
+|---|---|---|---|
+| **AgentScope** (33) | Build/scale **your own** sims — agents converse, observe, act | `install agentscope` | `bin/agentscope agentscope/sims/smoke_sim.py` |
+| **MetaGPT** (32) | A fixed **software-company** swarm (PM→architect→engineer→QA) from a one-line brief | `install metagpt` | `bin/metagpt "build a CLI todo app"` |
+| **OASIS** (34) | **Large social swarms** — agents post/follow/react in a shared world (≤1M upstream) | `install oasis` | `bin/oasis oasis/sims/smoke_sim.py` |
+
+**Reality check (M4 / 24 GB).** A "large swarm" on-box means *dozens* of agents on a small fast model (`local-gemma4`) with queuing — local inference throughput, not the orchestrator, is the ceiling. For hundreds–thousands, point the scoped key at a metered cloud model. And `local-gemma4` is a **reasoning** model: sims need `max_tokens ≥ 512` or agents spend the whole budget "thinking" and return empty content.
+
+**Prereqs.** A healthy stack with LiteLLM up (Act II); `uv` (installed by the core). Nothing here is load-bearing — skip freely.
+
+**Steps — install AgentScope and watch two agents converse.**
+
+```bash
+# 1. Install (opt-in; NOT in `install all`). Creates a host uv venv (py3.11), mints a
+#    scoped AGENTSCOPE_LITELLM_KEY, writes bin/agentscope, and GATES the install on a
+#    real 2-agent exchange replying through LiteLLM (so broken wiring fails the install).
+vz-ai-stack.sh install agentscope          # alias for: install 33
+
+# 2. Run the bundled demo — Alice (optimist) + Bob (skeptic) converse via LiteLLM.
+bin/agentscope agentscope/sims/smoke_sim.py
+
+# 3. Prove it end-to-end (both agents must reply through the scoped key).
+vz-ai-stack.sh test 33
+
+# 4. Watch every agent's LLM call trace live (one span per turn: model/tokens/latency).
+open http://phoenix:6006                    # project ai-stack
+```
+
+**Expected.** Step 1 ends with `AGENTSCOPE_SMOKE_OK agents=2 replies=2` (the install will not stamp otherwise); step 3 prints `Smoke 33 PASS`. `doctor agentscope` shows check 58 green.
+
+**Make it yours.** Drop a script in `agentscope/sims/` and run it with `bin/agentscope agentscope/sims/<file>.py` — the wrapper injects `OPENAI_API_KEY` (the scoped key) + `OPENAI_BASE_URL=http://127.0.0.1:4000/v1` for you. AgentScope 2.x is an **async** rewrite:
+
+```python
+# agentscope/sims/my_sim.py — a minimal 2-agent loop (run: bin/agentscope agentscope/sims/my_sim.py)
+import asyncio, os
+from agentscope.agent import Agent
+from agentscope.model import OpenAIChatModel
+from agentscope.formatter import OpenAIChatFormatter
+from agentscope.credential import OpenAICredential
+from agentscope.message import Msg, TextBlock
+
+def model():
+    return OpenAIChatModel(
+        credential=OpenAICredential(api_key=os.environ["OPENAI_API_KEY"],
+                                    base_url=os.environ["OPENAI_BASE_URL"]),   # base_url is a CREDENTIAL field
+        model=os.environ.get("AGENTSCOPE_MODEL", "local-gemma4"),
+        stream=False, formatter=OpenAIChatFormatter(),
+        parameters=OpenAIChatModel.Parameters(max_tokens=512),                 # reasoning model → keep generous
+    )
+
+async def main():
+    ada = Agent(name="Ada", system_prompt="You are Ada, a planner. Reply in ONE sentence.", model=model())
+    ben = Agent(name="Ben", system_prompt="You are Ben, a critic. Reply in ONE sentence.",  model=model())
+    seed = Msg(name="user", role="user", content=[TextBlock(type="text", text="Design a city on Mars.")])
+    ada_says = (await ada.reply(seed)).get_text_content()
+    print("Ada:", ada_says)
+    # GOTCHA: local-gemma4 emits a ThinkingBlock alongside the text, and observe() REJECTS
+    # thinking blocks across agents — hand Ben a CLEAN text-only Msg, not Ada's raw reply.
+    await ben.observe(Msg(name="Ada", role="assistant", content=[TextBlock(type="text", text=ada_says)]))
+    print("Ben:", (await ben.reply(Msg(name="user", role="user",
+                content=[TextBlock(type="text", text="Critique Ada's plan.")]))).get_text_content())
+
+asyncio.run(main())
+```
+
+**Try the others.** `install metagpt` then `bin/metagpt "build a CLI todo app"` (a PM→architect→engineer→QA team writes into `metagpt/workspace/`); `install oasis` then `bin/oasis oasis/sims/smoke_sim.py` (a CAMEL social swarm). Each gates its install on a real run and traces to Phoenix.
+
+**Reversible.** `rm -rf agentscope/.venv && rm -f installer/state/phase_33.done` (same shape for `metagpt`/`oasis`). The `<svc>/sims/` directories are **your data** — they're kept.
+
+**Go deeper.** Phases `installer/phases/33_agentscope.sh` · `32_metagpt.sh` · `34_oasis.sh` carry full rationale headers; the plan + which-tool rationale is `doc/specs/2026-06-23-agent-sim-platforms-install-plan.md`; licenses in `doc/ATTRIBUTION.md`. These three also appear in the Explorer (`doc/EXPLORE.html`, the **`extras`** tab) as clickable demo cards.
+
 ## Act VI — Build Your Own
 
 Tiers 1–3 had you *operate* the platform from the outside. Now you cross to Tier 4: you write the code that calls it. Everything below runs against the services already on your machine — LiteLLM as one OpenAI-compatible front door, Honcho for memory, Qdrant for retrieval, MCP + the claw3d bridge for tools/agents, and Unsloth → Blaxel for train-and-ship. Each lesson is a copy-runnable script, building to a capstone that lights up five services in a single run.
@@ -1404,9 +1484,13 @@ vz-ai-stack.sh install lmstudio       # 25 — LM Studio MLX as a 2nd local runt
 vz-ai-stack.sh install sourcegraph    # 27 — local Sourcegraph code search + fleet MCP
 vz-ai-stack.sh install aionui         # 28 — AionUi desktop + WebUI Cowork workspace (multi-agent GUI)
 vz-ai-stack.sh install openwork       # 29 — OpenWork headless OpenCode-powered Cowork workspace (browser UI)
+vz-ai-stack.sh install understand     # 30 — Understand-Anything codebase knowledge graph (cross-runtime MCP)
+vz-ai-stack.sh install metagpt        # 32 — software-company agent swarm  (hands-on: L20½)
+vz-ai-stack.sh install agentscope     # 33 — multi-agent simulation framework (hands-on: L20½)
+vz-ai-stack.sh install oasis          # 34 — large social-agent swarm sim   (hands-on: L20½)
 ```
 
-**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.)
+**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand, and the agent-swarm-sims **57** metagpt, **58** agentscope, **59** oasis) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.) The three agent-swarm simulators (metagpt/agentscope/oasis) get a full hands-on in **L20½**.
 
 **Lesson — what each is, and the gotchas.**
 
