@@ -51,13 +51,15 @@ __pycache__/
 /data.[0-9]*/
 /data.bak-*/
 # ── Agent-swarm-sim host venvs + sim data (Phases 32/34, opt-in) ──
-# Created at the MAIN checkout on `install 32`/`install 34`: a regenerable uv venv
-# plus user sim output (workspace/, sims/). Never repo content — like /data/.
+# Created at the MAIN checkout on `install 32`/`install 33`/`install 34`: a regenerable uv
+# venv plus user sim output (workspace/, sims/). Never repo content — like /data/.
 /metagpt/
+/agentscope/
 /oasis/
 /logs/
 # bin/<svc> wrappers are install-generated + machine-path (regenerable, like bin/lumen) — never commit
 /bin/metagpt
+/bin/agentscope
 /bin/oasis
 /sourcegraph-local.bak-*.tgz
 /traces/

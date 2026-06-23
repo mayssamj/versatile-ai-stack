@@ -1221,6 +1221,26 @@ services:
         "at": "2026-06-23T00:00:00Z"
         "source": phase-34-oasis
         "reviewed": true
+  agentscope:
+    enabled: true # Phase 33 (opt-in) — multi-agent simulation framework (build your own swarms)
+    type: cli-only
+    desc: "AgentScope — multi-agent simulation framework (build/scale your own agent swarms), run via bin/agentscope"
+    phase: "33"
+    network: none
+    consumes_env:
+      - AGENTSCOPE_LITELLM_KEY
+    help:
+      "what": "AgentScope (agentscope-ai/agentscope, Apache-2.0) is a developer framework for BUILDING and scaling your own multi-agent applications and simulations — agents that converse, observe each other, and act. Installed as a host uv venv (Python 3.11, agentscope 2.x); run sim scripts via bin/agentscope agentscope/sims/<file>.py."
+      "why": "The 'bring your own swarm' tool — where OASIS hands you a ready-made social world and MetaGPT a fixed software team, AgentScope is the framework you compose arbitrary multi-agent sims with (roles, message-passing, observe/reply loops). Agents' LLM calls route through LiteLLM (scoped key) → traced in Phoenix. The optional Studio web GUI to WATCH a swarm run is a deferred follow-up."
+      "usage":
+        - bin/agentscope agentscope/sims/smoke_sim.py   # tiny bundled demo (2 agents converse)
+        - "# write your own sim in agentscope/sims/ then: bin/agentscope agentscope/sims/my_sim.py"
+        - vz-ai-stack.sh test 33        # smoke: a real 2-agent exchange via LiteLLM
+      "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at agentscope/.venv (Python 3.11) — regenerable; agentscope/sims is DATA (your sim scripts + output). bin/agentscope exports AGENTSCOPE_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://127.0.0.1:4000/v1; sims build an OpenAIChatModel whose OpenAICredential.base_url points there (default local-gemma4). API IS ASYNC (agentscope 2.x rewrite: OpenAIChatModel + OpenAICredential + OpenAIChatFormatter, await agent.reply/observe). local-gemma4 is a reasoning model → use max_tokens>=512 and rebuild a clean text-only Msg between agents (observe() rejects ThinkingBlocks). SCALE REALITY: on the M4/24GB box local inference serializes, so keep swarms to dozens on local-gemma4 or route to a cloud model (metered). Studio web GUI (host :5275) is a deferred follow-up. Rollback: rm -rf agentscope/.venv + installer/state/phase_33.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
+      "_gen":
+        "at": "2026-06-23T00:00:00Z"
+        "source": phase-33-agentscope
+        "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:
