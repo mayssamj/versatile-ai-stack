@@ -46,19 +46,20 @@ INGRESS_LABEL="${INGRESS_LABEL:-com.ai-stack.ingress}"
 INGRESS_CADDYFILE="${INGRESS_CADDYFILE:-$AI_STACK/installer/state/Caddyfile.ai-stack}"
 INGRESS_WRAPPER="${INGRESS_WRAPPER:-$AI_STACK/installer/state/ingress-run.sh}"
 INGRESS_PLIST="${INGRESS_PLIST:-/Library/LaunchDaemons/com.ai-stack.ingress.plist}"
-INGRESS_ADMIN_SOCK="${INGRESS_ADMIN_SOCK:-/var/run/ai-stack-caddy-admin.sock}"
 INGRESS_LOG_OUT="${INGRESS_LOG_OUT:-/var/log/ai-stack-ingress.out}"
 INGRESS_LOG_ERR="${INGRESS_LOG_ERR:-/var/log/ai-stack-ingress.err}"
+# Pin Caddy's data dir (the local CA) to a stable path, so it's deterministic
+# under the root launchd daemon (where $HOME is ambiguous) and `ingress trust`
+# knows exactly where root.crt is. Caddy stores under $XDG_DATA_HOME/caddy.
+INGRESS_DATA_DIR="${INGRESS_DATA_DIR:-$AI_STACK/installer/state/caddy-data}"
 
 # ingress_caddy_bin — absolute path to the caddy binary (launchd has no brew
-# PATH). Prefers $PATH, then the Homebrew arm64 location; falls back to the bare
-# name so an absent caddy fails visibly rather than silently.
+# PATH; sudo strips /opt/homebrew). $PATH first, then Homebrew locations; fail (1)
+# if truly absent so callers report "not installed" rather than mis-run.
 ingress_caddy_bin() {
   local c
   c="$(command -v caddy 2>/dev/null || true)"
   [[ -n "$c" ]] && { printf '%s' "$c"; return 0; }
-  # sudo resets PATH (drops /opt/homebrew) — probe the known Homebrew locations
-  # so the daemon-install path works under `sudo ingress up`.
   for c in /opt/homebrew/bin/caddy /usr/local/bin/caddy; do
     [[ -x "$c" ]] && { printf '%s' "$c"; return 0; }
   done
@@ -76,15 +77,24 @@ ingress_alias_in_scope() {
   return 0
 }
 
-# ingress_caddyfile_content — echo the canonical Caddyfile. Per in-scope alias,
-# two EXPLICIT site blocks (no auto HTTP->HTTPS redirect): an http:// site and an
-# https:// site (tls internal), both `bind`-ing the alias's own IP and
-# reverse-proxying to <ip>:<native_port>. Pure / deterministic (AC-4). A site is
-# emitted regardless of upstream liveness (a down service 502s by design — the
-# bind must exist for the AC-2 no-collision proof).
+# ingress_caddyfile_content — echo the canonical Caddyfile. Global options:
+#   admin off                  — no admin endpoint; we apply config by restarting
+#                                the daemon, not a (fragile) reload socket.
+#   auto_https disable_redirects — DON'T add an HTTP->HTTPS redirect listener
+#                                (it would grab :80 and conflict with our explicit
+#                                http:// sites — the bug that produced curl -> 000).
+#   skip_install_trust         — NEVER touch the system trust store. As root the
+#                                daemon's auto-trust would silently install a
+#                                machine-wide CA; we trust opt-in via the LOGIN
+#                                keychain (`ingress trust`) instead.
+# Per in-scope alias, two EXPLICIT site blocks: http:// and https:// (tls
+# internal), both `bind`-ing the alias's own IP, reverse-proxying to
+# <ip>:<native_port>. Pure/deterministic (AC-4). A site is emitted regardless of
+# upstream liveness (a down service 502s by design — the bind must exist for the
+# AC-2 no-collision proof).
 ingress_caddyfile_content() {
   aliases_load || return 1
-  printf '{\n\tadmin unix/%s\n}\n' "$INGRESS_ADMIN_SOCK"
+  printf '{\n\tadmin off\n\tauto_https disable_redirects\n\tskip_install_trust\n}\n'
   local a ip port
   for a in "${ALIASES_LIST[@]}"; do
     ingress_alias_in_scope "$a" || continue
@@ -94,15 +104,16 @@ ingress_caddyfile_content() {
   done
 }
 
-# ingress_wrapper_content — the launchd wrapper. Waits (bounded) for the first
-# lo0 alias 127.0.10.1 to exist before exec'ing caddy, so the daemon can't lose
-# a boot race against the loopback persistence daemon (EADDRNOTAVAIL). Caddy +
-# Caddyfile paths are baked in at generate time (launchd has no PATH).
+# ingress_wrapper_content — the launchd wrapper. Pins XDG_DATA_HOME (so the CA is
+# deterministic under root), waits (bounded) for the first lo0 alias 127.0.10.1
+# to exist before exec'ing caddy (no EADDRNOTAVAIL boot race). Caddy + Caddyfile
+# paths are baked in at generate time (launchd has no PATH).
 ingress_wrapper_content() {
   local cbin; cbin="$(ingress_caddy_bin)"
   cat <<EOF
 #!/bin/sh
 # ai-stack ingress launch wrapper (generated — do not edit). See ingress.sh.
+export XDG_DATA_HOME="$INGRESS_DATA_DIR"
 n=0
 until /sbin/ifconfig lo0 2>/dev/null | grep -q '127\\.0\\.10\\.1'; do
   n=\$((n+1))
@@ -153,9 +164,9 @@ EOF
 }
 
 # ingress_write_caddyfile [dest] — write the generated Caddyfile idempotently
-# (cmp-before-write, repo idiom: a no-op when unchanged, no churn). Returns 0
-# either way. Validates with `caddy validate` first when caddy is present, so one
-# malformed site can't black-hole all 13.
+# (cmp-before-write; a no-op when unchanged). Validates with `caddy validate`
+# first so one malformed site can't black-hole all 13. chmod 0644 so a non-root
+# `ingress status` can read it (the file may be root-written via `sudo up`).
 ingress_write_caddyfile() {
   local dest="${1:-$INGRESS_CADDYFILE}" tmp
   mkdir -p "$(dirname "$dest")"
@@ -167,9 +178,10 @@ ingress_write_caddyfile() {
       || { rm -f "$tmp"; err "ingress: generated Caddyfile failed validation — keeping existing"; return 1; }
   fi
   if [[ -f "$dest" ]] && cmp -s "$tmp" "$dest"; then
-    rm -f "$tmp"; log "ingress: Caddyfile already current: $dest"; return 0
+    rm -f "$tmp"; chmod 0644 "$dest" 2>/dev/null || true
+    log "ingress: Caddyfile already current: $dest"; return 0
   fi
-  mv "$tmp" "$dest"
+  mv "$tmp" "$dest"; chmod 0644 "$dest" 2>/dev/null || true
   ok "ingress: wrote Caddyfile ($(grep -c '^http://' "$dest" 2>/dev/null || echo 0) sites): $dest"
 }
 
@@ -181,8 +193,10 @@ ingress_status() {
   else
     warn "caddy: not installed — run 'brew install caddy'"
   fi
-  if [[ -f "$INGRESS_CADDYFILE" ]]; then
+  if [[ -r "$INGRESS_CADDYFILE" ]]; then
     ok "Caddyfile: $INGRESS_CADDYFILE ($(grep -c '^http://' "$INGRESS_CADDYFILE" 2>/dev/null || echo 0) sites)"
+  elif [[ -f "$INGRESS_CADDYFILE" ]]; then
+    ok "Caddyfile: $INGRESS_CADDYFILE (present; not readable as this user)"
   else
     note "Caddyfile: not generated (run: ingress generate)"
   fi
@@ -193,11 +207,12 @@ ingress_status() {
   fi
 }
 
-# --- Live commands (execute only with caddy + sudo; E2E-gated on M0/M0b) -----
+# --- Live commands (execute only with caddy + sudo) -------------------------
 
-# ingress_install_daemon — install the wrapper (0755) + root plist (0644)
-# idempotently, mirroring lo0_install_persistence_plist (cmp-before-write +
-# EUID/sudo-defer), then (re)bootstrap into the system domain.
+# ingress_install_daemon — install the wrapper (0755) + root plist (0644), then
+# ALWAYS (re)bootstrap so the running caddy picks up the CURRENT Caddyfile.
+# (Config changes don't change the plist, and we don't use a reload socket — so a
+# restart is the reliable apply path. ~1s; fine for a local nicety.)
 ingress_install_daemon() {
   mkdir -p "$(dirname "$INGRESS_WRAPPER")"
   local wtmp; wtmp="$(mktemp)" || return 1
@@ -206,53 +221,46 @@ ingress_install_daemon() {
     mv "$wtmp" "$INGRESS_WRAPPER"; chmod 0755 "$INGRESS_WRAPPER"
   else rm -f "$wtmp"; fi
 
-  local ptmp; ptmp="$(mktemp)" || return 1
-  ingress_plist_content > "$ptmp"
-  if [[ -f "$INGRESS_PLIST" ]] && cmp -s "$ptmp" "$INGRESS_PLIST" \
-       && launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
-    rm -f "$ptmp"; ok "ingress daemon already current + loaded"; return 0
-  fi
-  if (( EUID != 0 )) && ! sudo -n true 2>/dev/null; then
-    rm -f "$ptmp"
-    warn "ingress daemon needs sudo to (re)install; sudo unavailable non-interactively."
+  # Need root to write /Library/LaunchDaemons + bootstrap. Defer ONLY if we truly
+  # can't get it (not root, no cached sudo, AND not a tty to prompt on).
+  if (( EUID != 0 )) && ! sudo -n true 2>/dev/null && ! { [[ -t 0 ]] || [[ -t 1 ]]; }; then
+    warn "ingress daemon needs sudo; none cached and not a tty — deferring."
     note "Run 'sudo bash vz-ai-stack.sh ingress up' to install the port-80 daemon."
     return 0
   fi
   local SUDO=""; (( EUID != 0 )) && SUDO="sudo"
-  $SUDO install -m 644 -o root -g wheel "$ptmp" "$INGRESS_PLIST" \
-    || { err "install failed for $INGRESS_PLIST"; rm -f "$ptmp"; return 1; }
+
+  # (Re)install the plist only when it changed — avoids a needless sudo write.
+  local ptmp; ptmp="$(mktemp)" || return 1
+  ingress_plist_content > "$ptmp"
+  if [[ ! -f "$INGRESS_PLIST" ]] || ! cmp -s "$ptmp" "$INGRESS_PLIST"; then
+    $SUDO install -m 644 -o root -g wheel "$ptmp" "$INGRESS_PLIST" \
+      || { err "install failed for $INGRESS_PLIST"; rm -f "$ptmp"; return 1; }
+  fi
   rm -f "$ptmp"
+
+  # ALWAYS restart so the new Caddyfile is applied.
   $SUDO launchctl bootout system "$INGRESS_PLIST" 2>/dev/null || true
   $SUDO launchctl bootstrap system "$INGRESS_PLIST" 2>/dev/null \
     || $SUDO launchctl load "$INGRESS_PLIST" 2>/dev/null \
     || { err "launchctl bootstrap failed for $INGRESS_LABEL"; return 1; }
-  ok "ingress daemon installed + bootstrapped: $INGRESS_LABEL"
+  ok "ingress daemon (re)started: $INGRESS_LABEL"
 }
 
-# ingress_up — the main entrypoint: ensure caddy, (re)generate+validate the
-# Caddyfile, then reload a running daemon (zero-downtime) or install a fresh one.
+# ingress_up — ensure caddy, (re)generate+validate the Caddyfile, then (re)start
+# the daemon so it serves the current config.
 ingress_up() {
   ingress_caddy_bin >/dev/null || { err "caddy not installed — run 'brew install caddy'"; return 1; }
   ingress_write_caddyfile || return 1
-  if launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
-    ingress_reload || return 1
-  else
-    ingress_install_daemon || return 1
-  fi
+  ingress_install_daemon || return 1
   ingress_status
 }
 
-# ingress_reload — push a config change with zero downtime via the admin socket;
-# fall back to a daemon (re)install if the admin endpoint is unreachable.
+# ingress_reload — alias for "apply current config": regenerate + restart.
 ingress_reload() {
-  local cbin; cbin="$(ingress_caddy_bin)" || { err "caddy not installed"; return 1; }
+  ingress_caddy_bin >/dev/null || { err "caddy not installed"; return 1; }
   ingress_write_caddyfile || return 1
-  if "$cbin" reload --config "$INGRESS_CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
-    ok "ingress: caddy reloaded (zero-downtime)"
-  else
-    warn "ingress: caddy reload failed (admin socket unreachable?) — reinstalling daemon"
-    ingress_install_daemon
-  fi
+  ingress_install_daemon
 }
 
 # ingress_down — stop the daemon (plist stays; 'ingress up' restarts it).
@@ -267,12 +275,13 @@ ingress_down() {
   fi
 }
 
-# _ingress_ca_crt — locate Caddy's local root CA cert (the daemon runs as root,
-# so its data dir is root's home; fall back to the user's). Echo path or fail.
+# _ingress_ca_crt — locate Caddy's local root CA cert. Prefer the pinned data dir
+# (set via XDG_DATA_HOME in the wrapper); fall back to the legacy root/user dirs.
 _ingress_ca_crt() {
   [[ -n "${INGRESS_CA_CRT:-}" ]] && { printf '%s' "$INGRESS_CA_CRT"; return 0; }
   local p
   for p in \
+    "$INGRESS_DATA_DIR/caddy/pki/authorities/local/root.crt" \
     "/var/root/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
     "$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt"; do
     if [[ -f "$p" ]] || sudo test -f "$p" 2>/dev/null; then printf '%s' "$p"; return 0; fi
@@ -283,7 +292,7 @@ _ingress_ca_crt() {
 # ingress_trust — install Caddy's local root CA into the USER LOGIN keychain
 # (NOT system-wide), so https://litellm/ is browser-trusted for this user only.
 # Triggers a macOS GUI auth dialog (login-keychain trust is interactive — must
-# run in a GUI session). M0b-verified.
+# run in a GUI session).
 ingress_trust() {
   local crt; crt="$(_ingress_ca_crt)" \
     || { err "Caddy root CA not found — start the ingress first ('ingress up')"; return 1; }
@@ -321,7 +330,8 @@ ingress_teardown() {
   done
   if [[ "$tier" == "nuke" ]]; then
     ingress_untrust 2>/dev/null || true
-    $SUDO rm -rf "/var/root/Library/Application Support/Caddy" \
+    $SUDO rm -rf "$INGRESS_DATA_DIR" \
+                 "/var/root/Library/Application Support/Caddy" \
                  "$HOME/Library/Application Support/Caddy" 2>/dev/null || true
   fi
   ok "ingress: torn down ($tier)"
