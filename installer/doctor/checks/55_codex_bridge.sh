@@ -44,7 +44,7 @@ _cb_served_count() {
     | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
-print(sum(1 for m in d.get("data",[]) if "-sub" in str(m.get("id","")) and "gpt-5" in str(m.get("id",""))))' 2>/dev/null || echo 0)"
+print(sum(1 for m in d.get("data",[]) if "-sub" in str(m.get("id","")) and "gpt" in str(m.get("id",""))))' 2>/dev/null || echo 0)"
   echo "${served:-0}"
 }
 
@@ -56,7 +56,7 @@ codex_bridge_diagnose() {
   if ! _cb_installed && ! _cb_healthy; then
     echo "  (codex-bridge not installed — opt-in + ToS-gray; to run GPT-5.x on your ChatGPT subscription:"
     echo "     npx --yes @openai/codex login && bash $AI_STACK/bin/start-codex-bridge.sh install"
-    echo "   the metered openai-gpt/5.4 (OPENAI_API_KEY) is the supported default and needs none of this.)"
+    echo "   the metered openai-gpt (OPENAI_API_KEY) is the supported default and needs none of this.)"
     return 0
   fi
 
@@ -81,7 +81,7 @@ codex_bridge_diagnose() {
   # Endpoint up — but is LiteLLM wired to serve the subscription GPT model(s)?
   if ! _cb_wired "$cfg"; then
     echo "codex-bridge healthy on :$port but 'openai-gpt-sub' is NOT wired into litellm/config.yaml"
-    echo "  add the openai-gpt-5.*-sub model_list entries (see the ChatGPT-subscription block) and: bash $AI_STACK/bin/start-litellm.sh --recreate"
+    echo "  add the openai-gpt-sub model_list entries (see the ChatGPT-subscription block) and: bash $AI_STACK/bin/start-litellm.sh --recreate"
     return 1
   fi
 
@@ -93,7 +93,7 @@ codex_bridge_diagnose() {
     return 0
   fi
   if [[ "${served:-0}" -lt 1 ]]; then
-    echo "codex-bridge healthy on :$port but LiteLLM is not serving the 'openai-gpt-5.*-sub' models — recreate LiteLLM to reload config:"
+    echo "codex-bridge healthy on :$port but LiteLLM is not serving the 'openai-gpt-sub' models — recreate LiteLLM to reload config:"
     echo "  bash $AI_STACK/bin/start-litellm.sh --recreate"
     return 1
   fi
@@ -104,14 +104,14 @@ codex_bridge_diagnose() {
     local code
     code="$(curl -s -m 20 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions" \
       -H "Authorization: Bearer x" -H 'Content-Type: application/json' \
-      -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || echo 000)"
+      -d '{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || echo 000)"
     if [[ "$code" == "401" || "$code" == "403" ]]; then
       echo "codex-bridge endpoint up but a live completion returned HTTP $code — ChatGPT OAuth likely expired:"
       echo "  re-run: npx --yes @openai/codex login, then bash $AI_STACK/bin/start-codex-bridge.sh restart"
       return 1
     fi
   fi
-  echo "  (codex-bridge healthy on :$port; LiteLLM serves $served subscription GPT model(s) — pick 'openai-gpt-sub' / 'openai-gpt-sub' in Open WebUI. Rate-limited by your ChatGPT plan; deep auth probe: CODEX_BRIDGE_DEEP_CHECK=1.)"
+  echo "  (codex-bridge healthy on :$port; LiteLLM serves $served subscription GPT model(s) — pick 'openai-gpt-sub' / 'openai-gpt-pro-sub' in Open WebUI. Rate-limited by your ChatGPT plan; deep auth probe: CODEX_BRIDGE_DEEP_CHECK=1.)"
   return 0
 }
 

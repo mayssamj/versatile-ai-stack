@@ -108,7 +108,7 @@ hermes -p manager ...                 # run a one-off command as this profile
 ```yaml
 # config.yaml (this profile) — NON-AUTHORITATIVE example. The real model is set by
 # ai-stack's `vz-ai-stack.sh model sync` from installer/models.yml (routes through LiteLLM).
-model: { provider: "custom:litellm", id: "claude-opus-4.8-sub-xhigh" }
+model: { provider: "custom:litellm", id: "claude-opus-sub-xhigh" }
 custom_toolsets:
   manager: [file, terminal, code_execution, web]   # full grant: execute directly + retrieve + search
 # mcp_servers: enumerate the wired servers (github / slack / data); reads free, send/post/mutate = §5

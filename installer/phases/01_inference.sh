@@ -148,11 +148,12 @@ if [[ -f "$MODELS_YML" ]]; then
     fi
   done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
 else
-  # models.yml absent (partial checkout): register the canonical triple directly.
-  lms_register_model local-gemma4      gemma4:e4b                        ollama   >/dev/null
-  lms_register_model local-qwen3.6     qwen/qwen3.6-27b                  lmstudio >/dev/null
-  lms_register_model local-qwen3-coder qwen3-coder-30b-a3b-instruct-mlx  lmstudio >/dev/null
-  ok "registered 3 canonical model IDs in litellm/config.yaml (models.yml absent — used defaults)"
+  # models.yml absent (partial checkout): register the canonical always-on Ollama
+  # pair directly (matches models.sh:387 / config.yaml). LM Studio models are
+  # opt-in and registered from models.yml, never from this fallback.
+  lms_register_model local-gemma4 gemma4:e4b-mlx ollama >/dev/null
+  lms_register_model local-qwen3  qwen3:8b       ollama >/dev/null
+  ok "registered 2 canonical model IDs in litellm/config.yaml (models.yml absent — used defaults)"
 fi
 
 # --- LiteLLM custom callback file ---

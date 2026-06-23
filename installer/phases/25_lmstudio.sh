@@ -137,7 +137,7 @@ ok "LM Studio server up on $LMS_URL"
 
 # --- 3. ASSIGNMENT-DRIVEN MLX load (the default) ---------------------------
 # Load ONLY models that an agent is actually assigned in installer/models.yml
-# (the canonical MLX slugs local-qwen3.6 / local-qwen3-coder). If nothing is
+# (the canonical MLX slugs local-qwen-heavy-fast / local-gemma4-12b). If nothing is
 # assigned, NOTHING is loaded — LM Studio does not auto-load a model. Best-effort,
 # non-fatal: the canonical config.yaml rows already exist (Phase 01); here we make
 # the running LM Studio actually serve an assigned id so `model sync` can promote
@@ -149,7 +149,7 @@ _lms_assigned=0     # at least one agent is assigned an MLX slug (loadable or no
 if [[ -f "$MODELS_YML" ]]; then
   while IFS= read -r _slug; do
     [[ -z "$_slug" ]] && continue
-    case "$_slug" in local-qwen3.6|local-qwen3-coder) : ;; *) continue ;; esac
+    _rt="$(yq -r ".models.\"$_slug\".runtime" "$MODELS_YML" 2>/dev/null)"; [[ "$_rt" == "lmstudio" ]] || continue
     _served="$(yq -r ".models.\"$_slug\".served" "$MODELS_YML" 2>/dev/null)"
     _ttl="$(yq -r ".models.\"$_slug\".ttl // 1800" "$MODELS_YML" 2>/dev/null)"
     [[ -z "$_served" || "$_served" == "null" ]] && continue
@@ -187,7 +187,7 @@ if [[ "${LMS_LOAD_LFM2:-0}" != "1" ]]; then
     note "Assigned MLX model(s) are already registered or not loadable right now — no LiteLLM restart needed; run 'vz-ai-stack.sh model sync' once they load."
   else
     note "No agent is assigned an LM Studio MLX model — nothing loaded (LM Studio does NOT auto-load a model)."
-    note "Assign one, then re-run:  vz-ai-stack.sh model assign <agent> local-qwen3.6   (or local-qwen3-coder)"
+    note "Assign one, then re-run:  vz-ai-stack.sh model assign <agent> local-qwen-heavy-fast   (or local-gemma4-12b)"
   fi
   note "LFM2.5 demo is opt-in: set LMS_LOAD_LFM2=1 to download + load it (~5GB)."
   stamp_mark "$PHASE"

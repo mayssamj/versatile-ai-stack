@@ -555,8 +555,8 @@ render_pi() {
 
 # render_deerflow <effective_reasoning_model> — rewrite the two-tier models: block
 # in deer-flow/config.yaml between the markers. Platform policy (2026-06-20):
-# basic->primary (claude-opus-4.8-sub-xhigh), reasoning-><effective>. LiteLLM
-# falls back to local-gemma4 if Meridian is down. Restart deerflow only if the
+# basic->primary (claude-opus-sub-max), reasoning-><effective>. LiteLLM
+# falls back to local-qwen3 if Meridian is down. Restart deerflow only if the
 # block changed.
 render_deerflow() {
   local reasoning="$1" basic

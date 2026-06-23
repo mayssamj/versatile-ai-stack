@@ -74,7 +74,7 @@ hermes -p backend-engineer ...                 # run a one-off command as this p
 ```yaml
 # config.yaml (this profile) — NON-AUTHORITATIVE example. The real model is set by
 # ai-stack's `vz-ai-stack.sh model sync` from installer/models.yml (routes through LiteLLM).
-model: { provider: "custom:litellm", id: "claude-opus-4.8-sub-max" }
+model: { provider: "custom:litellm", id: "claude-opus-sub-max" }
 custom_toolsets:
   backend-engineer: [file, terminal, code_execution, web]
 # mcp_servers: add github / postgres etc. as needed

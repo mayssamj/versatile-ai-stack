@@ -222,7 +222,7 @@ services:
         - bash ~/ai-stack/bin/start-honcho.sh
         - bash ~/ai-stack/bin/start-honcho.sh --recreate
         - bash ~/ai-stack/vz-ai-stack.sh status
-      "config_notes": 'All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default claude-opus-4.8-sub-xhigh (Claude subscription via Meridian; LiteLLM falls back to local-gemma4 only if Meridian is down) — set by Phase 03 via per-role *_MODEL_CONFIG__MODEL in honcho/.env, overridable via HONCHO_MODEL. Honcho v3 reads LLM_OPENAI_BASE_URL (the older LLM_OPENAI_API_BASE is silently ignored). After changing models, recreate to reload env: `docker compose up -d --force-recreate api deriver` from honcho/ (a plain restart does NOT reload env_file). Cross-stack calls use fully-qualified Docker DNS litellm.ai-stack:4000, NOT the bare litellm alias, because api/deriver join both the default and ai-stack networks.'
+      "config_notes": 'All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default claude-opus-sub-xhigh (Claude subscription via Meridian; LiteLLM falls back to local-gemma4 only if Meridian is down) — set by Phase 03 via per-role *_MODEL_CONFIG__MODEL in honcho/.env, overridable via HONCHO_MODEL. Honcho v3 reads LLM_OPENAI_BASE_URL (the older LLM_OPENAI_API_BASE is silently ignored). After changing models, recreate to reload env: `docker compose up -d --force-recreate api deriver` from honcho/ (a plain restart does NOT reload env_file). Cross-stack calls use fully-qualified Docker DNS litellm.ai-stack:4000, NOT the bare litellm alias, because api/deriver join both the default and ai-stack networks.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -1112,7 +1112,7 @@ services:
         - open -a AionUi                         # the native desktop app (quit when done)
         - vz-ai-stack.sh help aionui
         - vz-ai-stack.sh stop aionui
-      "config_notes": "OPT-IN (NOT in `install all`). The WebUI server is the prebuilt `aionui-web` binary (GitHub Releases, SHA256-verified) at ~/.local/share/aionui-web, run as a loopback launchd daemon (com.ai-stack.aionui-web) on :25808 — bound to 127.0.0.1 ONLY (aioncore disables auth in local mode; never expose off-box). Data at ~/.aionui-web (separate from the desktop app's ~/Library/Application Support/AionUi). WIRE YOUR MODELS (one-time, UI-driven — AionUi stores provider config in its own SQLite, not file-seedable): Settings → Models → Add Model → Custom → Base URL http://127.0.0.1:4000/v1 + the AIONUI_LITELLM_KEY from .env + model IDs (claude-opus-4.8-sub-xhigh, local-gemma4, …). HERMES BRIDGE (Design X): host hermes-agent[acp] puts `hermes` on PATH; AionUi auto-detects it — point it at LiteLLM via `hermes model`. Pin the WebUI version with AIONUI_WEB_VERSION."
+      "config_notes": "OPT-IN (NOT in `install all`). The WebUI server is the prebuilt `aionui-web` binary (GitHub Releases, SHA256-verified) at ~/.local/share/aionui-web, run as a loopback launchd daemon (com.ai-stack.aionui-web) on :25808 — bound to 127.0.0.1 ONLY (aioncore disables auth in local mode; never expose off-box). Data at ~/.aionui-web (separate from the desktop app's ~/Library/Application Support/AionUi). WIRE YOUR MODELS (one-time, UI-driven — AionUi stores provider config in its own SQLite, not file-seedable): Settings → Models → Add Model → Custom → Base URL http://127.0.0.1:4000/v1 + the AIONUI_LITELLM_KEY from .env + model IDs (claude-opus-sub-xhigh, local-gemma4, …). HERMES BRIDGE (Design X): host hermes-agent[acp] puts `hermes` on PATH; AionUi auto-detects it — point it at LiteLLM via `hermes model`. Pin the WebUI version with AIONUI_WEB_VERSION."
       "_gen":
         "at": "2026-06-21T00:00:00Z"
         "source": phase-28-aionui
@@ -1194,7 +1194,7 @@ services:
       "why": "Reach for it to watch a small role-playing agent SWARM tackle a software task end-to-end — the easiest on-ramp of the agent-swarm-sim set. Every agent's LLM call routes through LiteLLM (scoped key) so it's traced in Phoenix. Distinct from OASIS (large emergent social sims): MetaGPT is a fixed, goal-directed team."
       "usage":
         - bin/metagpt "create a CLI 2048 game in python"   # output → metagpt/workspace/
-        - METAGPT_MODEL=claude-opus-4.8-sub-xhigh bin/metagpt "..."   # bigger swarm (metered)
+        - METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt "..."   # bigger swarm (metered)
         - vz-ai-stack.sh test 32        # smoke: scoped key → LiteLLM
       "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv pinned to Python 3.11 (host 3.14 is too new for MetaGPT) at metagpt/.venv — regenerable; metagpt/workspace is DATA (kept). bin/metagpt resolves METAGPT_LITELLM_KEY from .env at RUNTIME and writes ~/.metagpt/config2.yaml (0600, never the repo) with api_type=openai base_url=http://litellm:4000/v1. Default model local-gemma4 (override METAGPT_MODEL or models.yml .assignments.metagpt). On the M4/24GB box keep the swarm small or route to a cloud model. Rollback: rm -rf metagpt/.venv + installer/state/phase_32.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
       "_gen":
