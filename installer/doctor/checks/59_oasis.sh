@@ -25,7 +25,10 @@ oasis_diagnose() {
 
   local key; key="$(get_env OASIS_LITELLM_KEY '')"
   [[ -n "$key" ]] || { echo "OASIS_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 34'"; return 1; }
-  local models; models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models 2>/dev/null)"
+  local models
+  models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models 2>/dev/null || true)"
+  printf '%s' "$models" | grep -q '"id"' \
+    || models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
       echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint"
