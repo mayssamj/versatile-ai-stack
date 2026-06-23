@@ -29,7 +29,8 @@
 # Self-contained on purpose (launchd runs with a minimal PATH and no shell
 # profile) — it resolves its own binaries and does not source the installer libs.
 #
-# Usage: start-codex-bridge.sh [run|install|uninstall|status|stop|restart]
+# Usage: start-codex-bridge.sh [enable|run|install|uninstall|status|stop|restart]
+#   enable     ONE COMMAND: codex login (if needed) + install + reload LiteLLM
 #   install    acknowledge risk, write + load the launchd job (always-on)
 #   uninstall  unload + remove the launchd job (and stop the daemon)
 #   status     launchd state + live /v1/models health probe
@@ -208,8 +209,41 @@ PL
     launchctl kickstart -k "gui/$(id -u)/$LABEL" 2>/dev/null \
       || { launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load "$PLIST" 2>/dev/null || true; }
     echo "codex-bridge: restart requested"; exit 0 ;;
+  enable)
+    # ONE COMMAND to go from nothing -> usable: ChatGPT login (if needed) ->
+    # install the daemon -> reload LiteLLM so the openai-gpt-5.*-sub models go live.
+    # Interactive: `codex login` opens a browser, so it must run from a TTY.
+    if [[ ! -s "$AUTH_FILE" ]]; then
+      [[ -t 0 ]] || { echo "codex-bridge: no $AUTH_FILE and not a TTY — run: npx --yes @openai/codex login" >&2; exit 1; }
+      [[ -n "$NPX_BIN" ]] || { echo "codex-bridge: npx not found — install Node (brew install node)" >&2; exit 1; }
+      echo "codex-bridge: no ChatGPT auth yet — launching 'codex login' (a browser opens; choose 'Sign in with ChatGPT')..."
+      "$NPX_BIN" --yes @openai/codex login || { echo "codex-bridge: codex login failed/cancelled" >&2; exit 1; }
+    else
+      echo "codex-bridge: ChatGPT auth present ($AUTH_FILE) — skipping login."
+    fi
+    # Idempotent: if the daemon is already loaded + healthy, there's nothing to do
+    # (skip the risk banner re-prompt AND the LiteLLM recreate). Else install + reload.
+    if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 && _healthy; then
+      echo "codex-bridge: daemon already installed + healthy on :$PORT — nothing to do."
+    else
+      # Install the launchd daemon (shows the one-time risk banner; health-probes the endpoint).
+      "$0" install || exit $?
+      # Reload LiteLLM (from the MAIN checkout this script lives in) so the *-sub routes serve.
+      if [[ -x "$AI_STACK/bin/start-litellm.sh" ]]; then
+        echo "codex-bridge: reloading LiteLLM so the subscription models go live..."
+        bash "$AI_STACK/bin/start-litellm.sh" --recreate \
+          || echo "codex-bridge: LiteLLM reload failed — run: bash $AI_STACK/bin/start-litellm.sh --recreate" >&2
+      else
+        echo "codex-bridge: bin/start-litellm.sh not found — reload LiteLLM yourself to serve the models" >&2
+      fi
+    fi
+    echo "codex-bridge: ENABLED. Point agents at the subscription, e.g.:"
+    echo "    bash $AI_STACK/vz-ai-stack.sh model assign all openai-gpt-5.5-sub   # whole fleet, no metered cost"
+    echo "    bash $AI_STACK/vz-ai-stack.sh model assign hermes_manager openai-gpt-5.5-sub"
+    echo "  or pick 'openai-gpt-5.5-sub' in Open WebUI. (Metered, no bridge needed: 'openai-gpt-5.5'.)"
+    exit 0 ;;
   run) : ;;   # fall through and exec the server (launchd entrypoint)
-  *) echo "usage: start-codex-bridge.sh [run|install|uninstall|status|stop|restart]" >&2; exit 2 ;;
+  *) echo "usage: start-codex-bridge.sh [run|install|uninstall|status|stop|restart|enable]" >&2; exit 2 ;;
 esac
 
 # --- foreground server (launchd entrypoint) -----------------------------------

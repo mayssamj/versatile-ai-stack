@@ -177,7 +177,18 @@ validate() {
           low|medium|high|xhigh|max|ultracode) : ;;
           *) err "models.yml: meridian model '$m' has invalid effort '$ef' (want low|medium|high|xhigh|max|ultracode)"; return 2 ;;
         esac ;;
-      *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian)"; return 2 ;;
+      openai|codex-bridge)
+        # OpenAI GPT — metered API key (openai) or the ChatGPT subscription via the
+        # codex-bridge daemon (codex-bridge). `effort` is OPTIONAL here and maps to
+        # OpenAI's reasoning_effort; if present it must be a valid GPT-5.x level.
+        local re; re="$(my_q ".models.\"$m\".effort")"
+        if [[ -n "$re" && "$re" != "null" ]]; then
+          case "$re" in
+            none|low|medium|high|xhigh) : ;;
+            *) err "models.yml: $rt model '$m' has invalid effort '$re' (want none|low|medium|high|xhigh)"; return 2 ;;
+          esac
+        fi ;;
+      *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian|openai|codex-bridge)"; return 2 ;;
     esac
     [[ -n "$sv" && "$sv" != "null" ]] || { err "models.yml: model '$m' missing .served"; return 2; }
   done < <(my_q '.models | keys | .[]')
@@ -211,7 +222,11 @@ agent_profile()  { my_q ".kinds.\"$1\".profile"; }
 agent_keyenv()   { my_q ".kinds.\"$1\".key_env"; }
 model_runtime()  { my_q ".models.\"$1\".runtime"; }
 model_served()   { my_q ".models.\"$1\".served"; }
-model_effort()   { my_q ".models.\"$1\".effort"; }
+# model_effort <model> — the effort knob: meridian's `effort` / openai+codex-bridge's
+# reasoning_effort. Normalizes a missing key (yq prints "null") to "" so an
+# optional-effort model (e.g. gpt-5.5-pro) renders NO effort key, and meridian's
+# ${effort:-high} default still applies (every meridian model declares one anyway).
+model_effort()   { local e; e="$(my_q ".models.\"$1\".effort")"; [[ "$e" == "null" ]] && e=""; echo "$e"; }
 model_ttl()      { local t; t="$(my_q ".models.\"$1\".ttl")"; [[ "$t" == "null" || -z "$t" ]] && echo 1800 || echo "$t"; }
 default_model()  { my_q '.default'; }
 primary_model()  { local p; p="$(my_q '.primary')"; [[ -z "$p" || "$p" == "null" ]] && p="$(my_q '.default')"; echo "$p"; }
@@ -236,6 +251,14 @@ litellm_reachable() {
 # to availability-gate — litellm_serves_slug can't detect a down upstream here.
 meridian_up() {
   curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" \
+    -H "Authorization: Bearer x" >/dev/null 2>&1
+}
+
+# codex_bridge_up — is the ChatGPT-subscription bridge daemon answering? Loopback
+# only. LiteLLM lists codex-bridge models even when the daemon is down (static
+# config), so we probe the bridge itself to availability-gate. Mirrors meridian_up.
+codex_bridge_up() {
+  curl -sf --max-time 3 "http://127.0.0.1:${CODEX_BRIDGE_PORT:-3457}/v1/models" \
     -H "Authorization: Bearer x" >/dev/null 2>&1
 }
 
@@ -281,6 +304,20 @@ resolve_effective() {
       if meridian_up && config_has_slug "$declared"; then
         echo "$declared"; return 0
       fi ;;
+    openai)
+      # Metered OpenAI API: render only when OPENAI_API_KEY is present; else gate to
+      # the default so a keyless box never hard-fails (invariant 1/2). When the key
+      # is set, LiteLLM's fallback chain covers a transient API outage.
+      if [[ -n "$(get_env OPENAI_API_KEY '')" ]] && config_has_slug "$declared"; then
+        echo "$declared"; return 0
+      fi ;;
+    codex-bridge)
+      # GPT on the ChatGPT subscription via the codex-bridge daemon: render only
+      # when the bridge is up AND the model is registered; else gate to the default.
+      # (LiteLLM lists it even when the bridge is down, so we probe the bridge.)
+      if codex_bridge_up && config_has_slug "$declared"; then
+        echo "$declared"; return 0
+      fi ;;
     *)
       echo "$declared"; return 0 ;;
   esac
@@ -302,7 +339,7 @@ is_gated() {
   local declared; declared="$(agent_assigned "$1")"
   [[ -z "$declared" || "$declared" == "null" ]] && declared="$(primary_model)"
   local rt; rt="$(model_runtime "$declared")"
-  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" ) && "$2" != "$declared" ]]
+  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" || "$rt" == "openai" || "$rt" == "codex-bridge" ) && "$2" != "$declared" ]]
 }
 
 _record_pending() {
@@ -334,7 +371,7 @@ register_model_list() {
   while IFS= read -r m; do
     [[ -z "$m" ]] && continue
     rt="$(model_runtime "$m")"; sv="$(model_served "$m")"
-    ef=""; [[ "$rt" == "meridian" ]] && ef="$(model_effort "$m")"
+    ef=""; case "$rt" in meridian|openai|codex-bridge) ef="$(model_effort "$m")" ;; esac
     res="$(lms_register_model "$m" "$sv" "$rt" "$ef")" || { warn "register_model_list: $m failed"; continue; }
     [[ "$res" == "CHANGED" ]] && _CONFIG_CHANGED=1
   done < <(my_q '.models | keys | .[]')
@@ -1216,7 +1253,7 @@ _dry_run() {
     while IFS= read -r m; do
       [[ -z "$m" ]] && continue
       rt="$(model_runtime "$m")"; sv="$(model_served "$m")"
-      ef=""; [[ "$rt" == "meridian" ]] && ef="$(model_effort "$m")"
+      ef=""; case "$rt" in meridian|openai|codex-bridge) ef="$(model_effort "$m")" ;; esac
       lms_register_model "$m" "$sv" "$rt" "$ef" >/dev/null 2>&1 || true
     done < <(my_q '.models | keys | .[]')
   )

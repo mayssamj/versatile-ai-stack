@@ -168,8 +168,9 @@ the start command for each.
   (`http://host.docker.internal:3457/v1`, dummy key). Models: `openai-gpt-5.5-sub`
   / `openai-gpt-5.4-sub` (the `-sub` suffix = subscription, distinct from the
   metered `openai-gpt-5.5` / `openai-gpt-5.4`).
-  Enable: `npx --yes @openai/codex login && bash bin/start-codex-bridge.sh install`
-  (the `install` step shows a one-time risk banner you must accept).
+  Enable (one command): `bash bin/start-codex-bridge.sh enable` — codex login (if
+  needed) + install + LiteLLM reload; shows a one-time risk banner. Full how-to:
+  **[GPT5.md](GPT5.md)**.
   - **⚠ Unlike Meridian** (which uses Anthropic's *official* Agent SDK), this
     wraps the ChatGPT *product* backend (`chatgpt.com/backend-api/codex`) —
     **unofficial** automated use. Real, non-recoverable risk: OpenAI may
@@ -181,13 +182,16 @@ the start command for each.
   - **Rate-limited by your plan** (Plus ≈ 15–80 GPT-5.5 msgs / 5h) — a
     secondary/occasional route, not a fleet workhorse. A soft `rpm`/`tpm`
     burst-guard is set on the model entries.
-  - **Config-only + master-key-reachable.** Unlike Meridian these are NOT in
-    `installer/models.yml` / the fleet scoped-key superset — they're hand-authored
-    in `litellm/config.yaml` like every other cloud model, so Open WebUI + scripts
-    (master key) can use them but fleet agents cannot (by design). They fail over
-    to `local-gemma4` when the bridge is down (**never** to the metered key — no
-    surprise card billing). Doctor check 55 reports health (advisory-green when not
-    installed; never prints a token).
+  - **Assignable** (2026-06-22): declared in `installer/models.yml` with `runtime:
+    codex-bridge`, so any agent or the whole fleet can be pointed at them —
+    `vz-ai-stack.sh model assign all openai-gpt-5.5-sub`. The metered twins use
+    `runtime: openai` (`openai-gpt-5.5` / `openai-gpt-5.5-pro` / `openai-gpt-5.4`).
+    `effort` (optional, → OpenAI `reasoning_effort` none|low|medium|high|xhigh;
+    `xhigh`=max) is set per entry. They **availability-gate to `default`**
+    (local-gemma4) when the bridge is down (codex-bridge) or `OPENAI_API_KEY` is
+    absent (openai) — a pending line, never a hard fail, and **never** the metered
+    key as a silent fallback. Doctor check 55 reports bridge health (advisory-green
+    when not installed; never prints a token).
   - **Loopback-only** (holds a live OAuth — do not expose off-box).
 
 ## Workflow
