@@ -19,7 +19,7 @@
 #   which is NOT the published OpenAI API. OpenAI's terms restrict automated
 #   access; there is a real, non-recoverable risk of your ChatGPT account being
 #   suspended. SINGLE PERSONAL ACCOUNT ONLY — pooling/sharing accounts is a clear
-#   ToS violation. The metered OPENAI_API_KEY path (openai-gpt-5.5/5.4) is the
+#   ToS violation. The metered OPENAI_API_KEY path (openai-gpt/5.4) is the
 #   supported default; this only avoids metered cost. `install` requires you to
 #   acknowledge this once.
 #
@@ -124,7 +124,7 @@ _risk_ack() {
   │   • It can break without notice when OpenAI changes the backend.   │
   │   • Plan-rate-limited (Plus ≈ 15–80 GPT-5.5 msgs / 5h) — a          │
   │     secondary route, not a fleet workhorse.                        │
-  │   • The metered OPENAI_API_KEY path (openai-gpt-5.5/5.4) already    │
+  │   • The metered OPENAI_API_KEY path (openai-gpt/5.4) already    │
   │     works and stays the supported default.                         │
   │                                                                    │
   │  Loopback-only; holds a live OAuth on the host — never expose it.   │
@@ -238,9 +238,9 @@ PL
       fi
     fi
     echo "codex-bridge: ENABLED. Point agents at the subscription, e.g.:"
-    echo "    bash $AI_STACK/vz-ai-stack.sh model assign all openai-gpt-5.5-sub   # whole fleet, no metered cost"
-    echo "    bash $AI_STACK/vz-ai-stack.sh model assign hermes_manager openai-gpt-5.5-sub"
-    echo "  or pick 'openai-gpt-5.5-sub' in Open WebUI. (Metered, no bridge needed: 'openai-gpt-5.5'.)"
+    echo "    bash $AI_STACK/vz-ai-stack.sh model assign all openai-gpt-sub   # whole fleet, no metered cost"
+    echo "    bash $AI_STACK/vz-ai-stack.sh model assign hermes_manager openai-gpt-sub"
+    echo "  or pick 'openai-gpt-sub' in Open WebUI. (Metered, no bridge needed: 'openai-gpt'.)"
     exit 0 ;;
   run) : ;;   # fall through and exec the server (launchd entrypoint)
   *) echo "usage: start-codex-bridge.sh [run|install|uninstall|status|stop|restart|enable]" >&2; exit 2 ;;

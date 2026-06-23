@@ -80,10 +80,10 @@ if [[ -z "$RLM_KEY_CURRENT" ]] \
   # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
   # RLM without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
-  log "Minting LiteLLM virtual key for RLM (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
+  log "Minting LiteLLM virtual key for RLM (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
   RLM_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
+    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$RLM_KEY_NEW" ]] || { err "Failed to mint RLM_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env RLM_LITELLM_KEY "$RLM_KEY_NEW"

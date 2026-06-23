@@ -47,7 +47,7 @@ LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
 # legacy names {local local-heavy local-lfm2} and EVERY model declared in
 # models.yml (so a `model add`-ed slug is automatically covered). If models.yml
 # is absent/unparseable we fall back to the legacy 6-name list.
-LEGACY_SUPERSET=(local local-gemma4 local-heavy local-lfm2 local-qwen3-coder local-qwen3.6)
+LEGACY_SUPERSET=(local local-gemma4 local-heavy local-lfm2 local-qwen3)
 
 # superset_members — print the sorted-unique union of the legacy names and every
 # models.yml model key, one per line. Errexit/pipefail-safe.
@@ -384,7 +384,7 @@ register_model_list() {
 # hard-require the canonical IDs we just registered.
 preflight_superset_in_config() {
   local s missing=()
-  for s in local-gemma4 local-qwen3.6 local-qwen3-coder; do
+  for s in local-gemma4 local-qwen3; do
     config_has_slug "$s" || missing+=("$s")
   done
   # Beyond the 3 canonical IDs, every superset member that is a REAL models.yml
@@ -395,7 +395,7 @@ preflight_superset_in_config() {
   while IFS= read -r mem; do
     [[ -z "$mem" ]] && continue
     case "$mem" in local|local-heavy|local-lfm2) continue ;; esac
-    case "$mem" in local-gemma4|local-qwen3.6|local-qwen3-coder) continue ;; esac  # already checked above
+    case "$mem" in local-gemma4|local-qwen3) continue ;; esac  # already checked above
     model_exists "$mem" || continue
     rt="$(model_runtime "$mem")"
     case "$rt" in ollama|lmstudio) : ;; *) continue ;; esac

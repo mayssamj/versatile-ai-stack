@@ -39,7 +39,7 @@ AW_REPO="iOfficeAI/AionUi"
 
 # Models the AionUi LiteLLM key may reach (a curated chat set — NOT the master key,
 # NOT "all"). Widen by editing this list + re-running 'install 28'.
-AIONUI_KEY_MODELS='["claude-opus-4.8-sub-xhigh","claude-opus-4.8-sub-high","claude-sonnet-4.6-sub-high","local-gemma4","local-qwen3.6","local-qwen3-coder"]'
+AIONUI_KEY_MODELS='["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-sub-high","local-gemma4","local-qwen3"]'
 
 # --- precheck: cask + binary + healthy + key present → already done -----------
 precheck() {
@@ -178,7 +178,7 @@ note "Desktop:  open -a AionUi                    (the native app; quit when don
 note "Wire your stack models (one-time, in either UI): Settings → Models → Add Model → Custom"
 note "   Base URL:  http://127.0.0.1:4000/v1"
 note "   API Key:   \$(grep ^AIONUI_LITELLM_KEY= $AI_STACK/.env | cut -d= -f2-)"
-note "   Models:    claude-opus-4.8-sub-xhigh, local-gemma4, local-qwen3.6, …"
+note "   Models:    claude-opus-sub-xhigh, local-gemma4, local-qwen3, …"
 note "Hermes bridge: AionUi auto-detects 'hermes' (host) — point it at LiteLLM with"
 note "   'hermes model' (base URL http://127.0.0.1:4000/v1 + the key above), then pick it in AionUi."
 note "Manage: vz-ai-stack.sh start aionui | stop aionui | help aionui | doctor aionui"

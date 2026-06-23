@@ -157,12 +157,12 @@ honcho_unset_env LLM_OPENAI_API_BASE
 honcho_unset_env LLM_OPENAI_MODEL
 # Platform model policy: every text-generation role (deriver, all 5 dialectic
 # reasoning levels, summary, both dream specialists) uses the platform default
-# claude-opus-4.8-sub-xhigh (Claude subscription via Meridian). transport stays
+# claude-opus-sub-xhigh (Claude subscription via Meridian). transport stays
 # the default "openai", so calls route through LiteLLM via LLM_OPENAI_BASE_URL
 # above; LiteLLM falls back to local-gemma4 only if Meridian is down. Embeddings
 # stay on text-embedding-3-small (not a chat model). Override per-deploy with
 # HONCHO_MODEL in the stack .env.
-HONCHO_MODEL="$(get_env HONCHO_MODEL "claude-opus-4.8-sub-xhigh")"
+HONCHO_MODEL="$(get_env HONCHO_MODEL "claude-opus-sub-xhigh")"
 for _hk in \
   DERIVER_MODEL_CONFIG__MODEL \
   DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL \

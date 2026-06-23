@@ -33,7 +33,7 @@ _cb_healthy()   {
   curl -s -m 5 -o /dev/null -w '%{http_code}' \
     "http://127.0.0.1:$(_cb_port)/v1/models" -H "Authorization: Bearer x" 2>/dev/null | grep -q '^200$'
 }
-_cb_wired()     { grep -q 'model_name: openai-gpt-5.5-sub\b' "${1:-$AI_STACK/litellm/config.yaml}" 2>/dev/null; }
+_cb_wired()     { grep -q 'model_name: openai-gpt-sub\b' "${1:-$AI_STACK/litellm/config.yaml}" 2>/dev/null; }
 _cb_served_count() {
   local master served
   master="$(get_env LITELLM_MASTER_KEY '' 2>/dev/null || echo '')"
@@ -56,7 +56,7 @@ codex_bridge_diagnose() {
   if ! _cb_installed && ! _cb_healthy; then
     echo "  (codex-bridge not installed — opt-in + ToS-gray; to run GPT-5.x on your ChatGPT subscription:"
     echo "     npx --yes @openai/codex login && bash $AI_STACK/bin/start-codex-bridge.sh install"
-    echo "   the metered openai-gpt-5.5/5.4 (OPENAI_API_KEY) is the supported default and needs none of this.)"
+    echo "   the metered openai-gpt/5.4 (OPENAI_API_KEY) is the supported default and needs none of this.)"
     return 0
   fi
 
@@ -80,7 +80,7 @@ codex_bridge_diagnose() {
 
   # Endpoint up — but is LiteLLM wired to serve the subscription GPT model(s)?
   if ! _cb_wired "$cfg"; then
-    echo "codex-bridge healthy on :$port but 'openai-gpt-5.5-sub' is NOT wired into litellm/config.yaml"
+    echo "codex-bridge healthy on :$port but 'openai-gpt-sub' is NOT wired into litellm/config.yaml"
     echo "  add the openai-gpt-5.*-sub model_list entries (see the ChatGPT-subscription block) and: bash $AI_STACK/bin/start-litellm.sh --recreate"
     return 1
   fi
@@ -111,7 +111,7 @@ codex_bridge_diagnose() {
       return 1
     fi
   fi
-  echo "  (codex-bridge healthy on :$port; LiteLLM serves $served subscription GPT model(s) — pick 'openai-gpt-5.5-sub' / 'openai-gpt-5.4-sub' in Open WebUI. Rate-limited by your ChatGPT plan; deep auth probe: CODEX_BRIDGE_DEEP_CHECK=1.)"
+  echo "  (codex-bridge healthy on :$port; LiteLLM serves $served subscription GPT model(s) — pick 'openai-gpt-sub' / 'openai-gpt-sub' in Open WebUI. Rate-limited by your ChatGPT plan; deep auth probe: CODEX_BRIDGE_DEEP_CHECK=1.)"
   return 0
 }
 

@@ -394,11 +394,11 @@ fi
 # needs to re-mint when a profile is pointed at local-qwen3.6 / local-qwen3-coder.
 # These canonical IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM still enforces the allowlist server-side.
-HERMES_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"]'
+HERMES_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"]'
 HERMES_KEY="$(get_env HERMES_LITELLM_KEY '')"
 if [[ -z "$HERMES_KEY" ]] \
    || ! curl -sf --max-time 5 -H "Authorization: Bearer $HERMES_KEY" http://litellm:4000/v1/models >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
+  log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
   HERMES_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
     -d "{\"models\":${HERMES_SUPERSET_JSON},\"key_alias\":\"hermes-fleet\",\"metadata\":{\"owner\":\"hermes\",\"purpose\":\"phase04f\"}}" \

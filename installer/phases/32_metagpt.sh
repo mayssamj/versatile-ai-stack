@@ -117,7 +117,7 @@ if [[ -z "$MG_KEY_CURRENT" ]] || ! printf '%s' "$_mg_models" | grep -q '"id"'; t
   log "Minting scoped LiteLLM key for MetaGPT (local-gemma4 + *-sub fallbacks)…"
   MG_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H 'Content-Type: application/json' -X POST "$MG_LLM_HOST/key/generate" \
-    -d '{"models":["local-gemma4","claude-opus-4.8-sub-xhigh","claude-sonnet-4.6-sub-high"],"key_alias":"metagpt","metadata":{"owner":"metagpt","purpose":"phase32"}}' \
+    -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"metagpt","metadata":{"owner":"metagpt","purpose":"phase32"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$MG_KEY_NEW" ]] || { err "Failed to mint METAGPT_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env METAGPT_LITELLM_KEY "$MG_KEY_NEW"
@@ -200,5 +200,5 @@ ok "Phase 32 — MetaGPT — complete"
 note "Prove the wrapper: vz-ai-stack.sh test 32     # runs bin/metagpt end-to-end"
 note "Run a swarm:   bin/metagpt \"create a CLI 2048 game in python\"   # output → metagpt/workspace/"
 note "Watch it:      Phoenix → http://phoenix:6006 (project ai-stack) traces every agent's LLM call"
-note "Model:         METAGPT_MODEL=claude-opus-4.8-sub-xhigh bin/metagpt \"…\"   # bigger swarm (metered)"
+note "Model:         METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt \"…\"   # bigger swarm (metered)"
 note "Reversible:    rm -rf $MG_VENV && rm -f $AI_STACK/installer/state/phase_32.done"

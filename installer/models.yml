@@ -3,87 +3,71 @@
 # Inspect:  vz-ai-stack.sh model list
 # Re-render every agent + the LiteLLM model_list (idempotent):  vz-ai-stack.sh model sync
 # Re-point one agent:  vz-ai-stack.sh model assign <agent> <model>
+#
+# NAMING CONVENTION (2026-06-23): the model ALIAS is VERSION-LESS; the provider
+# version lives only in the `served`/wire id, so you can bump the underlying model
+# without renaming every assignment (e.g. alias claude-opus-sub-max -> served
+# claude-opus-4-8). Custom OpenAI-compatible cloud routes (openrouter-*,
+# google-gemini-*, sakana-fugu*) live ONLY in litellm/config.yaml — they have no
+# `runtime` here and are not rendered/assignable by `model sync`.
 version: 1
 models:
   local-gemma4:
     runtime: ollama
-    served: gemma4:e4b
-    big: false
-    note: "Default for any unassigned agent. ~9.6GB, stays on Ollama."
-  local-qwen3.6:
-    runtime: lmstudio
-    served: qwen/qwen3.6-27b
-    big: true
-    ttl: 1800
-    note: "~17.5GB MLX. Cannot coexist with local-qwen3-coder on 24GB."
-  local-qwen3-coder:
-    runtime: lmstudio
-    served: qwen3-coder-30b-a3b-instruct-mlx
-    big: true
-    ttl: 1800
-    note: "~17.2GB MLX. Cannot coexist with local-qwen3.6 on 24GB."
-  local-gemma4-mlx:
-    runtime: ollama
     served: gemma4:e4b-mlx
     big: false
-    note: "9.6G -- default gemma4 with mlx support for mac gpus"
-  local-nemotron-3-nano:
+    note: "Default for any unassigned agent. ~9.6GB MLX (mac GPU), stays on Ollama."
+  local-qwen3:
+    runtime: ollama
+    served: qwen3:8b
+    big: false
+    note: "~5.2GB on Ollama. The LiteLLM OFFLINE FALLBACK target for the *-sub-* routes."
+  local-nemotron3-nano-4b:
     runtime: ollama
     served: nemotron-3-nano:4b
-    big: no
-    note: "2.8G -- tiny"
-  local-gemma-4-12b-it:
+    big: false
+    note: "2.8G -- tiny, on Ollama."
+  local-gemma4-12b:
     runtime: lmstudio
     served: gemma-4-12b-it
     big: false
-    note: "7.56G - params: 12B"
-  local-nvidia-nemotron-3-nano:
+    note: "7.56G - params: 12B (LM Studio)."
+  local-nemotron3-heavy:
     runtime: lmstudio
     served: nvidia-nemotron-3-nano-30b-a3b-mlx
     big: true
-    note: "params: 30B -- 17.79G"
-  local-nemotron-3-nano-4b:
-    runtime: lmstudio
-    served: nvidia/nemotron-3-nano-4b
-    big: false
-    note: "params: 4B -- 2.84G"
-  local-qwen3.6-27b-mtplx-optimized-speed:
+    note: "params: 30B -- 17.79G (LM Studio)."
+  local-qwen-heavy-fast:
     runtime: lmstudio
     served: qwen3.6-27b-mtplx-optimized-speed
     big: true
-    note: "params 27B -- 16.42G"
+    note: "params 27B -- 16.42G (LM Studio)."
   # Claude SUBSCRIPTION via the Meridian host daemon (no API key). runtime:
   # meridian renders openai/<served> @ host.docker.internal:3456 + effort in
   # extra_body. One entry per effort level (output_config.effort; budget_tokens
   # is rejected on 4.7+). Availability-gates to `default` (local-gemma4) when
   # Meridian is down. NOT big (no local RAM). Sonnet has no xhigh (≡ high).
-  claude-opus-4.8-sub-low: {runtime: meridian, served: claude-opus-4-8, effort: low, big: false, note: "Claude subscription (Opus 4.8), low effort."}
-  claude-opus-4.8-sub-medium: {runtime: meridian, served: claude-opus-4-8, effort: medium, big: false, note: "Claude subscription (Opus 4.8), medium effort."}
-  claude-opus-4.8-sub-high: {runtime: meridian, served: claude-opus-4-8, effort: high, big: false, note: "Claude subscription (Opus 4.8), high effort (model default)."}
-  claude-opus-4.8-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort."}
-  claude-opus-4.8-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort."}
-  claude-opus-4.8-sub-ultracode: {runtime: meridian, served: claude-opus-4-8, effort: ultracode, big: false, note: "Claude subscription (Opus 4.8), ultracode effort (coding-focused, highest tier)."}
-  claude-sonnet-4.6-sub-low: {runtime: meridian, served: claude-sonnet-4-6, effort: low, big: false, note: "Claude subscription (Sonnet 4.6), low effort."}
-  claude-sonnet-4.6-sub-medium: {runtime: meridian, served: claude-sonnet-4-6, effort: medium, big: false, note: "Claude subscription (Sonnet 4.6), medium effort."}
-  claude-sonnet-4.6-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
-  claude-sonnet-4.6-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
-  claude-sonnet-4.6-sub-ultracode: {runtime: meridian, served: claude-sonnet-4-6, effort: ultracode, big: false, note: "Claude subscription (Sonnet 4.6), ultracode effort (coding-focused, highest tier)."}
+  claude-opus-sub-high: {runtime: meridian, served: claude-opus-4-8, effort: high, big: false, note: "Claude subscription (Opus 4.8), high effort (model default)."}
+  claude-opus-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort."}
+  claude-opus-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort. PLATFORM DEFAULT."}
+  claude-opus-sub-ultracode: {runtime: meridian, served: claude-opus-4-8, effort: ultracode, big: false, note: "Claude subscription (Opus 4.8), ultracode effort (coding-focused, highest tier)."}
+  claude-sonnet-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
+  claude-sonnet-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
+  claude-sonnet-sub-ultracode: {runtime: meridian, served: claude-sonnet-4-6, effort: ultracode, big: false, note: "Claude subscription (Sonnet 4.6), ultracode effort (coding-focused, highest tier)."}
   # OpenAI GPT-5.x — ASSIGNABLE (`vz-ai-stack.sh model assign <agent> <name>`). Two
   # routes to the same models: runtime `openai` = your metered OPENAI_API_KEY;
   # runtime `codex-bridge` = your ChatGPT SUBSCRIPTION via the codex-bridge daemon
   # (bin/start-codex-bridge.sh, no metered cost). `effort` (optional) maps to OpenAI's
   # reasoning_effort (none|low|medium|high|xhigh); xhigh = max thinking. The KEY is the
-  # LiteLLM model_name AND the assign id (e.g. `model assign all openai-gpt-5.5`).
-  # Hand-declared here (NOT via `model add`, which is LM-Studio-only / local-* names).
+  # LiteLLM model_name AND the assign id (e.g. `model assign all openai-gpt`).
   # The metered `openai` route is the VERIFIED max-reasoning path; effort passthrough on
   # the `codex-bridge` route is UNVERIFIED (the Codex backend may ignore it). `openai`
   # gates to `default` when OPENAI_API_KEY is absent; `codex-bridge` gates when the
   # bridge daemon is down (both render local-gemma4 + a pending line, never a hard fail).
-  openai-gpt-5.5: {runtime: openai, served: gpt-5.5, effort: xhigh, big: false, note: "OpenAI GPT-5.5 — metered API key, MAX reasoning (xhigh)."}
-  openai-gpt-5.5-pro: {runtime: openai, served: gpt-5.5-pro, big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
-  openai-gpt-5.4: {runtime: openai, served: gpt-5.4, effort: high, big: false, note: "OpenAI GPT-5.4 — metered API key, high reasoning."}
-  openai-gpt-5.5-sub: {runtime: codex-bridge, served: gpt-5.5, effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
-  openai-gpt-5.4-sub: {runtime: codex-bridge, served: gpt-5.4, effort: high, big: false, note: "GPT-5.4 on your ChatGPT SUBSCRIPTION (codex-bridge). effort passthrough unverified."}
+  openai-gpt: {runtime: openai, served: gpt-5.5, effort: xhigh, big: false, note: "OpenAI GPT-5.5 — metered API key, MAX reasoning (xhigh)."}
+  openai-gpt-pro: {runtime: openai, served: gpt-5.5-pro, big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
+  openai-gpt-sub: {runtime: codex-bridge, served: gpt-5.5, effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
+  openai-gpt-pro-sub: {runtime: codex-bridge, served: gpt-5.5-pro, effort: xhigh, big: false, note: "GPT-5.5 Pro on your ChatGPT SUBSCRIPTION (codex-bridge). effort passthrough unverified."}
 # EMBEDDING models (separate plane from the chat `models:` above — different
 # registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
 # vector size the model emits; `kind` is text|code (a code-tuned embedder degrades
@@ -123,24 +107,24 @@ default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) when its
 # runtime is down — so the local safety net is preserved. `default` stays ollama.
-primary: claude-opus-4.8-sub-max
+primary: claude-opus-sub-max
 assignments:
   # AI software-engineering team + agents. Platform policy (2026-06-23): EVERY
-  # role uses claude-opus-4.8-sub-max — the single platform default. local-gemma4
+  # role uses claude-opus-sub-max — the single platform default. local-gemma4
   # is the LiteLLM offline fallback only (Meridian unavailable), never assigned.
-  hermes_manager: claude-opus-4.8-sub-max
-  hermes_techlead: claude-opus-4.8-sub-max
-  hermes_ml_engineer: claude-opus-4.8-sub-max
-  hermes_frontend_engineer: claude-opus-4.8-sub-max
-  hermes_backend_engineer: claude-opus-4.8-sub-max
-  hermes_qa_test_engineer: claude-opus-4.8-sub-max
-  hermes_reviewing_engineer: claude-opus-4.8-sub-max
-  hermes_sre_engineer: claude-opus-4.8-sub-max
-  hermes_incident_manager: claude-opus-4.8-sub-max
-  pi: claude-opus-4.8-sub-max
-  deerflow: claude-opus-4.8-sub-max
-  ace: claude-opus-4.8-sub-max
-  rlm: claude-opus-4.8-sub-max
+  hermes_manager: claude-opus-sub-max
+  hermes_techlead: claude-opus-sub-max
+  hermes_ml_engineer: claude-opus-sub-max
+  hermes_frontend_engineer: claude-opus-sub-max
+  hermes_backend_engineer: claude-opus-sub-max
+  hermes_qa_test_engineer: claude-opus-sub-max
+  hermes_reviewing_engineer: claude-opus-sub-max
+  hermes_sre_engineer: claude-opus-sub-max
+  hermes_incident_manager: claude-opus-sub-max
+  pi: claude-opus-sub-max
+  deerflow: claude-opus-sub-max
+  ace: claude-opus-sub-max
+  rlm: claude-opus-sub-max
 kinds:
   hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates"}
   hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}

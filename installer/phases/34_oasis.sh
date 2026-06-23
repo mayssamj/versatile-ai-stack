@@ -104,7 +104,7 @@ if [[ -z "$OA_KEY_CURRENT" ]] || ! printf '%s' "$_oa_models" | grep -q '"id"'; t
   log "Minting scoped LiteLLM key for OASIS (local-gemma4 + *-sub fallbacks)…"
   OA_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H 'Content-Type: application/json' -X POST "$OA_LLM_HOST/key/generate" \
-    -d '{"models":["local-gemma4","claude-opus-4.8-sub-xhigh","claude-sonnet-4.6-sub-high"],"key_alias":"oasis","metadata":{"owner":"oasis","purpose":"phase34"}}' \
+    -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"oasis","metadata":{"owner":"oasis","purpose":"phase34"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$OA_KEY_NEW" ]] || { err "Failed to mint OASIS_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env OASIS_LITELLM_KEY "$OA_KEY_NEW"

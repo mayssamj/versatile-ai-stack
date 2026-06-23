@@ -126,11 +126,11 @@ if [[ -z "$ACE_KEY_CURRENT" ]] \
   # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
   # ACE without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
-  log "Minting LiteLLM virtual key for ACE (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6])..."
+  log "Minting LiteLLM virtual key for ACE (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
   ACE_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3-coder","local-qwen3.6"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \
+    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   if [[ -z "$ACE_KEY_NEW" ]]; then
     err "Failed to mint ACE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"

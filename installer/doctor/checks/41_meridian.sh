@@ -80,7 +80,7 @@ meridian_diagnose() {
   # Endpoint is up — verify LiteLLM actually exposes the subscription model(s),
   # which is the whole point (Open WebUI lists LiteLLM's models). The `-sub`
   # suffix marks the subscription routes. Free probe (no chat, no quota).
-  if grep -q 'model_name: claude-opus-4.8-sub-max\b' "$cfg" 2>/dev/null; then
+  if grep -q 'model_name: claude-opus-sub-max\b' "$cfg" 2>/dev/null; then
     local master served
     master="$(get_env LITELLM_MASTER_KEY '' 2>/dev/null || echo '')"
     if [[ -n "$master" ]] && curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; then
@@ -94,14 +94,14 @@ print(sum(1 for m in d.get("data",[]) if "-sub-" in str(m.get("id",""))))' 2>/de
         echo "  bash $AI_STACK/bin/start-litellm.sh --recreate"
         return 1
       fi
-      echo "  (Meridian healthy on :$port; LiteLLM serves $served subscription effort-model(s) — pick e.g. 'claude-opus-4.8-sub-max' (default) or '-low/-medium/-high/-xhigh' in Open WebUI. Effort via extra_body→body.effort→SDK; thinking on by default.)"
+      echo "  (Meridian healthy on :$port; LiteLLM serves $served subscription effort-model(s) — pick e.g. 'claude-opus-sub-max' (default) or '-low/-medium/-high/-xhigh' in Open WebUI. Effort via extra_body→body.effort→SDK; thinking on by default.)"
       return 0
     fi
     echo "  (Meridian healthy on :$port; LiteLLM down/uncheckable — see check 11 + Phase 01. Wiring present in config.yaml.)"
     return 0
   fi
 
-  echo "Meridian healthy on :$port but 'claude-opus-4.8-sub-max' is NOT wired into litellm/config.yaml"
+  echo "Meridian healthy on :$port but 'claude-opus-sub-max' is NOT wired into litellm/config.yaml"
   echo "  add the *-sub-* effort model_list entries (see the subscription block) and: bash $AI_STACK/bin/start-litellm.sh --recreate"
   return 1
 }

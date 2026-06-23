@@ -113,15 +113,15 @@ fi
 
 # Patch 1: inject local-model entries under `models:` if none exist.
 # Resolve DeerFlow's two-tier models from installer/models.yml. Platform policy
-# (2026-06-20): both tiers default to claude-opus-4.8-sub-xhigh — the "basic"
+# (2026-06-20): both tiers default to claude-opus-sub-xhigh — the "basic"
 # entry (name: local) tracks `.primary` and the "reasoning" entry (name:
 # local-heavy) tracks the deerflow assignment. lmstudio assignments still gate
 # DOWN to `.default` (local-gemma4, the offline net) when their runtime is down /
 # the slug isn't in config.yaml, so DeerFlow never gets a model_name LiteLLM
 # can't serve. We map BOTH tiers, never silently rewrite only one. DeerFlow uses
 # the MASTER key, so there is NO scoped-key allowlist to widen.
-DF_BASIC_MODEL="claude-opus-4.8-sub-xhigh"
-DF_REASON_MODEL="claude-opus-4.8-sub-xhigh"
+DF_BASIC_MODEL="claude-opus-sub-xhigh"
+DF_REASON_MODEL="claude-opus-sub-xhigh"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   DF_BASIC_MODEL="$(yq -r '.primary' "$AI_STACK/installer/models.yml" 2>/dev/null)"
   _dfa="$(yq -r '.assignments.deerflow // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -141,8 +141,8 @@ if [[ -f "$DF_CONFIG" ]] && ! grep -q '# ai-stack: local models via LiteLLM' "$D
   DF_BASIC_MODEL="$DF_BASIC_MODEL" DF_REASON_MODEL="$DF_REASON_MODEL" python3 - "$DF_CONFIG" <<'PYEOF'
 import os, re, sys
 path = sys.argv[1]
-basic = os.environ.get("DF_BASIC_MODEL", "claude-opus-4.8-sub-xhigh")
-reason = os.environ.get("DF_REASON_MODEL", "claude-opus-4.8-sub-xhigh")
+basic = os.environ.get("DF_BASIC_MODEL", "claude-opus-sub-xhigh")
+reason = os.environ.get("DF_REASON_MODEL", "claude-opus-sub-xhigh")
 src = open(path).read()
 # Two-tier `models:` block: a "basic" entry (name: local) pinned to the default,
 # and a "reasoning" entry (name: local-heavy) pointed at the deerflow assignment
@@ -191,8 +191,8 @@ else
   DF_BASIC_MODEL="$DF_BASIC_MODEL" DF_REASON_MODEL="$DF_REASON_MODEL" python3 - "$DF_CONFIG" <<'PYEOF'
 import os, re, sys
 path = sys.argv[1]
-basic = os.environ.get("DF_BASIC_MODEL", "claude-opus-4.8-sub-xhigh")
-reason = os.environ.get("DF_REASON_MODEL", "claude-opus-4.8-sub-xhigh")
+basic = os.environ.get("DF_BASIC_MODEL", "claude-opus-sub-xhigh")
+reason = os.environ.get("DF_REASON_MODEL", "claude-opus-sub-xhigh")
 src = open(path).read()
 def set_model(text, entry_name, model_name):
     # group1 anchored to the single `- name:` line ([^\n]*, no re.DOTALL) with a

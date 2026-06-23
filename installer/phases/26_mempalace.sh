@@ -35,7 +35,7 @@
 #   1. `uv tool install --upgrade mempalace` (PyPI).
 #   2. Mint a LiteLLM virtual key (MEMPALACE_LITELLM_KEY) scoped to local models
 #      (mirrors Phase 15/17 pattern).
-#   3. Resolve the bound LLM model (availability-gated; default claude-opus-4.8-sub-xhigh).
+#   3. Resolve the bound LLM model (availability-gated; default claude-opus-sub-xhigh).
 #   4. Write bin/mempalace wrapper: exports the LiteLLM + on-device-embedding env
 #      (key read from .env at runtime — never embedded) then execs the tool.
 #   5. Bootstrap the palace: `mempalace init <AI_STACK> --yes --no-llm` (offline,
@@ -156,11 +156,11 @@ MP_KEY_CURRENT="$(get_env MEMPALACE_LITELLM_KEY '')"
 # not in models.yml `kinds:`), so this phase is the only thing that re-mints it.
 _mp_models="$(curl -s --max-time 5 -H "Authorization: Bearer $MP_KEY_CURRENT" http://litellm:4000/v1/models 2>/dev/null)"
 if [[ -z "$MP_KEY_CURRENT" ]] || ! printf '%s' "$_mp_models" | grep -q '"id"'; then
-  log "Minting LiteLLM virtual key for MemPalace (claude-opus-4.8-sub-xhigh + local-gemma4 fallback)..."
+  log "Minting LiteLLM virtual key for MemPalace (claude-opus-sub-xhigh + local-gemma4 fallback)..."
   MP_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["claude-opus-4.8-sub-xhigh","local-gemma4"],"key_alias":"mempalace-memory","metadata":{"owner":"mempalace","purpose":"phase26"}}' \
+    -d '{"models":["claude-opus-sub-xhigh","local-gemma4"],"key_alias":"mempalace-memory","metadata":{"owner":"mempalace","purpose":"phase26"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$MP_KEY_NEW" ]] || { err "Failed to mint MEMPALACE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env MEMPALACE_LITELLM_KEY "$MP_KEY_NEW"
@@ -169,13 +169,13 @@ else
   ok "MEMPALACE_LITELLM_KEY already present + valid"
 fi
 
-# --- 3. Resolve bound model (availability-gated; default claude-opus-4.8-sub-xhigh) ---
+# --- 3. Resolve bound model (availability-gated; default claude-opus-sub-xhigh) ---
 # MemPalace's LLM is OPTIONAL (entity refinement / --extract general). Platform
-# policy (2026-06-20): default to claude-opus-4.8-sub-xhigh (Claude subscription
+# policy (2026-06-20): default to claude-opus-sub-xhigh (Claude subscription
 # via Meridian; LiteLLM falls back to local-gemma4 if Meridian is down). If
 # models.yml binds an lmstudio slug that isn't up, gate to `.primary` so a cold
 # install never pins MemPalace to an unreachable model.
-MP_MODEL="claude-opus-4.8-sub-xhigh"
+MP_MODEL="claude-opus-sub-xhigh"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _mm="$(yq -r '.assignments.mempalace // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
   if [[ -n "$_mm" && "$_mm" != "null" ]]; then
