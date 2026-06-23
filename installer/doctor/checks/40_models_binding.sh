@@ -3,11 +3,16 @@
 # Asserts (WARN-skip / advisory where appropriate — never red for an opt-in
 # service that is simply down):
 #   1. models.yml is valid + every assignment/default resolves to a declared model.
-#   2. Every models.yml model is in litellm/config.yaml AND a master-key chat_ping
-#      (max_tokens 1) returns 200 — lmstudio models are advisory-yellow when :1234
-#      is down (NOT red).
+#   2. Every models.yml model is in litellm/config.yaml AND is servable — WITHOUT
+#      cold-starting a lazy local model OR billing a metered/subscription one on a
+#      routine run (directive: doctor must not cold-start). ollama: PULLED
+#      (`ollama list`) + configured, real ping only if already resident (`ollama
+#      ps`). remote (openai/codex-bridge): presence in LiteLLM's live /v1/models
+#      (a fallback-proof "wired + served" signal). meridian: presence-only (bills
+#      subscription). lmstudio: advisory when :1234 is down (NOT red). A full
+#      inference ping of every cold/remote model is opt-in: MODELS_BINDING_DEEP_CHECK=1.
 #   3. DRIFT: rendered == declared (availability-gated) across ALL surfaces:
-#      the 7 Hermes profiles (exec-grep; NO key echo), Pi (PI_DEFAULT_MODEL +
+#      the 9 Hermes profiles (exec-grep; NO key echo), Pi (PI_DEFAULT_MODEL +
 #      bin/pi), DeerFlow (config.yaml reasoning tier), ACE/RLM (.env).
 #   4. ALLOWLIST COVERAGE: for each agent with key_env, GET /v1/models under that
 #      key includes the assigned (effective) model. NEVER prints a key.
@@ -25,7 +30,12 @@ _mb_lms_up()     { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/mo
 _mb_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
 
 # One master-key chat_ping. Echoes the HTTP code (or "000" on connect/timeout).
-# $1=model  $2=master-key  $3=max-time(s, default 30). NOTE: do NOT add `|| echo 000`
+# $1=model  $2=master-key  $3=max-time(s, default 30). max_tokens is 16 (NOT 1):
+# GPT-5.x / reasoning models spend the output budget on hidden reasoning tokens, so
+# max_tokens:1 → HTTP 400 "Could not finish … max_tokens reached" (verified on the
+# metered openai route; ollama/codex-bridge tolerate 1, but 16 is uniformly safe —
+# confirmed no regression). 16 is a liveness floor only; the response body is
+# discarded. NOTE: do NOT add `|| echo 000`
 # — curl's %{http_code} already emits 000 on timeout, so the old `|| echo 000`
 # produced "000000" (a doubled string that no '== 200' test could ever match and
 # that rendered as a confusing false failure). The `|| true` is REQUIRED: under
@@ -38,7 +48,7 @@ _mb_chat_ping() {
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "${3:-30}" \
     http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $2" \
     -H 'Content-Type: application/json' \
-    -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" 2>/dev/null || true)"
+    -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":16}" 2>/dev/null || true)"
   printf '%s' "${code:-000}"
 }
 
@@ -117,7 +127,47 @@ models_binding_diagnose() {
   local master; master="$(get_env LITELLM_MASTER_KEY '' 2>/dev/null || echo '')"
   local fail=0 advisory=""
 
-  # (2) Every models.yml model in config.yaml + chat_ping 200 (lmstudio advisory).
+  # Snapshot ollama's PULLED (`ollama list`) + LOADED (`ollama ps`) model names
+  # ONCE — both are metadata queries: no inference, no cold-start. The per-model
+  # loop uses these to verify ollama servability WITHOUT loading weights
+  # (directive: doctor must not cold-start models). `|| true` inside the pipe so a
+  # flaky ollama can never abort the check under set -e / inherit_errexit.
+  local _ollama_pulled="" _ollama_loaded="" _ollama_cli=0
+  if command -v ollama >/dev/null 2>&1; then
+    _ollama_cli=1
+    _ollama_pulled="$( (ollama list 2>/dev/null || true) | awk 'NR>1{print $1}' )"
+    _ollama_loaded="$( (ollama ps   2>/dev/null || true) | awk 'NR>1{print $1}' )"
+  fi
+
+  # The model set LiteLLM ACTUALLY serves (master key), fetched ONCE — the routine
+  # "wired + live-served" signal for remote models: no inference, no cold-start, no
+  # metered/subscription token burn, and (unlike a chat_ping) it CANNOT be masked by
+  # a LiteLLM fallback group. A real inference ping is OPT-IN via
+  # MODELS_BINDING_DEEP_CHECK=1 — consistent with check 55 (CODEX_BRIDGE_DEEP_CHECK)
+  # and meridian (never pinged). `|| true` so a hiccup never aborts the check.
+  local _served_models=""
+  if [[ -n "$master" ]]; then
+    _served_models="$( (curl -s --max-time 8 http://litellm:4000/v1/models -H "Authorization: Bearer $master" 2>/dev/null || true) \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+print("\n".join(m.get("id","") for m in d.get("data",[])))' 2>/dev/null || true )"
+  fi
+  # Distinguish "couldn't read the list" (INCONCLUSIVE — advise, never silently
+  # pass) from "model genuinely absent" (red). LiteLLM is UP here (checked above),
+  # so an empty list means the /v1/models fetch failed or returned non-JSON (e.g. a
+  # proxy 502), NOT that zero models are served. Without this, a broken /v1/models
+  # would green every remote/no-cli model by default.
+  local _served_ok=0; [[ -n "$_served_models" ]] && _served_ok=1
+  if [[ "$_served_ok" != "1" ]]; then
+    advisory="${advisory}    (advisory) could not read LiteLLM /v1/models (master key) — remote/no-cli model presence checks skipped this run (inconclusive, not failed)\n"
+  fi
+  local _deep="${MODELS_BINDING_DEEP_CHECK:-0}"
+  local _default_model; _default_model="$(yq -r '.default' "$yml" 2>/dev/null)"
+
+  # (2) Every models.yml model in config.yaml + servable WITHOUT cold-starting or
+  #     billing on a routine run: ollama = pulled + warm-only ping; remote =
+  #     live-served presence (deep ping opt-in); meridian/lmstudio-down = advisory.
   local m rt
   while IFS= read -r m; do
     [[ -z "$m" ]] && continue
@@ -133,40 +183,81 @@ models_binding_diagnose() {
       _mb_meridian_up || advisory="${advisory}    (advisory) meridian model '$m' — Meridian daemon down; agents availability-gate to the default\n"
       continue
     fi
-    # chat_ping (max_tokens 1). Lazy local runtimes (ollama) cold-LOAD the model on
-    # the first call: on a CPU-capped box that first ping can exceed a tight timeout
-    # and return 000 even though the model is fine — a false RED. Two-part fix:
-    #   (a) a non-200 first ping for ollama gets ONE warm-retry with a generous
-    #       budget (the first ping started the load; the retry waits it out);
-    #   (b) after each ollama model we `ollama stop` its weights so the NEXT ollama
-    #       model in the loop gets a CLEAN slot. Without (b), a small resident model
-    #       + a larger next model makes ollama stall in a request-triggered eviction
-    #       queue that exceeds ANY fixed retry budget (empirically >300s) — the real
-    #       cause of the multi-model false red. Each model is thus tested in
-    #       ISOLATION, which is what "does this model serve?" actually means.
-    # A genuinely broken model still fails BOTH pings → real breakage is caught;
-    # only cold-start is absorbed. ($m is a config-controlled models.yml key; if a
-    # name could ever contain a `"`/`\`, _mb_chat_ping's JSON body would need
-    # jq-escaping — today they're safe identifiers. A missing `runtime:` field →
-    # rt!="ollama" → single-ping fallback, never a crash.) lmstudio/meridian don't
-    # retry (lmstudio-down is advisory below; meridian is never chat_pinged).
-    local code served
-    code="$(_mb_chat_ping "$m" "$master" 30)"
-    if [[ "$code" != "200" && "$rt" == "ollama" ]]; then
-      code="$(_mb_chat_ping "$m" "$master" 120)"
+    # LM Studio DOWN → its models are advisory-down BY DEFINITION; do NOT ping
+    # (skips ~5s/model of dead connect, and never JIT-loads an LM Studio model).
+    if [[ "$rt" == "lmstudio" && "$lms_up" != "1" ]]; then
+      advisory="${advisory}    (advisory) lmstudio model '$m' not servable — LM Studio :1234 down (ping skipped)\n"
+      continue
     fi
-    # Unload this ollama model so the next one tests in isolation (see (b) above).
-    if [[ "$rt" == "ollama" ]] && command -v ollama >/dev/null 2>&1; then
+    # ollama is a LAZY local runtime: a chat_ping COLD-LOADS the weights (9.6GB
+    # gemma here → 20-150s/model with the old warm-retry). Directive: doctor must
+    # NOT cold-start models. So routine "servable" = PULLED (`ollama list`) +
+    # present in config.yaml (checked above); we chat_ping ONLY when the model is
+    # already RESIDENT (`ollama ps`) — a warm ping is ~free and gives the real
+    # end-to-end signal — and we NEVER `ollama stop` (the old code evicted the
+    # user's warm working set every run). ORDER MATTERS: check LOADED before
+    # NOT-PULLED — `ollama list`/`ollama ps` are two non-atomic snapshots and a
+    # model resident in `ps` is servable by definition. The documented "pulled but
+    # runner broken" (missing llama-server → HTTP 500) gotcha can't be caught
+    # without a load, so we flag it as an advisory for the fleet DEFAULT model when
+    # it's cold; the warm path catches it once loaded, and a full cold ping is
+    # available via MODELS_BINDING_DEEP_CHECK=1. No ollama CLI to introspect → use
+    # the same live-served presence signal as remote (still no cold-start).
+    # ($m/served are config-controlled identifiers with no JSON-unsafe chars today;
+    # if that changes, _mb_chat_ping's body would need jq-escaping.)
+    if [[ "$rt" == "ollama" ]]; then
+      local served wcode _oll_to=30
       served="$(yq -r ".models.\"$m\".served" "$yml" 2>/dev/null)"
-      [[ -n "$served" && "$served" != "null" ]] && ollama stop "$served" >/dev/null 2>&1 || true
+      [[ "$_deep" == "1" ]] && _oll_to=120
+      if [[ "$_ollama_cli" != "1" ]]; then
+        # No CLI to tell warm from cold → live-served presence (no cold-start).
+        if [[ "$_served_ok" == "1" ]] && ! printf '%s\n' "$_served_models" | grep -qxF "$m"; then
+          echo "model '$m' in models.yml + config.yaml but NOT served by LiteLLM /v1/models (run: bash vz-ai-stack.sh model sync, then restart litellm)"
+          fail=1
+        fi
+      elif printf '%s\n' "$_ollama_loaded" | grep -qxF "$served" || [[ "$_deep" == "1" ]]; then
+        # Already RESIDENT (warm, ~free) OR deep check (opt-in, may cold-load): real ping.
+        wcode="$(_mb_chat_ping "$m" "$master" "$_oll_to")"
+        [[ "$wcode" == "200" ]] || { echo "ollama model '$m' chat_ping returned HTTP $wcode (expected 200)"; fail=1; }
+      elif ! printf '%s\n' "$_ollama_pulled" | grep -qxF "$served" \
+           && ! printf '%s\n' "$_ollama_pulled" | grep -qxF "${served}:latest"; then
+        echo "ollama model '$m' (served '$served') not pulled — run: ollama pull $served"
+        fail=1
+      elif [[ "$m" == "$_default_model" ]]; then
+        # Pulled but cold (routine): green WITHOUT cold-starting. Flag ONLY the fleet
+        # DEFAULT so a broken runner on the always-on model stays visible.
+        advisory="${advisory}    (advisory) ollama default '$m' pulled but not warm — runner health unverified (not cold-started per directive; MODELS_BINDING_DEEP_CHECK=1 forces a full ping)\n"
+      fi
+      continue
     fi
-    if [[ "$code" != "200" ]]; then
-      if [[ "$rt" == "lmstudio" && "$lms_up" != "1" ]]; then
-        advisory="${advisory}    (advisory) lmstudio model '$m' not servable — LM Studio :1234 down (HTTP $code)\n"
-      else
-        echo "model '$m' chat_ping returned HTTP $code (expected 200)"
+    # Remote / managed runtimes (openai, codex-bridge, lmstudio when UP). A routine
+    # chat_ping bills a metered/subscription key AND — for any model with a LiteLLM
+    # fallback group — silently tests the FALLBACK, not the model (a false signal:
+    # e.g. gpt-5.5 / the -sub routes mask a primary 400). So routine only verifies
+    # the model is WIRED + LIVE-SERVED by LiteLLM (the _served_models snapshot); a
+    # real inference ping is OPT-IN via MODELS_BINDING_DEEP_CHECK=1 — the same
+    # precedent as check 55 (CODEX_BRIDGE_DEEP_CHECK) and meridian (never pinged).
+    if [[ "$_deep" != "1" ]]; then
+      if [[ "$_served_ok" == "1" ]] && ! printf '%s\n' "$_served_models" | grep -qxF "$m"; then
+        echo "model '$m' in models.yml + config.yaml but NOT served by LiteLLM /v1/models (run: bash vz-ai-stack.sh model sync, then restart litellm)"
         fail=1
       fi
+      continue
+    fi
+    # Deep check (opt-in): real chat_ping (max_tokens 16 — reasoning models reject 1).
+    # LiteLLM is UP (checked above), so a 000 is the UPSTREAM not answering within the
+    # budget — a slow "pro"/max-accuracy model or a slow multi-hop fallback chain
+    # (e.g. gpt-5.5-pro → … → claude, ~76s) → advisory, not red. A real wiring /
+    # credential fault (bad key / bad slug) returns a definite 4xx/5xx → red.
+    local code
+    code="$(_mb_chat_ping "$m" "$master" 30)"
+    if [[ "$code" == "200" ]]; then
+      :   # servable
+    elif [[ "$code" == "000" ]]; then
+      advisory="${advisory}    (advisory) model '$m' (runtime $rt) wired but no response within 30s in deep check (slow/pro upstream or fallback chain)\n"
+    else
+      echo "model '$m' chat_ping returned HTTP $code (expected 200)"
+      fail=1
     fi
   done < <(yq -r '.models | keys | .[]' "$yml")
 

@@ -123,24 +123,24 @@ default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) when its
 # runtime is down — so the local safety net is preserved. `default` stays ollama.
-primary: claude-opus-4.8-sub-xhigh
+primary: claude-opus-4.8-sub-max
 assignments:
-  # AI software-engineering team + agents. Platform policy (2026-06-20): EVERY
-  # role uses claude-opus-4.8-sub-xhigh — the single platform default. local-gemma4
+  # AI software-engineering team + agents. Platform policy (2026-06-23): EVERY
+  # role uses claude-opus-4.8-sub-max — the single platform default. local-gemma4
   # is the LiteLLM offline fallback only (Meridian unavailable), never assigned.
-  hermes_manager: openai-gpt-5.5-sub
-  hermes_techlead: openai-gpt-5.5-sub
-  hermes_ml_engineer: openai-gpt-5.5-sub
-  hermes_frontend_engineer: openai-gpt-5.5-sub
-  hermes_backend_engineer: openai-gpt-5.5-sub
-  hermes_qa_test_engineer: openai-gpt-5.5-sub
-  hermes_reviewing_engineer: openai-gpt-5.5-sub
-  hermes_sre_engineer: openai-gpt-5.5-sub
-  hermes_incident_manager: openai-gpt-5.5-sub
-  pi: openai-gpt-5.5-sub
-  deerflow: openai-gpt-5.5-sub
-  ace: openai-gpt-5.5-sub
-  rlm: openai-gpt-5.5-sub
+  hermes_manager: claude-opus-4.8-sub-max
+  hermes_techlead: claude-opus-4.8-sub-max
+  hermes_ml_engineer: claude-opus-4.8-sub-max
+  hermes_frontend_engineer: claude-opus-4.8-sub-max
+  hermes_backend_engineer: claude-opus-4.8-sub-max
+  hermes_qa_test_engineer: claude-opus-4.8-sub-max
+  hermes_reviewing_engineer: claude-opus-4.8-sub-max
+  hermes_sre_engineer: claude-opus-4.8-sub-max
+  hermes_incident_manager: claude-opus-4.8-sub-max
+  pi: claude-opus-4.8-sub-max
+  deerflow: claude-opus-4.8-sub-max
+  ace: claude-opus-4.8-sub-max
+  rlm: claude-opus-4.8-sub-max
 kinds:
   hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates"}
   hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}
