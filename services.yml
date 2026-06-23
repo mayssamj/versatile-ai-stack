@@ -1181,6 +1181,46 @@ services:
         "at": "2026-06-21T00:00:00Z"
         "source": phase-30-understand
         "reviewed": true
+  metagpt:
+    enabled: true # Phase 32 (opt-in) — multi-agent software-company simulation
+    type: cli-only
+    desc: "MetaGPT — multi-agent software-company sim (PM→architect→engineer→QA), run via bin/metagpt"
+    phase: "32"
+    network: none
+    consumes_env:
+      - METAGPT_LITELLM_KEY
+    help:
+      "what": "MetaGPT (FoundationAgents/MetaGPT, MIT) runs a one-line brief through a SWARM of role agents — product manager, architect, engineer, QA — that collaborate to emit design docs, code, and tests into metagpt/workspace/. Installed as a host uv venv (Python 3.11); invoke via bin/metagpt."
+      "why": "Reach for it to watch a small role-playing agent SWARM tackle a software task end-to-end — the easiest on-ramp of the agent-swarm-sim set. Every agent's LLM call routes through LiteLLM (scoped key) so it's traced in Phoenix. Distinct from OASIS (large emergent social sims): MetaGPT is a fixed, goal-directed team."
+      "usage":
+        - bin/metagpt "create a CLI 2048 game in python"   # output → metagpt/workspace/
+        - METAGPT_MODEL=claude-opus-4.8-sub-xhigh bin/metagpt "..."   # bigger swarm (metered)
+        - vz-ai-stack.sh test 32        # smoke: scoped key → LiteLLM
+      "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv pinned to Python 3.11 (host 3.14 is too new for MetaGPT) at metagpt/.venv — regenerable; metagpt/workspace is DATA (kept). bin/metagpt resolves METAGPT_LITELLM_KEY from .env at RUNTIME and writes ~/.metagpt/config2.yaml (0600, never the repo) with api_type=openai base_url=http://litellm:4000/v1. Default model local-gemma4 (override METAGPT_MODEL or models.yml .assignments.metagpt). On the M4/24GB box keep the swarm small or route to a cloud model. Rollback: rm -rf metagpt/.venv + installer/state/phase_32.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
+      "_gen":
+        "at": "2026-06-23T00:00:00Z"
+        "source": phase-32-metagpt
+        "reviewed": true
+  oasis:
+    enabled: true # Phase 34 (opt-in) — large-scale social-agent simulation (≤1M agents)
+    type: cli-only
+    desc: "OASIS — large-scale social-media agent swarm simulation (CAMEL), run via bin/oasis"
+    phase: "34"
+    network: none
+    consumes_env:
+      - OASIS_LITELLM_KEY
+    help:
+      "what": "OASIS (camel-ai/oasis, Apache-2.0) simulates large social-media agent SWARMS — agents post, follow, react, and propagate behavior in a shared environment — scaling (upstream) to ~1M agents. Built on CAMEL. Installed as a host uv venv (Python 3.11); run sim scripts via bin/oasis oasis/sims/<file>.py."
+      "why": "The headline tool for 'agents living in a world' — emergent social dynamics at scale, the core of the swarm-simulation use case. Agents' LLM calls route through LiteLLM (scoped key) → traced in Phoenix. Distinct from MetaGPT (a fixed goal-directed team): OASIS is many cheap agents whose INTERACTIONS are the point."
+      "usage":
+        - bin/oasis oasis/sims/smoke_sim.py          # tiny bundled demo (a few agents)
+        - "# write your own sim in oasis/sims/ then: bin/oasis oasis/sims/my_sim.py"
+        - vz-ai-stack.sh test 34        # smoke: a real multi-agent step via LiteLLM
+      "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at oasis/.venv (Python 3.11) — regenerable; oasis/sims is DATA (your sim scripts + output). bin/oasis exports OASIS_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://litellm:4000/v1; sims build a CAMEL OPENAI_COMPATIBLE model pointed there (default local-gemma4). SCALE REALITY: the 1M-agent figure is upstream — on the M4/24GB box local inference serializes, so keep swarms to dozens on local-gemma4 or route to a cloud model (metered). Rollback: rm -rf oasis/.venv + installer/state/phase_34.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
+      "_gen":
+        "at": "2026-06-23T00:00:00Z"
+        "source": phase-34-oasis
+        "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:
