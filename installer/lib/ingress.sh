@@ -13,6 +13,18 @@
 #
 # Design: doc/specs/2026-06-21-bare-hostname-ingress.md
 
+# macOS ships bash 3.2 at /bin/bash; `sudo bash …` picks it, and it lacks
+# `declare -g` that network.sh::aliases_load needs (→ a 0-site Caddyfile). When
+# RUN DIRECTLY (the `ingress` CLI) under bash <4, re-exec under a modern bash so
+# `sudo … ingress up` Just Works. (Sourced contexts run as the user's bash 4+.)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]] && (( ${BASH_VERSINFO[0]:-0} < 4 )); then
+  for _b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x "$_b" ]] && exec "$_b" "$0" "$@"
+  done
+  echo "ingress.sh: requires bash 4+ (found ${BASH_VERSION:-?}); 'brew install bash'." >&2
+  exit 2
+fi
+
 # When RUN DIRECTLY, self-resolve AI_STACK from this file's path (../..),
 # matching docker-engine.sh / fleet.sh shape, so the CLI works standalone.
 if [[ -z "${AI_STACK:-}" ]]; then
