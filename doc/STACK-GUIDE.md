@@ -542,15 +542,15 @@ when Meridian is down, `model sync` availability-gates every profile back to
 
 | Profile | Role | Assigned model |
 |---|---|---|
-| `hermes_manager` | Chief of staff / operator / second brain — the single entrance: runs all of an EM's job (people, process, knowledge/memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape it takes; executes directly when fastest, else delegates | claude-opus-4.8-sub-xhigh |
-| `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-4.8-sub-max |
-| `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-opus-4.8-sub-max |
-| `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-opus-4.8-sub-max |
-| `hermes_ml_engineer` | ML engineer — model selection, evals, data pipelines, finetuning, RAG | claude-opus-4.8-sub-max |
-| `hermes_qa_test_engineer` | QA / test engineer — test strategy + automation; the green-bar quality gate | claude-opus-4.8-sub-xhigh |
-| `hermes_reviewing_engineer` | Reviewing engineer (read-only) — adversarial review including the security pass | claude-opus-4.8-sub-max |
-| `hermes_sre_engineer` | SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed | claude-opus-4.8-sub-xhigh |
-| `hermes_incident_manager` | Incident manager (read-only) — incident command + blameless postmortems | claude-opus-4.8-sub-xhigh |
+| `hermes_manager` | Chief of staff / operator / second brain — the single entrance: runs all of an EM's job (people, process, knowledge/memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape it takes; executes directly when fastest, else delegates | claude-opus-sub-xhigh |
+| `hermes_techlead` | Tech lead / architect — ADRs, interface contracts, design review, standards | claude-opus-sub-max |
+| `hermes_frontend_engineer` | Frontend engineer — accessible, performant UI against the design contract | claude-opus-sub-max |
+| `hermes_backend_engineer` | Backend engineer — APIs, services, data and security basics against the contract | claude-opus-sub-max |
+| `hermes_ml_engineer` | ML engineer — model selection, evals, data pipelines, finetuning, RAG | claude-opus-sub-max |
+| `hermes_qa_test_engineer` | QA / test engineer — test strategy + automation; the green-bar quality gate | claude-opus-sub-xhigh |
+| `hermes_reviewing_engineer` | Reviewing engineer (read-only) — adversarial review including the security pass | claude-opus-sub-max |
+| `hermes_sre_engineer` | SRE — reliability, IaC, observability, CI/CD, safe deploys; prod-credentialed | claude-opus-sub-xhigh |
+| `hermes_incident_manager` | Incident manager (read-only) — incident command + blameless postmortems | claude-opus-sub-xhigh |
 
 **What does it do for us?** Each profile reads its `SOUL.md` as the
 first thing in its system prompt — that shapes its mandate and gate behavior.

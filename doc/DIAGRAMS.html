@@ -482,12 +482,12 @@ sequenceDiagram
   </div>
 </div>
 <p>What the assignments look like (from <code>models.yml</code>, see <a href="models.md">models.md</a>):</p>
-<ul><li><strong>claude-opus-4.8-sub-xhigh</strong> (subscription via Meridian) — <code>hermes_manager</code>,</li></ul>
+<ul><li><strong>claude-opus-sub-xhigh</strong> (subscription via Meridian) — <code>hermes_manager</code>,</li></ul>
 <p><code>hermes_qa_test_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>ace</code>, <code>rlm</code>.</p>
-<ul><li><strong>claude-opus-4.8-sub-max</strong> (subscription via Meridian) — <code>hermes_techlead</code>,</li></ul>
+<ul><li><strong>claude-opus-sub-max</strong> (subscription via Meridian) — <code>hermes_techlead</code>,</li></ul>
 <p><code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>pi</code>, <code>deerflow</code>.</p>
 <ul><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
-<p>LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime is down. An UNASSIGNED agent renders the <code>primary</code> (<code>claude-opus-4.8-sub-max</code>) and gates to this. (<code>default:</code> in models.yml names this fallback; it must be an Ollama model.)</p>
+<p>LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime is down. An UNASSIGNED agent renders the <code>primary</code> (<code>claude-opus-sub-max</code>) and gates to this. (<code>default:</code> in models.yml names this fallback; it must be an Ollama model.)</p>
 <p>Notes:</p>
 <ul><li>The Hermes fleet now routes to a Claude subscription via the Meridian host</li></ul>
 <p>daemon; availability-gating means when <strong>Meridian is down</strong> all nine profiles render against <code>local-gemma4</code> and keep working. (The heavy MLX models <code>local-qwen3.6</code> ~17.5GB and <code>local-qwen3-coder</code> ~17.2GB still exist as legacy slugs and cannot coexist on a 24GB box, but no agent is bound to them by default any more.)</p>
@@ -511,7 +511,7 @@ sequenceDiagram
     <div class="mermaid" id="diag-6">flowchart TB
   A["agent (e.g. hermes_ml_engineer)"] --> ASG{assigned in<br/>models.yml?}
   ASG -- yes --> DECL["declared = assignment<br/>(agent_assigned)"]
-  ASG -- no --> PRI["declared = primary<br/>(claude-opus-4.8-sub-max)"]
+  ASG -- no --> PRI["declared = primary<br/>(claude-opus-sub-max)"]
   DECL --> RT{runtime of<br/>declared model?}
   PRI --> RT
 
@@ -656,7 +656,7 @@ sequenceDiagram
   </div>
 </div>
 <h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)</h3>
-<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default <code>claude-opus-4.8-sub-xhigh</code> (Claude subscription via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down), overridable via <code>HONCHO_MODEL</code>.</p>
+<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default <code>claude-opus-sub-xhigh</code> (Claude subscription via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down), overridable via <code>HONCHO_MODEL</code>.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-10" data-action="out" title="Zoom out">−</button>
@@ -678,7 +678,7 @@ sequenceDiagram
   AG->>HO: write message (session, peer-scoped)
   HO->>PG: persist raw message
   HO->>DR: enqueue derivation
-  DR->>LL: extract user representation (model=claude-opus-4.8-sub-xhigh, override via HONCHO_MODEL)
+  DR->>LL: extract user representation (model=claude-opus-sub-xhigh, override via HONCHO_MODEL)
   LL->>LH: forward
   Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
   LH-->>LL: derived facts

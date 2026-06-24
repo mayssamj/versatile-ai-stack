@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 59/59 ✓
+# 1. Confirm the stack is healthy. Target: 62/62 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
@@ -185,8 +185,8 @@ canonical local models** are declared per-agent in `installer/models.yml`
 | `openai-gpt-5.5*`   | OpenAI GPT-5.5 family                         | API    | Cloud baseline                               |
 | `openrouter-*`      | Various via OpenRouter (~10)                  | API    | Fallbacks / unusual models                   |
 | `google-gemini-3.1-pro` | Gemini 3.1 Pro                            | API    | Long-context cloud                           |
-| `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` | claude-opus-4-8 via **subscription** (Meridian), one model per effort level | sub | **no API key**. `-max` is the Open WebUI default; use `-low/-medium` for simple work, `-ultracode` for the coding-focused highest tier (above `max`) |
-| `claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` | claude-sonnet-4-6 via subscription (Meridian) | sub | Everyday subscription chat + coding (no `xhigh` — ≡ `high` on Sonnet); `-ultracode` is the highest tier |
+| `claude-opus-sub-{low,medium,high,xhigh,max,ultracode}` | claude-opus-4-8 via **subscription** (Meridian), one model per effort level | sub | **no API key**. `-max` is the Open WebUI default; use `-low/-medium` for simple work, `-ultracode` for the coding-focused highest tier (above `max`) |
+| `claude-sonnet-sub-{low,medium,high,max,ultracode}` | claude-sonnet-4-6 via subscription (Meridian) | sub | Everyday subscription chat + coding (no `xhigh` — ≡ `high` on Sonnet); `-ultracode` is the highest tier |
 
 `local-gemma4` is the only local model `install all` pre-pulls (alongside
 `nomic-embed-text`); the two big MLX models are opt-in (see §2.16 "Enabling the
@@ -254,7 +254,7 @@ installer state file. To promote them: start LM Studio
 
 Want Open WebUI to use your **Claude Pro/Max subscription** — the same auth as
 your `claude login` — instead of a metered `ANTHROPIC_API_KEY`? That's what the
-`claude-opus-4.8-sub-*` / `claude-sonnet-4.6-sub-*` models are (the `-sub-`
+`claude-opus-sub-*` / `claude-sonnet-sub-*` models are (the `-sub-`
 infix = subscription). They route `Open WebUI → LiteLLM → Meridian (host :3456)
 → Anthropic`, where **Meridian** is a small launchd-supervised host daemon that
 reuses your Claude Code OAuth (auto-refreshed) and runs the agent loop in
@@ -268,7 +268,7 @@ vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload config so
 ```
 
 Open `http://openwebui:8080`, refresh — the default model is
-**`claude-opus-4.8-sub-max`**. No Open WebUI Function/pipe, no API key. Manage
+**`claude-opus-sub-max`**. No Open WebUI Function/pipe, no API key. Manage
 with `start-meridian.sh status|restart|uninstall`; `vz-ai-stack.sh doctor` check 41
 reports health. The subscription models run **claude-opus-4-8** /
 **claude-sonnet-4-6** — verified end-to-end via the LiteLLM trace. (Meridian's
@@ -277,8 +277,8 @@ bundled claude-code 2.1.160, so 4.8 works.)
 
 **Effort / reasoning level — pick by picking the model.** Per-chat effort can't
 be sent from Open WebUI (LiteLLM's `drop_params` strips it), so each effort level
-is its own model: `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` and
-`claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` (Sonnet has no `xhigh` — it falls
+is its own model: `claude-opus-sub-{low,medium,high,xhigh,max,ultracode}` and
+`claude-sonnet-sub-{low,medium,high,max,ultracode}` (Sonnet has no `xhigh` — it falls
 back to `high`). `ultracode` is the coding-focused highest effort tier (above
 `max`). Use `-low`/`-medium` for simple work, `-max` for hard problems.
 Effort is `output_config.effort` (NOT a token budget — `budget_tokens` is rejected
@@ -603,15 +603,15 @@ subscription via Meridian**. The bindings as shipped:
 
 | Profile                     | Bound model                  | When you'd dispatch one                                          |
 |-----------------------------|------------------------------|------------------------------------------------------------------|
-| `hermes_manager`            | `claude-opus-4.8-sub-xhigh`  | Frame a goal into a spec, decompose, delegate, orchestrate gates; executes directly when fastest |
-| `hermes_techlead`           | `claude-opus-4.8-sub-max`    | Architecture decisions, ADRs, interface contracts, design review |
-| `hermes_frontend_engineer`  | `claude-opus-4.8-sub-max`    | Accessible, performant UI against the design contract            |
-| `hermes_backend_engineer`   | `claude-opus-4.8-sub-max`    | APIs, services, data access, security basics against the contract|
-| `hermes_ml_engineer`        | `claude-opus-4.8-sub-max`    | Model selection, evals, data pipelines, finetuning, RAG          |
-| `hermes_qa_test_engineer`   | `claude-opus-4.8-sub-xhigh`  | Test strategy + automation; the green-bar quality gate           |
-| `hermes_reviewing_engineer` | `claude-opus-4.8-sub-max`    | Adversarial code review + the security pass (read-only)          |
-| `hermes_sre_engineer`       | `claude-opus-4.8-sub-xhigh`  | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
-| `hermes_incident_manager`   | `claude-opus-4.8-sub-xhigh`  | Incident command + blameless postmortems (read-only)            |
+| `hermes_manager`            | `claude-opus-sub-xhigh`  | Frame a goal into a spec, decompose, delegate, orchestrate gates; executes directly when fastest |
+| `hermes_techlead`           | `claude-opus-sub-max`    | Architecture decisions, ADRs, interface contracts, design review |
+| `hermes_frontend_engineer`  | `claude-opus-sub-max`    | Accessible, performant UI against the design contract            |
+| `hermes_backend_engineer`   | `claude-opus-sub-max`    | APIs, services, data access, security basics against the contract|
+| `hermes_ml_engineer`        | `claude-opus-sub-max`    | Model selection, evals, data pipelines, finetuning, RAG          |
+| `hermes_qa_test_engineer`   | `claude-opus-sub-xhigh`  | Test strategy + automation; the green-bar quality gate           |
+| `hermes_reviewing_engineer` | `claude-opus-sub-max`    | Adversarial code review + the security pass (read-only)          |
+| `hermes_sre_engineer`       | `claude-opus-sub-xhigh`  | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
+| `hermes_incident_manager`   | `claude-opus-sub-xhigh`  | Incident command + blameless postmortems (read-only)            |
 
 **Same team, three platforms.** This identical 9-role team is also realized as
 **Pi personas** (`bin/pi-as <role>`) and **Claude Code agents** (the
@@ -1416,7 +1416,7 @@ per-agent `assignments:` live there; see [models.md](models.md) for the full
 contract.
 
 **When.** Whenever you want to re-point an agent at a different model
-(e.g., move `hermes_ml_engineer` from `claude-opus-4.8-sub-max` to a local
+(e.g., move `hermes_ml_engineer` from `claude-opus-sub-max` to a local
 model), or after you bring Meridian up and want the subscription-bound Hermes
 profiles to actually use their assigned Claude model instead of the gated
 `local-gemma4` fallback.
@@ -1433,7 +1433,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list --json | jq '.assignments'
 #    Example: drop the ml-engineer to a local model to save subscription budget.
 bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer local-qwen3.6
 #    …and put it back to its subscription model later:
-bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer claude-opus-4.8-sub-max
+bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer claude-opus-sub-max
 
 # 3. RECONCILE everything from models.yml. Crash-safe 6-phase pass:
 #    validate → register model_list (ADD-ONLY) → restart LiteLLM ONCE if the
@@ -1867,7 +1867,7 @@ openshell sandbox download hermes-fleet-v1 /sandbox/test_buggy.py ~/ai-stack/san
 cd ~/ai-stack/sandbox-workspace && python -m pytest test_buggy.py -v
 ```
 
-**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_backend_engineer`, model = the profile's bound model (`claude-opus-4.8-sub-max`, or `local-gemma4` when availability-gated because Meridian is down), tool calls for shell ops + file writes.
+**You'll see this in Phoenix.** Span cluster tagged `agent=hermes_backend_engineer`, model = the profile's bound model (`claude-opus-sub-max`, or `local-gemma4` when availability-gated because Meridian is down), tool calls for shell ops + file writes.
 
 **Combine with.** Recipe 10 (orchestrate this dispatch from Paperclip instead of by hand).
 
@@ -2099,7 +2099,7 @@ Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shor
 
 ```bash
 # Health + state
-bash ~/ai-stack/vz-ai-stack.sh doctor                 # 57 health checks + auto-fix offers
+bash ~/ai-stack/vz-ai-stack.sh doctor                 # 62 health checks + auto-fix offers
 bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
 bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
 
@@ -2276,7 +2276,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 59/59 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 62/62 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 

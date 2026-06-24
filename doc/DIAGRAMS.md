@@ -352,15 +352,15 @@ flowchart TB
 
 What the assignments look like (from `models.yml`, see
 [models.md](models.md)):
-- **claude-opus-4.8-sub-xhigh** (subscription via Meridian) — `hermes_manager`,
+- **claude-opus-sub-xhigh** (subscription via Meridian) — `hermes_manager`,
   `hermes_qa_test_engineer`, `hermes_sre_engineer`, `hermes_incident_manager`,
   `ace`, `rlm`.
-- **claude-opus-4.8-sub-max** (subscription via Meridian) — `hermes_techlead`,
+- **claude-opus-sub-max** (subscription via Meridian) — `hermes_techlead`,
   `hermes_ml_engineer`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
   `hermes_reviewing_engineer`, `pi`, `deerflow`.
 - **local-gemma4** (the always-on Ollama fallback) — what every subscription- or
   LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime
-  is down. An UNASSIGNED agent renders the `primary` (`claude-opus-4.8-sub-max`) and
+  is down. An UNASSIGNED agent renders the `primary` (`claude-opus-sub-max`) and
   gates to this. (`default:` in models.yml names this fallback; it must be an Ollama model.)
 
 Notes:
@@ -398,7 +398,7 @@ it already *is* gemma4).
 flowchart TB
   A["agent (e.g. hermes_ml_engineer)"] --> ASG{assigned in<br/>models.yml?}
   ASG -- yes --> DECL["declared = assignment<br/>(agent_assigned)"]
-  ASG -- no --> PRI["declared = primary<br/>(claude-opus-4.8-sub-max)"]
+  ASG -- no --> PRI["declared = primary<br/>(claude-opus-sub-max)"]
   DECL --> RT{runtime of<br/>declared model?}
   PRI --> RT
 
@@ -535,7 +535,7 @@ flowchart TB
 
 Not to be confused with [§11 Memory profiles](#11-memory-profiles--what-runs-in-each-ram-mode)
 (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the
-platform default `claude-opus-4.8-sub-xhigh` (Claude subscription via Meridian;
+platform default `claude-opus-sub-xhigh` (Claude subscription via Meridian;
 LiteLLM falls back to `local-gemma4` if Meridian is down), overridable via `HONCHO_MODEL`.
 
 ```mermaid
@@ -551,7 +551,7 @@ sequenceDiagram
   AG->>HO: write message (session, peer-scoped)
   HO->>PG: persist raw message
   HO->>DR: enqueue derivation
-  DR->>LL: extract user representation (model=claude-opus-4.8-sub-xhigh, override via HONCHO_MODEL)
+  DR->>LL: extract user representation (model=claude-opus-sub-xhigh, override via HONCHO_MODEL)
   LL->>LH: forward
   Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
   LH-->>LL: derived facts

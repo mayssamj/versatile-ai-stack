@@ -30,7 +30,7 @@ renders it all from this file.
 software-engineering team) plus `pi`, `deerflow`, `ace`, and `rlm`
 — each via an `assignments:` line (the model) and a `kinds:` entry (the renderer
 + scoped-key env). Any agent with no assignment now renders the **`primary`**
-(`claude-opus-4.8-sub-max`), which availability-gates to the `default`
+(`claude-opus-sub-max`), which availability-gates to the `default`
 (`local-gemma4`, the always-on Ollama fallback) when Meridian is down. The
 nine Hermes profiles all route to a **Claude
 subscription via Meridian** and are availability-gated to `local-gemma4` when
@@ -41,19 +41,19 @@ subagents at `~/.claude/agents/<role>.md`), sharing the `team-protocol` skill.
 
 | Agent | Assigned | Kind | Scoped key |
 |-------|----------|------|------------|
-| `hermes_manager`            | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` (shared by all 9 profiles) |
-| `hermes_techlead`           | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_ml_engineer`        | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_frontend_engineer`  | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_backend_engineer`   | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_qa_test_engineer`   | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_reviewing_engineer` | `claude-opus-4.8-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_sre_engineer`       | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
-| `hermes_incident_manager`   | `claude-opus-4.8-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
-| `pi`                       | `claude-opus-4.8-sub-max` | pi       | `PI_LITELLM_KEY` |
-| `deerflow`                 | `claude-opus-4.8-sub-max` | deerflow | *(none — master key)* |
-| `ace`                      | `claude-opus-4.8-sub-xhigh` | ace            | `ACE_LITELLM_KEY` |
-| `rlm`                      | `claude-opus-4.8-sub-xhigh` | rlm            | `RLM_LITELLM_KEY` |
+| `hermes_manager`            | `claude-opus-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` (shared by all 9 profiles) |
+| `hermes_techlead`           | `claude-opus-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_ml_engineer`        | `claude-opus-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_frontend_engineer`  | `claude-opus-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_backend_engineer`   | `claude-opus-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_qa_test_engineer`   | `claude-opus-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_reviewing_engineer` | `claude-opus-sub-max`    | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_sre_engineer`       | `claude-opus-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
+| `hermes_incident_manager`   | `claude-opus-sub-xhigh`  | hermes-profile | `HERMES_LITELLM_KEY` |
+| `pi`                       | `claude-opus-sub-max` | pi       | `PI_LITELLM_KEY` |
+| `deerflow`                 | `claude-opus-sub-max` | deerflow | *(none — master key)* |
+| `ace`                      | `claude-opus-sub-xhigh` | ace            | `ACE_LITELLM_KEY` |
+| `rlm`                      | `claude-opus-sub-xhigh` | rlm            | `RLM_LITELLM_KEY` |
 | `mempalace`                | `local-gemma4`      | mempalace      | `MEMPALACE_LITELLM_KEY` |
 
 **MemPalace is a partial binding.** `mempalace` (Phase 26) is a
@@ -126,10 +126,10 @@ the start command for each.
   subscription** rather than a metered API key.
   Install: `npm install -g @rynfar/meridian && bash bin/start-meridian.sh install`.
   - **Effort ladder (one model per level):**
-    `claude-opus-4.8-sub-{low,medium,high,xhigh,max,ultracode}` and
-    `claude-sonnet-4.6-sub-{low,medium,high,max,ultracode}` (Sonnet omits `xhigh` — it
+    `claude-opus-sub-{low,medium,high,xhigh,max,ultracode}` and
+    `claude-sonnet-sub-{low,medium,high,max,ultracode}` (Sonnet omits `xhigh` — it
     falls back to `high`). `ultracode` is the coding-focused highest effort tier
-    (above `max`). Open WebUI's default is `claude-opus-4.8-sub-max`
+    (above `max`). Open WebUI's default is `claude-opus-sub-max`
     (`DEFAULT_MODELS` in `bin/start-openwebui.sh`). Pick effort by picking the
     model — per-chat effort can't be sent from Open WebUI (`drop_params`).
   - **How effort is wired:** Opus 4.8 depth is `output_config.effort`
@@ -150,14 +150,14 @@ the start command for each.
   - These models are declared in **`installer/models.yml`** with `runtime:
     meridian` (+ an `effort:` field) — `model sync` renders them into
     `litellm/config.yaml`, joins them to the scoped-key superset, and makes them
-    **assignable** (`vz-ai-stack.sh model assign pi claude-opus-4.8-sub-xhigh`).
+    **assignable** (`vz-ai-stack.sh model assign pi claude-opus-sub-xhigh`).
     They availability-gate to `default` (local-gemma4) when Meridian is down.
   - **Current assignments:** every agent runs on the **Claude Opus subscription**
-    via Meridian. `pi` and `deerflow` → `claude-opus-4.8-sub-max`; `ace` and `rlm` →
-    `claude-opus-4.8-sub-xhigh`. The 9-role Hermes fleet is all-Opus too — `manager`,
-    `qa_test_engineer`, `sre_engineer`, `incident_manager` on `claude-opus-4.8-sub-xhigh`
+    via Meridian. `pi` and `deerflow` → `claude-opus-sub-max`; `ace` and `rlm` →
+    `claude-opus-sub-xhigh`. The 9-role Hermes fleet is all-Opus too — `manager`,
+    `qa_test_engineer`, `sre_engineer`, `incident_manager` on `claude-opus-sub-xhigh`
     and `techlead`, `ml_engineer`, `frontend_engineer`, `backend_engineer`,
-    `reviewing_engineer` on `claude-opus-4.8-sub-max` (see the assignment table above).
+    `reviewing_engineer` on `claude-opus-sub-max` (see the assignment table above).
     All availability-gate to `default` (local-gemma4) when Meridian is down.
 - **Codex bridge (ChatGPT subscription)** — **opt-in, no API key, ⚠ ToS-gray**.
   The OpenAI analog of Meridian: a host daemon (`bin/start-codex-bridge.sh`,
@@ -250,7 +250,7 @@ Each agent's live model is resolved in four stages:
 
 1. **assignment** — the model named for the agent in `models.yml`. An agent with
    **no** assignment renders the **`primary`** (`models.yml .primary` =
-   `claude-opus-4.8-sub-max`), which then flows through the availability-gate
+   `claude-opus-sub-max`), which then flows through the availability-gate
    below; only `default` (`local-gemma4`) is the always-on Ollama fallback.
 2. **availability-gate** — an `lmstudio` model is kept only when LM Studio is up
    on `:${LMS_PORT}` **and** its slug is in `litellm/config.yaml` **and** LiteLLM's
@@ -405,13 +405,13 @@ the machine.
 roles (deriver, dialectic, summary, dream) use a single stack-wide model for *all*
 memory work (independent of each agent's chat-model assignment), since persona
 extraction wants one consistent model. Per platform policy they default to
-`claude-opus-4.8-sub-xhigh` (Claude subscription via Meridian; LiteLLM falls back
+`claude-opus-sub-xhigh` (Claude subscription via Meridian; LiteLLM falls back
 to `local-gemma4` only if Meridian is down), and are **overridable via the
 `HONCHO_MODEL` env var** in the stack `.env`. The memory plane does **not** go
 through `models.yml` per-agent availability-gating.
 
 > **Default source.** `installer/phases/03_honcho.sh` writes `HONCHO_MODEL`
-> (default `claude-opus-4.8-sub-xhigh`) into `honcho/.env` as the per-role
+> (default `claude-opus-sub-xhigh`) into `honcho/.env` as the per-role
 > `*_MODEL_CONFIG__MODEL` keys. Honcho v3 reads those + `LLM_OPENAI_BASE_URL` (the
 > older `LLM_OPENAI_MODEL`/`LLM_OPENAI_API_BASE` names are silently ignored). To
 > pin a different model, set `HONCHO_MODEL=<slug>` in `.env`, then recreate so the

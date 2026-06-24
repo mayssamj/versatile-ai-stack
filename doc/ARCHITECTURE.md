@@ -198,7 +198,7 @@ actually serves.
 
 | key | runtime | served id | notes |
 |---|---|---|---|
-| `local-gemma4` | ollama | `gemma4:e4b` | The always-on Ollama **fallback** (`default`) — what every agent gates to when its runtime is down; an unassigned agent renders the `primary` (`claude-opus-4.8-sub-max`) and gates to this (~9.6 GB, stays on Ollama). |
+| `local-gemma4` | ollama | `gemma4:e4b` | The always-on Ollama **fallback** (`default`) — what every agent gates to when its runtime is down; an unassigned agent renders the `primary` (`claude-opus-sub-max`) and gates to this (~9.6 GB, stays on Ollama). |
 | `local-qwen3.6` | lmstudio | `qwen/qwen3.6-27b` | ~17.5 GB MLX. Cannot coexist with `local-qwen3-coder` on 24 GB. |
 | `local-qwen3-coder` | lmstudio | `qwen3-coder-30b-a3b-instruct-mlx` | ~17.2 GB MLX. Cannot coexist with `local-qwen3.6` on 24 GB. |
 
@@ -259,7 +259,7 @@ The **Honcho memory plane** is a deliberate exception to *per-agent* `models.yml
 selection: all its LLM roles (deriver, dialectic, summary, dream) use one
 stack-wide model regardless of each agent's chat-model binding, and the memory
 plane does not go through `models.yml` availability-gating. Per platform policy it
-defaults to `claude-opus-4.8-sub-xhigh` (Claude subscription via Meridian; LiteLLM
+defaults to `claude-opus-sub-xhigh` (Claude subscription via Meridian; LiteLLM
 falls back to `local-gemma4` if Meridian is down), and is **overridable via the
 `HONCHO_MODEL` env var** in `.env` (Phase 03 writes the per-role
 `*_MODEL_CONFIG__MODEL` keys + `LLM_OPENAI_BASE_URL` into `honcho/.env`).
@@ -347,12 +347,12 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
 │   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
 │   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
-│   │   ├── 21 … 25 · 27 · 28 · 29 · 30 · 32 · 34   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand, metagpt, oasis
+│   │   ├── 21–25, 27–36   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand, ingress, metagpt, agentscope, oasis, chatdev, aitown
 │   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (55 today; 39–54 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness, openshell_gateway)
+│   │   └── checks/                  — one file per failure mode (62 today; 39–61 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness, openshell_gateway, codex_bridge, bare_hostname_ingress, metagpt, agentscope, oasis, chatdev, aitown)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh
@@ -452,8 +452,8 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-37 phase scripts (`installer/phases/00_host.sh` through `29_openwork.sh`; 8 of
-them — 21–25, 27–30 · 32 · 34 — are opt-in extras installed by name), each:
+37 phase scripts (`installer/phases/00_host.sh` through `36_aitown.sh`; 15 of
+them — 21–25, 27–36 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.

@@ -250,7 +250,7 @@ source ~/ai-stack/.env
 curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"claude-opus-4.8-sub-high","messages":[{"role":"user","content":"one-sentence haiku about a proxy"}],"max_tokens":60}' \
+  -d '{"model":"claude-opus-sub-high","messages":[{"role":"user","content":"one-sentence haiku about a proxy"}],"max_tokens":60}' \
   | jq -r '.choices[0].message.content'
 ```
 
@@ -272,7 +272,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 
 ### L6 · Declarative model↔agent binding · 🟡 · ~12 min
 
-**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-4.8-sub-xhigh` and the `default` is `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
+**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-sub-xhigh` and the `default` is `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
 
 **Prereqs.** Phase 01 complete. `~/ai-stack/installer/models.yml` present (shipped in-repo). `yq` available. These commands are **read-mostly**: `list` and `superset` are read-only; `assign`/`sync` mutate `models.yml` / configs and may queue a LiteLLM restart — run those only when you mean to re-point something.
 
@@ -302,7 +302,7 @@ Reconcile everything from `models.yml` — the crash-safe 6-phase pass (validate
 bash ~/ai-stack/vz-ai-stack.sh model sync
 ```
 
-**Expected.** `model list` shows the 13 agents (the 9 Hermes profiles plus `pi`, `deerflow`, `ace`, `rlm`), each with its assigned model and whether the render is **gated** (fell back to the default). By default the 9 Hermes profiles plus `pi`, `deerflow`, and `rlm` target Claude-subscription routes (Opus 4.8 via Meridian) — but you just re-pointed `ace` to `local-qwen3-coder`, so it now renders that (gated to `local-gemma4` if LM Studio is down). An UNASSIGNED agent now defaults to the `primary` (`claude-opus-4.8-sub-max`), which availability-gates to `local-gemma4` when Meridian is down; `local-gemma4` remains the always-on Ollama fallback (what everything gates to when its runtime is down). `superset` prints the sorted-unique allowlist (the legacy `local*` names plus every `models.yml` model). `assign` reports it re-pointed one agent; `sync` walks its phases and only restarts LiteLLM if `config.yaml` actually changed.
+**Expected.** `model list` shows the 13 agents (the 9 Hermes profiles plus `pi`, `deerflow`, `ace`, `rlm`), each with its assigned model and whether the render is **gated** (fell back to the default). By default the 9 Hermes profiles plus `pi`, `deerflow`, and `rlm` target Claude-subscription routes (Opus 4.8 via Meridian) — but you just re-pointed `ace` to `local-qwen3-coder`, so it now renders that (gated to `local-gemma4` if LM Studio is down). An UNASSIGNED agent now defaults to the `primary` (`claude-opus-sub-max`), which availability-gates to `local-gemma4` when Meridian is down; `local-gemma4` remains the always-on Ollama fallback (what everything gates to when its runtime is down). `superset` prints the sorted-unique allowlist (the legacy `local*` names plus every `models.yml` model). `assign` reports it re-pointed one agent; `sync` walks its phases and only restarts LiteLLM if `config.yaml` actually changed.
 
 > **GPT-5.x is assignable the same way.** `vz-ai-stack.sh model assign all openai-gpt-5.5` puts the whole fleet on metered GPT-5.5 at max reasoning; `model assign … openai-gpt-5.5-sub` uses your **ChatGPT subscription** via the codex bridge — enable it once with `bash ~/ai-stack/bin/start-codex-bridge.sh enable`. Either route gates to `local-gemma4` when it's unavailable. Full how-to: [GPT5.md](GPT5.md).
 
@@ -401,7 +401,7 @@ s1.add_messages([
 print("wrote facts to session-1; deriver is processing in the background...")
 PY
 
-# Give the deriver (claude-opus-4.8-sub-xhigh, via LiteLLM) a moment.
+# Give the deriver (claude-opus-sub-xhigh, via LiteLLM) a moment.
 sleep 20
 
 # --- read.py: a FRESH session asks what Honcho learned about the peer ---
@@ -419,11 +419,11 @@ PY
 
 **Expected.** The second script — which never sees session-1's messages — answers with something like *"The user has a 24GB M4 Mac and prefers to run local models exclusively."* The knowledge survived the session boundary because Honcho derived it onto the **peer**, not the session.
 
-**Try it live.** A first-party `/api/honcho` proxy route is planned so you can curl memory without the SDK *(planned proxy route; copy-run for now)*. Until then, the copy-run scripts above are the supported path. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (`http://phoenix:6006`); filter for the `claude-opus-4.8-sub-xhigh` model.
+**Try it live.** A first-party `/api/honcho` proxy route is planned so you can curl memory without the SDK *(planned proxy route; copy-run for now)*. Until then, the copy-run scripts above are the supported path. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (`http://phoenix:6006`); filter for the `claude-opus-sub-xhigh` model.
 
-**Lesson.** Honcho separates *what was said* (messages on a session) from *what is known* (the peer representation). Writing is cheap and synchronous; **derivation is async** — that 20s sleep is the deriver routing your messages through LiteLLM → the Claude subscription (`claude-opus-4.8-sub-xhigh` via Meridian; LiteLLM falls back to `local-gemma4` if Meridian is down) to update the representation. Peers are cross-agent and per-user: the same `mayssam` peer is visible to every agent in the `tutorial` workspace.
+**Lesson.** Honcho separates *what was said* (messages on a session) from *what is known* (the peer representation). Writing is cheap and synchronous; **derivation is async** — that 20s sleep is the deriver routing your messages through LiteLLM → the Claude subscription (`claude-opus-sub-xhigh` via Meridian; LiteLLM falls back to `local-gemma4` if Meridian is down) to update the representation. Peers are cross-agent and per-user: the same `mayssam` peer is visible to every agent in the `tutorial` workspace.
 
-**Go deeper.** Honcho's LLM roles default to `claude-opus-4.8-sub-xhigh`; override the model via `HONCHO_MODEL` in `~/ai-stack/.env` (e.g. a local slug for offline work), then recreate Honcho (`docker compose up -d --force-recreate api deriver` from `honcho/` — a plain restart won't reload env). Read the peer/session model in `doc/STACK-GUIDE.md` (Honcho section) and the upstream SDK in `honcho/sdks/python/`.
+**Go deeper.** Honcho's LLM roles default to `claude-opus-sub-xhigh`; override the model via `HONCHO_MODEL` in `~/ai-stack/.env` (e.g. a local slug for offline work), then recreate Honcho (`docker compose up -d --force-recreate api deriver` from `honcho/` — a plain restart won't reload env). Read the peer/session model in `doc/STACK-GUIDE.md` (Honcho section) and the upstream SDK in `honcho/sdks/python/`.
 
 ---
 
@@ -651,7 +651,7 @@ The bridge shells out to `hermes --profile hermes_backend_engineer` inside the `
 bin/pi-as backend-engineer -p "Sketch the interface for POST /tokens (JWT in an httpOnly cookie). Contract only."
 ```
 
-You'll see `▶ Pi as backend-engineer (model: claude-opus-4.8-sub-max) — cwd /sandbox/agents/backend-engineer` before it answers. Drop `-p "…"` to get the interactive TUI instead. Notice the persona stays in lane: ask the *backend* engineer to design the whole system and it will tell you that's the techlead's job and escalate — that's `team-protocol §4` working.
+You'll see `▶ Pi as backend-engineer (model: claude-opus-sub-max) — cwd /sandbox/agents/backend-engineer` before it answers. Drop `-p "…"` to get the interactive TUI instead. Notice the persona stays in lane: ask the *backend* engineer to design the whole system and it will tell you that's the techlead's job and escalate — that's `team-protocol §4` working.
 
 ---
 
@@ -798,7 +798,7 @@ docker ps --filter 'label=com.docker.compose.project=deer-flow' --filter 'status
 # 3. In the UI (opened by step 1, or reach it at http://localhost:2026),
 #    ask a research question; the LangGraph agent plans, searches, and
 #    produces a cited report. Calls route through LiteLLM
-#    (DeerFlow's reasoning tier is assigned claude-opus-4.8-sub-max, gated back to local-gemma4 when Meridian is down).
+#    (DeerFlow's reasoning tier is assigned claude-opus-sub-max, gated back to local-gemma4 when Meridian is down).
 
 # 4. The dual-LLM researcher pattern (no service — a prompting discipline):
 #    a summarizer reads the UNTRUSTED doc; the operator only ever sees the
@@ -819,7 +819,7 @@ vz-ai-stack.sh stop deerflow
 
 **Lesson.** Research is a *graph*, not a turn — DeerFlow makes that graph explicit. And whenever an agent ingests untrusted content, split the model in two: a cheap local summarizer absorbs the payload, the operator only sees sanitized facts. The fleet's RAG and security profiles (`hermes_ml_engineer`, `hermes_reviewing_engineer`) already apply this.
 
-**Go deeper.** DeerFlow is NOT aliased — `start deerflow` opens it at `http://localhost:2026` (upstream default `PORT`), not via an `/etc/hosts` name. Its two-tier `models:` block (basic `local-gemma4` / reasoning `claude-opus-4.8-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local-gemma4` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
+**Go deeper.** DeerFlow is NOT aliased — `start deerflow` opens it at `http://localhost:2026` (upstream default `PORT`), not via an `/etc/hosts` name. Its two-tier `models:` block (basic `local-gemma4` / reasoning `claude-opus-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local-gemma4` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
 
 ---
 
@@ -958,7 +958,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 
 **Prereqs.** A healthy stack with LiteLLM up (Act II); `uv` (installed by the core). Nothing here is load-bearing — skip freely.
 
-**Steps — install AgentScope and watch two agents converse.**
+**Start here — install AgentScope and watch two agents converse.** (One copy-run demo per simulator follows; each is independent, so do them in any order.)
 
 ```bash
 # 1. Install (opt-in; NOT in `install all`). Creates a host uv venv (py3.11), mints a
@@ -1013,9 +1013,78 @@ async def main():
 asyncio.run(main())
 ```
 
-**Try the others.** `install metagpt` then `bin/metagpt "build a CLI todo app"` (a PM→architect→engineer→QA team writes into `metagpt/workspace/`); `install oasis` then `bin/oasis oasis/sims/smoke_sim.py` (a CAMEL social swarm). Each gates its install on a real run and traces to Phoenix.
+**Run the MetaGPT software-company swarm.** A *fixed* role pipeline — PM → architect → engineer → QA — turns a one-line brief into a project on disk. No container, no port: a host venv + a `bin/metagpt` wrapper that injects the scoped key and writes `~/.metagpt/config2.yaml` at runtime.
 
-**Try the watchable web sims.** The other two swarm sims are **browser** apps, not `bin/<svc>` CLIs: `install chatdev` then open **http://chatdev:5274/** (ChatDev 2.0 "DevAll" — a multi-agent software company you drive from a Vue web app; FastAPI backend on :6400); `install aitown` then open **http://aitown:5273/** (AI Town — AI characters living and chatting in a virtual world in real time; Convex dashboard on :6791). Both are opt-in containers (Phases 35 / 36) and route through LiteLLM.
+```bash
+# 1. Install (opt-in). Host venv (py3.11) + scoped METAGPT_LITELLM_KEY + bin/metagpt;
+#    the install GATES on the real wrapper loading the CLI through LiteLLM.
+vz-ai-stack.sh install metagpt              # alias for: install 32
+
+# 2. Drive the swarm from a one-line brief. The whole team writes its
+#    artifacts (PRD, design, code, tests) into metagpt/workspace/.
+bin/metagpt "create a CLI 2048 game in python"
+
+# 3. See what the team produced.
+ls metagpt/workspace/
+
+# 4. Watch every role's LLM call as a trace.
+open http://phoenix:6006                    # project ai-stack
+```
+
+**Expected.** The run prints each role taking its turn and lands code + docs under `metagpt/workspace/`. `vz-ai-stack.sh test 32` runs the wrapper end-to-end; `doctor metagpt` shows check 57 green. Want a bigger, sharper swarm? `METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt "…"` (metered).
+
+**Run the OASIS social swarm.** CAMEL-backed agents that post / follow / react in a shared world (upstream scales to ~1M; on-box you run a small cast). Same host-venv shape as MetaGPT, driven by a sim script under `oasis/sims/`.
+
+```bash
+# 1. Install (opt-in). Host venv (py3.11) + scoped OASIS_LITELLM_KEY + bin/oasis;
+#    the install GATES on a real CAMEL agent exchange through LiteLLM.
+vz-ai-stack.sh install oasis                # alias for: install 34
+
+# 2. Run the bundled social-swarm demo (3 CAMEL personas reply via LiteLLM).
+bin/oasis oasis/sims/smoke_sim.py
+
+# 3. Prove it end-to-end, then watch the swarm think.
+vz-ai-stack.sh test 34
+open http://phoenix:6006                    # project ai-stack
+```
+
+**Expected.** The demo prints `OASIS_SMOKE_OK agents=3 replies=3` (every agent must reply or it fails); `test 34` confirms it; `doctor oasis` shows check 59 green. Write your own world as `oasis/sims/<file>.py` and run it with `bin/oasis oasis/sims/<file>.py` — the wrapper injects the scoped key + `OPENAI_BASE_URL` for you.
+
+**Watch the ChatDev web app.** The other two sims are **browser** apps, not `bin/<svc>` CLIs — opt-in containers (Phases 35 / 36) that route through LiteLLM. ChatDev 2.0 "DevAll" is a *watchable* multi-agent software company you drive from a Vue web app (frontend container :5173 → host 5274; FastAPI backend on :6400).
+
+```bash
+# 1. Install (opt-in). Builds one image, runs two managed containers
+#    (chatdev + chatdev-backend) on loopback 127.0.10.18.
+vz-ai-stack.sh install chatdev              # alias for: install 35
+
+# 2. Open the web app and drive a build — pick/run a workflow, watch the
+#    agents collaborate. (start/stop manage it after install.)
+open http://chatdev:5274/                   # or http://127.0.10.18:5274/
+vz-ai-stack.sh start chatdev                # idempotent; stop chatdev to reclaim RAM
+
+# 3. Prove it headless, then watch every agent's call.
+vz-ai-stack.sh test 35                      # headless 1-agent workflow → LiteLLM
+open http://phoenix:6006                    # project ai-stack
+```
+
+**Expected.** `http://chatdev:5274/` renders the DevAll UI (the install patches Vite's `allowedHosts` so the alias doesn't 403 — fall back to the `127.0.10.18` IP if needed); the backend API docs live at `http://127.0.10.18:6400/docs`. `doctor chatdev` shows check 60 green. Bigger swarm: point a workflow YAML node's `name:` at `claude-opus-sub-xhigh` (metered).
+
+**Watch the AI Town.** The most *watchable* of the set — AI characters live, move, and chat in a virtual town in real time (alias `aitown` → host 5273 → container 5173; Convex admin dashboard on :6791). Three containers under the `aitown` compose project; the whole town world is a SQLite DB bind-mounted under `data/aitown/convex` so it survives a restart.
+
+```bash
+# 1. Install (opt-in). Convex backend + frontend + dashboard; LLM calls dial
+#    LiteLLM via host.docker.internal:4000.
+vz-ai-stack.sh install aitown               # alias for: install 36
+
+# 2. Open the town and watch it tick — characters wander, meet, and converse.
+open http://aitown:5273/                    # or http://127.0.10.19:5273/
+vz-ai-stack.sh start aitown                 # idempotent; stop aitown to reclaim RAM
+
+# 3. Trace every character's LLM call.
+open http://phoenix:6006                    # project ai-stack
+```
+
+**Expected.** `http://aitown:5273/` shows the live town (the install patches Vite's `allowedHosts`; fall back to the `127.0.10.19` IP if it 403s); the Convex dashboard is at `http://127.0.10.19:6791/` (loopback-only). `vz-ai-stack.sh test 36` proves it; `doctor aitown` shows check 61 green. Livelier town (metered): `(cd ai-town && npx convex env set LLM_MODEL claude-opus-sub-xhigh)` then restart. The town world is **your data** — `stop aitown` and a teardown both preserve the SQLite world.
 
 **Reversible.** `rm -rf agentscope/.venv && rm -f installer/state/phase_33.done` (same shape for `metagpt`/`oasis`). The `<svc>/sims/` directories are **your data** — they're kept.
 
@@ -1066,7 +1135,7 @@ print()
 
 # 3) Model swap — change ONE string. local (zero-config) → a subscription
 #    route → a cloud route. (local-qwen3.6 also works once LM Studio is up.)
-for m in ("local", "claude-sonnet-4.6-sub", "openrouter-claude-opus-4.7-fast"):
+for m in ("local", "claude-sonnet-sub-high", "openrouter-claude-opus-4.7-fast"):
     r = client.chat.completions.create(model=m, messages=[{"role": "user", "content": "hi in 3 words"}])
     print(m, "->", r.choices[0].message.content)
 ```

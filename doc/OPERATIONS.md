@@ -34,7 +34,7 @@ stack <cmd> --help  /  stack help <cmd> # focused per-command usage (bare `help`
 stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
 stack fleet list|add|remove|new|destroy # Hermes 9-role fleet manager (see models.md / STACK-GUIDE)
-stack doctor                            # 57 health checks + auto-fix offers
+stack doctor                            # 62 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container
@@ -336,10 +336,10 @@ See [models.md](models.md) for the full reference. Three local models:
 
 Shipped assignments: every agent routes to the **Claude Opus subscription via
 Meridian** — `hermes_manager` + `hermes_qa_test_engineer` + `hermes_sre_engineer` +
-`hermes_incident_manager` → `claude-opus-4.8-sub-xhigh`; `hermes_techlead` +
+`hermes_incident_manager` → `claude-opus-sub-xhigh`; `hermes_techlead` +
 `hermes_ml_engineer` + `hermes_frontend_engineer` + `hermes_backend_engineer` +
-`hermes_reviewing_engineer` → `claude-opus-4.8-sub-max`. `pi` + `deerflow` →
-`claude-opus-4.8-sub-max`; `ace` + `rlm` → `claude-opus-4.8-sub-xhigh`. A subscription-assigned agent **auto-falls-back to `local-gemma4`** when
+`hermes_reviewing_engineer` → `claude-opus-sub-max`. `pi` + `deerflow` →
+`claude-opus-sub-max`; `ace` + `rlm` → `claude-opus-sub-xhigh`. A subscription-assigned agent **auto-falls-back to `local-gemma4`** when
 the Meridian host daemon is down, so a plain `install all` works with no Meridian. To
 activate the subscription models: bring Meridian up (`bin/start-meridian.sh`), then
 `vz-ai-stack.sh model sync`.

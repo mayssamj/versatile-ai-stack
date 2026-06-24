@@ -4,6 +4,14 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-24
+
+### Docs
+
+- **Documentation audit + cohesion sweep — drift-free + tutorial enhancements** (`worktree-docs-audit`): a 4-auditor read-only audit (md-core / md-user / html-generated-drift / stack-coverage critic) across all 27 docs, synthesized and adversarially verified, then applied. **Count-drift corrected to current ground truth — 49 services · 62 doctor checks · 14 opt-in extras** — across README / HANDOFF / DOCTOR / INSTALL / OPERATIONS / ONBOARDING / ARCHITECTURE / USER-GUIDE (`.md`+`.html`) / EXPLORE.html (README was worst: 44 services, 57/57, 55 checks, 9 opt-in — every count stale). **Version-less model aliases** swept across 16 docs to match the live LiteLLM config (`claude-opus-4.8-sub-*` → `claude-opus-sub-*`, `claude-sonnet-4.6-sub-*` → `claude-sonnet-sub-*`). **Coverage gaps filled:** DOCTOR.md gained the missing per-check reference sections for checks **56–61** (bare_hostname_ingress · metagpt · agentscope · oasis · chatdev · aitown); ATTRIBUTION.md a **Caddy** (Phase 31 ingress) row; COMPONENTS.md a **Sourcegraph** (Phase 27) opt-in row; ARCHITECTURE/ONBOARDING opt-in phase enumerations extended to 31/33/35/36. **Tutorial enhancements:** TUTORIAL.md Act V gained concrete copy-run demo blocks for the five agent-swarm sims (metagpt/agentscope/oasis CLI + chatdev/aitown web), with an ONBOARDING §3 pointer. Generated HTML regenerated (TUTORIAL.html, DIAGRAMS.html — `--check` green). CHANGELOG history left untouched; dated handoff snapshots in HANDOFF.md preserved. Docs-only (20 files, +337/−157); two adversarial verifiers + a full ground-truth re-sweep confirmed drift-free.
+
+---
+
 ## 2026-06-23
 
 ### Hardening

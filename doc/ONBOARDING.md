@@ -34,7 +34,7 @@ Then the four you'll use daily:
 
 ```bash
 stack status        # declared vs actual — what's enabled, what's running, what drifted
-stack doctor        # 57 health checks + per-check auto-fix offers (your first move when something's off)
+stack doctor        # 62 health checks + per-check auto-fix offers (your first move when something's off)
 stack phases        # list every phase as  id → name
 stack logs <svc>    # docker logs wrapper, e.g.  stack logs litellm -f
 stack model list    # which LLM each agent is bound to (models.yml) — assign/sync/superset too
@@ -93,7 +93,7 @@ host-gateway / routing). See [TROUBLESHOOTING.md § Connection refused](TROUBLES
 
 All agents call local models through LiteLLM. Which model each agent uses is
 **declared per-agent** in `installer/models.yml` and rendered by `vz-ai-stack.sh model
-sync` (see [models.md](models.md)). Unassigned agents now render the primary `claude-opus-4.8-sub-max`, gated to
+sync` (see [models.md](models.md)). Unassigned agents now render the primary `claude-opus-sub-max`, gated to
 `local-gemma4` (gemma4:e4b — the always-on Ollama fallback) when Meridian is down; the coder profiles + Pi use `local-qwen3-coder`
 and the reasoning-heavy profiles + DeerFlow use `local-qwen3.6` (both LM Studio MLX,
 opt-in). lmstudio-assigned agents fall back to `local-gemma4` automatically when LM
@@ -120,6 +120,11 @@ curl -s http://litellm:4000/v1/chat/completions \
 
 Every call lands as a trace in Phoenix's **ai-stack** project (not `default`).
 
+Want **swarms** of agents instead of one? Five opt-in agent-swarm sims ship as
+Phases 32–36 (§5): the CLI sims `metagpt`/`agentscope`/`oasis` trace into Phoenix,
+and the web sims `chatdev` (http://chatdev:5274/) + `aitown` (http://aitown:5273/)
+have browser UIs — see [TUTORIAL.md](TUTORIAL.md) Act V.
+
 ---
 
 ## 4. Where logs and state live
@@ -138,7 +143,7 @@ view at start): `docker exec litellm tail -f /traces/litellm.jsonl`.
 
 ---
 
-## 5. Opt-in extras (Phases 21–25, 27–30 · 32 · 34) — add only what you want
+## 5. Opt-in extras (Phases 21–25, 27–36) — add only what you want
 
 These are **not** in `install all`. Add by name; each one's doctor check (34–38, 49)
 passes-as-skip until you install it. (MemPalace, Phase 26, is no longer here — it's a
@@ -153,6 +158,13 @@ stack install lmstudio       # 25 — LM Studio MLX runtime behind LiteLLM (CPU 
 stack install sourcegraph    # 27 — self-hosted code search + native MCP
 stack install aionui         # 28 — AionUi desktop + WebUI Cowork workspace (multi-agent GUI)
 stack install openwork       # 29 — OpenWork headless OpenCode-powered Cowork workspace (browser UI)
+stack install understand     # 30 — Understand-Anything codebase knowledge-graph + MCP
+stack install ingress        # 31 — host-native Caddy: bare-hostname http(s)://name/ ingress
+stack install metagpt        # 32 — software-company agent swarm (PM→architect→engineer→QA) → Phoenix
+stack install agentscope     # 33 — build/scale your own multi-agent sims → Phoenix
+stack install oasis          # 34 — large social-agent swarm (post/follow/react) → Phoenix
+stack install chatdev        # 35 — watchable software-company web app (open http://chatdev:5274/)
+stack install aitown         # 36 — watchable virtual town of AI characters (open http://aitown:5273/)
 
 bin/skillspector scan <path>   # after installing skillspector: offline security scan
 ```

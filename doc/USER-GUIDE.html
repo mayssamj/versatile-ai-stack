@@ -292,10 +292,10 @@
 
 <section id="overview" class="hero">
   <h1>Your AI stack, made operational.</h1>
-  <p>46 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>vz-ai-stack.sh</code> done to a working multi-service workflow.</p>
+  <p>49 services running on your Mac — local inference, observability, memory, sandboxed agents, RAG, fine-tuning. This guide gets you from <code>vz-ai-stack.sh</code> done to a working multi-service workflow.</p>
   <div class="stat-row">
-    <div class="stat"><span class="n">41</span><span class="l">Services</span></div>
-    <div class="stat"><span class="n">49</span><span class="l">Doctor checks</span></div>
+    <div class="stat"><span class="n">49</span><span class="l">Services</span></div>
+    <div class="stat"><span class="n">62</span><span class="l">Doctor checks</span></div>
     <div class="stat"><span class="n">12</span><span class="l">Recipes</span></div>
     <div class="stat"><span class="n">4</span><span class="l">Profiles</span></div>
     <div class="stat"><span class="n">~25</span><span class="l">Model routes</span></div>
@@ -563,7 +563,7 @@ const services = [
    combine:['hermes_fleet','pi']},
 
   {id:'hermes_fleet', layer:'agent', layerLabel:'Agent runtime', name:'hermes-fleet', port:'(sandbox)', phase:'04·F', tagline:'9-role software-engineering team',
-   what:'A full delivery team: manager (chief-of-staff / second-brain / single-entrance operator — executes directly when fastest, else delegates), techlead (architecture/ADRs/contracts), frontend_engineer, backend_engineer, ml_engineer (model selection/evals/RAG), qa_test_engineer (test gate), reviewing_engineer (review + security, read-only), sre_engineer (safe deploys, prod-credentialed), incident_manager (incident command, read-only). Each a soul (system prompt + tools + a model bound in models.yml). All share the HERMES_LITELLM_KEY virtual key and the team-protocol skill (definition-of-done, typed handoffs, review gate, escalation, turn budget). Bindings: manager/qa_test_engineer/sre_engineer/incident_manager → claude-opus-4.8-sub-xhigh; techlead/ml_engineer/frontend_engineer/backend_engineer/reviewing_engineer → claude-opus-4.8-sub-max — all via a Claude Opus subscription through Meridian, availability-gated to local-gemma4 when Meridian is down. The same team also runs as Pi personas (bin/pi-as <role>) and in Claude Code (the manager is the main agent via a ~/.claude/CLAUDE.md import; the other 8 roles are subagents in ~/.claude/agents). Booted on demand inside hermes-fleet-v1.',
+   what:'A full delivery team: manager (chief-of-staff / second-brain / single-entrance operator — executes directly when fastest, else delegates), techlead (architecture/ADRs/contracts), frontend_engineer, backend_engineer, ml_engineer (model selection/evals/RAG), qa_test_engineer (test gate), reviewing_engineer (review + security, read-only), sre_engineer (safe deploys, prod-credentialed), incident_manager (incident command, read-only). Each a soul (system prompt + tools + a model bound in models.yml). All share the HERMES_LITELLM_KEY virtual key and the team-protocol skill (definition-of-done, typed handoffs, review gate, escalation, turn budget). Bindings: manager/qa_test_engineer/sre_engineer/incident_manager → claude-opus-sub-xhigh; techlead/ml_engineer/frontend_engineer/backend_engineer/reviewing_engineer → claude-opus-sub-max — all via a Claude Opus subscription through Meridian, availability-gated to local-gemma4 when Meridian is down. The same team also runs as Pi personas (bin/pi-as <role>) and in Claude Code (the manager is the main agent via a ~/.claude/CLAUDE.md import; the other 8 roles are subagents in ~/.claude/agents). Booted on demand inside hermes-fleet-v1.',
    when:'Multi-step delivery work that benefits from a spec→deploy pipeline. Quick chats use Open WebUI; structured build tasks go through the manager, who frames a spec and routes to specialists. Re-point a profile with `vz-ai-stack.sh model assign <profile> <model>` then `model sync`.',
    tryThis:[
      {desc:'See the soul files.', cmd:'ls ~/ai-stack/openshell/fleet-souls/'},

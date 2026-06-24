@@ -7,7 +7,7 @@ and what the fix does.
 Run filtered:
 
 ```bash
-stack doctor                    # all 59
+stack doctor                    # all 62
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -92,7 +92,13 @@ installer/doctor/checks/
 ├── 52_understand.sh                         (opt-in Phase 30; skip-clean when no knowledge graph committed)
 ├── 53_container_liveness.sh                 (census: every managed container EXISTS + running & healthy)
 ├── 54_openshell_gateway.sh                  (OpenShell gateway up on :17670 & brew-manageable)
-└── 55_codex_bridge.sh                       (opt-in; GPT-5.x on your ChatGPT subscription — skip-clean when not installed)
+├── 55_codex_bridge.sh                       (opt-in; GPT-5.x on your ChatGPT subscription — skip-clean when not installed)
+├── 56_bare_hostname_ingress.sh              (opt-in Phase 31; host-native Caddy port-free http(s)://name/ — skip when ingress not installed/loaded)
+├── 57_metagpt.sh                            (opt-in Phase 32; MetaGPT venv + scoped key — pass-as-skip when Phase 32 hasn't run)
+├── 58_agentscope.sh                         (opt-in Phase 33; AgentScope venv + scoped key + optional Studio GUI :5275 — pass-as-skip)
+├── 59_oasis.sh                              (opt-in Phase 34; OASIS venv + scoped key — pass-as-skip when Phase 34 hasn't run)
+├── 60_chatdev.sh                            (opt-in Phase 35; ChatDev web app :5274 + scoped key — pass-as-skip when Phase 35 hasn't run)
+└── 61_aitown.sh                             (opt-in Phase 36; AI Town compose stack + frontend :5273 + scoped key — pass-as-skip)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -584,7 +590,7 @@ isn't Ready — both are required to verify bindings end-to-end. See
 
 | | |
 |---|---|
-| Asserts | When Meridian is enabled (`bin/start-meridian.sh`), its launchd job is loaded, the local endpoint (`127.0.0.1:3456/v1/models`) is healthy, the `*-sub` models (`claude-opus-4.8-sub-*`, `claude-sonnet-4.6-sub-*`) are served through LiteLLM, and each model's `extra_body.effort` in `config.yaml` matches the declared effort in `models.yml` (the `…-sub-{low,medium,high,xhigh,max,ultracode}` ladder isn't flattened). Lets Open WebUI (and anything behind LiteLLM) chat/code on your `claude login` OAuth with **no API key**. |
+| Asserts | When Meridian is enabled (`bin/start-meridian.sh`), its launchd job is loaded, the local endpoint (`127.0.0.1:3456/v1/models`) is healthy, the `*-sub` models (`claude-opus-sub-*`, `claude-sonnet-sub-*`) are served through LiteLLM, and each model's `extra_body.effort` in `config.yaml` matches the declared effort in `models.yml` (the `…-sub-{low,medium,high,xhigh,max,ultracode}` ladder isn't flattened). Lets Open WebUI (and anything behind LiteLLM) chat/code on your `claude login` OAuth with **no API key**. |
 | Fails when | The launchd job is loaded but the endpoint is unhealthy, or the endpoint is healthy but the `*-sub` models aren't served / their effort drifts. |
 | Advisory-green | Meridian not installed, or installed but the daemon wasn't enabled (no launchd job, port closed) — it's opt-in. Never prints a token. |
 
@@ -643,7 +649,7 @@ into the mempalace tool env (so the doctor never adds it). See
 | Fails when | Either HTML page drifted from its markdown source (someone edited `.md` without regenerating), a tutorial section/anchor was dropped or duplicated, or an external `TUTORIAL.md#…` link crept back in. |
 | Auto-fix | Regenerates both pages from their markdown sources: `installer/lib/build_tutorial_html.py` (overwrites `doc/TUTORIAL.html`) and `installer/lib/build_diagrams_html.py` (overwrites `doc/DIAGRAMS.html`). |
 
-This check is **always-on** (unlike the opt-in service checks 34–38/44): both HTML pages are in-repo artifacts that ship with the stack, so their integrity is a hard invariant. The tutorial validator parses real element attributes via `HTMLParser` (not a regex over the page text), so `id="…"` substrings inside code examples and attrs like `*_id` never false-positive. See [project_tutorial](../doc/TUTORIAL.md) / `installer/lib/tutorial-serve.sh` for the live ephemeral-proxy serve path. The diagrams generator (`installer/lib/build_diagrams_html.py`) parses `doc/DIAGRAMS.md` from scratch on every run — edit the `.md` and re-run to update the viewer.
+This check is **always-on** (unlike the opt-in service checks 34–38 + 44 + 49–52 + 56–61, which pass-as-skip): both HTML pages are in-repo artifacts that ship with the stack, so their integrity is a hard invariant. The tutorial validator parses real element attributes via `HTMLParser` (not a regex over the page text), so `id="…"` substrings inside code examples and attrs like `*_id` never false-positive. See [project_tutorial](../doc/TUTORIAL.md) / `installer/lib/tutorial-serve.sh` for the live ephemeral-proxy serve path. The diagrams generator (`installer/lib/build_diagrams_html.py`) parses `doc/DIAGRAMS.md` from scratch on every run — edit the `.md` and re-run to update the viewer.
 
 ---
 
@@ -757,6 +763,42 @@ Open WebUI → LiteLLM → codex-bridge (host `127.0.0.1:3457`) → ChatGPT back
 
 Mirrors check 41's philosophy: green unless something you clearly opted into is
 genuinely broken. See [models.md](models.md) for setup + the full risk disclosure.
+
+---
+
+## 56 · Bare-hostname ingress http(s)://name/ (opt-in, Phase 31)
+
+Graceful by design — a no-op [skip] when the host-native Caddy isn't installed (no `caddy` binary) OR its launchd daemon isn't loaded (`system/com.ai-stack.ingress`), so it never red-bars a stack that didn't opt into port-free `http(s)://litellm/`. When the daemon IS loaded the user opted in, so a broken bind is a real regression: it proves there is **no OrbStack `*:80` collapse** by asserting two services answer on their **own** socket IP — it `curl`s `litellm` resolved to `127.0.10.1` and `phoenix` resolved to `127.0.10.2` and checks `%{local_ip}` matches the expected per-service IP (which holds even if the upstream container is down — a 502 still connects to the right IP). Makes **no external network calls** (loopback only). Fails when the per-IP isolation is gone (`ingress :80 not isolated per-IP (litellm->…, phoenix->…; expected 127.0.10.1 / 127.0.10.2)`). Fix: `vz-ai-stack.sh ingress up` (bring up / repair the ingress), then `vz-ai-stack.sh ingress trust` to trust the local CA for `https://`.
+
+---
+
+## 57 · MetaGPT venv + scoped LiteLLM key (opt-in, Phase 32)
+
+Graceful by design — pass-as-skip when MetaGPT's Phase 32 hasn't run (no `installer/state/phase_32*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv multi-agent software-company sim. When installed it requires: the venv with the `metagpt` entrypoint (`metagpt/.venv/bin/metagpt`), `import metagpt` succeeding in that venv, the `bin/metagpt` wrapper, and the scoped `METAGPT_LITELLM_KEY` actually listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so the check requires a real `"id"`). A down key-store DB is reported as "heal the DB (check 05a)", **not** "re-mint" — re-minting against a dead DB just fails (`LiteLLM key-store DB is DOWN — heal it …; do NOT re-mint`). Fix: `vz-ai-stack.sh install 32` (rebuild venv + re-mint scoped key + refresh `bin/metagpt`).
+
+---
+
+## 58 · AgentScope venv + scoped LiteLLM key (opt-in, Phase 33)
+
+Graceful by design — pass-as-skip when AgentScope's Phase 33 hasn't run (no `installer/state/phase_33*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv multi-agent simulation framework. When installed it requires: the venv (`agentscope/.venv/bin/python`), `import agentscope` succeeding in that venv, the `bin/agentscope` wrapper, and the scoped `AGENTSCOPE_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint". The optional **Studio web GUI** (host `:5275`) is probed **only when enabled** — keyed off the launchd plist `~/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist` (written by Phase 33 only with `AGENTSCOPE_STUDIO=1`, removed on uninstall — NOT the `.env` flag, which is an install-time input); lib-only stacks have no plist, skip the probe, and pass. When Studio is on it must return HTTP 200 on `http://127.0.0.1:5275/` or the check fails (`Studio GUI … returned HTTP <code>`). Fix: `vz-ai-stack.sh install 33` (rebuild venv + re-mint scoped key + refresh `bin/agentscope`), and `bash bin/start-agentscope-studio.sh install` to (re)start the Studio daemon when it's enabled.
+
+---
+
+## 59 · OASIS venv + scoped LiteLLM key (opt-in, Phase 34)
+
+Graceful by design — pass-as-skip when OASIS's Phase 34 hasn't run (no `installer/state/phase_34*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv large-scale social-agent swarm sim. When installed it requires: the venv (`oasis/.venv/bin/python`), `import oasis` succeeding in that venv, the `bin/oasis` wrapper, and the scoped `OASIS_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `vz-ai-stack.sh install 34` (rebuild venv + re-mint scoped key + refresh `bin/oasis`); prove the swarm with `vz-ai-stack.sh test 34`.
+
+---
+
+## 60 · ChatDev web app on :5274 + scoped LiteLLM key (opt-in, Phase 35)
+
+Graceful by design — pass-as-skip when ChatDev's Phase 35 hasn't run (no `installer/state/phase_35*.done` stamp), so it never red-bars a stack that didn't opt into the containerized multi-agent software-company web app (Vue frontend `:5274` + FastAPI backend `:6400`, both on the `ai-stack` bridge). When installed it requires, in order: the derived image `ai-stack/chatdev:local` built, both the `chatdev-backend` and `chatdev` (frontend) containers running, the frontend serving HTTP 200 at `http://127.0.10.18:5274/` (explicit `^200$` grep — not the `http_ok` helper, which has the documented `000`-concat false-healthy bug), and the scoped `CHATDEV_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A 503 `no_db_connection` reads as "heal the DB (check 05a)", **not** "re-mint"; if LiteLLM is simply unreachable it says so rather than blaming the key. Fix: `vz-ai-stack.sh start chatdev` (idempotent (re)build + (re)start) or `vz-ai-stack.sh install 35`; prove the swarm with `vz-ai-stack.sh test 35`.
+
+---
+
+## 61 · AI Town compose stack + frontend :5273 + scoped LiteLLM key (opt-in, Phase 36)
+
+Graceful by design — pass-as-skip when AI Town's Phase 36 hasn't run (no `installer/state/phase_36*.done` stamp), so it never red-bars a stack that didn't opt into the watchable virtual-town agent sim (a self-contained Convex **docker-compose** project `aitown`: backend + frontend + dashboard). **Liveness-only** (per the no-cold-start rule): it never cold-starts or blocks on a slow Vite build; it only red-bars when the phase stamp exists and the stack is genuinely down/broken or the key is bad. When installed it requires: `ai-town/docker-compose.yml` present, the docker daemon reachable, all 3 compose members running (`docker compose -p aitown ps --status running` ≥ 3), the frontend serving HTTP 200 at `http://127.0.10.19:5273/` (explicit `^200$` grep — not `http_ok`), and the scoped `AITOWN_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`; loopback `127.0.0.1:4000` is probed first, falling back to the `litellm:4000` alias). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint". Note: AI Town's containers are bridge-exempt (no `ai-stack` bridge / managed-as-docker-run signal), so check 53's container-liveness census sees them only via the `project: aitown` compose signal. Fix: `vz-ai-stack.sh start aitown` (bring the compose stack up — first build is heavy) or `vz-ai-stack.sh install 36`; prove the wiring with `vz-ai-stack.sh test 36`.
 
 ---
 
