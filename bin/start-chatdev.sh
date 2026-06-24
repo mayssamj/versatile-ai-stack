@@ -188,6 +188,7 @@ _run_frontend() {
     -e "VITE_API_BASE_URL=http://chatdev:$BE_PORT" \
     -p "$FE_IP":"$FE_HOST_PORT":"$FE_CTR_PORT" \
     -v "$CD_REPO:/app" \
+    -v "/app/frontend/node_modules" \
     -w /app/frontend \
     "$IMAGE" \
     npm run dev -- --host 0.0.0.0 --port "$FE_CTR_PORT" \

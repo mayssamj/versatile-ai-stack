@@ -243,6 +243,13 @@ RUN if [ -f /app/uv.lock ]; then \
         uv pip install --system -r /app/requirements.txt ; \
     fi \
     && uv pip install --system uvicorn fastapi
+# Frontend deps INSIDE the image (linux-native). The HOST npm install produces
+# macOS-arm64 modules (e.g. @rollup/rollup-darwin-arm64) the linux container can't
+# load ("Cannot find module '@rollup/rollup-linux-arm64-gnu'"); a clean in-image
+# install pulls the linux rollup optional dep. The frontend container mounts an
+# ANONYMOUS volume over /app/frontend/node_modules so this linux build survives the
+# source bind-mount (which would otherwise re-mask it with the host's). (§24 live-verify fix, 2026-06-23.)
+RUN if [ -d /app/frontend ]; then cd /app/frontend && rm -rf node_modules && npm install ; fi
 EXPOSE 6400 5173
 CMD ["uvicorn", "server_main:app", "--host", "0.0.0.0", "--port", "6400"]
 DOCKEREOF
