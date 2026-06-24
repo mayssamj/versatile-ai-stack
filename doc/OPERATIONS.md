@@ -63,9 +63,9 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
-The **12 opt-in extras** (Phases 21–25, 27–30 · 32 · 33 · 34: `portless`, `cmux`, `skillspector`,
-`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `metagpt`, `agentscope`, `oasis`) are NOT part of `install all` — add them
-individually by name. Their doctor checks (34–38, 49, 50, 51, 52, 57–59) pass-as-skip until installed.
+The **14 opt-in extras** (Phases 21–25, 27–30 · 32 · 33 · 34 · 35 · 36: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`) are NOT part of `install all` — add them
+individually by name. Their doctor checks (34–38, 49, 50, 51, 52, 57–61) pass-as-skip until installed.
 
 ### Per-service help (`stack help`)
 

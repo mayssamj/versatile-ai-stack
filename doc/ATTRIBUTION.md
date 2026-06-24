@@ -93,7 +93,7 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **remnic-hermes** | https://github.com/joshuaswarren/remnic | MIT | Remnic MemoryProvider plugin for Hermes Agent. PyPI `remnic-hermes`. |
 | **autoreason** | https://github.com/NousResearch/autoreason | **None (all rights reserved)** | NousResearch; no LICENSE file. Reference only — do not redistribute. |
 
-## Opt-in experimental extras (Phases 21–25 · 27–30 · 32 · 34)
+## Opt-in experimental extras (Phases 21–25 · 27–30 · 32 · 33 · 34 · 35 · 36)
 | Component | Upstream | License | Notes |
 |---|---|---|---|
 | **portless** | https://github.com/vercel-labs/portless | Apache-2.0 | Vercel Labs. Global npm CLI; ships a Claude Code skill. |
@@ -107,6 +107,8 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 | **MetaGPT** | https://github.com/FoundationAgents/MetaGPT | **MIT** | FoundationAgents (geekan/*). Multi-agent "software company" sim (PM→architect→engineer→QA). Host uv venv (py3.11); installer pins `metagpt==0.8.2` with `--prerelease=allow` (semantic-kernel pre-release dep) + `typer>=0.12`. Routes through LiteLLM (scoped key) → Phoenix. Opt-in (Phase 32). |
 | **OASIS** | https://github.com/camel-ai/oasis | Apache-2.0 | CAMEL-AI. Large-scale social-media agent swarm sim (≤1M agents upstream), built on CAMEL. Host uv venv (py3.11); `camel-oasis`. Routes through LiteLLM (scoped key) → Phoenix. Opt-in (Phase 34). |
 | **AgentScope** | https://github.com/agentscope-ai/agentscope | Apache-2.0 | AgentScope-AI (was modelscope/*). Developer framework for building/scaling multi-agent simulations (async `OpenAIChatModel` + `OpenAICredential` + `OpenAIChatFormatter`; agents observe/reply). Host uv venv (py3.11); `agentscope` 2.x. Routes through LiteLLM (scoped key) → Phoenix. Opt-in (Phase 33); optional Studio web GUI deferred. |
+| **ChatDev** | https://github.com/OpenBMB/ChatDev | Apache-2.0 | OpenBMB. ChatDev 2.0 "DevAll" — a watchable multi-agent "software company" (CEO/CTO/programmer/reviewer/tester role agents collaborate to build software). Default branch is a WEB APP: Vue 3 + Vite frontend (`chatdev`, host :5274) + FastAPI/uvicorn backend (`chatdev-backend`, :6400), one derived image (`ai-stack/chatdev:local`, Python 3.12 + uv + Node) split into two managed loopback-only containers. Routes through LiteLLM (scoped key) → Phoenix. Opt-in (Phase 35). |
+| **AI Town** | https://github.com/a16z-infra/ai-town | MIT | a16z-infra. A watchable virtual town — a Convex-backed docker-compose stack (backend + frontend + dashboard) where AI characters live, move, and converse in real time. Frontend host :5273, Convex dashboard :6791, all loopback-only on 127.0.10.19. LLM wiring lives in Convex env vars (not a `.env`) → LiteLLM (scoped key); the town world is a stateful SQLite DB bind-mounted under `data/aitown/`. Opt-in (Phase 36). |
 
 ## Platform & protocols
 | Component | Upstream | License | Notes |

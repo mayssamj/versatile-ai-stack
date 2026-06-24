@@ -49,7 +49,7 @@ diff, a blocked attack.
 ---
 ## Act I — Arrival
 
-This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 47 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
+This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 49 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
 ---
 
@@ -63,7 +63,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 
 1. The one thing to internalize: every AI request funnels through **LiteLLM at `http://litellm:4000/v1`**. Point any app, agent, or `curl` at that one endpoint and you get model routing, scoped keys, and call-by-call tracing for free.
 2. Everything is **local-first**: models, memory, traces, and documents all stay on your machine. It works fully offline; cloud is opt-in only when you hand it your own keys.
-3. The ~47 services sort into layers:
+3. The ~49 services sort into layers:
    - **Inference plane** — LiteLLM (the hub), Ollama (local models), Phoenix (tracing).
    - **Storage + memory** — Honcho (conversation memory + Postgres), Qdrant (vectors), FalkorDB (graph).
    - **Agents + fleets** — the Hermes fleet, Pi, OpenShell sandbox, DeerFlow, ACE, RLM, HALO.
@@ -162,7 +162,7 @@ bash vz-ai-stack.sh install 01h         # by id
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
 
-The **opt-in extras (Phases 21–25 · 27–30 · 32 · 33 · 34: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · agentscope · oasis)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
+The **opt-in extras (Phases 21–25 · 27–30 · 32 · 33 · 34 · 35 · 36: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · agentscope · oasis · chatdev · aitown)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
 
 > **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
 
@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (60 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
+- `doctor` targets **all green (62 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -942,7 +942,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 
 ### L20½ · Agent-swarm simulations — agents in a world · 🟡 · ~15 min
 
-**Why.** Tiers 1–3 gave you agents that *do a job*. This is the playground: **swarms of agents that live in a world** — they converse, role-play, post, react to *each other*, and you watch the emergent behavior. Three **opt-in** host-venv simulators ship with the stack, each a different shape of "swarm." None are in `install all`; every agent call routes through **LiteLLM** on a scoped key, so you watch the whole swarm think in **Phoenix**.
+**Why.** Tiers 1–3 gave you agents that *do a job*. This is the playground: **swarms of agents that live in a world** — they converse, role-play, post, react to *each other*, and you watch the emergent behavior. Five **opt-in** simulators ship with the stack, each a different shape of "swarm" — three are host-venv CLI sims you watch in Phoenix (`metagpt` · `agentscope` · `oasis`), and two are **watchable web apps** you open in the browser (`chatdev` · `aitown`). None are in `install all`; every agent call routes through **LiteLLM** on a scoped key, so you watch the whole swarm think in **Phoenix**.
 
 **Which tool.**
 
@@ -951,6 +951,8 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 | **AgentScope** (33) | Build/scale **your own** sims — agents converse, observe, act | `install agentscope` | `bin/agentscope agentscope/sims/smoke_sim.py` |
 | **MetaGPT** (32) | A fixed **software-company** swarm (PM→architect→engineer→QA) from a one-line brief | `install metagpt` | `bin/metagpt "build a CLI todo app"` |
 | **OASIS** (34) | **Large social swarms** — agents post/follow/react in a shared world (≤1M upstream) | `install oasis` | `bin/oasis oasis/sims/smoke_sim.py` |
+| **ChatDev** (35) | A **watchable** multi-agent *software company* ("DevAll") — drive a build from a Vue web app | `install chatdev` | open http://chatdev:5274/ |
+| **AI Town** (36) | A **watchable** virtual town — AI characters live and chat in real time | `install aitown` | open http://aitown:5273/ |
 
 **Reality check (M4 / 24 GB).** A "large swarm" on-box means *dozens* of agents on a small fast model (`local-gemma4`) with queuing — local inference throughput, not the orchestrator, is the ceiling. For hundreds–thousands, point the scoped key at a metered cloud model. And `local-gemma4` is a **reasoning** model: sims need `max_tokens ≥ 512` or agents spend the whole budget "thinking" and return empty content.
 
@@ -1013,9 +1015,11 @@ asyncio.run(main())
 
 **Try the others.** `install metagpt` then `bin/metagpt "build a CLI todo app"` (a PM→architect→engineer→QA team writes into `metagpt/workspace/`); `install oasis` then `bin/oasis oasis/sims/smoke_sim.py` (a CAMEL social swarm). Each gates its install on a real run and traces to Phoenix.
 
+**Try the watchable web sims.** The other two swarm sims are **browser** apps, not `bin/<svc>` CLIs: `install chatdev` then open **http://chatdev:5274/** (ChatDev 2.0 "DevAll" — a multi-agent software company you drive from a Vue web app; FastAPI backend on :6400); `install aitown` then open **http://aitown:5273/** (AI Town — AI characters living and chatting in a virtual world in real time; Convex dashboard on :6791). Both are opt-in containers (Phases 35 / 36) and route through LiteLLM.
+
 **Reversible.** `rm -rf agentscope/.venv && rm -f installer/state/phase_33.done` (same shape for `metagpt`/`oasis`). The `<svc>/sims/` directories are **your data** — they're kept.
 
-**Go deeper.** Phases `installer/phases/33_agentscope.sh` · `32_metagpt.sh` · `34_oasis.sh` carry full rationale headers; the plan + which-tool rationale is `doc/specs/2026-06-23-agent-sim-platforms-install-plan.md`; licenses in `doc/ATTRIBUTION.md`. These three also appear in the Explorer (`doc/EXPLORE.html`, the **`extras`** tab) as clickable demo cards.
+**Go deeper.** Phases `installer/phases/33_agentscope.sh` · `32_metagpt.sh` · `34_oasis.sh` · `35_chatdev.sh` · `36_aitown.sh` carry full rationale headers; the plan + which-tool rationale is `doc/specs/2026-06-23-agent-sim-platforms-install-plan.md`; licenses in `doc/ATTRIBUTION.md`. All five also appear in the Explorer (`doc/EXPLORE.html`, the **`extras`** tab) as clickable demo cards.
 
 ## Act VI — Build Your Own
 
@@ -1421,7 +1425,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (60 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (62 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
@@ -1488,9 +1492,11 @@ vz-ai-stack.sh install understand     # 30 — Understand-Anything codebase know
 vz-ai-stack.sh install metagpt        # 32 — software-company agent swarm  (hands-on: L20½)
 vz-ai-stack.sh install agentscope     # 33 — multi-agent simulation framework (hands-on: L20½)
 vz-ai-stack.sh install oasis          # 34 — large social-agent swarm sim   (hands-on: L20½)
+vz-ai-stack.sh install chatdev        # 35 — watchable software-company web app (DevAll)  (hands-on: L20½)
+vz-ai-stack.sh install aitown         # 36 — watchable virtual town of AI characters      (hands-on: L20½)
 ```
 
-**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand, and the agent-swarm-sims **57** metagpt, **58** agentscope, **59** oasis) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.) The three agent-swarm simulators (metagpt/agentscope/oasis) get a full hands-on in **L20½**.
+**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand, and the agent-swarm-sims **57** metagpt, **58** agentscope, **59** oasis, **60** chatdev, **61** aitown) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.) The five agent-swarm simulators (metagpt/agentscope/oasis/chatdev/aitown) get a full hands-on in **L20½**.
 
 **Lesson — what each is, and the gotchas.**
 
