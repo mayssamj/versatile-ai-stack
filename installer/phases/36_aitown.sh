@@ -165,21 +165,42 @@ fi
 [[ -f "$AT_DIR/docker-compose.yml" ]] || { err "$AT_DIR has no docker-compose.yml — upstream layout changed; cannot proceed"; exit 1; }
 
 # --- 2. MANDATORY patches BEFORE any schema-push (idempotent, grep-guarded) --
-# 2a. EMBEDDING_DIMENSION 1024 → 768 (compile-time; baked into the vector index).
+# 2a. Force the vector-index dimension to 768 to match embed-local (nomic-embed-text).
+# UPSTREAM SHAPE (verified live against the real clone, 2026-06-24): convex/util/llm.ts
+# declares NAMED constants and assigns EMBEDDING_DIMENSION from one of them:
+#     const OPENAI_EMBEDDING_DIMENSION   = 1536;
+#     const TOGETHER_EMBEDDING_DIMENSION = 768;
+#     const OLLAMA_EMBEDDING_DIMENSION   = 1024;
+#     export const EMBEDDING_DIMENSION: number = OLLAMA_EMBEDDING_DIMENSION;   // <- the real knob
+# A naive `…=1024 → 768` regex is doubly wrong here: the "already-patched?" guard FALSE-MATCHES
+# the `…=768` TOGETHER *constant* (so it skips and leaves the index at 1024), and the sed would
+# rewrite the OLLAMA constant, not the export. We instead patch the ACTUAL assignment line
+# (anchored ^export const EMBEDDING_DIMENSION) to a literal 768 — the named consts stay intact.
+# SECOND, NON-OBVIOUS BUG (also verified live): convex/init.ts — which `predev` runs via
+# `convex dev --run init` — calls detectMismatchedLLMProvider() UNCONDITIONALLY, whose switch
+# treats 768 as "Together.ai" and throws unless TOGETHER_API_KEY is set. We drive a CUSTOM
+# provider via LLM_API_URL, so we short-circuit that guard when LLM_API_URL is set
+# (getLLMConfig's custom branch already returns without any dimension check — the guard simply
+# doesn't apply to a custom gateway). Both edits keep a .orig and are idempotent.
 _LLM_TS="$AT_DIR/convex/util/llm.ts"
 [[ -f "$_LLM_TS" ]] || { err "expected $_LLM_TS not found — upstream moved EMBEDDING_DIMENSION; re-locate it before pushing (a 1024-dim index breaks embed-local writes)"; exit 1; }
-if grep -Eq 'EMBEDDING_DIMENSION[[:space:]]*=[[:space:]]*768' "$_LLM_TS"; then
-  ok "convex/util/llm.ts already patched (EMBEDDING_DIMENSION=768)"
-elif grep -Eq 'EMBEDDING_DIMENSION[[:space:]]*=[[:space:]]*1024' "$_LLM_TS"; then
-  cp -p "$_LLM_TS" "${_LLM_TS}.orig" 2>/dev/null || true   # reversible: keep the upstream original
-  # macOS/BSD sed -i needs a backup-suffix arg; we then drop the .bak.
-  sed -i.bak -E 's/(EMBEDDING_DIMENSION[[:space:]]*=[[:space:]]*)1024/\1768/' "$_LLM_TS"
-  rm -f "${_LLM_TS}.bak"
-  grep -Eq 'EMBEDDING_DIMENSION[[:space:]]*=[[:space:]]*768' "$_LLM_TS" \
-    || { err "patch verify failed — $_LLM_TS still not 768. Restore: mv ${_LLM_TS}.orig $_LLM_TS"; exit 1; }
-  ok "patched convex/util/llm.ts → EMBEDDING_DIMENSION=768 (matches embed-local / nomic-embed-text; orig kept at ${_LLM_TS##*/}.orig)"
+grep -Eq '^export const EMBEDDING_DIMENSION: number = ' "$_LLM_TS" \
+  || { err "convex/util/llm.ts has no 'export const EMBEDDING_DIMENSION: number =' line — upstream refactored the vector-index dim knob; re-locate it (must be 768 for embed-local) before pushing."; exit 1; }
+_dim_ok=0; _guard_ok=0
+grep -Eq '^export const EMBEDDING_DIMENSION: number = 768' "$_LLM_TS" && _dim_ok=1
+grep -Fq 'if (process.env.LLM_API_URL) return;' "$_LLM_TS" && _guard_ok=1
+if (( _dim_ok && _guard_ok )); then
+  ok "convex/util/llm.ts already patched (EMBEDDING_DIMENSION=768 + custom-provider guard)"
 else
-  warn "convex/util/llm.ts has neither 1024 nor 768 EMBEDDING_DIMENSION — upstream changed the default. Verify the vector index dim matches '$AT_EMBED_MODEL' (768) before relying on memory."
+  cp -p "$_LLM_TS" "${_LLM_TS}.orig" 2>/dev/null || true   # reversible: keep the upstream original
+  # (1) the ACTUAL EMBEDDING_DIMENSION assignment → literal 768 (anchored; never the const defs)
+  perl -i -pe 's{^export const EMBEDDING_DIMENSION: number = .*$}{export const EMBEDDING_DIMENSION: number = 768; // ai-stack Phase 36: embed-local (nomic-embed-text) is 768-dim}' "$_LLM_TS"
+  # (2) custom provider (LLM_API_URL) bypasses the built-in dim<->provider guard. The negative
+  #     lookahead makes a re-run a no-op (idempotent — never double-inserts the guard line).
+  perl -i -0pe 's{(export function detectMismatchedLLMProvider\(\) \{\n)(?!  if \(process\.env\.LLM_API_URL\))}{$1  if (process.env.LLM_API_URL) return; // ai-stack Phase 36: custom provider bypasses built-in dimension guards\n}' "$_LLM_TS"
+  grep -Eq '^export const EMBEDDING_DIMENSION: number = 768' "$_LLM_TS" && grep -Fq 'if (process.env.LLM_API_URL) return;' "$_LLM_TS" \
+    || { err "llm.ts patch verify failed (need EMBEDDING_DIMENSION=768 AND the LLM_API_URL guard). Restore: mv ${_LLM_TS}.orig $_LLM_TS"; exit 1; }
+  ok "patched convex/util/llm.ts → EMBEDDING_DIMENSION=768 + custom-provider guard (orig kept at ${_LLM_TS##*/}.orig)"
 fi
 # 2b. NUM_MEMORIES_TO_SEARCH 3 → 1 (throughput; convex/constants.ts). Best-effort.
 _CONST_TS="$AT_DIR/convex/constants.ts"
