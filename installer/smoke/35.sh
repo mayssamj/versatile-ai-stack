@@ -86,16 +86,27 @@ except Exception as e:
 # (env-substituted by ChatDev) and its `name:` is the LiteLLM model id. NO `protocol`
 # key (upstream TypeError). max_tokens 512 so a reasoning model emits real content.
 WF = textwrap.dedent(f"""
-    name: ai-stack-smoke
-    nodes:
-      - id: writer
-        name: {MODEL}
-        base_url: ${{BASE_URL}}
-        api_key: ${{API_KEY}}
-        params:
-          max_tokens: 512
-          temperature: 0.7
-        prompt: "Write a one-line Python function that returns the string 'hello'."
+    version: 0.0.0
+    vars: {{}}
+    graph:
+      id: ai-stack-smoke
+      description: minimal 1-agent LiteLLM routing smoke
+      is_majority_voting: false
+      start:
+        - writer
+      nodes:
+        - id: writer
+          type: agent
+          config:
+            name: {MODEL}
+            provider: openai
+            role: "You are a Python developer. Reply with ONLY a one-line Python function, no prose."
+            base_url: ${{BASE_URL}}
+            api_key: ${{API_KEY}}
+            params:
+              max_tokens: 512
+              temperature: 0.7
+      edges: []
 """).strip()
 
 os.environ.setdefault("BASE_URL", BASE)
