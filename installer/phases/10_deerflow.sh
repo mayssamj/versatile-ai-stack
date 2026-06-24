@@ -278,6 +278,6 @@ fi
 stamp_mark "$PHASE"
 record "phase 10 complete: deerflow $(deerflow_running 2>/dev/null && echo up || echo not-up)"
 ok "Phase 10 — DeerFlow — complete"
-note "DeerFlow: nginx on http://localhost:2026 (when up)"
+note "DeerFlow: nginx on http://localhost:2026 or http://deerflow:2026 (loopback-only; run prepare-sudo, then 'ingress up' for the port-free http://deerflow/)"
 note "Stop:   bash $AI_STACK/vz-ai-stack.sh stop deerflow      (or: stack stop deerflow)"
 note "Start:  bash $AI_STACK/vz-ai-stack.sh start deerflow     (or: stack start deerflow)"

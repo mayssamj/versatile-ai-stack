@@ -888,7 +888,7 @@ vz-ai-stack.sh stop deerflow
 
 **Lesson.** Research is a *graph*, not a turn — DeerFlow makes that graph explicit. And whenever an agent ingests untrusted content, split the model in two: a cheap local summarizer absorbs the payload, the operator only sees sanitized facts. The fleet's RAG and security profiles (`hermes_ml_engineer`, `hermes_reviewing_engineer`) already apply this.
 
-**Go deeper.** DeerFlow is NOT aliased — `start deerflow` opens it at `http://localhost:2026` (upstream default `PORT`), not via an `/etc/hosts` name. Its two-tier `models:` block (basic `local-gemma4` / reasoning `claude-opus-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local-gemma4` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
+**Go deeper.** `start deerflow` opens it at `http://localhost:2026`; it is now also aliased as `deerflow` — `start-deerflow.sh` binds nginx to BOTH `127.0.0.1:2026` and the loopback alias `127.0.10.17` (replacing the upstream `0.0.0.0` all-interfaces publish that exposed it to the LAN), so after `prepare-sudo` you can also reach it at `http://deerflow:2026` and, with `ingress up`, the port-free `http://deerflow/`. Its two-tier `models:` block (basic `local-gemma4` / reasoning `claude-opus-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local-gemma4` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
 
 ---
 

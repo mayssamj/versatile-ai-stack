@@ -84,7 +84,9 @@ EOF
     chmod 600 "$AF_DIR/.env"
     ok "wrote $AF_DIR/.env (chmod 600; random DB_PASSWORD generated)"
   fi
-  (cd "$AF_DIR" && docker compose up -d 2>&1 | tail -10) || warn "compose up exited non-zero — image pull may have failed (try 'docker compose -f $AF_DIR/docker-compose.yml logs')"
+  # Go through bin/start-autofyn.sh so the loopback-bind patch (dashboard ports ->
+  # 127.0.10.13, not 0.0.0.0) is applied on install too — single source of truth.
+  bash "$AI_STACK/bin/start-autofyn.sh" 2>&1 | tail -10 || warn "compose up exited non-zero — image pull may have failed (try 'docker compose -f $AF_DIR/docker-compose.yml logs')"
   wait_http http://autofyn:3400 90 || warn "autofyn UI didn't respond on :3400 — first-pull / build can take several minutes"
 fi
 

@@ -56,5 +56,39 @@ case "$ACTION" in
   *) err "Unknown action: $ACTION (expected start|build|down)"; exit 2 ;;
 esac
 
+# Bind nginx's published port to BOTH 127.0.0.1 (so http://localhost:2026 keeps
+# working — the claw3d bridge default + docs use it) AND deerflow's loopback alias
+# 127.0.10.17 (so http://deerflow:2026 + the Caddy ingress http://deerflow/ work),
+# replacing upstream's 0.0.0.0 all-interfaces publish (the LAN exposure). Idempotent
+# (marker-guarded). Skipped for `down`. deploy.sh re-reads the compose each run so the
+# patch persists. The alias bind needs the 127.0.10.17 lo0 alias (prepare-sudo) —
+# guarded so a missing alias gives a clear instruction, not a cryptic Docker failure.
+DF_COMPOSE="$DF_DIR/docker/docker-compose.yaml"
+DF_BIND_IP=127.0.10.17
+if [[ "$ACTION" != "down" && -f "$DF_COMPOSE" ]]; then
+  if ! ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+' | grep -qxF "$DF_BIND_IP"; then
+    err "lo0 alias $DF_BIND_IP (deerflow) is missing — nginx binds it loopback-only and won't start without it."
+    err "Run once:  sudo $AI_STACK/vz-ai-stack.sh prepare-sudo"
+    exit 1
+  fi
+  if DF_IP="$DF_BIND_IP" python3 - "$DF_COMPOSE" <<'PYEOF'
+import os, re, sys
+p = sys.argv[1]; ip = os.environ["DF_IP"]
+s = open(p).read()
+if "ai-stack: loopback bind" in s:
+    sys.exit(0)  # already patched — idempotent no-op
+new, n = re.subn(
+    r'\n( *)- "(\$\{PORT:-2026\}:2026)"',
+    lambda m: '\n%s- "127.0.0.1:%s"\n%s- "%s:%s"  # ai-stack: loopback bind'
+              % (m.group(1), m.group(2), m.group(1), ip, m.group(2)),
+    s, count=1)
+if n == 0:
+    sys.exit(1)
+open(p, "w").write(new)
+PYEOF
+  then ok "deerflow: nginx bound to 127.0.0.1 + ${DF_BIND_IP} (no 0.0.0.0)"
+  else warn "deerflow: nginx port not patched (compose format changed?) — may still bind 0.0.0.0"; fi
+fi
+
 cd "$DF_DIR"
 exec bash scripts/deploy.sh "$ACTION"

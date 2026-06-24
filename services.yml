@@ -531,7 +531,7 @@ services:
         - docker compose -f ~/ai-stack/autofyn/docker-compose.yml ps
         - docker exec autofyn-dashboard wget -qO- http://honcho:8000/health
         - docker compose -f ~/ai-stack/autofyn/docker-compose.yml logs
-      "config_notes": 'The dashboard is on :3400 but the agent app binds 0.0.0.0:8500 inside the container regardless of env - the compose healthcheck targets 8500, so do NOT set AGENT_PORT to anything else or the healthcheck points at a closed port and AutoFyn shows unhealthy forever. Also the clone is best-effort: if Phase 07 couldn''t reach the upstream you must place source at ~/ai-stack/autofyn and re-run.'
+      "config_notes": 'start-autofyn.sh patches the upstream compose so the dashboard publishes :3400/:3401 on BOTH 127.0.0.1 and the autofyn loopback alias 127.0.10.13 (replacing the old 0.0.0.0 all-interfaces LAN exposure): reach it at http://localhost:3400 or http://autofyn:3400 (+ the port-free http://autofyn/ via `ingress up`). The alias bind needs the 127.0.10.13 lo0 alias, so autofyn now requires `prepare-sudo` to start (a pre-flight guard errors clearly if it is missing). The agent app binds 0.0.0.0:8500 inside the container regardless of env (NOT host-published), and the compose healthcheck targets 8500, so do NOT set AGENT_PORT to anything else or the healthcheck points at a closed port and AutoFyn shows unhealthy forever. Also the clone is best-effort: if Phase 07 couldn''t reach the upstream you must place source at ~/ai-stack/autofyn and re-run.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -656,6 +656,10 @@ services:
     phase: "10"
     open_url: http://localhost:2026
     network: ai-stack
+    alias: deerflow
+    host_ip: 127.0.10.17
+    host_port: 2026
+    container_port: 2026
     help:
       "what": A multi-step deep-research agent (LangGraph) cloned from bytedance/deer-flow that plans, web-searches, and writes a cited report, with a browser UI.
       "why": Reach for it when you want an autonomous multi-step research workflow (plan -> gather -> synthesize) rather than a one-shot chat answer; it is the heavyweight researcher in the stack alongside the lightweight dual-LLM pattern.
@@ -664,7 +668,7 @@ services:
         - bash ~/ai-stack/bin/start-deerflow.sh build
         - bash ~/ai-stack/bin/stop-deerflow.sh
         - docker ps --filter 'label=com.docker.compose.project=deer-flow' --filter 'status=running'
-      "config_notes": 'It is NOT aliased: reach it at http://localhost:2026 (upstream default PORT), not via an /etc/hosts name. Also the compose project is ''deer-flow'' (with a dash) so containers are deer-flow-gateway etc., never deerflow-*; status.sh detects them by the compose-project LABEL, not by name.'
+      "config_notes": 'Aliased as `deerflow` (127.0.10.17): start-deerflow.sh patches the upstream nginx publish to BOTH 127.0.0.1:2026 and 127.0.10.17:2026 (loopback-only, replacing the old 0.0.0.0:2026 all-interfaces LAN exposure), so reach it at http://localhost:2026 or http://deerflow:2026 (+ the port-free http://deerflow/ via `ingress up`). The alias bind needs the 127.0.10.17 lo0 alias, so deerflow now requires `sudo vz-ai-stack.sh prepare-sudo` to start (a pre-flight guard errors clearly if it is missing). Also the compose project is ''deer-flow'' (with a dash) so containers are deer-flow-gateway etc., never deerflow-*; status.sh detects them by the compose-project LABEL, not by name.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
