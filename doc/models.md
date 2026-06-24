@@ -95,9 +95,9 @@ The base URL differs by where the caller sits (same gateway, different DNS):
 
 See [DIAGRAMS.md §5b](DIAGRAMS.md#5b-multi-engine-inference-topology--one-hub-three-runtimes).
 
-## The four runtimes
+## The inference runtimes
 
-LiteLLM fronts four back ends. **At least one must be active** — the end-of-run
+LiteLLM fronts several back ends. **At least one must be active** — the end-of-run
 `print_inference_hint` (in `installer/lib/lmstudio.sh`) shows up/down state and
 the start command for each.
 
@@ -116,6 +116,19 @@ the start command for each.
 - **Cloud** (optional) — Anthropic / OpenAI / OpenRouter / Gemini, used **only**
   when you point an agent at a non-local model and set that provider key in
   LiteLLM's env.
+- **`openai-compat` (generic OpenAI-compatible cloud route)** — the only runtime
+  whose endpoint + key are **data**, not hardcoded. Declare a model in
+  `installer/models.yml` with `runtime: openai-compat` (`served` + `api_base` +
+  `key_env`, optional integer `rpm`/`tpm`) and `model sync` renders
+  `{model: openai/<served>, api_base, api_key: os.environ/<KEY_ENV>}` into
+  `litellm/config.yaml` and joins it to the scoped-key superset — so a metered vendor
+  like **Sakana Fugu** (`sakana-fugu` / `sakana-fugu-ultra`, `key_env SAKANA_API_KEY`)
+  is **assignable** (`vz-ai-stack.sh model assign <agent> sakana-fugu`), not just a
+  hand-edited config entry. The `api_key` stays the literal `os.environ/` sentinel
+  (never the expanded secret). Availability-gates to `default` (local-gemma4) when the
+  key is absent. The key must also be in `bin/start-litellm.sh`'s `-e` allowlist
+  (`bin/start-litellm.sh --recreate` to apply a newly-added one — env is injected at
+  container CREATE, not on `docker restart`).
 - **Meridian (Claude subscription)** — **opt-in, no API key**. A host daemon
   (`bin/start-meridian.sh`, launchd-supervised on `127.0.0.1:3456`) that reuses
   your `claude login` OAuth — auto-refreshed — and runs the Claude Code agent
