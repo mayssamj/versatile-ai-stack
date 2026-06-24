@@ -11,7 +11,9 @@
 #   `as_studio` makes NO LLM calls of its own — it only ingests/visualizes spans.
 #   Two listeners:
 #     * the HTTP UI on PORT (default 3000 upstream; we pin 5275 via env PORT)
-#     * an OTLP gRPC trace receiver on OTEL_GRPC_PORT (default 4317; we keep 4317)
+#     * an OTLP gRPC trace receiver on OTEL_GRPC_PORT (we pin 4318 — NOT the OTel
+#       default 4317, which phoenix-otlp already owns; as_studio binds 0.0.0.0 so
+#       :4317 would collide with / hijack Phoenix's OTLP intake).
 #       It ALSO accepts OTLP/HTTP traces at http://<host>:<PORT>/v1/traces.
 #   App-data/SQLite persists under ~/Library/Application Support/AgentScope-Studio/
 #   (macOS) — survives a restart; nothing of ours to seed.
@@ -59,10 +61,12 @@ LABEL="com.ai-stack.agentscope-studio"
 
 # Tunables. Loopback PROBE is intentional (see SECURITY — the bind is actually
 # 0.0.0.0). 5275 = the stack's pinned Studio HTTP port (override via PORT for
-# parity with the phase/aliases). OTEL_GRPC_PORT 4317 = the OTLP gRPC receiver the
+# parity with the phase/aliases). OTEL_GRPC_PORT 4318 = the OTLP gRPC receiver the
 # sims export to (bin/agentscope points OTEL_EXPORTER_OTLP_TRACES_ENDPOINT here).
+# 4318 (NOT the OTel default 4317): phoenix-otlp already owns :4317 and as_studio
+# binds 0.0.0.0, so :4317 would collide with / hijack Phoenix's OTLP intake.
 PORT="${PORT:-5275}"
-OTEL_GRPC_PORT="${OTEL_GRPC_PORT:-4317}"
+OTEL_GRPC_PORT="${OTEL_GRPC_PORT:-4318}"
 HOST_BIND="127.0.0.1"
 
 mkdir -p "$STATE" "$HOME/Library/LaunchAgents"
@@ -101,11 +105,21 @@ _stop() {
     for _ in 1 2 3 4 5; do _listening || break; sleep 1; done
     if _listening; then local fp; fp="$(_pids)"; [[ -n "$fp" ]] && { echo "agentscope-studio: force-killing"; kill -9 $fp 2>/dev/null || true; }; fi
   fi
-  # The OTLP gRPC receiver shares the same as_studio process, but free :4317 too
-  # in case a stray child kept it (so a re-install's RunAtLoad can re-bind).
-  local gp; gp="$(_grpc_pids)"
-  # shellcheck disable=SC2086
-  [[ -n "$gp" ]] && { kill $gp 2>/dev/null || true; }
+  # The OTLP gRPC receiver shares the same as_studio process, but free :$OTEL_GRPC_PORT
+  # too in case a stray child kept it (so a re-install's RunAtLoad can re-bind).
+  # OWNERSHIP GUARD: only kill a PID on this port if it actually belongs to as_studio —
+  # never blindly kill the port owner. (Defence-in-depth: with 4318 the Phoenix-on-4317
+  # collision is already gone, but a future port reuse must not let `stop`/re-install
+  # SIGKILL an unrelated listener.)
+  local gp
+  for gp in $(_grpc_pids); do
+    local _comm; _comm="$(ps -p "$gp" -o comm= 2>/dev/null || true)"
+    if [[ "$_comm" == *as_studio* ]]; then
+      kill "$gp" 2>/dev/null || true
+    else
+      echo "agentscope-studio: :$OTEL_GRPC_PORT owned by pid $gp ($_comm), not as_studio — NOT killing" >&2
+    fi
+  done
   return 0   # never let a "nothing to stop" result trip set -e in callers
 }
 

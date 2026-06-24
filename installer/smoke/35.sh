@@ -29,7 +29,10 @@ BE_NAME=chatdev-backend
 FE_IP="${ALIAS_IP[chatdev]:-127.0.10.18}"
 FE_HOST_PORT="${ALIAS_HOST_PORT[chatdev]:-5274}"
 BE_PORT="${CHATDEV_BACKEND_PORT:-6400}"
-CD_MODEL="$(get_env CHATDEV_MODEL 'local-gemma4')"
+# The model is NOT read here: the workflow runs INSIDE the backend container, which
+# reads MODEL from its own .env (via --env-file) — the value the phase resolved from
+# models.yml. A host-side `get_env CHATDEV_MODEL` would read $AI_STACK/.env (a key the
+# phase never writes there) and silently return the default, hiding the binding path.
 
 # 1. Both containers exist + the backend is the one we run the workflow in.
 container_running "$BE_NAME" || { err "$BE_NAME not running — run: vz-ai-stack.sh start chatdev"; exit 1; }

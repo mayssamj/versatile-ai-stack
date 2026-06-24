@@ -58,10 +58,14 @@ aitown_diagnose() {
   # Scoped key actually lists models (stale/revoked → 200 + empty data[], so require an "id").
   local key; key="$(get_env AITOWN_LITELLM_KEY '')"
   [[ -n "$key" ]] || { echo "AITOWN_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 36'"; return 1; }
+  # Probe 127.0.0.1 FIRST — it is always reachable from the host shell where doctor runs.
+  # The container alias litellm:4000 only resolves if Phase 00n wrote /etc/hosts, so trying
+  # it first would burn a guaranteed ~5s timeout on boxes without that entry. Fall back to
+  # the alias only if loopback didn't answer (parity with the phase's resolve-once order).
   local models
-  models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models 2>/dev/null || true)"
+  models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   printf '%s' "$models" | grep -q '"id"' \
-    || models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
+    || models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
       echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint"

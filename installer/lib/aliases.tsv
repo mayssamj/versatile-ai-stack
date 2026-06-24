@@ -49,7 +49,9 @@ aitown	127.0.10.19	http	5273	5173	36	aitown
 #        127.0.0.1 alias, BUT note its server actually binds 0.0.0.0 (the upstream
 #        host:'localhost' default is inert) — the loopback posture relies on the box
 #        not being exposed, NOT on the bind. Studio also opens an OTLP gRPC trace
-#        RECEIVER on :4317 (not aliased; sims export to http://127.0.0.1:4317).
+#        RECEIVER on :4318 (not aliased; sims export to http://127.0.0.1:4318).
+#        4318 (NOT 4317): phoenix-otlp (line 25) already owns :4317 and as_studio binds
+#        0.0.0.0, so :4317 would collide with / hijack Phoenix's OTLP intake.
 # The following host services stay INTENTIONALLY alias-free (reached at localhost:PORT):
 #   • claw3d UI (:4310)     — claw3d REFUSES to bind a public host without
 #                             STUDIO_ACCESS_TOKEN (its own security), so it binds

@@ -30,6 +30,13 @@ COPY repo/ /app/
 # /app/.venv — installing --system puts the deps under /usr/local where the mount
 # does not reach, so `uvicorn` resolves regardless of the bind mount. ChatDev 2.0
 # ships pyproject.toml (+ uv.lock); fall back to requirements.txt if that's the shape.
+# REPRODUCIBILITY CAVEAT (§24 council 2026-06-23): `uv pip install --system .` resolves
+# from pyproject.toml and does NOT consult uv.lock, so a rebuild after an upstream dep
+# release may pull newer transitive versions. We keep `--system` deliberately (the
+# bind-mount masks a `uv sync` .venv; switching blind would reintroduce that bug AND
+# assumes a uv.lock we cannot verify on this RAM-constrained box). Pinned-lock installs
+# are a verified follow-up: confirm uv.lock exists, then `uv export --locked | uv pip
+# install --system -r -` into a non-/app env. Acceptable as-is for an opt-in service.
 RUN if [ -f /app/pyproject.toml ]; then \
         uv pip install --system . ; \
     elif [ -f /app/requirements.txt ]; then \

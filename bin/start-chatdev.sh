@@ -113,42 +113,106 @@ if [[ "$RECREATE_FLAG" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]] || ! 
   ok "built image: $IMAGE"
 fi
 
-# --- backend container (start FIRST so the frontend has an API to proxy) ------
-recreate_guard "$BE_NAME" "$RECREATE_FLAG" || exit 1
-docker run -d \
-  --name "$BE_NAME" \
-  --label "ai-stack.managed=true" \
-  --label "ai-stack.phase=$PHASE" \
-  --label "ai-stack.partial=true" \
-  --restart unless-stopped \
-  --cpus "$BE_CPUS" --memory "$BE_MEM" --memory-swap "$BE_MEM" \
-  --network ai-stack \
-  --add-host=ollama:host-gateway \
-  --env-file "$CD_REPO/.env" \
-  -p "$FE_IP":"$BE_PORT":6400 \
-  -v "$CD_REPO:/app" \
-  "$IMAGE" \
-  uvicorn server_main:app --host 0.0.0.0 --port 6400 \
-  >/dev/null
-ok "started container: $BE_NAME (FastAPI http://$FE_IP:$BE_PORT → litellm:4000 via Docker DNS)"
+# --- two-container reconcile (§24 council 2026-06-23) --------------------------
+# ChatDev is the platform's ONLY two-container start script. The shared
+# recreate_guard() (installer/lib/docker.sh) `exit 0`s the calling script when a
+# managed container is already running/restartable — the intended SINGLE-exit idiom
+# for every other one-container start-*.sh. Calling it twice here would `exit 0` on
+# the FIRST (backend) container and silently never start/verify the frontend (the
+# "backend up, frontend down" recovery path on `start chatdev` after a reboot).
+# So we use a RETURN-based local twin of recreate_guard: it reconciles in place and
+# reports run/skip/refuse via an exit CODE (never `exit`), and we exit 0 only after
+# BOTH containers are confirmed up. shared docker.sh is intentionally untouched.
+#   rc=0 -> caller must `docker run` (absent, or recreated after backup+rm)
+#   rc=10 -> already reconciled (running, or stopped→docker start); do NOT run
+#   rc=1 -> foreign/failed; caller bails
+_cd_reconcile() {
+  local name="$1" recreate_flag="${2:-}"
+  if container_exists "$name"; then
+    if [[ "$recreate_flag" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]]; then
+      backup_before_recreate "$name"   # no-op for chatdev's stateless containers, kept for parity
+      docker rm -f "$name" >/dev/null
+      record "recreated container $name"
+      return 0
+    fi
+    if container_managed "$name"; then
+      if container_running "$name"; then
+        ok "$name already running (use --recreate to rebuild)"; return 10
+      fi
+      if docker start "$name" >/dev/null 2>&1; then
+        ok "$name was stopped — restarted, data preserved (use --recreate to rebuild)"
+        record "reconciled stopped container $name (docker start)"; return 10
+      fi
+      warn "$name exists but failed to start; rebuild with: bash bin/start-chatdev.sh --recreate"; return 1
+    fi
+    warn "Container '$name' already exists and is NOT managed by ai-stack."
+    warn "Adopt it (vz-ai-stack.sh adopt $name) or replace: bash bin/start-chatdev.sh --recreate"; return 1
+  fi
+  return 0
+}
 
-# --- frontend container (the `chatdev` alias) ---------------------------------
-recreate_guard "$NAME" "$RECREATE_FLAG" || exit 1
-docker run -d \
-  --name "$NAME" \
-  --label "ai-stack.managed=true" \
-  --label "ai-stack.phase=$PHASE" \
-  --label "ai-stack.partial=true" \
-  --restart unless-stopped \
-  --cpus "$FE_CPUS" --memory "$FE_MEM" --memory-swap "$FE_MEM" \
-  --network ai-stack \
-  --add-host=ollama:host-gateway \
-  -e "VITE_API_BASE_URL=http://$FE_IP:$BE_PORT" \
-  -p "$FE_IP":"$FE_HOST_PORT":"$FE_CTR_PORT" \
-  -v "$CD_REPO:/app" \
-  -w /app/frontend \
-  "$IMAGE" \
-  npm run dev -- --host 0.0.0.0 --port "$FE_CTR_PORT" \
-  >/dev/null
-ok "started container: $NAME (Vite http://$FE_IP:$FE_HOST_PORT → chatdev:$FE_CTR_PORT)"
+_run_backend() {
+  docker run -d \
+    --name "$BE_NAME" \
+    --label "ai-stack.managed=true" \
+    --label "ai-stack.phase=$PHASE" \
+    --label "ai-stack.partial=true" \
+    --restart unless-stopped \
+    --cpus "$BE_CPUS" --memory "$BE_MEM" --memory-swap "$BE_MEM" \
+    --network ai-stack \
+    --add-host=ollama:host-gateway \
+    --env-file "$CD_REPO/.env" \
+    -p "$FE_IP":"$BE_PORT":6400 \
+    -v "$CD_REPO:/app" \
+    "$IMAGE" \
+    uvicorn server_main:app --host 0.0.0.0 --port 6400 \
+    >/dev/null
+  ok "started container: $BE_NAME (FastAPI http://$FE_IP:$BE_PORT → litellm:4000 via Docker DNS)"
+}
+
+_run_frontend() {
+  # VITE_API_BASE_URL is baked into the browser JS bundle by Vite at dev-server start.
+  # Use the `chatdev` NAME (not the raw lo0 IP): the Mac browser resolves it via the
+  # ai-stack /etc/hosts managed block → 127.0.10.18, and the backend is published on
+  # 127.0.10.18:6400 — same socket, but consistent with open_url/health/CORS which all
+  # use http://chatdev:PORT (§24 council 2026-06-23, live-verified /etc/hosts→lo0).
+  docker run -d \
+    --name "$NAME" \
+    --label "ai-stack.managed=true" \
+    --label "ai-stack.phase=$PHASE" \
+    --label "ai-stack.partial=true" \
+    --restart unless-stopped \
+    --cpus "$FE_CPUS" --memory "$FE_MEM" --memory-swap "$FE_MEM" \
+    --network ai-stack \
+    --add-host=ollama:host-gateway \
+    -e "VITE_API_BASE_URL=http://chatdev:$BE_PORT" \
+    -p "$FE_IP":"$FE_HOST_PORT":"$FE_CTR_PORT" \
+    -v "$CD_REPO:/app" \
+    -w /app/frontend \
+    "$IMAGE" \
+    npm run dev -- --host 0.0.0.0 --port "$FE_CTR_PORT" \
+    >/dev/null
+  ok "started container: $NAME (Vite http://$FE_IP:$FE_HOST_PORT → chatdev:$FE_CTR_PORT)"
+}
+
+# Backend FIRST (so the frontend has an API to proxy), then the frontend. Each only
+# `docker run`s when reconcile says so (rc 0); rc 10 = already up; rc 1 = bail.
+# NOTE: capture the rc with `rc=0; cmd || rc=$?` — under `set -e`, a bare `cmd; rc=$?`
+# would ABORT the script on cmd's non-zero return (rc 10 = already-running) before the
+# assignment runs, silently reintroducing the very "frontend never starts" bug. A
+# command on the left of `||` is exempt from errexit, so this is the safe idiom.
+_rc=0; _cd_reconcile "$BE_NAME" "$RECREATE_FLAG" || _rc=$?
+case "$_rc" in 0) _run_backend ;; 10) : ;; *) exit 1 ;; esac
+
+_rc=0; _cd_reconcile "$NAME" "$RECREATE_FLAG" || _rc=$?
+case "$_rc" in 0) _run_frontend ;; 10) : ;; *) exit 1 ;; esac
+
+# Both containers are now up (freshly started or reconciled-in-place). Clear the
+# partial=true label (mark_ready). NOTE: mark_ready is a known platform-wide no-op —
+# `docker update` has no --label-add and Docker labels are immutable post-create, so
+# the clear silently does nothing for EVERY managed container, not just ChatDev's.
+# That is safe here because gc (vz-ai-stack.sh gc) is INTERACTIVE and defaults to N —
+# it never auto-reaps. The real fix belongs in shared installer/lib/docker.sh (a
+# separate platform follow-up); we call it for parity so ChatDev isn't an outlier.
+mark_ready "$BE_NAME"; mark_ready "$NAME"
 record "start-chatdev: pid=$$ image=$IMAGE fe=$FE_HOST_PORT be=$BE_PORT"

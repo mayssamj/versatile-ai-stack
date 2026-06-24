@@ -82,6 +82,12 @@ hdr "Phase 35 — ChatDev (multi-agent software-company web app)"
 command -v docker >/dev/null 2>&1 || { err "docker not on PATH — install/start the engine first."; exit 1; }
 command -v git >/dev/null 2>&1 || { err "git required to clone ChatDev."; exit 1; }
 command -v node >/dev/null 2>&1 || { err "node (>=18) required on the host for the frontend deps (host npm install). Install Node, then re-run."; exit 1; }
+# Enforce the >=18 the error message promises — npm itself is version-agnostic, so a
+# Node 16 host would PASS `command -v` then fail at Vite runtime with cryptic ESM errors.
+_node_ver="$(node -e 'process.stdout.write(process.versions.node)' 2>/dev/null || echo 0)"
+_node_major="${_node_ver%%.*}"
+[[ "$_node_major" =~ ^[0-9]+$ && "$_node_major" -ge 18 ]] \
+  || { err "host Node $_node_ver found but ChatDev's Vite frontend needs Node >=18 — upgrade Node and re-run."; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -109,6 +115,38 @@ fi
 # Sanity: confirm this is the 2.0 web-app shape (frontend/ + server_main.py).
 [[ -d "$CD_REPO/frontend" && -f "$CD_REPO/server_main.py" ]] \
   || { err "cloned tree is not ChatDev 2.0 'DevAll' (missing frontend/ or server_main.py) — set CHATDEV_REPO_URL/branch to the 2.0 default and re-run."; exit 1; }
+
+# Defensive shape probes (§24 council 2026-06-23). The exact upstream layout (ASGI app
+# object name, .env key names) is BEST-INFERENCE — verified at live-verify, not buildable
+# here. These are SOFT WARNINGS only (never a hard exit): a false hard-fail would block a
+# valid install on a benign refactor (e.g. `app` imported from a submodule / a factory
+# `app = create_app()` / `app: FastAPI = ...`). The smoke (installer/smoke/35.sh, exit 4/5)
+# is the real runtime signal for SDK/ASGI drift.
+# (a) ASGI target: start-chatdev.sh runs `uvicorn server_main:app`. A top-level `app =`
+#     in server_main.py is the common FastAPI shape; warn (don't fail) if absent.
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$CD_REPO/server_main.py" <<'PYASGI' 2>/dev/null || warn "server_main.py: no top-level 'app' assignment found — if uvicorn server_main:app fails at start, the ASGI object may be imported/factory-named; check 'docker logs chatdev-backend'."
+import ast, sys
+src = open(sys.argv[1]).read()
+tree = ast.parse(src)
+def is_app(t): return isinstance(t, ast.Name) and t.id == "app"
+found = any(
+    (isinstance(n, ast.Assign)    and any(is_app(t) for t in n.targets)) or
+    (isinstance(n, ast.AnnAssign) and is_app(n.target))
+    for n in ast.walk(tree)
+)
+sys.exit(0 if found else 1)
+PYASGI
+fi
+# (b) .env key names: we write BASE_URL/API_KEY/MODEL. If upstream's .env.example uses
+#     different names (e.g. OPENAI_BASE_URL/OPENAI_API_KEY), the backend could silently
+#     fall through to its own defaults (api.openai.com). Soft cross-reference if present.
+if [[ -f "$CD_REPO/.env.example" ]]; then
+  for _k in BASE_URL API_KEY; do
+    grep -q "^${_k}=" "$CD_REPO/.env.example" 2>/dev/null \
+      || warn ".env.example has no '${_k}=' — upstream key names may have changed; verify the .env write in installer/phases/35_chatdev.sh routes the backend to LiteLLM (not a default OpenAI base)."
+  done
+fi
 
 # --- 2. Mint scoped LiteLLM key (stale-aware; mirrors Phase 32/34) -----------
 CD_KEY_CURRENT="$(get_env CHATDEV_LITELLM_KEY '')"
@@ -142,13 +180,18 @@ ok "ChatDev model = $CD_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
 # 0600: it carries the scoped key. ChatDev 2.0 copies .env.example → .env; we write
 # the resolved values directly so install is non-interactive.
 umask 077
+# VITE_API_BASE_URL is the browser-facing backend URL Vite bakes into the JS bundle.
+# Use the `chatdev` NAME (not the raw lo0 IP): the Mac browser resolves it via the
+# ai-stack /etc/hosts managed block → 127.0.10.18, where the backend is published on
+# :$BE_PORT — same socket as the IP, but consistent with open_url/health/CORS (all
+# http://chatdev:PORT). §24 council 2026-06-23 (live-verified /etc/hosts→lo0 alias).
 cat > "$CD_REPO/.env" <<ENVEOF
 # ai-stack Phase 35 — ChatDev → LiteLLM wiring (managed; regenerate: install 35).
 BASE_URL=http://litellm:4000/v1
 API_KEY=$CD_KEY
 MODEL=$CD_MODEL
 CORS_ALLOW_ORIGINS=http://$FE_IP:$FE_HOST_PORT,http://chatdev:$FE_HOST_PORT,http://localhost:$FE_HOST_PORT
-VITE_API_BASE_URL=http://$FE_IP:$BE_PORT
+VITE_API_BASE_URL=http://chatdev:$BE_PORT
 ENVEOF
 chmod 0600 "$CD_REPO/.env" 2>/dev/null || true
 ok "wrote $CD_REPO/.env (LiteLLM base + scoped key + CORS/VITE origins, 0600)"
@@ -186,7 +229,10 @@ ENV PATH="/root/.local/bin:${PATH}"
 WORKDIR /app
 COPY repo/ /app/
 # Python deps into the SYSTEM interpreter (/usr/local), NOT /app/.venv — the runtime
-# bind mount over /app would mask a project venv; --system survives it.
+# bind mount over /app would mask a project venv; --system survives it. CAVEAT: this
+# resolves from pyproject.toml and ignores uv.lock (non-reproducible across rebuilds);
+# --system is the deliberate anti-.venv-masking choice, a lock-respecting install is a
+# verified follow-up (§24 council 2026-06-23). See chatdev/Dockerfile for the full note.
 RUN if [ -f /app/pyproject.toml ]; then \
         uv pip install --system . ; \
     elif [ -f /app/requirements.txt ]; then \
@@ -201,6 +247,8 @@ ok "wrote $CD_DIR/Dockerfile"
 # --- 7. Keep the repo + sim output as DATA; ignore regenerables --------------
 cat > "$CD_DIR/.gitignore" <<'GI'
 # ChatDev clone is regenerable (git); node_modules + venvs + run output are noise.
+# NOTE: repo/.env carries the LIVE scoped CHATDEV_LITELLM_KEY — `repo/` ignoring it is
+# the only thing keeping that key out of git here. Do NOT add a `!repo/.env` exception.
 repo/
 GI
 

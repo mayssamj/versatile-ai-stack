@@ -11,8 +11,8 @@
 #     points AgentScope's OpenAI-compatible model at LiteLLM,
 #   * NO container/port/hostname. Run sims via: bin/agentscope agentscope/sims/<file>.py
 #
-# The OPTIONAL Studio web GUI (examples/web_ui, host :5275, IP 127.0.10.17) is a deferred
-# follow-up — this phase installs the core lib only (the spec's "do the core lib first").
+# The OPTIONAL Studio web GUI (examples/web_ui, host :5275, alias 127.0.0.1 — binds 0.0.0.0,
+# see SECURITY note) is opt-in via AGENTSCOPE_STUDIO=1; the lib-only install skips it.
 #
 # Constitution honored: OPT-IN (not in install_all_phase_order); scoped key
 # (AGENTSCOPE_LITELLM_KEY), never master; default model local-gemma4; calls traced in
@@ -56,10 +56,18 @@ AS_STUDIO_ENABLED=0
 [[ "$(get_env AGENTSCOPE_STUDIO "${AGENTSCOPE_STUDIO:-}")" == "1" ]] && AS_STUDIO_ENABLED=1
 AS_STUDIO_NPM_PKG="@agentscope/studio@1.0.9"
 AS_STUDIO_PORT=5275          # the UI port the daemon pins (PORT=); matches aliases.tsv
-AS_STUDIO_OTLP_GRPC=4317     # the OTLP gRPC receiver the sims export to
+AS_STUDIO_OTLP_GRPC=4318     # the OTLP gRPC receiver the sims export to. 4318 (NOT 4317):
+                             # phoenix-otlp already owns :4317 (Phase 01h, aliases.tsv:25)
+                             # and as_studio binds 0.0.0.0, so :4317 would collide with /
+                             # hijack Phoenix's OTLP intake. 4318 is unclaimed (the
+                             # phoenix-otlp-http alias on 4318 is commented-out, not live).
 AS_STUDIO_LAUNCHER="$AI_STACK/bin/start-agentscope-studio.sh"
 # The gRPC endpoint the sim's OTLP exporter targets when Studio is on (see the wrapper).
 AS_OTLP_ENDPOINT="http://127.0.0.1:${AS_STUDIO_OTLP_GRPC}"
+# Make the OTLP transport EXPLICIT (grpc) rather than letting the sim infer it from the
+# URL shape — removes the ambiguity the §24 council flagged (an http:// URL with a
+# /v1/traces path would otherwise pick the HTTP exporter against this gRPC receiver).
+AS_OTLP_PROTOCOL="grpc"
 
 precheck() {
   [[ -x "$AS_PY" ]] || return 1
@@ -162,13 +170,14 @@ ok "AgentScope model = $AS_MODEL (routed via LiteLLM → Phoenix project ai-stac
 # --- 4. bin/agentscope wrapper (injects key from .env at RUNTIME) ---
 # The wrapper points at 127.0.0.1:4000 — the host-shell route that always resolves
 # (the container DNS name litellm:4000 only resolves after Phase 00n writes /etc/hosts).
-# When Studio is enabled, bake an OTEL endpoint export into the wrapper so every sim
-# the wrapper runs emits its trace spans to the Studio OTLP gRPC receiver (:4317).
-# When Studio is OFF this is the EMPTY string → the seeded sim's OTLP setup is itself
-# a no-op when this env is absent (so lib-only behavior is unchanged).
+# When Studio is enabled, bake an OTEL endpoint + explicit transport export into the
+# wrapper so every sim the wrapper runs emits its trace spans to the Studio OTLP gRPC
+# receiver (:4318). When Studio is OFF this is the EMPTY string → the seeded sim's OTLP
+# setup is itself a no-op when this env is absent (so lib-only behavior is unchanged).
 AS_OTEL_EXPORT_LINE=""
 if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
-  AS_OTEL_EXPORT_LINE="export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=\"$AS_OTLP_ENDPOINT\""
+  AS_OTEL_EXPORT_LINE="export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=\"$AS_OTLP_ENDPOINT\"
+export OTEL_EXPORTER_OTLP_PROTOCOL=\"$AS_OTLP_PROTOCOL\""
 fi
 cat > "$AS_WRAPPER" <<WRAPEOF
 #!/usr/bin/env bash
@@ -234,6 +243,11 @@ except Exception as e:  # import/API drift — NOT an auth problem
 # pure no-op and the sim behaves exactly as the shipped version. All imports are
 # guarded so a missing/changed OTel API can NEVER break the core 2-agent smoke.
 _OTLP_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
+# Explicit transport (OTel-spec env): "grpc" | "http/protobuf" | "http". bin/agentscope
+# bakes "grpc" when Studio is on. We prefer this over inferring the transport from the
+# URL shape (the §24 council flagged that heuristic as ambiguous — an http:// URL that
+# carries a /v1/traces path would mis-route to the HTTP exporter against a gRPC receiver).
+_OTLP_PROTOCOL = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "").strip().lower()
 
 
 def _setup_tracing():
@@ -248,9 +262,24 @@ def _setup_tracing():
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from agentscope.middleware import TracingMiddleware
-        # Pick the exporter by endpoint shape: an HTTP /v1/traces path → HTTP
-        # exporter; anything else (bare host:port or http://host:4317) → gRPC.
-        if _OTLP_ENDPOINT.rstrip("/").endswith("/v1/traces"):
+        # Transport selection: prefer the EXPLICIT OTEL_EXPORTER_OTLP_PROTOCOL env
+        # (OTel-spec). Only when it is unset do we fall back to the URL-shape heuristic
+        # (an HTTP /v1/traces path → HTTP exporter; anything else → gRPC), and we WARN
+        # when that fallback fires so an ambiguous endpoint can't silently mis-route.
+        if _OTLP_PROTOCOL in ("http", "http/protobuf"):
+            _use_grpc = False
+        elif _OTLP_PROTOCOL == "grpc":
+            _use_grpc = True
+        else:
+            _path_is_http = _OTLP_ENDPOINT.rstrip("/").endswith("/v1/traces")
+            _use_grpc = not _path_is_http
+            print(
+                "  [studio] OTEL_EXPORTER_OTLP_PROTOCOL unset — inferring "
+                f"{'gRPC' if _use_grpc else 'HTTP'} from endpoint shape "
+                f"({_OTLP_ENDPOINT}); set OTEL_EXPORTER_OTLP_PROTOCOL=grpc|http/protobuf "
+                "to make this explicit"
+            )
+        if not _use_grpc:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
                 OTLPSpanExporter,
             )
@@ -353,6 +382,19 @@ GI
 # stays installed + stamped. Mirrors the aionui daemon (Phase 28 / bin/start-aionui.sh).
 if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
   hdr "Phase 33 — AgentScope Studio GUI (opt-in: AGENTSCOPE_STUDIO=1)"
+  # SECURITY — print UNCONDITIONALLY when Studio is opted in, regardless of whether the
+  # daemon ends up healthy. as_studio binds 0.0.0.0 (its host:'localhost' config is inert
+  # and there is NO flag to force a loopback bind) → the UI (:5275) and the OTLP gRPC
+  # receiver (:${AS_STUDIO_OTLP_GRPC}) are reachable on EVERY interface with no auth. The
+  # loopback posture relies ENTIRELY on not exposing this box.
+  warn "Studio binds 0.0.0.0 (no loopback-only flag exists) — UI :${AS_STUDIO_PORT} + OTLP gRPC :${AS_STUDIO_OTLP_GRPC} are unauthenticated on ALL interfaces. Keep this box off untrusted networks / behind a firewall."
+  # Pre-install port guard: as_studio SILENTLY auto-bumps a busy UI port, which would make
+  # the hardcoded :5275 health/doctor probe point at the wrong port. Abort with a clear
+  # message if something already owns :5275 (lsof exits 1 when the port is free → guard set -e).
+  if lsof -nP -iTCP:"$AS_STUDIO_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    err "port :${AS_STUDIO_PORT} is already in use (Studio would silently auto-bump to another port, breaking the :${AS_STUDIO_PORT} health/doctor probe). Free it: lsof -nP -iTCP:${AS_STUDIO_PORT} -sTCP:LISTEN ; then re-run 'AGENTSCOPE_STUDIO=1 vz-ai-stack.sh install 33'"
+    exit 1
+  fi
   command -v node >/dev/null 2>&1 || warn "node not on PATH — Studio needs Node>=20 (host has 22); skipping Studio"
   command -v npm  >/dev/null 2>&1 || warn "npm not on PATH — Studio needs npm>=10; skipping Studio"
   if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
@@ -373,7 +415,7 @@ if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
     if [[ -x "$_npm_bin/as_studio" ]] || command -v as_studio >/dev/null 2>&1; then
       if PORT="$AS_STUDIO_PORT" OTEL_GRPC_PORT="$AS_STUDIO_OTLP_GRPC" bash "$AS_STUDIO_LAUNCHER" install; then
         ok "AgentScope Studio daemon up — open http://127.0.0.1:${AS_STUDIO_PORT}"
-        note "Security: Studio binds 0.0.0.0 (its host:'localhost' config is inert) — loopback relies on NOT exposing this box."
+        # (security 0.0.0.0 caveat already printed UNCONDITIONALLY as a warn above)
       else
         warn "start-agentscope-studio.sh install did not report healthy — check installer/state/agentscope-studio.launchd.log"
       fi

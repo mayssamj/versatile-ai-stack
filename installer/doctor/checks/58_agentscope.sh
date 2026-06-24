@@ -41,13 +41,16 @@ agentscope_diagnose() {
     return 1
   fi
   # --- OPT-IN Studio GUI probe (only when Studio is enabled in this stack) ---
-  # Marker: the launchd plist (written by Phase 33 ONLY when AGENTSCOPE_STUDIO=1),
-  # OR a persisted .env AGENTSCOPE_STUDIO=1 line. Lib-only stacks have neither, so
-  # they SKIP this and PASS on the line below — the shipped behavior is unchanged.
+  # Marker: the launchd plist is the SOLE authoritative signal — it is written by
+  # Phase 33 ONLY when AGENTSCOPE_STUDIO=1 AND the daemon installed, and removed by
+  # `uninstall`. The .env AGENTSCOPE_STUDIO flag is an INSTALL-TIME input, not a
+  # runtime-state marker: keying off it would spuriously FAIL doctor for a user who
+  # uninstalled Studio (plist gone) but left AGENTSCOPE_STUDIO=1 in .env. Lib-only
+  # stacks have no plist, so they SKIP this and PASS on the line below (shipped
+  # behavior unchanged).
   local studio_plist="$HOME/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist"
   local studio_on=0
   [[ -f "$studio_plist" ]] && studio_on=1
-  [[ "$(get_env AGENTSCOPE_STUDIO '')" == "1" ]] && studio_on=1
   if [[ "$studio_on" == "1" ]]; then
     local sc
     sc="$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:5275/ 2>/dev/null || echo 000)"
