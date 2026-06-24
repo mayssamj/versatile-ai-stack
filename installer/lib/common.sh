@@ -140,7 +140,16 @@ atomic_write() {
 # use inline `-d '...'`.
 litellm_master_curl() {
   local _m; _m="$(get_env LITELLM_MASTER_KEY '')"
+  # Fail fast on an unset key rather than sending a bare `Authorization: Bearer `
+  # (which LiteLLM answers with an opaque 401). Callers see a clear cause + non-zero.
+  [[ -n "$_m" ]] || { warn 'litellm_master_curl: LITELLM_MASTER_KEY is unset/empty — skipping authenticated call'; return 1; }
+  # Suppress xtrace while the secret is live: if any caller runs under `set -x`, the
+  # printf below would otherwise trace the fully-expanded key to stderr/any debug log.
+  local _x=''; case $- in *x*) _x=1; set +x;; esac
   printf 'header = "Authorization: Bearer %s"\n' "$_m" | curl --config - "$@"
+  local _rc=$?
+  [[ -n "$_x" ]] && set -x
+  return $_rc
 }
 
 # --- litellm_reconcile_key: self-heal a scoped key's model allow-list --------

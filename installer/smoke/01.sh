@@ -33,7 +33,7 @@ KEY="$(get_env LITELLM_MASTER_KEY)"
 
 # 1. Models endpoint
 log "/v1/models ..."
-models_json="$(curl -s -H "Authorization: Bearer $KEY" --max-time 5 http://litellm:4000/v1/models)"
+models_json="$(litellm_master_curl -s --max-time 5 http://litellm:4000/v1/models)"
 if ! echo "$models_json" | grep -q '"data"'; then
   err "/v1/models did not return data"
   echo "$models_json" | head -5
@@ -51,8 +51,8 @@ container_lines() {
     | tr -d '[:space:]'
 }
 before_lines="$(container_lines)"
-resp="$(curl -s --max-time 60 \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+resp="$(litellm_master_curl -s --max-time 60 \
+  -H "Content-Type: application/json" \
   -d '{"model":"local","messages":[{"role":"user","content":"Say exactly the word: ping"}],"max_tokens":50}' \
   http://litellm:4000/v1/chat/completions)"
 content="$(echo "$resp" | jq -r '.choices[0].message.content // .choices[0].message.reasoning_content // empty' 2>/dev/null)"
@@ -87,8 +87,8 @@ for m in "${MODELS[@]}"; do
   fi
   # Wrap in a subshell that always exits 0 — under inherit_errexit, a curl
   # timeout (28) would otherwise abort the smoke loop.
-  rc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
-    -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  rc="$(litellm_master_curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
+    -H "Content-Type: application/json" \
     -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" \
     http://litellm:4000/v1/chat/completions 2>/dev/null || echo "000")"
   if [[ "$rc" == "200" ]]; then

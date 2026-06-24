@@ -238,8 +238,8 @@ print(json.dumps({"model":os.environ["MODEL"],
 "messages":[{"role":"system","content":os.environ["SYS"]},{"role":"user","content":os.environ["CTX"]}],
 "temperature":0.2,"max_tokens":700,"response_format":{"type":"json_object"}}))')" || { err "could not build request"; return 1; }
   local resp
-  resp="$(curl -s --max-time 120 "$LITELLM/v1/chat/completions" \
-    -H "Authorization: Bearer $key" -H "Content-Type: application/json" -d "$body")" || { err "LiteLLM request failed"; return 1; }
+  resp="$(litellm_master_curl -s --max-time 120 "$LITELLM/v1/chat/completions" \
+    -H "Content-Type: application/json" -d "$body")" || { err "LiteLLM request failed"; return 1; }
   printf '%s' "$resp" | python3 -c 'import sys,json,re
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(3)

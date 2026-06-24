@@ -44,9 +44,11 @@ _mb_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-345
 # substitution exit 0 (curl's -w still printed "000"); `${code:-000}` covers the
 # rare empty/binary-error case. (`|| true` not `|| echo 000` — the latter doubles.)
 _mb_chat_ping() {
+  # _mb_chat_ping <model> [timeout] — the master key is supplied by litellm_master_curl
+  # via curl --config (STDIN), so it never lands in argv/ps.
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "${3:-30}" \
-    http://litellm:4000/v1/chat/completions -H "Authorization: Bearer $2" \
+  code="$(litellm_master_curl -s -o /dev/null -w '%{http_code}' --max-time "${2:-30}" \
+    http://litellm:4000/v1/chat/completions \
     -H 'Content-Type: application/json' \
     -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":16}" 2>/dev/null || true)"
   printf '%s' "${code:-000}"
@@ -109,7 +111,8 @@ sys.exit(0 if any(m.get("id")==w for m in d.get("data",[])) else 1)' "$declared"
   echo "$default"
 }
 
-# key covers model? (never prints the key)
+# key covers model? (never prints the key). $key is a CALLER-SUPPLIED token ($1), not
+# the master — a generic probe, intentionally keeps -H (param, not a master-argv site).
 _mb_key_covers() {
   local key="$1" want="$2"
   [[ -n "$key" ]] || return 1
@@ -232,7 +235,7 @@ print("\n".join(m.get("id","") for m in d.get("data",[])))' 2>/dev/null || true 
         fi
       elif printf '%s\n' "$_ollama_loaded" | grep -qxF "$served" || [[ "$_deep" == "1" ]]; then
         # Already RESIDENT (warm, ~free) OR deep check (opt-in, may cold-load): real ping.
-        wcode="$(_mb_chat_ping "$m" "$master" "$_oll_to")"
+        wcode="$(_mb_chat_ping "$m" "$_oll_to")"
         [[ "$wcode" == "200" ]] || { echo "ollama model '$m' chat_ping returned HTTP $wcode (expected 200)"; fail=1; }
       elif ! printf '%s\n' "$_ollama_pulled" | grep -qxF "$served" \
            && ! printf '%s\n' "$_ollama_pulled" | grep -qxF "${served}:latest"; then
@@ -265,7 +268,7 @@ print("\n".join(m.get("id","") for m in d.get("data",[])))' 2>/dev/null || true 
     # (e.g. gpt-5.5-pro → … → claude, ~76s) → advisory, not red. A real wiring /
     # credential fault (bad key / bad slug) returns a definite 4xx/5xx → red.
     local code
-    code="$(_mb_chat_ping "$m" "$master" 30)"
+    code="$(_mb_chat_ping "$m" 30)"
     if [[ "$code" == "200" ]]; then
       :   # servable
     elif [[ "$code" == "000" ]]; then

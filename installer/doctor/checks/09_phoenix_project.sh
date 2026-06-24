@@ -78,8 +78,8 @@ phoenix_project_fix() {
   fi
   log "Sending one inference call through LiteLLM to materialize the project..."
   local resp
-  resp="$(curl -s --max-time 30 -X POST http://litellm:4000/v1/chat/completions \
-    -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  resp="$(litellm_master_curl -s --max-time 30 -X POST http://litellm:4000/v1/chat/completions \
+    -H "Content-Type: application/json" \
     -d '{"model":"local","messages":[{"role":"user","content":"phoenix probe"}],"max_tokens":5}')"
   if ! echo "$resp" | grep -q '"choices"'; then
     warn "Inference call failed:"

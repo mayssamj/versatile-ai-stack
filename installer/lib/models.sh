@@ -299,8 +299,7 @@ litellm_serves_slug() {
   local want="$1" key
   key="$(get_env LITELLM_MASTER_KEY '')"
   [[ -n "$key" ]] || return 1
-  curl -s --max-time 5 "${LITELLM_BASE_URL:-http://litellm:4000}/v1/models" \
-    -H "Authorization: Bearer $key" 2>/dev/null \
+  litellm_master_curl -s --max-time 5 "${LITELLM_BASE_URL:-http://litellm:4000}/v1/models" 2>/dev/null \
     | python3 -c 'import sys,json
 w=sys.argv[1]
 try: d=json.load(sys.stdin)
@@ -467,6 +466,8 @@ allowlist_superset_json() {
 }
 
 # key_covers <key> <model> — does GET /v1/models under <key> include <model>?
+# $key is a CALLER-SUPPLIED token ($1), not the master key — a generic probe, so it
+# intentionally keeps -H (a master-key-in-argv sweep should leave this: key is a param).
 key_covers() {
   local key="$1" want="$2"
   [[ -n "$key" ]] || return 1

@@ -86,7 +86,9 @@ aitown_diagnose() {
     want="$(yq -r '.assignments.aitown // ""' "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
     [[ -n "$want" && "$want" != "null" ]] || want="local-gemma4"
     local allow
-    allow="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/key/info 2>/dev/null || curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/key/info 2>/dev/null || true)"
+    # Probe 127.0.0.1 FIRST (parity with this check's /v1/models probe + comment above):
+    # the litellm:4000 alias only resolves with /etc/hosts, so trying it first burns ~5s.
+    allow="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/key/info 2>/dev/null || curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/key/info 2>/dev/null || true)"
     allow="$(printf '%s' "$allow" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)

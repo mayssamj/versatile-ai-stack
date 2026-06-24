@@ -8,7 +8,6 @@ source "$AI_STACK/installer/lib/validate.sh"
 
 hdr "Smoke 01·H — Phoenix"
 
-KEY="$(get_env LITELLM_MASTER_KEY)"
 PKEY="$(get_env PHOENIX_API_KEY "")"
 
 # 1. UI 200
@@ -17,10 +16,11 @@ ok "Phoenix UI responds (200)"
 
 # 2. Send an inference
 log "Sending one inference call (Phoenix probe)..."
-curl -s --max-time 30 \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+litellm_master_curl -s --max-time 30 \
+  -H "Content-Type: application/json" \
   -d '{"model":"local","messages":[{"role":"user","content":"phoenix smoke 42"}],"max_tokens":3}' \
-  http://litellm:4000/v1/chat/completions >/dev/null
+  http://litellm:4000/v1/chat/completions >/dev/null \
+  || { err "inference dispatch failed (LITELLM_MASTER_KEY missing or LiteLLM unreachable)"; exit 1; }
 ok "inference dispatched"
 
 # 3. Wait for OTel batch flush

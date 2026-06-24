@@ -48,30 +48,19 @@ litellm_remove_callback() {
   ok "removed callback: $mod"
 }
 
-# Issue a chat completion. Returns 0 on HTTP 200.
-litellm_chat_ping() {
-  local model="${1:-local}"
-  local key; key="$(get_env LITELLM_MASTER_KEY)"
-  curl -s -o /dev/null -w '%{http_code}\n' \
-    --max-time 30 \
-    ${LITELLM_BASE_URL:-http://litellm:4000}/v1/chat/completions \
-    -H "Authorization: Bearer $key" \
-    -H "Content-Type: application/json" \
-    -d "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1}" \
-  | grep -qx '200'
-}
-
 # Wait for /v1/models to return a non-empty list (LiteLLM ready signal).
 litellm_wait_ready() {
   local timeout="${1:-60}" i=0
+  # Pre-flight only: a specific, actionable empty-key error (+ a return-2 sentinel)
+  # before the retry loop. The value is NOT forwarded — litellm_master_curl injects
+  # the key via curl --config (STDIN) below, never on the command line.
   local key; key="$(get_env LITELLM_MASTER_KEY)"
   if [[ -z "$key" ]]; then
     err "LITELLM_MASTER_KEY is empty — run 'vz-ai-stack.sh install 00' (or 'setup') to generate it before starting LiteLLM"
     return 2
   fi
   while (( i < timeout )); do
-    if curl -s --max-time 3 ${LITELLM_BASE_URL:-http://litellm:4000}/v1/models \
-        -H "Authorization: Bearer $key" 2>/dev/null \
+    if litellm_master_curl -s --max-time 3 ${LITELLM_BASE_URL:-http://litellm:4000}/v1/models 2>/dev/null \
         | grep -q '"data"'; then
       return 0
     fi
@@ -87,6 +76,9 @@ litellm_wait_ready() {
 # aliases / OrbStack vs a plain Linux Docker host). The docker-published host
 # port is the machine-agnostic ground truth, so we always include it.
 litellm_smoke_ok() {
+  # $key is a CALLER-SUPPLIED token ($1), not necessarily the master key — a generic
+  # probe, so it intentionally keeps -H (NOT litellm_master_curl). A master-key-in-argv
+  # sweep should LEAVE the -H below: the key here is a parameter, not LITELLM_MASTER_KEY.
   local key="$1" url
   [[ -n "$key" ]] || return 2   # empty key → fast-fail; caller reports + diagnoses
   local -a urls=(
@@ -147,7 +139,7 @@ litellm_diagnose() (
     warn "master key  : MISMATCH — recreate: bash $AI_STACK/bin/start-litellm.sh --recreate"
   fi
   # Truncate with parameter expansion (NOT `head -c`, which SIGPIPEs upstream).
-  local raw; raw="$(curl -s --max-time 5 "${LITELLM_BASE_URL:-http://litellm:4000}/v1/models" -H "Authorization: Bearer $key" 2>&1 | tr -d '\r')"
+  local raw; raw="$(litellm_master_curl -s --max-time 5 "${LITELLM_BASE_URL:-http://litellm:4000}/v1/models" 2>&1 | tr -d '\r')"
   if [[ -n "$raw" ]]; then warn "GET /v1/models -> ${raw:0:220}"; else warn "GET /v1/models -> <empty or timeout>"; fi
   warn "recent litellm logs (tail 20):"
   # Redact any sk-… token (LiteLLM logs its master key on first boot) BEFORE it
