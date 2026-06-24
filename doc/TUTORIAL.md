@@ -398,6 +398,37 @@ That scoped key sees only its allowlist — and a request for a model outside it
 **Lesson.** Observability and least-privilege are the same discipline seen from two sides. Phoenix gives you the *after* (every span, every cost); virtual keys give you the *before* (no consumer can spend more, or reach a model, than you granted). Agents in this stack — Pi, Hermes, ACE, RLM — each hold a scoped key allowlisted to the superset, never the master key, so a compromised agent can't escalate to a cloud model or blow a budget. The master key stays in LiteLLM's environment alone.
 
 **Go deeper.** [doc/models.md](../doc/models.md) (LiteLLM-is-the-only-hub, scoped keys, the 403 enforcement), [doc/OPERATIONS.md](../doc/OPERATIONS.md) (Phoenix forensics, key lifecycle).
+
+### L7½ · Name-based addressing — why `http://litellm:4000` works · 🟢 · ~6 min
+
+**Why.** Every URL in this tutorial is a *name*, not an IP — `http://litellm:4000`, `http://phoenix:6006`, `http://openwebui:8080`. That's deliberate: containers restart and get new internal IPs, but a name you can memorize stays put. This lesson explains the two layers that make those names resolve from your Mac's browser, so the addresses you've been copy-pasting stop being magic — and shows the optional upgrade to *port-less* URLs.
+
+**Prereqs.** You ran `sudo bash vz-ai-stack.sh prepare-sudo` back in L2 — that wired the always-on name layer. The port-less upgrade (`ingress`) is opt-in.
+
+**Steps.**
+
+Layer 1 — **names with ports** (always on, from `prepare-sudo`). It added a managed block to `/etc/hosts` mapping each service to its own loopback alias (`127.0.10.x`) and brought those aliases up on the `lo0` interface. So `litellm` resolves to a `127.0.10.x` address where the container publishes its port:
+
+```bash
+grep -A3 ai-stack /etc/hosts | head          # the managed name -> 127.0.10.x block
+curl -s http://litellm:4000/health/readiness  # a name:port URL, resolved entirely on-box
+```
+
+Layer 2 — **port-less names** (opt-in `ingress`). Tired of remembering `:4000` vs `:8080`? The `ingress` command runs a host-native **Caddy** daemon that binds each service's `127.0.10.x:80/:443` and reverse-proxies to its real port — giving you `http://litellm/` and `https://openwebui/` with no port at all, while leaving `name:port` and container-to-container traffic untouched:
+
+```bash
+sudo vz-ai-stack.sh ingress up    # start the Caddy ingress daemon (needs sudo: binds :80/:443)
+vz-ai-stack.sh ingress trust      # trust the local CA so https://name/ shows a green lock
+vz-ai-stack.sh ingress status     # list what's wired, then open http://litellm/ — no port!
+```
+
+**Expected.** `grep ai-stack /etc/hosts` shows a managed block of `127.0.10.x  <name>` lines; the `name:port` curl returns LiteLLM's readiness JSON. After `ingress up` + `trust`, `http://litellm/` (no port) reverse-proxies to LiteLLM and `https://` shows a trusted certificate; `ingress status` lists every bound alias.
+
+**Try it live.** The page's **Service status** demo (one of the new Try-it-live panels) probes these same hostnames and shows which are up — that's name resolution working in your browser. `ingress up`/`trust` are sudo/host operations, so they stay copy-run.
+
+**Lesson.** Two layers, both **host-only** — they change how *your Mac's browser* addresses services, never what the containers see. `prepare-sudo` gives you `name:port` (always); `ingress` upgrades that to port-less `name/` (opt-in Caddy). The single source of truth for the aliases is `installer/lib/aliases.tsv`.
+
+**Go deeper.** [doc/specs/2026-06-21-bare-hostname-ingress.md](../doc/specs/2026-06-21-bare-hostname-ingress.md) (the design), `installer/lib/ingress.sh` (the `up`/`down`/`trust`/`status`/`generate` CLI), `installer/lib/network.sh` (the `/etc/hosts` + `lo0` alias layer).
 ## Act III — Memory & Knowledge
 
 Tier 1 gave you a stateless model that forgets you the moment a chat ends. Tier 2 turns it into a *personalized, grounded* assistant: Honcho remembers facts across sessions, Qdrant + the ingester let it cite YOUR documents, and FalkorDB lets it reason over relationships. Three storage shapes, one stack — all on-box, all observable in Phoenix.
@@ -590,7 +621,7 @@ bin/mempalace wake-up
 
 **Expected.** `mine` reports how many sessions/messages it indexed into the spatial store (wings/rooms/drawers). `search` returns ranked **verbatim** excerpts from your real past conversations — each with where it came from — rather than a derived summary. `wake-up` prints a compact recall of the most relevant recent thread, ready to paste back into a fresh session.
 
-**Lesson.** This is the **privacy headline**: MemPalace's embeddings are computed **on-device** (local ONNX/CoreML — default `all-MiniLM-L6-v2`, `embeddinggemma` opt-in), and the store is local (ChromaDB today). Nothing leaves the machine — the only thing that *can* is an **optional** refiner LLM, and only if you enable it and route it through LiteLLM (`MEMPALACE_LITELLM_KEY`). It complements rather than replaces the other memory slots: Honcho = derived cross-agent facts, Qdrant = document RAG, Lumen = code search, MemPalace = verbatim session recall. ⚠️ **Install only from PyPI (`mempalace`) or github.com/MemPalace/mempalace** — the domain `mempalace.tech` is a known malware squat.
+**Lesson.** This is the **privacy headline**: MemPalace's embeddings are computed **on-device** (local ONNX/CoreML — default `all-MiniLM-L6-v2`, `embeddinggemma` opt-in), and the store is local (ChromaDB today). Nothing leaves the machine — the only thing that *can* is an **optional** refiner LLM, and only if you enable it and route it through LiteLLM (`MEMPALACE_LITELLM_KEY`). It complements rather than replaces the other memory slots: Honcho = derived cross-agent facts, Qdrant = document RAG, Lumen = code search, MemPalace = verbatim session recall (and **ByteRover** — the `brv` CLI — is an optional fifth slot: a *hand-curated* context tree you edit yourself, for notes you want to own rather than auto-derive). ⚠️ **Install only from PyPI (`mempalace`) or github.com/MemPalace/mempalace** — the domain `mempalace.tech` is a known malware squat.
 
 **Go deeper.** A Qdrant backend adapter is **staged** at `mempalace/backend-qdrant/` (RFC-001, conformance-tested against the live stack Qdrant) but is **not yet runtime-wired** — 3.3.5 hardcodes ChromaBackend, so the default store stays ChromaDB for now. The two upstream hook scripts (`mempal_save_hook.sh`, `mempal_precompact_hook.sh`) are vendored verbatim under `mempalace/hooks/` (see `mempalace/VENDORED.md`). Attribution + license in `doc/ATTRIBUTION.md`; where it sits among the memory options in `doc/ALTERNATIVES.md`.
 
@@ -1124,6 +1155,8 @@ open http://phoenix:6006                    # project ai-stack
 
 **Expected.** `http://aitown:5273/` shows the live town (the install patches Vite's `allowedHosts`; fall back to the `127.0.10.19` IP if it 403s); the Convex dashboard is at `http://127.0.10.19:6791/` (loopback-only). `vz-ai-stack.sh test 36` proves it; `doctor aitown` shows check 61 green. Livelier town (metered): `(cd ai-town && npx convex env set LLM_MODEL claude-opus-sub-xhigh)` then restart. The town world is **your data** — `stop aitown` and a teardown both preserve the SQLite world.
 
+**Try it live.** Serve this page with launch enabled — `vz-ai-stack.sh tutorial-serve --launch-enabled` — and the **Launch a service** panel can start **ChatDev** and **AI Town** for you and open them in a new tab. The buttons just run the same idempotent `start <svc>` shown above, server-side; it's opt-in and loopback-only (the proxy holds no key — see Act II's Try-it-live for why).
+
 **Reversible.** `rm -rf agentscope/.venv && rm -f installer/state/phase_33.done` (same shape for `metagpt`/`oasis`). The `<svc>/sims/` directories are **your data** — they're kept.
 
 **Go deeper.** Phases `installer/phases/33_agentscope.sh` · `32_metagpt.sh` · `34_oasis.sh` · `35_chatdev.sh` · `36_aitown.sh` carry full rationale headers; the plan + which-tool rationale is `doc/specs/2026-06-23-agent-sim-platforms-install-plan.md`; licenses in `doc/ATTRIBUTION.md`. All five also appear in the Explorer (`doc/EXPLORE.html`, the **`extras`** tab) as clickable demo cards.
@@ -1550,6 +1583,13 @@ vz-ai-stack.sh history            # assembles CHANGELOG.d/<run-id>.md into one t
 
 # GC — reclaim space from stopped containers / dangling artifacts.
 vz-ai-stack.sh gc
+
+# CLEANUP — reclaim space from REGENERABLE build artifacts (node_modules, .venv,
+# caches). DRY-RUN by default; only deletes a path that is git-ignored AND matches a
+# known-regenerable pattern AND contains no tracked files. Distinct from gc (which
+# targets containers/images). Add --yes to actually delete.
+vz-ai-stack.sh cleanup            # DRY-RUN: shows what it WOULD reclaim
+vz-ai-stack.sh cleanup --yes      # actually delete (safe: git-ignored regenerables only)
 ```
 
 **Expected.** `doctor` ends with `Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.` — many checks **auto-fix** and re-verify rather than just complaining. `upgrade --check` prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; sandbox/CLI/npm/pip rows are hidden unless `--all`). `history` prints a chronological record of every install decision.

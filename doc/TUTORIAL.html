@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'&gt;&lt;text y='14' font-size='14'&gt;🛠️&lt;/text&gt;&lt;/svg&gt;">
 <!--
   vz-ai-stack — Hands-On Tutorial — single self-contained file, zero external deps, works from file://.
-  This is the INTERACTIVE on-ramp companion to doc/TUTORIAL.md (the full 7-act / 31-lesson journey).
+  This is the INTERACTIVE on-ramp companion to doc/TUTORIAL.md (the full 7-act / 34-lesson journey).
   - Copy-run blocks work everywhere (file:// or served).
   - "Try it live" demo panels call a SAME-ORIGIN proxy (installer/lib/tutorial_proxy.py) — the
     browser never holds a key. Read-only routes: GET /api/health · GET /api/models · GET /api/status ·
@@ -276,14 +276,14 @@
   leaves your machine unless you pick a cloud route.</p>
   <div class="stat-row">
     <div class="stat"><span class="n">7</span><span class="l">Acts</span></div>
-    <div class="stat"><span class="n">30</span><span class="l">Lessons</span></div>
+    <div class="stat"><span class="n">34</span><span class="l">Lessons</span></div>
     <div class="stat"><span class="n">49</span><span class="l">Services</span></div>
     <div class="stat"><span class="n">0</span><span class="l">Cloud keys needed</span></div>
   </div>
 </section>
 
 <section id="journey">
-  <h2>The journey <span class="small">7 acts · 31 lessons · ordered so a concept never precedes its prerequisite</span></h2>
+  <h2>The journey <span class="small">7 acts · 34 lessons · ordered so a concept never precedes its prerequisite</span></h2>
   <p class="lede">Each card jumps to its full lessons further down this page.
   Tiers: <span class="tier basic">basic</span> <span class="tier inter">intermediate</span>
   <span class="tier adv">advanced</span>.</p>
@@ -415,7 +415,8 @@
 <section id="demos">
   <h2>Interactive demos <span class="small">each calls the same-origin proxy</span></h2>
   <p class="lede">These mirror the early lessons of the journey — list the routed models, chat one,
-  compare two, and watch a guardrail block a risky prompt.</p>
+  compare two, watch a guardrail block a risky prompt, turn text into an embedding vector, check which
+  services are up, and (opt-in) launch a watchable web UI.</p>
 
   <!-- DEMO 1 — List models -->
   <div class="demo-panel" id="demoModelsPanel">
@@ -681,6 +682,21 @@ curl -s http://litellm:4000/key/generate \
 <p><strong>Try it live.</strong> Read-only in the HTML page — Phoenix is its own UI (open it directly), and key minting is a terminal/master-key operation, not a browser button. The live, self-cleaning example of all this is <strong><code>vz-ai-stack.sh tutorial-serve</code></strong>: it mints an <em>ephemeral</em> key allowlisted to every chat model you've wired into LiteLLM (local + LM Studio + Claude-subscription + cloud, embeddings excluded), capped at <code>$0.50</code> with a 30-minute TTL, injects it <strong>server-side</strong> in a loopback proxy (the browser never holds a token), and auto-revokes it on exit — exactly the scoped-key pattern above, productized for this tutorial. The budget cap is what makes including cloud routes safe.</p>
 <p><strong>Lesson.</strong> Observability and least-privilege are the same discipline seen from two sides. Phoenix gives you the <em>after</em> (every span, every cost); virtual keys give you the <em>before</em> (no consumer can spend more, or reach a model, than you granted). Agents in this stack — Pi, Hermes, ACE, RLM — each hold a scoped key allowlisted to the superset, never the master key, so a compromised agent can't escalate to a cloud model or blow a budget. The master key stays in LiteLLM's environment alone.</p>
 <p><strong>Go deeper.</strong> <a href="../doc/models.md">doc/models.md</a> (LiteLLM-is-the-only-hub, scoped keys, the 403 enforcement), <a href="../doc/OPERATIONS.md">doc/OPERATIONS.md</a> (Phoenix forensics, key lifecycle).</p>
+<h3 id="l7--name-based-addressing--why-httplitellm4000-works----6-min">L7½ · Name-based addressing — why <code>http://litellm:4000</code> works · 🟢 · ~6 min <span class="tier basic">basic</span></h3>
+<p><strong>Why.</strong> Every URL in this tutorial is a <em>name</em>, not an IP — <code>http://litellm:4000</code>, <code>http://phoenix:6006</code>, <code>http://openwebui:8080</code>. That's deliberate: containers restart and get new internal IPs, but a name you can memorize stays put. This lesson explains the two layers that make those names resolve from your Mac's browser, so the addresses you've been copy-pasting stop being magic — and shows the optional upgrade to <em>port-less</em> URLs.</p>
+<p><strong>Prereqs.</strong> You ran <code>sudo bash vz-ai-stack.sh prepare-sudo</code> back in L2 — that wired the always-on name layer. The port-less upgrade (<code>ingress</code>) is opt-in.</p>
+<p><strong>Steps.</strong></p>
+<p>Layer 1 — <strong>names with ports</strong> (always on, from <code>prepare-sudo</code>). It added a managed block to <code>/etc/hosts</code> mapping each service to its own loopback alias (<code>127.0.10.x</code>) and brought those aliases up on the <code>lo0</code> interface. So <code>litellm</code> resolves to a <code>127.0.10.x</code> address where the container publishes its port:</p>
+<pre><button class="copy-btn" data-copy>copy</button><code>grep -A3 ai-stack /etc/hosts | head          # the managed name -&gt; 127.0.10.x block
+curl -s http://litellm:4000/health/readiness  # a name:port URL, resolved entirely on-box</code></pre>
+<p>Layer 2 — <strong>port-less names</strong> (opt-in <code>ingress</code>). Tired of remembering <code>:4000</code> vs <code>:8080</code>? The <code>ingress</code> command runs a host-native <strong>Caddy</strong> daemon that binds each service's <code>127.0.10.x:80/:443</code> and reverse-proxies to its real port — giving you <code>http://litellm/</code> and <code>https://openwebui/</code> with no port at all, while leaving <code>name:port</code> and container-to-container traffic untouched:</p>
+<pre><button class="copy-btn" data-copy>copy</button><code>sudo vz-ai-stack.sh ingress up    # start the Caddy ingress daemon (needs sudo: binds :80/:443)
+vz-ai-stack.sh ingress trust      # trust the local CA so https://name/ shows a green lock
+vz-ai-stack.sh ingress status     # list what's wired, then open http://litellm/ — no port!</code></pre>
+<p><strong>Expected.</strong> <code>grep ai-stack /etc/hosts</code> shows a managed block of <code>127.0.10.x  &lt;name&gt;</code> lines; the <code>name:port</code> curl returns LiteLLM's readiness JSON. After <code>ingress up</code> + <code>trust</code>, <code>http://litellm/</code> (no port) reverse-proxies to LiteLLM and <code>https://</code> shows a trusted certificate; <code>ingress status</code> lists every bound alias.</p>
+<p><strong>Try it live.</strong> The page's <strong>Service status</strong> demo (one of the new Try-it-live panels) probes these same hostnames and shows which are up — that's name resolution working in your browser. <code>ingress up</code>/<code>trust</code> are sudo/host operations, so they stay copy-run.</p>
+<p><strong>Lesson.</strong> Two layers, both <strong>host-only</strong> — they change how <em>your Mac's browser</em> addresses services, never what the containers see. <code>prepare-sudo</code> gives you <code>name:port</code> (always); <code>ingress</code> upgrades that to port-less <code>name/</code> (opt-in Caddy). The single source of truth for the aliases is <code>installer/lib/aliases.tsv</code>.</p>
+<p><strong>Go deeper.</strong> <a href="../doc/specs/2026-06-21-bare-hostname-ingress.md">doc/specs/2026-06-21-bare-hostname-ingress.md</a> (the design), <code>installer/lib/ingress.sh</code> (the <code>up</code>/<code>down</code>/<code>trust</code>/<code>status</code>/<code>generate</code> CLI), <code>installer/lib/network.sh</code> (the <code>/etc/hosts</code> + <code>lo0</code> alias layer).</p>
 </section>
 
 <section id="act-iii--memory--knowledge">
@@ -813,7 +829,7 @@ bin/mempalace search "how did we wire the OpenShell sandbox egress allowlist?"
 # 3. "Wake up" — pull the most relevant recent context back into view.
 bin/mempalace wake-up</code></pre>
 <p><strong>Expected.</strong> <code>mine</code> reports how many sessions/messages it indexed into the spatial store (wings/rooms/drawers). <code>search</code> returns ranked <strong>verbatim</strong> excerpts from your real past conversations — each with where it came from — rather than a derived summary. <code>wake-up</code> prints a compact recall of the most relevant recent thread, ready to paste back into a fresh session.</p>
-<p><strong>Lesson.</strong> This is the <strong>privacy headline</strong>: MemPalace's embeddings are computed <strong>on-device</strong> (local ONNX/CoreML — default <code>all-MiniLM-L6-v2</code>, <code>embeddinggemma</code> opt-in), and the store is local (ChromaDB today). Nothing leaves the machine — the only thing that <em>can</em> is an <strong>optional</strong> refiner LLM, and only if you enable it and route it through LiteLLM (<code>MEMPALACE_LITELLM_KEY</code>). It complements rather than replaces the other memory slots: Honcho = derived cross-agent facts, Qdrant = document RAG, Lumen = code search, MemPalace = verbatim session recall. ⚠️ <strong>Install only from PyPI (<code>mempalace</code>) or github.com/MemPalace/mempalace</strong> — the domain <code>mempalace.tech</code> is a known malware squat.</p>
+<p><strong>Lesson.</strong> This is the <strong>privacy headline</strong>: MemPalace's embeddings are computed <strong>on-device</strong> (local ONNX/CoreML — default <code>all-MiniLM-L6-v2</code>, <code>embeddinggemma</code> opt-in), and the store is local (ChromaDB today). Nothing leaves the machine — the only thing that <em>can</em> is an <strong>optional</strong> refiner LLM, and only if you enable it and route it through LiteLLM (<code>MEMPALACE_LITELLM_KEY</code>). It complements rather than replaces the other memory slots: Honcho = derived cross-agent facts, Qdrant = document RAG, Lumen = code search, MemPalace = verbatim session recall (and <strong>ByteRover</strong> — the <code>brv</code> CLI — is an optional fifth slot: a <em>hand-curated</em> context tree you edit yourself, for notes you want to own rather than auto-derive). ⚠️ <strong>Install only from PyPI (<code>mempalace</code>) or github.com/MemPalace/mempalace</strong> — the domain <code>mempalace.tech</code> is a known malware squat.</p>
 <p><strong>Go deeper.</strong> A Qdrant backend adapter is <strong>staged</strong> at <code>mempalace/backend-qdrant/</code> (RFC-001, conformance-tested against the live stack Qdrant) but is <strong>not yet runtime-wired</strong> — 3.3.5 hardcodes ChromaBackend, so the default store stays ChromaDB for now. The two upstream hook scripts (<code>mempal_save_hook.sh</code>, <code>mempal_precompact_hook.sh</code>) are vendored verbatim under <code>mempalace/hooks/</code> (see <code>mempalace/VENDORED.md</code>). Attribution + license in <code>doc/ATTRIBUTION.md</code>; where it sits among the memory options in <code>doc/ALTERNATIVES.md</code>.</p>
 <p><strong>Where you are now.</strong> Your assistant has four kinds of memory: episodic/personal (Honcho), document knowledge (Qdrant RAG), relational knowledge (FalkorDB), and verbatim conversation recall (MemPalace) — all local, all on-device. Act IV puts agents on top of this foundation.</p>
 </section>
@@ -1136,6 +1152,7 @@ vz-ai-stack.sh start aitown                 # idempotent; stop aitown to reclaim
 # 3. Trace every character's LLM call.
 open http://phoenix:6006                    # project ai-stack</code></pre>
 <p><strong>Expected.</strong> <code>http://aitown:5273/</code> shows the live town (the install patches Vite's <code>allowedHosts</code>; fall back to the <code>127.0.10.19</code> IP if it 403s); the Convex dashboard is at <code>http://127.0.10.19:6791/</code> (loopback-only). <code>vz-ai-stack.sh test 36</code> proves it; <code>doctor aitown</code> shows check 61 green. Livelier town (metered): <code>(cd ai-town &amp;&amp; npx convex env set LLM_MODEL claude-opus-sub-xhigh)</code> then restart. The town world is <strong>your data</strong> — <code>stop aitown</code> and a teardown both preserve the SQLite world.</p>
+<p><strong>Try it live.</strong> Serve this page with launch enabled — <code>vz-ai-stack.sh tutorial-serve --launch-enabled</code> — and the <strong>Launch a service</strong> panel can start <strong>ChatDev</strong> and <strong>AI Town</strong> for you and open them in a new tab. The buttons just run the same idempotent <code>start &lt;svc&gt;</code> shown above, server-side; it's opt-in and loopback-only (the proxy holds no key — see Act II's Try-it-live for why).</p>
 <p><strong>Reversible.</strong> <code>rm -rf agentscope/.venv &amp;&amp; rm -f installer/state/phase_33.done</code> (same shape for <code>metagpt</code>/<code>oasis</code>). The <code>&lt;svc&gt;/sims/</code> directories are <strong>your data</strong> — they're kept.</p>
 <p><strong>Go deeper.</strong> Phases <code>installer/phases/33_agentscope.sh</code> · <code>32_metagpt.sh</code> · <code>34_oasis.sh</code> · <code>35_chatdev.sh</code> · <code>36_aitown.sh</code> carry full rationale headers; the plan + which-tool rationale is <code>doc/specs/2026-06-23-agent-sim-platforms-install-plan.md</code>; licenses in <code>doc/ATTRIBUTION.md</code>. All five also appear in the Explorer (<code>doc/EXPLORE.html</code>, the <strong><code>extras</code></strong> tab) as clickable demo cards.</p>
 </section>
@@ -1412,7 +1429,14 @@ vz-ai-stack.sh logs litellm --tail 50
 vz-ai-stack.sh history            # assembles CHANGELOG.d/&lt;run-id&gt;.md into one timeline
 
 # GC — reclaim space from stopped containers / dangling artifacts.
-vz-ai-stack.sh gc</code></pre>
+vz-ai-stack.sh gc
+
+# CLEANUP — reclaim space from REGENERABLE build artifacts (node_modules, .venv,
+# caches). DRY-RUN by default; only deletes a path that is git-ignored AND matches a
+# known-regenerable pattern AND contains no tracked files. Distinct from gc (which
+# targets containers/images). Add --yes to actually delete.
+vz-ai-stack.sh cleanup            # DRY-RUN: shows what it WOULD reclaim
+vz-ai-stack.sh cleanup --yes      # actually delete (safe: git-ignored regenerables only)</code></pre>
 <p><strong>Expected.</strong> <code>doctor</code> ends with <code>Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.</code> — many checks <strong>auto-fix</strong> and re-verify rather than just complaining. <code>upgrade --check</code> prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; sandbox/CLI/npm/pip rows are hidden unless <code>--all</code>). <code>history</code> prints a chronological record of every install decision.</p>
 <p><strong>Doctor deep dive.</strong> Each <code>installer/doctor/checks/NN_*.sh</code> registers a <code>&lt;name&gt;_diagnose</code> (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, <code>host.docker.internal</code>, <code>.env</code> valid, loopback aliases, the ai-stack network, <code>/etc/hosts</code> block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, the watchdog alert 43, MemPalace 44, the Sourcegraph fleet MCP 49, AionUi 50, OpenWork 51, Understand-Anything 52, and the always-on container-liveness census 53). Check <strong>39 (<code>openshell_storm</code>)</strong> is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; <strong>check 43 (<code>watchdog_alert</code>)</strong> surfaces any pending alert the watchdog left behind. <strong>Check 44 (<code>mempalace</code>)</strong> pass-as-skips until Phase 26 has run (it's now part of <code>install all</code>); <strong>checks 49 / 50 / 51 / 52 (<code>sourcegraph_mcp</code> / <code>aionui</code> / <code>openwork</code> / <code>understand</code>)</strong> skip-clean until the Phase 27 / 28 / 29 / 30 opt-in extras are installed. <strong>Check 05a (<code>litellm_keystore</code>)</strong> runs before the key checks and AUTO-HEALS the LiteLLM key-store (honcho Postgres) if it's down — so a 503 no longer cascades into false 'key rejected' errors.</p>
 <p><strong>The watchdog.</strong> <code>bin/openshell-watchdog.sh</code> runs every few minutes via launchd and guards against the <strong>token-expiry storm</strong>: after ~8h, a sandbox's gateway token expires and the in-sandbox agent retries its log-push with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. A gateway <em>restart does not</em> refresh the token; only <strong>recreating</strong> the sandbox mints a fresh one. The watchdog detects the unambiguous signature (<code>ExpiredSignature</code> / reconnect-storm in recent logs, or a climbing RestartCount — meaning the sandbox is already dead). <strong>By default it is warn-only and data-safe:</strong> it halts the container to stop the CPU burn at once, writes an alert (surfaced by check 43), and posts a desktop notification — it does <strong>not</strong> delete or recreate the sandbox, because recreation discards in-sandbox state. You recreate when ready. Opt into automatic delete+recreate (capability-checked, Ready-verified, fails loud) with <code>AI_STACK_WATCHDOG_RECREATE=1</code>.</p>
@@ -1473,7 +1497,7 @@ vz-ai-stack.sh fleet add researcher2 --role "deep web research" --model local-qw
 
 <footer>
   <div class="links">
-    <a href="TUTORIAL.md">TUTORIAL.md — full 31 lessons</a>
+    <a href="TUTORIAL.md">TUTORIAL.md — full 34 lessons</a>
     <a href="STACK-GUIDE.md">STACK-GUIDE.md — per-service reference</a>
     <a href="EXPLORE.html">EXPLORE.html — visual catalog</a>
     <a href="ARCHITECTURE.md">ARCHITECTURE.md — how it fits</a>
@@ -1780,7 +1804,7 @@ async function launchService(svc, btn) {
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
     setOut(outLaunch, "✓ " + label + " " + (data.already_running ? "already running" : "started") + " — opening " + data.url, "success");
-    window.open(data.url, "_blank", "noopener");
+    window.open(data.url, "_blank", "noopener,noreferrer");
     setTimeout(refreshStatus, 1200);
   } catch (e) {
     setOut(outLaunch, "Could not launch " + label + ": " + (e && e.message ? e.message : String(e)), "error");
