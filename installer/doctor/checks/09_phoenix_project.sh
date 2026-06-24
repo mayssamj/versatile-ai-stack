@@ -17,7 +17,9 @@ phoenix_project_diagnose() {
   local KEY; KEY="$(get_env PHOENIX_API_KEY "")"
   local body
   if [[ -n "$KEY" ]]; then
-    body="$(curl -s --max-time 3 -H "Authorization: Bearer $KEY" http://phoenix:6006/v1/projects)"
+    # litellm_scoped_curl is a generic bearer-via-STDIN helper (common.sh) — reused here
+    # so PHOENIX_API_KEY is injected via curl --config, never on the command line / argv.
+    body="$(litellm_scoped_curl "$KEY" -s --max-time 3 http://phoenix:6006/v1/projects)"
   else
     body="$(curl -s --max-time 3 http://phoenix:6006/v1/projects)"
   fi

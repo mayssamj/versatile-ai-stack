@@ -162,9 +162,10 @@ litellm_master_curl() {
 # header via curl `--config` on STDIN so the secret never appears in argv. The call
 # site must NOT also feed curl data on stdin (e.g. `-d @-`) — stdin is consumed by the
 # config; all current callers use inline `-d '...'` or send no body.
-# SCOPE: this is for LiteLLM scoped keys. The Phoenix-key curls (09_phoenix check,
-# smoke/01h PKEY -> phoenix:6006) are a DIFFERENT service/credential and intentionally
-# NOT routed here — taking their key off argv is a separate follow-up.
+# SCOPE: generic — injects ANY bearer token passed as $1 via curl --config STDIN, for any
+# bearer-authenticated endpoint. Written for LiteLLM scoped keys; also used for PHOENIX_API_KEY
+# (09_phoenix check + smoke/01h -> phoenix:6006) as of worktree-cred-argv-finish. (Renaming to a
+# neutral `bearer_curl` is a deferred follow-up — it would touch ~50 call sites.)
 litellm_scoped_curl() {
   local _k="$1"; shift
   # Fail fast on an empty key (clear cause + non-zero), mirroring litellm_master_curl;
@@ -249,15 +250,31 @@ print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models"
   # New list = union(current, requested), built with json.dumps (no shell-injection
   # of model names / the key into the JSON body); deduped, order-stable.
   local body resp
+  # xtrace-suppress the key-live window (body holds the scoped key) — mirrors the helpers'
+  # own set+x discipline so a `set -x` caller can't trace the key to stderr/any debug log.
+  local _rx=''; case $- in *x*) _rx=1; set +x;; esac
   body="$(_RK_KEY="$key" _RK_CUR="$cur" _RK_DES="$(printf '%s\n' "${desired[@]}")" python3 -c '
 import json,os
 out=[]
 for x in (os.environ["_RK_CUR"].splitlines() + os.environ["_RK_DES"].splitlines()):
     if x and x != "__wildcard__" and x not in out: out.append(x)
 print(json.dumps({"key":os.environ["_RK_KEY"],"models":out}))' 2>/dev/null || true)"
+  [[ -n "$_rx" ]] && set -x
   [[ -n "$body" ]] || { warn "reconcile $key_env: could not build request body"; return 0; }
-  resp="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
-    -X POST "$base/key/update" -d "$body" 2>/dev/null || true)"
+  # POST the SCOPED-key-bearing body from a 0600 temp file (mktemp defaults to 0600) via
+  # --data @file so the scoped key never lands in argv (the master-key auth is already off-argv
+  # via litellm_master_curl's --config STDIN; --data @file reads the file, not STDIN, so there
+  # is no collision). Done inside a SUBSHELL whose OWN EXIT trap removes the file on EVERY exit
+  # path (normal / errexit / SIGINT / SIGTERM) — isolated, so it never clobbers the outer lock
+  # trap. xtrace stays off inside while the key is written.
+  resp="$(
+    case $- in *x*) set +x;; esac
+    _bf="$(mktemp 2>/dev/null)" || exit 0
+    trap 'rm -f "$_bf"' EXIT
+    printf '%s' "$body" > "$_bf" || exit 0
+    litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
+      -X POST "$base/key/update" --data @"$_bf" 2>/dev/null || true
+  )"
   if printf '%s' "$resp" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(1)

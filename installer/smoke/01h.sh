@@ -29,7 +29,8 @@ sleep 10
 # 4. Probe Phoenix /v1/projects
 log "Looking for 'ai-stack' project in Phoenix..."
 if [[ -n "$PKEY" ]]; then
-  body="$(curl -s --max-time 5 -H "Authorization: Bearer $PKEY" http://phoenix:6006/v1/projects)"
+  # litellm_scoped_curl: generic bearer-via-STDIN helper — keeps PHOENIX_API_KEY out of argv.
+  body="$(litellm_scoped_curl "$PKEY" -s --max-time 5 http://phoenix:6006/v1/projects)"
 else
   body="$(curl -s --max-time 5 http://phoenix:6006/v1/projects)"
 fi
