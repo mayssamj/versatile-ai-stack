@@ -22,7 +22,12 @@ container_alias_routable_diagnose() {
   for _a in "${ALIASES_LIST[@]}"; do
     alias="$_a"
     svc_key="${ALIAS_SERVICE_KEY[$_a]}"
-    port="${ALIAS_CONTAINER_PORT[$_a]}"
+    # Probe the HOST-side published port: verify_container_reachable_by_alias dials
+    # http://$alias:$port FROM THE HOST, so $port must be the host_port (the alias IP
+    # listens there). For most services host_port==container_port, but where they differ
+    # (chatdev 5274->5173, aitown 5273->5173) the container_port has NO host listener → a
+    # false 000. (Verified live 2026-06-24: chatdev:5274->403 reached, chatdev:5173->000.)
+    port="${ALIAS_HOST_PORT[$_a]}"
     # Find a running container with this service-key as its name (most
     # common case) OR as its compose service.
     name=""
@@ -61,7 +66,7 @@ container_alias_routable_diagnose() {
     if ! verify_container_reachable_by_alias "$name" "$alias" "$port" "$path" 2>/dev/null; then
       sleep 2
       if ! verify_container_reachable_by_alias "$name" "$alias" "$port" "$path" 2>/dev/null; then
-        offenders+=("$alias→$name (port $port path $path)")
+        offenders+=("$alias -> $name (port $port path $path)")
       fi
     fi
   done
