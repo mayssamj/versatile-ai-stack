@@ -229,12 +229,16 @@ ENV PATH="/root/.local/bin:${PATH}"
 WORKDIR /app
 COPY repo/ /app/
 # Python deps into the SYSTEM interpreter (/usr/local), NOT /app/.venv — the runtime
-# bind mount over /app would mask a project venv; --system survives it. CAVEAT: this
-# resolves from pyproject.toml and ignores uv.lock (non-reproducible across rebuilds);
-# --system is the deliberate anti-.venv-masking choice, a lock-respecting install is a
-# verified follow-up (§24 council 2026-06-23). See chatdev/Dockerfile for the full note.
-RUN if [ -f /app/pyproject.toml ]; then \
-        uv pip install --system . ; \
+# bind mount over /app would mask a project venv; --system survives it.
+# We install the LOCKED DEPS via `uv export` (uv.lock → requirements), NOT `uv pip
+# install .` — ChatDev's pyproject is an APP, not a buildable package (hatchling errors
+# "no directory matches DevAll/devall"), so building the project wheel fails. `uv export
+# --no-emit-project` emits the locked deps WITHOUT the project itself → reproducible +
+# build-free (the DevAll source runs from the bind-mounted /app at runtime). (§24 live-
+# verify fix, 2026-06-23 — was `uv pip install --system .`, which exit-1'd the build.)
+RUN if [ -f /app/uv.lock ]; then \
+        uv export --no-emit-project --no-hashes --format requirements-txt -o /tmp/cd-reqs.txt && \
+        uv pip install --system -r /tmp/cd-reqs.txt ; \
     elif [ -f /app/requirements.txt ]; then \
         uv pip install --system -r /app/requirements.txt ; \
     fi \

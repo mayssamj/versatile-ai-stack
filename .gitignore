@@ -56,10 +56,10 @@ __pycache__/
 /metagpt/
 /agentscope/
 /oasis/
-# ChatDev (Phase 35, opt-in) — install-generated clone + repo/.env (regenerable).
-# Dockerfile is the committed canonical seed (Phase 35 re-writes it at install), so keep it tracked.
-/chatdev/*
-!/chatdev/Dockerfile
+# ChatDev (Phase 35, opt-in) — install-generated clone + repo/.env + the Dockerfile
+# (Phase 35 re-writes chatdev/Dockerfile via heredoc each install — generated, not a
+# tracked seed; tracking it dirtied the file on every install).
+/chatdev/
 # AI Town (Phase 36, opt-in) — cloned upstream + the bind-mounted Convex world (regenerable/data)
 /ai-town/
 /data/aitown/
