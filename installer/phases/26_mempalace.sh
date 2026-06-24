@@ -201,13 +201,15 @@ ok "MemPalace LLM model (entity refinement) = $MP_MODEL (embeddings stay on-devi
 # key string (no .env churn, no wrapper restart), and a no-op when already correct.
 MP_KEY_NOW="$(get_env MEMPALACE_LITELLM_KEY '')"
 if [[ -n "$MP_KEY_NOW" ]]; then
-  # Inspect the key's LIVE allow-list. Emit "__wildcard__" when the key is
+  # Inspect the key's LIVE allow-list. Authenticate AS the scoped key (self-lookup,
+  # no ?key= query param) so the secret never lands in a URL/access-log AND the
+  # read needs no master key (least privilege). Emit "__wildcard__" when the key is
   # unrestricted (LiteLLM all-proxy/all-team sentinels) so a broad key is never
   # NARROWED; otherwise emit one allowed model per line. A down/garbled LiteLLM
   # yields an empty string (curl/parse errors swallowed) -> reconcile attempts a
   # widen and degrades to warn (never aborts the phase).
-  _mp_allowed="$(curl -s --max-time 5 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-    "http://litellm:4000/key/info?key=$MP_KEY_NOW" 2>/dev/null \
+  _mp_allowed="$(curl -s --max-time 5 -H "Authorization: Bearer $MP_KEY_NOW" \
+    http://litellm:4000/key/info 2>/dev/null \
     | python3 -c 'import sys,json
 try: m=((json.load(sys.stdin).get("info") or {}).get("models")) or []
 except Exception: m=[]
