@@ -81,7 +81,10 @@ _find() {
   [[ -n "$nb" && -x "$nb/bin/as_studio" ]] && { echo "$nb/bin/as_studio"; return 0; }
   command -v as_studio 2>/dev/null || echo ""
 }
-AS_STUDIO_BIN="$(_find "/opt/homebrew/bin/as_studio" "/usr/local/bin/as_studio" "$HOME/.local/bin/as_studio")"
+# Respect a pre-set AS_STUDIO_BIN (the launchd plist bakes the install-time absolute
+# path into EnvironmentVariables — launchd's minimal PATH can't re-resolve it, and on
+# this box node/npm live at a NON-standard prefix, e.g. ~/.openagents/nodejs/bin).
+AS_STUDIO_BIN="${AS_STUDIO_BIN:-$(_find "/opt/homebrew/bin/as_studio" "/usr/local/bin/as_studio" "$HOME/.local/bin/as_studio")}"
 
 _listening() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | grep -q LISTEN; }
 # `|| true`: lsof exits 1 when nothing matches; guard against tripping set -e.
@@ -125,6 +128,12 @@ _stop() {
 
 _do_install() {
   [[ -n "$AS_STUDIO_BIN" ]] || { echo "as_studio not found — enable Studio: AGENTSCOPE_STUDIO=1 bash $AI_STACK/vz-ai-stack.sh install 33 (installs npm @agentscope/studio)" >&2; exit 1; }
+  # Resolve the node bin dir NOW (full PATH) so the launchd daemon can find BOTH as_studio
+  # AND `node` (as_studio is a `#!/usr/bin/env node` script). node/npm may live at a
+  # non-standard prefix (e.g. ~/.openagents/nodejs/bin), which the plist's minimal PATH
+  # would miss — so we prepend the resolved dir to the plist PATH + bake the absolute
+  # AS_STUDIO_BIN into the env. (§24 live-verify fix, 2026-06-23.)
+  local _node_bin_dir; _node_bin_dir="$(cd "$(dirname "$AS_STUDIO_BIN")" 2>/dev/null && pwd || echo /opt/homebrew/bin)"
   cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -139,7 +148,8 @@ _do_install() {
     <key>AI_STACK</key><string>$AI_STACK</string>
     <key>PORT</key><string>$PORT</string>
     <key>OTEL_GRPC_PORT</key><string>$OTEL_GRPC_PORT</string>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>AS_STUDIO_BIN</key><string>$AS_STUDIO_BIN</string>
+    <key>PATH</key><string>$_node_bin_dir:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key><string>$LOG</string>
   <key>StandardErrorPath</key><string>$LOG</string>
