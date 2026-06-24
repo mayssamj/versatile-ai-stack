@@ -166,6 +166,11 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   [[ -n "$_am" && "$_am" != "null" ]] && AS_MODEL="$_am"
 fi
 ok "AgentScope model = $AS_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
+# Self-heal the key's allow-list against the model the app ACTUALLY calls ($AS_MODEL,
+# which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
+# when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
+# bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
+litellm_reconcile_key AGENTSCOPE_LITELLM_KEY "$AS_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 4. bin/agentscope wrapper (injects key from .env at RUNTIME) ---
 # The wrapper points at 127.0.0.1:4000 — the host-shell route that always resolves

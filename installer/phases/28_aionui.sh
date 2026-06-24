@@ -135,6 +135,10 @@ if [[ -z "$AIONUI_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"i
 else
   ok "AIONUI_LITELLM_KEY already present + valid"
 fi
+# Self-heal the key's allow-list against renamed models: the mint above only re-mints
+# when the key is fully dead, so a model rename leaves a stale key SILENT-403ing the
+# new alias (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
+litellm_reconcile_key AIONUI_LITELLM_KEY "$AIONUI_KEY_MODELS"
 
 # --- 4. WebUI server as a loopback launchd daemon (Meridian pattern) ---------
 bash "$AI_STACK/bin/start-aionui.sh" install || { err "start-aionui.sh install failed"; exit 1; }

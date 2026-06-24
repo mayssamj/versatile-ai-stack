@@ -128,3 +128,92 @@ atomic_write() {
   cat > "$tmp"
   mv -f "$tmp" "$dest"
 }
+
+# --- litellm_reconcile_key: self-heal a scoped key's model allow-list --------
+# Usage: litellm_reconcile_key <KEY_ENV> <model...>           (positional names)
+#        litellm_reconcile_key <KEY_ENV> '["m1","m2",...]'    (one JSON array)
+#
+# Per-phase consumer keys (mempalace/metagpt/agentscope/oasis/chatdev/aitown/
+# aionui/openwork) are minted with a HARDCODED model allow-list and only re-mint
+# when the key is fully dead (can't list ANY model). So a model RENAME leaves the
+# key allowing only the OLD alias while the app calls the NEW one — a SILENT 403
+# the liveness guard misses (`model sync` only widens the fleet `kinds:` keys,
+# never these). This idempotently ensures the key allows every requested model by
+# widening it IN PLACE via /key/update — same key string (no .env churn, no app
+# restart), to the UNION of its current list and the requested models (NEVER
+# narrows). No-op when already covered. WARN-non-fatal. Safe under `set -Eeuo
+# pipefail`: every curl/parse is guarded so a transient LiteLLM outage degrades to
+# warn, never aborts the phase.
+#   - SELF-LOOKUP read (Authorization: Bearer <the key>, no ?key= in the URL) so
+#     the scoped secret never lands in an access log.
+#   - WILDCARD-safe: a key scoped to LiteLLM's all-proxy-models/all-team-models
+#     sentinel already covers everything and is left untouched (never narrowed).
+litellm_reconcile_key() {
+  local key_env="$1"; shift
+  local desired=()
+  if [[ $# -eq 1 && "$1" == \[* ]]; then
+    local _mj _l
+    _mj="$(printf '%s' "$1" | python3 -c 'import sys,json
+try: print("\n".join(json.load(sys.stdin)))
+except Exception: pass' 2>/dev/null || true)"
+    while IFS= read -r _l; do [[ -n "$_l" ]] && desired+=("$_l"); done <<< "$_mj"
+  else
+    desired=("$@")
+  fi
+  # Drop empty model args (e.g. an unset $X_MODEL) — never widen a key to allow "".
+  local _kept=() _x
+  for _x in "${desired[@]}"; do [[ -n "$_x" ]] && _kept+=("$_x"); done
+  desired=("${_kept[@]}")
+  [[ ${#desired[@]} -gt 0 ]] || return 0
+  local master key base cur
+  master="$(get_env LITELLM_MASTER_KEY '')"
+  key="$(get_env "$key_env" '')"
+  [[ -n "$key" && -n "$master" ]] || return 0
+  # Resolve a reachable base: prefer LITELLM_BASE_URL / the litellm:4000 ingress alias,
+  # then the always-published loopback — mirrors the phases' own probe-and-fallback so a
+  # box without the bare-hostname ingress still self-heals. Live allow-list via self-
+  # lookup. "__wildcard__" => UNRESTRICTED key — an empty models list ([]/null) means
+  # unrestricted in LiteLLM (verified), so treat it like the all-proxy/all-team sentinels
+  # and NEVER narrow it. Empty OUTPUT (not "__wildcard__") => LiteLLM unreachable on both
+  # bases -> skip (can't heal a down gateway; next install/doctor retries) and, crucially,
+  # never POST a narrowing update built from a falsely-empty current list.
+  cur=""
+  for base in "${LITELLM_BASE_URL:-http://litellm:4000}" "http://127.0.0.1:4000"; do
+    cur="$(curl -s --max-time 5 -H "Authorization: Bearer $key" "$base/key/info" 2>/dev/null \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)            # no/invalid response -> print NOTHING (unreachable, not "[]")
+info=d.get("info")
+if not isinstance(info,dict): sys.exit(0)  # error payload / no info -> not a real allow-list
+m=info.get("models") or []
+print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
+    [[ -n "$cur" ]] && break
+  done
+  if [[ -z "$cur" ]] || printf '%s\n' "$cur" | grep -qxF '__wildcard__'; then return 0; fi
+  local missing=0 m
+  for m in "${desired[@]}"; do
+    printf '%s\n' "$cur" | grep -qxF "$m" || { missing=1; break; }
+  done
+  [[ $missing -eq 0 ]] && return 0    # already covers every requested model
+  log "Reconciling $key_env allow-list -> +{${desired[*]}} (model-rename drift)…"
+  # New list = union(current, requested), built with json.dumps (no shell-injection
+  # of model names / the key into the JSON body); deduped, order-stable.
+  local body resp
+  body="$(_RK_KEY="$key" _RK_CUR="$cur" _RK_DES="$(printf '%s\n' "${desired[@]}")" python3 -c '
+import json,os
+out=[]
+for x in (os.environ["_RK_CUR"].splitlines() + os.environ["_RK_DES"].splitlines()):
+    if x and x != "__wildcard__" and x not in out: out.append(x)
+print(json.dumps({"key":os.environ["_RK_KEY"],"models":out}))' 2>/dev/null || true)"
+  [[ -n "$body" ]] || { warn "reconcile $key_env: could not build request body"; return 0; }
+  resp="$(curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+    -X POST "$base/key/update" -d "$body" 2>/dev/null || true)"
+  if printf '%s' "$resp" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
+    ok "$key_env allow-list now covers {${desired[*]}}"
+  else
+    warn "Could not reconcile $key_env allow-list (LiteLLM /key/update failed) — renamed-model calls may 403"
+  fi
+}

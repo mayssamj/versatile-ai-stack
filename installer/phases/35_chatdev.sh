@@ -194,6 +194,11 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   [[ -n "$_cm" && "$_cm" != "null" ]] && CD_MODEL="$_cm"
 fi
 ok "ChatDev model = $CD_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
+# Self-heal the key's allow-list against the model the app ACTUALLY calls ($CD_MODEL,
+# which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
+# when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
+# bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
+litellm_reconcile_key CHATDEV_LITELLM_KEY "$CD_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high local-qwen3
 
 # --- 4. Write chatdev/repo/.env — the LiteLLM wiring the backend reads --------
 # Container-to-container: litellm:4000 over Docker DNS (NATIVE port, NOT the :80 alias).

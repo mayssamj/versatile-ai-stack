@@ -191,51 +191,14 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
 fi
 ok "MemPalace LLM model (entity refinement) = $MP_MODEL (embeddings stay on-device: $MP_EMBED_MODEL/$MP_EMBED_DEVICE)"
 
-# --- 3b. Reconcile the key's allow-list to the bound model (self-heal rename drift) ---
-# Step 2's mint hardcodes the default pair AND its liveness guard only proves the key
-# can list *some* model — so a stale key that still allows the local-gemma4 fallback
-# passes the guard and is never re-minted. After a model RENAME (e.g. version-less
-# alias cutover) the wrapper calls $MP_MODEL while the key still allows only the OLD
-# alias -> a SILENT 403 that every health gate misses (`model sync` never touches this
-# key). Idempotently widen the key to {$MP_MODEL, local-gemma4} via /key/update: same
-# key string (no .env churn, no wrapper restart), and a no-op when already correct.
-MP_KEY_NOW="$(get_env MEMPALACE_LITELLM_KEY '')"
-if [[ -n "$MP_KEY_NOW" ]]; then
-  # Inspect the key's LIVE allow-list. Authenticate AS the scoped key (self-lookup,
-  # no ?key= query param) so the secret never lands in a URL/access-log AND the
-  # read needs no master key (least privilege). Emit "__wildcard__" when the key is
-  # unrestricted (LiteLLM all-proxy/all-team sentinels) so a broad key is never
-  # NARROWED; otherwise emit one allowed model per line. A down/garbled LiteLLM
-  # yields an empty string (curl/parse errors swallowed) -> reconcile attempts a
-  # widen and degrades to warn (never aborts the phase).
-  _mp_allowed="$(curl -s --max-time 5 -H "Authorization: Bearer $MP_KEY_NOW" \
-    http://litellm:4000/key/info 2>/dev/null \
-    | python3 -c 'import sys,json
-try: m=((json.load(sys.stdin).get("info") or {}).get("models")) or []
-except Exception: m=[]
-print("__wildcard__" if any(x in ("all-proxy-models","all-team-models") for x in m) else "\n".join(m))' 2>/dev/null)"
-  if printf '%s\n' "$_mp_allowed" | grep -qxF '__wildcard__'; then
-    : # key is unrestricted — already covers $MP_MODEL, leave it alone
-  elif ! printf '%s\n' "$_mp_allowed" | grep -qxF "$MP_MODEL"; then
-    log "Reconciling MemPalace key allow-list -> {$MP_MODEL, local-gemma4} (model-rename drift)…"
-    # Build the body with json.dumps (no shell-injection of $MP_MODEL/$key into
-    # the JSON) and detect success via the response body's "error" field — a 200
-    # with an error payload must NOT report success (mirrors lib/models.sh remint_key).
-    _mp_body="$(MP_K="$MP_KEY_NOW" MP_M="$MP_MODEL" python3 -c 'import json,os
-print(json.dumps({"key":os.environ["MP_K"],"models":[os.environ["MP_M"],"local-gemma4"]}))')"
-    _mp_resp="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-      -H 'Content-Type: application/json' -X POST http://litellm:4000/key/update \
-      -d "$_mp_body" 2>/dev/null)"
-    if printf '%s' "$_mp_resp" | python3 -c 'import sys,json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(1)
-sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
-      ok "MemPalace key allow-list set to {$MP_MODEL, local-gemma4}"
-    else
-      warn "Could not reconcile MemPalace key allow-list (LiteLLM /key/update failed) — $MP_MODEL calls may 403"
-    fi
-  fi
-fi
+# --- 3b. Self-heal the key's allow-list against the bound model --------------
+# Step 2 only re-mints when the key is fully dead (can't list ANY model), so a key
+# that still allows the local-gemma4 fallback survives a model RENAME with only the
+# OLD alias -> the wrapper's $MP_MODEL call SILENT-403s (`model sync` never touches
+# this key). Idempotently widen the key in place to allow {$MP_MODEL, local-gemma4}.
+# See litellm_reconcile_key in lib/common.sh (self-lookup read, wildcard-safe,
+# union/never-narrow, WARN-non-fatal).
+litellm_reconcile_key MEMPALACE_LITELLM_KEY "$MP_MODEL" local-gemma4
 
 # --- 4. bin/mempalace wrapper (injects LiteLLM + embedding env) ---
 cat > "$MP_WRAPPER" <<WRAPEOF

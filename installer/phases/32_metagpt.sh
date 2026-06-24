@@ -138,6 +138,11 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   [[ -n "$_mm" && "$_mm" != "null" ]] && MG_MODEL="$_mm"
 fi
 ok "MetaGPT LLM model = $MG_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
+# Self-heal the key's allow-list against the model the app ACTUALLY calls ($MG_MODEL,
+# which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
+# when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
+# bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
+litellm_reconcile_key METAGPT_LITELLM_KEY "$MG_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 4. bin/metagpt wrapper (injects key from .env at RUNTIME; writes ~/.metagpt/config2.yaml) ---
 # The wrapper writes config2.yaml each run from the .env key (0600, in $HOME — never

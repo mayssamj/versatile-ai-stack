@@ -122,6 +122,10 @@ if [[ -z "$OPENWORK_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '
 else
   ok "OPENWORK_LITELLM_KEY already present + valid"
 fi
+# Self-heal the key's allow-list against renamed models: the mint above only re-mints
+# when the key is fully dead, so a model rename leaves a stale key SILENT-403ing the
+# new alias (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
+litellm_reconcile_key OPENWORK_LITELLM_KEY "$OPENWORK_KEY_MODELS"
 
 # --- 3. Generate loopback daemon tokens (env-passed, never argv/stdout) -------
 # OpenWork issues client + host(approval) tokens. We pin our own so the daemon is

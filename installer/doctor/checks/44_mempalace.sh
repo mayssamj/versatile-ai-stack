@@ -66,6 +66,33 @@ mempalace_diagnose() {
     echo "MEMPALACE_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via Phase 26"
     return 1
   fi
+  # Allow-list assertion: /v1/models passing only proves the key lists SOME model —
+  # the local-gemma4 fallback survives a model RENAME, so a key still scoped to the
+  # OLD alias passes the probe yet SILENT-403s the model the wrapper actually calls.
+  # Verify the key ALLOWS that model. Self-lookup (Bearer = the key, no ?key= in URL);
+  # metadata read only — never cold-starts (routine-doctor safe).
+  # Extract the model the wrapper calls — handle both generated forms:
+  # ${LLM_MODEL:-<model>} (current) and a bare LLM_MODEL="<model>". Empty -> skip.
+  local want
+  want="$(grep -oE 'LLM_MODEL:-[A-Za-z0-9._+/-]+' "$AI_STACK/bin/mempalace" 2>/dev/null | head -1 | sed 's/^LLM_MODEL:-//')"
+  [[ -n "$want" ]] || want="$(grep -oE 'LLM_MODEL="[A-Za-z0-9._+/-]+"' "$AI_STACK/bin/mempalace" 2>/dev/null | head -1 | sed -E 's/^LLM_MODEL="|"$//g')"
+  if [[ -n "$want" ]]; then
+    local allow
+    # Empty models list ([]/null) is UNRESTRICTED in LiteLLM -> treat as wildcard.
+    allow="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/key/info 2>/dev/null \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+info=d.get("info")
+if not isinstance(info,dict): sys.exit(0)
+m=info.get("models") or []
+print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null)"
+    if [[ -n "$allow" ]] && ! printf '%s\n' "$allow" | grep -qxF '__wildcard__' \
+       && ! printf '%s\n' "$allow" | grep -qxF "$want"; then
+      echo "MEMPALACE_LITELLM_KEY allow-list missing '$want' (the model bin/mempalace calls) — stale key after a model rename; re-run 'install 26' to self-heal"
+      return 1
+    fi
+  fi
 }
 
 mempalace_fix() {

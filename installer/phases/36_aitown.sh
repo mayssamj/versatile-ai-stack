@@ -272,6 +272,11 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   [[ -n "$_am" && "$_am" != "null" ]] && AT_MODEL="$_am"
 fi
 ok "AI Town model = $AT_MODEL (chat via LiteLLM → Phoenix project ai-stack); embeddings = $AT_EMBED_MODEL"
+# Self-heal the key's allow-list against the model the app ACTUALLY calls ($AT_MODEL,
+# which an operator may have re-assigned) PLUS embed-local + the mint fallbacks. The mint
+# only re-mints when the key is fully dead, so a rename/re-assign leaves a stale key
+# SILENT-403ing the bound model (`model sync` never touches this key). See common.sh.
+litellm_reconcile_key AITOWN_LITELLM_KEY "$AT_MODEL" "$AT_EMBED_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 5. Dedicated bind-mounted data dir + the docker-compose.override.yml -----
 # DATA SAFETY: a BIND mount (not a named volume) means an accidental `down -v` cannot
