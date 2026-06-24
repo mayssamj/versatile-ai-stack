@@ -81,7 +81,7 @@ precheck() {
   command -v docker >/dev/null 2>&1 || return 1
   # All 3 compose members up?  (docker compose ps --status running -q → 3 ids)
   local _running
-  _running="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" ps --status running -q 2>/dev/null | grep -c . ) || echo 0)"
+  _running="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" ps --status running -q 2>/dev/null | grep -c . ) || true)"
   [[ "${_running:-0}" -ge 3 ]] || return 1
   # Frontend serves 200 (explicit ^200$ — never the http_ok helper; documented 000-bug).
   curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$AT_IP:$AT_FE_HOST_PORT/" 2>/dev/null | grep -q '^200$' || return 1

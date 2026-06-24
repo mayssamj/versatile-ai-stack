@@ -39,7 +39,7 @@ hdr "Smoke 36 — AI Town (Convex compose stack → LiteLLM)"
 docker info >/dev/null 2>&1 || { err "docker daemon not reachable"; exit 1; }
 
 # 1. compose stack up (≥3 running)
-_running="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" ps --status running -q 2>/dev/null | grep -c .) || echo 0)"
+_running="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" ps --status running -q 2>/dev/null | grep -c .) || true)"
 [[ "${_running:-0}" -ge 3 ]] && ok "compose stack up ($_running/3 members running, project $AT_PROJECT)" \
   || { err "compose stack not fully up (only ${_running:-0}/3) — 'vz-ai-stack.sh start aitown'"; exit 1; }
 

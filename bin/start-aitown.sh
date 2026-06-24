@@ -94,7 +94,7 @@ _do_up() {
 
   # Idempotent: if all 3 are already running, this is a no-op success (print the line
   # cmd_start greps for so a reconciled start doesn't pop a browser tab).
-  local running; running="$(_compose ps --status running -q 2>/dev/null | grep -c . || echo 0)"
+  local running; running="$(_compose ps --status running -q 2>/dev/null | grep -c . || true)"
   if [[ "${1:-}" != "--recreate" && "${running:-0}" -ge 3 ]]; then
     ok "aitown already running (3 containers up; use --recreate to rebuild — data preserved)"
     _apply_caps

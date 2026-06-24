@@ -43,7 +43,7 @@ aitown_diagnose() {
 
   # All 3 compose members running? (liveness, not cold-start — never builds here.)
   local running
-  running="$( (cd "$at_dir" && docker compose -p "$project" ps --status running -q 2>/dev/null | grep -c .) || echo 0)"
+  running="$( (cd "$at_dir" && docker compose -p "$project" ps --status running -q 2>/dev/null | grep -c .) || true)"
   if [[ "${running:-0}" -lt 3 ]]; then
     echo "AI Town compose stack not fully up (only ${running:-0}/3 members running) — 'vz-ai-stack.sh start aitown' (first build is heavy; 'docker compose -p $project logs')"
     return 1
