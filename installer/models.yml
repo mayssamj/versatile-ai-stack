@@ -130,7 +130,7 @@ assignments:
   # role uses claude-opus-sub-max — the single platform default. local-gemma4
   # is the LiteLLM offline fallback only (Meridian unavailable), never assigned.
   hermes_manager: claude-opus-sub-max
-  hermes_techlead: claude-opus-sub-max
+  hermes_techlead: sakana-fugu
   hermes_ml_engineer: claude-opus-sub-max
   hermes_frontend_engineer: claude-opus-sub-max
   hermes_backend_engineer: claude-opus-sub-max
