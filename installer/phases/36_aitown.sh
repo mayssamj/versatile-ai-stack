@@ -223,6 +223,27 @@ if [[ -f "$_CONST_TS" ]] && grep -Eq 'NUM_MEMORIES_TO_SEARCH[[:space:]]*=[[:spac
 else
   note "NUM_MEMORIES_TO_SEARCH already tuned or absent — skipping (non-fatal)"
 fi
+# 2c. Vite allowedHosts: the cloned vite.config.ts only allows localhost/127.0.0.1/a fly.dev
+# host, so Vite returns 403 "host not allowed" for the ai-stack ALIAS hostname — i.e. the
+# WATCHABLE URL the docs/notes advertise (http://aitown:5273/) 403s in a browser even though the
+# IP works. Add the alias host + IP so the advertised URL renders. The frontend is published
+# loopback-only ($AT_IP), so accepting the alias Host header has no off-box exposure. Patched here
+# BEFORE the build so the frontend container starts with it. (Verified live 2026-06-24:
+# http://aitown:$AT_FE_HOST_PORT/ → 200 + renders after this patch; was 403.)
+_VITE_CFG="$AT_DIR/vite.config.ts"
+if [[ -f "$_VITE_CFG" ]] && grep -q 'allowedHosts' "$_VITE_CFG"; then
+  if grep -q "'aitown'" "$_VITE_CFG"; then
+    ok "vite.config.ts already allows the 'aitown' alias host"
+  else
+    cp -p "$_VITE_CFG" "${_VITE_CFG}.orig" 2>/dev/null || true   # reversible
+    perl -i -pe "s/(allowedHosts:\s*\[)/\${1}'aitown', '${AT_IP}', /" "$_VITE_CFG"
+    grep -q "'aitown'" "$_VITE_CFG" \
+      && ok "patched vite.config.ts allowedHosts → +aitown +$AT_IP (so http://aitown:$AT_FE_HOST_PORT/ renders, not a 403)" \
+      || warn "vite.config.ts allowedHosts patch did not verify — http://aitown:$AT_FE_HOST_PORT/ may 403; watch via http://$AT_IP:$AT_FE_HOST_PORT/ instead"
+  fi
+elif [[ -f "$_VITE_CFG" ]]; then
+  note "vite.config.ts has no allowedHosts key — Vite default may accept the alias (verify http://aitown:$AT_FE_HOST_PORT/)"
+fi
 
 # --- 3. Mint scoped LiteLLM key (stale-aware; mirrors Ph32/34) ---------------
 AT_KEY_CURRENT="$(get_env AITOWN_LITELLM_KEY '')"

@@ -116,6 +116,27 @@ fi
 [[ -d "$CD_REPO/frontend" && -f "$CD_REPO/server_main.py" ]] \
   || { err "cloned tree is not ChatDev 2.0 'DevAll' (missing frontend/ or server_main.py) — set CHATDEV_REPO_URL/branch to the 2.0 default and re-run."; exit 1; }
 
+# --- 1b. Vite allowedHosts: the cloned vite.config.js has `host: true` but NO allowedHosts, so
+# Vite 6/7 returns 403 "host not allowed" for the ai-stack ALIAS hostname — i.e. the watchable URL
+# the docs/notes advertise (http://chatdev:5274/) 403s in a browser even though the IP works. Insert
+# the alias host + IP so the advertised URL renders. The frontend is published loopback-only ($FE_IP)
+# so accepting the alias Host header has no off-box exposure. Patched BEFORE the build so the frontend
+# container starts with it. (Verified live 2026-06-24: http://chatdev:$FE_HOST_PORT/ → 200 after this.)
+_CD_VITE="$CD_REPO/frontend/vite.config.js"
+if [[ -f "$_CD_VITE" ]]; then
+  if grep -q 'allowedHosts' "$_CD_VITE"; then
+    ok "chatdev vite.config.js already allows the alias host"
+  elif grep -qE '^[[:space:]]*host:[[:space:]]*true,' "$_CD_VITE"; then
+    cp -p "$_CD_VITE" "${_CD_VITE}.orig" 2>/dev/null || true   # reversible
+    perl -0777 -i -pe "s/(\n[ \t]*host:[ \t]*true,)\n(?!\s*allowedHosts)/\$1\n      allowedHosts: ['chatdev', '${FE_IP}', 'localhost'],\n/" "$_CD_VITE"
+    grep -q 'allowedHosts' "$_CD_VITE" \
+      && ok "patched chatdev vite.config.js allowedHosts → +chatdev +$FE_IP (so http://chatdev:$FE_HOST_PORT/ renders, not a 403)" \
+      || warn "chatdev vite.config.js allowedHosts patch did not verify — http://chatdev:$FE_HOST_PORT/ may 403; watch via http://$FE_IP:$FE_HOST_PORT/ instead"
+  else
+    note "chatdev vite.config.js has no 'host: true' anchor — config shape changed; verify http://chatdev:$FE_HOST_PORT/ renders (else add the alias to allowedHosts manually)"
+  fi
+fi
+
 # Defensive shape probes (§24 council 2026-06-23). The exact upstream layout (ASGI app
 # object name, .env key names) is BEST-INFERENCE — verified at live-verify, not buildable
 # here. These are SOFT WARNINGS only (never a hard exit): a false hard-fail would block a
