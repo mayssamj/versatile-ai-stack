@@ -91,7 +91,7 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
 fi
 
 if ! curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 \
-   && ! curl -sf --max-time 3 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+   && ! litellm_master_curl -sf --max-time 3 \
         http://litellm:4000/v1/models >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'stack start litellm'."
   exit 1
@@ -127,7 +127,7 @@ if [[ -z "$ACE_KEY_CURRENT" ]] \
   # ACE without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
   log "Minting LiteLLM virtual key for ACE (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
-  ACE_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  ACE_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
     -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \

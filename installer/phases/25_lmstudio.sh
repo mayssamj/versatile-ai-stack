@@ -251,8 +251,8 @@ for _ in $(seq 1 30); do curl -s -o /dev/null --max-time 2 http://litellm:4000/h
 
 MASTER="$(get_env LITELLM_MASTER_KEY '')"
 log "Verifying :4000 → :1234 → MLX (chat completion via LiteLLM)..."
-RESP="$(curl -s --max-time 90 http://litellm:4000/v1/chat/completions \
-  -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
+RESP="$(litellm_master_curl -s --max-time 90 http://litellm:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
   -d "{\"model\":\"$LITELLM_SLUG\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: MLX-OK\"}],\"max_tokens\":16}" 2>/dev/null \
   | python3 -c 'import sys,json
 try: print(json.load(sys.stdin)["choices"][0]["message"]["content"][:60])

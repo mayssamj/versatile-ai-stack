@@ -19,7 +19,7 @@ source "$AI_STACK/installer/lib/env.sh"   # get_env/set_env for HALO_LITELLM_KEY
 
 PHASE=11
 HALO_WRAPPER="$AI_STACK/bin/halo"
-HALO_MODEL_DEFAULT="local"   # gemma4:e4b — fast + fits 24GB. Override with -m local-heavy.
+HALO_MODEL_DEFAULT="local-gemma4"   # gemma4:e4b — fast + fits 24GB. Override with -m local-qwen3.
 
 precheck() {
   # HALO is CLI-only; consider installed if either pip install succeeded or
@@ -67,10 +67,10 @@ if (( HALO_OK )); then
     HALO_KEY_CURRENT="$(get_env HALO_LITELLM_KEY '')"
     if [[ -z "$HALO_KEY_CURRENT" ]] \
        || ! curl -sf --max-time 5 -H "Authorization: Bearer $HALO_KEY_CURRENT" http://litellm:4000/v1/models >/dev/null 2>&1; then
-      log "Minting LiteLLM virtual key for HALO (models=[local, local-heavy, local-lfm2])..."
-      HALO_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
+      log "Minting LiteLLM virtual key for HALO (models=[local-gemma4, local-qwen3])..."
+      HALO_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
         -X POST http://litellm:4000/key/generate \
-        -d '{"models":["local","local-heavy","local-lfm2"],"key_alias":"halo-trace-engine","metadata":{"owner":"halo","purpose":"phase11"}}' \
+        -d '{"models":["local-gemma4","local-qwen3"],"key_alias":"halo-trace-engine","metadata":{"owner":"halo","purpose":"phase11"}}' \
         | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
       if [[ -n "$HALO_KEY_NEW" ]]; then
         set_env HALO_LITELLM_KEY "$HALO_KEY_NEW"

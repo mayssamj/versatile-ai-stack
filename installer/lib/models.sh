@@ -497,7 +497,7 @@ remint_key() {
   local existing; existing="$(get_env "$key_env" '')"
   if [[ -n "$existing" ]]; then
     local upd
-    upd="$(curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+    upd="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
       -X POST "$base/key/update" -d "{\"key\":\"${existing}\",\"models\":${models_json}}")"
     if printf '%s' "$upd" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
@@ -511,10 +511,10 @@ sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
 
   # Fresh mint. Recycle the alias first (unique-alias rule) in case a stale key
   # holds it; ignore errors (alias may not exist / endpoint may lack alias-delete).
-  curl -s --max-time 10 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+  litellm_master_curl -s --max-time 10 -H 'Content-Type: application/json' \
     -X POST "$base/key/delete" -d "{\"key_aliases\":[\"${alias}\"]}" >/dev/null 2>&1 || true
   local newkey
-  newkey="$(curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+  newkey="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST "$base/key/generate" \
     -d "{\"models\":${models_json},\"key_alias\":\"${alias}\",\"metadata\":{\"owner\":\"${owner}\",\"purpose\":\"model-sync\"}}" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"

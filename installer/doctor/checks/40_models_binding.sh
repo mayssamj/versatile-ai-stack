@@ -98,7 +98,7 @@ _mb_effective() {
   if _mb_lms_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
     # confirm LiteLLM serves it under the master key
     local key; key="$(get_env LITELLM_MASTER_KEY '')"
-    if [[ -n "$key" ]] && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $key" 2>/dev/null \
+    if [[ -n "$key" ]] && litellm_master_curl -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null \
          | python3 -c 'import sys,json; w=sys.argv[1]
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(1)
@@ -162,7 +162,7 @@ models_binding_diagnose() {
   # and meridian (never pinged). `|| true` so a hiccup never aborts the check.
   local _served_models=""
   if [[ -n "$master" ]]; then
-    _served_models="$( (curl -s --max-time 8 http://litellm:4000/v1/models -H "Authorization: Bearer $master" 2>/dev/null || true) \
+    _served_models="$( (litellm_master_curl -s --max-time 8 http://litellm:4000/v1/models 2>/dev/null || true) \
       | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)

@@ -40,7 +40,7 @@ _cb_served_count() {
   if [[ -z "$master" ]] || ! curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; then
     echo "down"; return 0
   fi
-  served="$(curl -s --max-time 6 http://litellm:4000/v1/models -H "Authorization: Bearer $master" 2>/dev/null \
+  served="$(litellm_master_curl -s --max-time 6 http://litellm:4000/v1/models 2>/dev/null \
     | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)

@@ -99,7 +99,7 @@ network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash vz-
 CD_LLM_BASE=""
 if   curl -sf --max-time 4 "$CD_LLM_HOST/health/liveliness" >/dev/null 2>&1; then CD_LLM_BASE="$CD_LLM_HOST"
 elif curl -sf --max-time 4 "$CD_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then CD_LLM_BASE="$CD_LLM_FALLBACK"
-elif curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$CD_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then CD_LLM_BASE="$CD_LLM_FALLBACK"
+elif litellm_master_curl -sf --max-time 4 "$CD_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then CD_LLM_BASE="$CD_LLM_FALLBACK"
 fi
 [[ -n "$CD_LLM_BASE" ]] || { err "LiteLLM not reachable at $CD_LLM_HOST or $CD_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $CD_LLM_BASE"
@@ -175,7 +175,7 @@ _cd_models=""
 [[ -n "$CD_KEY_CURRENT" ]] && _cd_models="$(curl -s --max-time 5 -H "Authorization: Bearer $CD_KEY_CURRENT" "$CD_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$CD_KEY_CURRENT" ]] || ! printf '%s' "$_cd_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for ChatDev (local-gemma4 + *-sub fallbacks)…"
-  CD_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  CD_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$CD_LLM_BASE/key/generate" \
     -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high","local-qwen3"],"key_alias":"chatdev","metadata":{"owner":"chatdev","purpose":"phase35"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"

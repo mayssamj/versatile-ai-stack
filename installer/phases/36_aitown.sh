@@ -130,7 +130,7 @@ network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash $AI
 AT_LLM_BASE=""
 if   curl -sf --max-time 4 "$AT_LLM_HOST/health/liveliness" >/dev/null 2>&1; then AT_LLM_BASE="$AT_LLM_HOST"
 elif curl -sf --max-time 4 "$AT_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then AT_LLM_BASE="$AT_LLM_FALLBACK"
-elif curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$AT_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then AT_LLM_BASE="$AT_LLM_FALLBACK"
+elif litellm_master_curl -sf --max-time 4 "$AT_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then AT_LLM_BASE="$AT_LLM_FALLBACK"
 fi
 [[ -n "$AT_LLM_BASE" ]] || { err "LiteLLM not reachable at $AT_LLM_HOST or $AT_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $AT_LLM_BASE"
@@ -148,7 +148,7 @@ fi
 # not a hard fail — the town's CHAT works without embeddings; only agent *memory recall*
 # needs them, and the 768 patch below assumes nomic-embed-text. Surfaced so a user who
 # wants memory pulls it.
-if ! curl -sf --max-time 5 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$AT_LLM_BASE/v1/models" 2>/dev/null | grep -q "\"$AT_EMBED_MODEL\""; then
+if ! litellm_master_curl -sf --max-time 5 "$AT_LLM_BASE/v1/models" 2>/dev/null | grep -q "\"$AT_EMBED_MODEL\""; then
   warn "LiteLLM has no '$AT_EMBED_MODEL' model — agent MEMORY recall (embeddings) won't work until you add it (Ollama nomic-embed-text, 768-dim). Chat still works."
 fi
 
@@ -254,7 +254,7 @@ if [[ -z "$AT_KEY_CURRENT" ]] || ! printf '%s' "$_at_models" | grep -q '"id"'; t
   # Scope to the town's chat models AND embed-local (the town needs BOTH /v1/chat and
   # /v1/embeddings; a chat-only key would 401 every memory write).
   _gen_body="$(python3 -c 'import json; print(json.dumps({"models":["local-gemma4","embed-local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"aitown","metadata":{"owner":"aitown","purpose":"phase36"}}))')"
-  AT_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  AT_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$AT_LLM_BASE/key/generate" -d "$_gen_body" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$AT_KEY_NEW" ]] || { err "Failed to mint AITOWN_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }

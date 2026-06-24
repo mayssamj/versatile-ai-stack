@@ -74,7 +74,7 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 OA_LLM_BASE=""
 if   curl -sf --max-time 4 "$OA_LLM_HOST/health/liveliness" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_HOST"
 elif curl -sf --max-time 4 "$OA_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
-elif curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
+elif litellm_master_curl -sf --max-time 4 "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
 fi
 [[ -n "$OA_LLM_BASE" ]] || { err "LiteLLM not reachable at $OA_LLM_HOST or $OA_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $OA_LLM_BASE"
@@ -107,7 +107,7 @@ _oa_models=""
 [[ -n "$OA_KEY_CURRENT" ]] && _oa_models="$(curl -s --max-time 5 -H "Authorization: Bearer $OA_KEY_CURRENT" "$OA_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$OA_KEY_CURRENT" ]] || ! printf '%s' "$_oa_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for OASIS (local-gemma4 + *-sub fallbacks)…"
-  OA_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  OA_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$OA_LLM_BASE/key/generate" \
     -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"oasis","metadata":{"owner":"oasis","purpose":"phase34"}}' \
     | "$OA_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"

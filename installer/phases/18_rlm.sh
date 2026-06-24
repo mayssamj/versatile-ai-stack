@@ -61,7 +61,7 @@ command -v uv >/dev/null 2>&1 || { err "uv not on PATH — run 'bash $AI_STACK/v
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing from .env — Phase 01 must run first."; exit 1; }
-if ! curl -sf --max-time 3 -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://litellm:4000/v1/models >/dev/null 2>&1; then
+if ! litellm_master_curl -sf --max-time 3 http://litellm:4000/v1/models >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'stack start litellm'."; exit 1
 fi
 docker info >/dev/null 2>&1 || warn "Docker not reachable — the 'docker' REPL sandbox won't work until OrbStack is up."
@@ -81,7 +81,7 @@ if [[ -z "$RLM_KEY_CURRENT" ]] \
   # RLM without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
   log "Minting LiteLLM virtual key for RLM (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
-  RLM_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
+  RLM_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
     -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"

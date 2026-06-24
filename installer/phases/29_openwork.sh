@@ -81,7 +81,7 @@ command -v npm >/dev/null 2>&1 || { err "npm/node required (host dep) — see do
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
 if ! curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 \
-   && ! curl -sf --max-time 3 -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://litellm:4000/v1/models >/dev/null 2>&1; then
+   && ! litellm_master_curl -sf --max-time 3 http://litellm:4000/v1/models >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'vz-ai-stack.sh start litellm'."
   exit 1
 fi
@@ -113,7 +113,7 @@ _models_resp="$(curl -s --max-time 5 -H "Authorization: Bearer $OPENWORK_KEY_CUR
 if [[ -z "$OPENWORK_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"id"'; then
   log "Minting scoped LiteLLM virtual key for OpenWork…"
   _gen_body="$(python3 -c 'import json,sys; print(json.dumps({"models":json.loads(sys.argv[1]),"key_alias":"openwork","metadata":{"owner":"openwork","purpose":"phase29"}}))' "$OPENWORK_KEY_MODELS")"
-  OPENWORK_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
+  OPENWORK_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate -d "$_gen_body" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$OPENWORK_KEY_NEW" ]] || { err "Failed to mint OPENWORK_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }

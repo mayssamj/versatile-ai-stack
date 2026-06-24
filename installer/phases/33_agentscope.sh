@@ -112,7 +112,7 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 AS_LLM_BASE=""
 if   curl -sf --max-time 4 "$AS_LLM_HOST/health/liveliness" >/dev/null 2>&1; then AS_LLM_BASE="$AS_LLM_HOST"
 elif curl -sf --max-time 4 "$AS_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then AS_LLM_BASE="$AS_LLM_FALLBACK"
-elif curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$AS_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then AS_LLM_BASE="$AS_LLM_FALLBACK"
+elif litellm_master_curl -sf --max-time 4 "$AS_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then AS_LLM_BASE="$AS_LLM_FALLBACK"
 fi
 [[ -n "$AS_LLM_BASE" ]] || { err "LiteLLM not reachable at $AS_LLM_HOST or $AS_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $AS_LLM_BASE"
@@ -148,7 +148,7 @@ if [[ -z "$AS_KEY_CURRENT" ]] || ! printf '%s' "$_as_models" | grep -q '"id"'; t
   log "Minting scoped LiteLLM key for AgentScope (local-gemma4 + *-sub fallbacks)…"
   # Parse the key with the venv python ($AS_PY, built + import-verified above) rather
   # than assuming a host python3 (§24 council nit, 2026-06-23).
-  AS_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  AS_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$AS_LLM_BASE/key/generate" \
     -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"agentscope","metadata":{"owner":"agentscope","purpose":"phase33"}}' \
     | "$AS_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"

@@ -314,6 +314,44 @@ bash ~/ai-stack/vz-ai-stack.sh model sync
 
 ---
 
+### L6½ · Version-less aliases & self-healing keys · 🟡 · ~10 min
+
+**Why.** Two things make re-pointing a model safe in this stack. First, every model is named by a **version-less alias** — the wire/served version lives only inside LiteLLM's config, so you assign `claude-opus-sub-max` (not `claude-opus-4.8-sub-max`) and a provider version bump never touches your bindings. Second, the per-phase consumers (MemPalace, the agent-swarm sims, AionUi, OpenWork) each hold a **scoped key with a fixed model allow-list** — and when you *rename* or *re-assign* a model, that key would otherwise still allow only the OLD alias while the app calls the NEW one (a silent **HTTP 403**). Re-running that consumer's install now **self-heals** the key's allow-list, and `doctor` asserts it. This lesson shows the alias surface and proves the self-heal.
+
+**Prereqs.** L6 done (you understand `models.yml` and `model sync`). Phase 01 + Phase 26 (MemPalace) complete. These commands are **read-mostly**: `list` is read-only; `assign`/`sync` and `install 26` mutate `models.yml` / the consumer's scoped key — run them only when you mean to re-point something. No key is ever printed.
+
+**Steps.**
+
+See the version-less aliases — note `claude-opus-sub-max`, `openai-gpt`, `sakana-fugu`, etc., with no provider version in the name (read-only):
+
+```bash
+bash ~/ai-stack/vz-ai-stack.sh model list
+```
+
+Confirm MemPalace's scoped key allows the model it actually calls — the check that catches the silent-403-after-rename class (read-only):
+
+```bash
+bash ~/ai-stack/vz-ai-stack.sh doctor mempalace
+```
+
+Re-running a consumer's install **reconciles** its scoped key's allow-list to whatever model it now needs — idempotent, same key string, no `.env` churn, no app restart, never narrows. Safe to run any time:
+
+```bash
+bash ~/ai-stack/vz-ai-stack.sh install 26      # MemPalace; same for a sim phase, e.g. install 32 (MetaGPT)
+```
+
+**Expected.** `model list` shows the version-less aliases (the provider version is absent from every name). `doctor mempalace` passes its scoped-key allow-list assertion — it verifies the key's `models` list actually **covers** the model MemPalace is bound to, not merely that the key can list *some* model. Re-running `install 26` is a near no-op on a healthy install, but if you had renamed/re-assigned MemPalace's model it prints a `Reconciling … allow-list` line and widens the key in place so the app stops getting 403'd.
+
+> **Advanced (optional) — watch a drifted key heal.** *Skip this unless you want to see the mechanism.* If you `model assign` MemPalace to a freshly-renamed alias, its scoped key can lag behind and 403 the new model. You don't fix that by re-minting — you just **re-run the phase**: `vz-ai-stack.sh install 26` runs `litellm_reconcile_key`, which widens the existing key's allow-list (the UNION of what it had and what the app needs) without changing the key string. `doctor mempalace` then goes green. The same self-heal is wired into all eight scoped-key consumers (mempalace · aionui · openwork · metagpt · agentscope · oasis · chatdev · aitown).
+
+**Try it live.** Read-only in the HTML page — the alias catalog and the binding matrix are viewers; `assign`/`sync`/`install` are terminal operations, never browser buttons.
+
+**Lesson.** The version-less alias is the *stable name*; the scoped-key self-heal is the *safety net* that keeps a rename from silently 403-ing a consumer. Together they mean "rename a model" or "re-point an agent" is a one-command, reversible operation — and `doctor` proves the consumer's key kept up. Internally the master key is passed to `curl` via `--config` (STDIN), never on the command line, so it can't leak into `ps`.
+
+**Go deeper.** [doc/models.md](../doc/models.md) (version-less naming, scoped keys), [doc/OPERATIONS.md](../doc/OPERATIONS.md) (key lifecycle), [doc/DOCTOR.md](../doc/DOCTOR.md) (check 44 — the MemPalace allow-list assertion).
+
+---
+
 ### L7 · See it + control cost — traces & virtual keys · 🟡 · ~12 min
 
 **Why.** Every call through LiteLLM lands in Phoenix as a span with model, tokens, latency, and cost — so "what did the model receive?", "why was that slow?", and "how much did this session cost?" stop being guesses. And because agents authenticate with **scoped virtual keys** (never the master key), you can hand any consumer a budget-capped, model-restricted credential that LiteLLM enforces server-side.

@@ -174,7 +174,7 @@ widen_keys() {
   for kenv in HERMES_LITELLM_KEY PI_LITELLM_KEY; do
     k="$(get_env "$kenv" '')"
     [[ -n "$k" ]] || { note "$kenv not set yet — skip (its phase mints it)"; continue; }
-    if curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+    if litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
          -X POST http://litellm:4000/key/update \
          -d "{\"key\":\"$k\",\"models\":$superset}" >/dev/null 2>&1; then
       ok "widened $kenv allowlist to all models.yml models (incl. claude-*-sub-*)"

@@ -129,6 +129,20 @@ atomic_write() {
   mv -f "$tmp" "$dest"
 }
 
+# --- litellm_master_curl: run curl authenticated with the LiteLLM MASTER key ----
+# Usage: litellm_master_curl <curl-args...>   (DROP the -H "Authorization: Bearer ..."
+# at the call site; pass everything else — -s, -X, -d, the URL — through unchanged).
+# The master key is the highest-privilege credential in the stack; passing it via
+# `-H` puts it in the process arg list (visible in `ps`/—/proc/PID/cmdline to any
+# local process). This injects the Authorization header via curl `--config` on STDIN
+# so the secret never appears in argv. NOTE: the call site must NOT also feed curl
+# data on stdin (e.g. `-d @-`) — stdin is consumed by the config; all current callers
+# use inline `-d '...'`.
+litellm_master_curl() {
+  local _m; _m="$(get_env LITELLM_MASTER_KEY '')"
+  printf 'header = "Authorization: Bearer %s"\n' "$_m" | curl --config - "$@"
+}
+
 # --- litellm_reconcile_key: self-heal a scoped key's model allow-list --------
 # Usage: litellm_reconcile_key <KEY_ENV> <model...>           (positional names)
 #        litellm_reconcile_key <KEY_ENV> '["m1","m2",...]'    (one JSON array)
@@ -206,7 +220,7 @@ for x in (os.environ["_RK_CUR"].splitlines() + os.environ["_RK_DES"].splitlines(
     if x and x != "__wildcard__" and x not in out: out.append(x)
 print(json.dumps({"key":os.environ["_RK_KEY"],"models":out}))' 2>/dev/null || true)"
   [[ -n "$body" ]] || { warn "reconcile $key_env: could not build request body"; return 0; }
-  resp="$(curl -s --max-time 15 -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
+  resp="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST "$base/key/update" -d "$body" 2>/dev/null || true)"
   if printf '%s' "$resp" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)

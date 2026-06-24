@@ -69,7 +69,7 @@ MASTER="$(get_env LITELLM_MASTER_KEY '')"
 revoke_key() {
   local k; k="$(cat "$STATE" 2>/dev/null || true)"
   [[ -n "$k" && -n "$MASTER" ]] || { rm -f "$STATE"; return 0; }
-  curl -s --max-time 10 -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
+  litellm_master_curl -s --max-time 10 -H 'Content-Type: application/json' \
     -X POST "$LITELLM/key/delete" -d "{\"keys\":[\"$k\"]}" >/dev/null 2>&1 || true
   rm -f "$STATE"
   ok "revoked tutorial demo key"
@@ -113,7 +113,7 @@ ensure_port_free() {
 }
 
 [[ -n "$MASTER" ]] || { err "LITELLM_MASTER_KEY missing from .env — run 'vz-ai-stack.sh install 01' first."; exit 1; }
-curl -sf --max-time 5 "$LITELLM/health/readiness" >/dev/null 2>&1 || curl -sf --max-time 5 "$LITELLM/v1/models" -H "Authorization: Bearer $MASTER" >/dev/null 2>&1 \
+curl -sf --max-time 5 "$LITELLM/health/readiness" >/dev/null 2>&1 || litellm_master_curl -sf --max-time 5 "$LITELLM/v1/models" >/dev/null 2>&1 \
   || { err "LiteLLM not reachable at $LITELLM — start it: bash $AI_STACK/bin/start-litellm.sh"; exit 1; }
 
 # Free the port (stop a stale own-instance / fail clearly on a foreign holder)
@@ -123,7 +123,7 @@ ensure_port_free "$PORT"
 # Revoke any stale key from a previous run, then mint a fresh ephemeral one.
 revoke_key
 log "Minting an ephemeral, budget-capped tutorial key allowlisted to your wired models (ttl=$TTL)..."
-RESP="$(curl -s --max-time 15 -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
+RESP="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
   -X POST "$LITELLM/key/generate" \
   -d "{\"models\":${DEMO_MODELS},\"duration\":\"${TTL}\",\"max_budget\":0.5,\"budget_duration\":\"1d\",\"key_alias\":\"tutorial-demo\",\"metadata\":{\"owner\":\"tutorial-serve\"}}")"
 KEY="$(printf '%s' "$RESP" | python3 -c 'import sys,json

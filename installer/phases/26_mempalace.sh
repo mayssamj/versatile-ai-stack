@@ -130,7 +130,7 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
 
 if ! curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 \
-   && ! curl -sf --max-time 3 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+   && ! litellm_master_curl -sf --max-time 3 \
         http://litellm:4000/v1/models >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'stack start litellm'."
   exit 1
@@ -157,7 +157,7 @@ MP_KEY_CURRENT="$(get_env MEMPALACE_LITELLM_KEY '')"
 _mp_models="$(curl -s --max-time 5 -H "Authorization: Bearer $MP_KEY_CURRENT" http://litellm:4000/v1/models 2>/dev/null)"
 if [[ -z "$MP_KEY_CURRENT" ]] || ! printf '%s' "$_mp_models" | grep -q '"id"'; then
   log "Minting LiteLLM virtual key for MemPalace (claude-opus-sub-xhigh + local-gemma4 fallback)..."
-  MP_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  MP_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
     -d '{"models":["claude-opus-sub-xhigh","local-gemma4"],"key_alias":"mempalace-memory","metadata":{"owner":"mempalace","purpose":"phase26"}}' \

@@ -62,7 +62,7 @@ command -v brew >/dev/null 2>&1 || { err "Homebrew required. See doc/PREREQUISIT
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
 if ! curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 \
-   && ! curl -sf --max-time 3 -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://litellm:4000/v1/models >/dev/null 2>&1; then
+   && ! litellm_master_curl -sf --max-time 3 http://litellm:4000/v1/models >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'vz-ai-stack.sh start litellm'."
   exit 1
 fi
@@ -126,7 +126,7 @@ _models_resp="$(curl -s --max-time 5 -H "Authorization: Bearer $AIONUI_KEY_CURRE
 if [[ -z "$AIONUI_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"id"'; then
   log "Minting scoped LiteLLM virtual key for AionUi…"
   _gen_body="$(python3 -c 'import json,sys; print(json.dumps({"models":json.loads(sys.argv[1]),"key_alias":"aionui","metadata":{"owner":"aionui","purpose":"phase28"}}))' "$AIONUI_KEY_MODELS")"
-  AIONUI_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
+  AIONUI_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate -d "$_gen_body" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$AIONUI_KEY_NEW" ]] || { err "Failed to mint AIONUI_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
