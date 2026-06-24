@@ -54,6 +54,18 @@ vz-ai-stack.sh model sync
 `default:` must stay an Ollama model (the always-on offline fallback); `primary`
 is what an unassigned agent renders and it availability-gates to `default`.
 
+## What `model assign` covers (and what it doesn't)
+`model assign` / `model sync` operate on the **fleet** — the agents in
+`installer/models.yml` `kinds:` (the 9 hermes roles + pi/deerflow/ace/rlm). The
+**opt-in sims** (mempalace, metagpt, agentscope, oasis, chatdev, aitown, aionui,
+openwork) are per-phase consumers, **not** assignable agents — `model assign <sim> …`
+would write an assignment that fails `models.yml` validation (no `kinds:` entry).
+To point a sim at a different model, set its model in that phase's config and re-run
+`vz-ai-stack.sh install <NN>` for the sim; the phase reconciles the sim's scoped LiteLLM
+key allow-list automatically (so the rename doesn't silent-403). The sim doctor checks
+(57–61) read `.assignments.<sim>` defensively and default to `local-gemma4`, so an
+unassigned sim's key is verified against `local-gemma4` — exactly the model it calls.
+
 ## Cost / safety
 - Metered models spend your real OpenAI bill — there's no per-key `max_budget` cap
   yet (tracked follow-up), so prefer the `-sub` models for cost-conscious fleet use.
