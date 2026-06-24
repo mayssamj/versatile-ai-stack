@@ -15,6 +15,8 @@ source "$AI_STACK/installer/lib/env.sh"
 PORT=8899
 TTL="30m"
 REVOKE_ONLY=0
+LAUNCH_ENABLED=0   # opt-in: --launch-enabled wires TUT_LAUNCH=1 so the page's
+                   # "Launch a service" buttons can idempotently start a web UI.
 HTML="$AI_STACK/doc/TUTORIAL.html"
 STATE="$AI_STACK/installer/state/tutorial-token"   # holds the live ephemeral key (0600)
 LITELLM="$(get_env LITELLM_BASE_URL 'http://litellm:4000')"
@@ -26,12 +28,20 @@ CONFIG="$AI_STACK/litellm/config.yaml"
 # spend. Falls back to a minimal local set if config.yaml / yq is unavailable.
 DEMO_MODELS='["local","local-gemma4"]'
 DEMO_MODELS_DISPLAY="local,local-gemma4"
+EMBED_MODEL=""   # local embedding model for the /api/embed demo (added to the key allowlist only)
 if command -v yq >/dev/null 2>&1 && [[ -f "$CONFIG" ]]; then
-  _demo_csv="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null \
+  _chat_csv="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null \
     | grep -vE '^embed-' | awk 'NF' | sort -u | paste -sd, -)"
-  if [[ -n "$_demo_csv" ]]; then
-    DEMO_MODELS_DISPLAY="$_demo_csv"
-    DEMO_MODELS="$(printf '%s' "$_demo_csv" | python3 -c 'import sys,json; print(json.dumps([m for m in sys.stdin.read().strip().split(",") if m]))')"
+  # Pick a LOCAL embedding model for the Embeddings demo (cloud embed-* may lack a key);
+  # fall back to the first embed-* if there's no local one.
+  EMBED_MODEL="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null | grep -E '^embed-.*local' | head -1)"
+  [[ -n "$EMBED_MODEL" ]] || EMBED_MODEL="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null | grep -E '^embed-' | head -1)"
+  if [[ -n "$_chat_csv" ]]; then
+    DEMO_MODELS_DISPLAY="$_chat_csv"                 # chat picker = chat models only
+    # Key allowlist = chat models + the embedding model so POST /api/embed works. The
+    # embedding model is intentionally NOT in DISPLAY (it must not show in the chat picker).
+    _key_csv="$_chat_csv"; [[ -n "$EMBED_MODEL" ]] && _key_csv="${_chat_csv},${EMBED_MODEL}"
+    DEMO_MODELS="$(printf '%s' "$_key_csv" | python3 -c 'import sys,json; print(json.dumps([m for m in sys.stdin.read().strip().split(",") if m]))')"
   fi
 fi
 
@@ -44,15 +54,21 @@ while (( $# )); do
     --ttl=*)  TTL="${1#*=}" ;;
     --ttl)    shift; TTL="${1:-30m}" ;;
     --revoke) REVOKE_ONLY=1 ;;
+    --launch-enabled) LAUNCH_ENABLED=1 ;;
     -h|--help)
       cat <<EOF
-vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]
+vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke] [--launch-enabled]
   Serve doc/TUTORIAL.html + a loopback proxy for safe 'Try it live' demos.
   Mints an ephemeral, budget-capped LiteLLM key allowlisted to your wired models
   (auto-revoked on exit).
   --port N    loopback port (default 8899)
   --ttl 30m   key time-to-live (LiteLLM duration; default 30m)
   --revoke    revoke a lingering tutorial key and exit
+  --launch-enabled  EXPERIMENTAL (default OFF): enable the page's "Launch a service"
+              buttons — they idempotently run \`vz-ai-stack.sh start <svc>\` for a small
+              allowlist of watchable web UIs (openwebui, phoenix, autofyn, claw3d,
+              chatdev, aitown). Loopback-only. Run from the MAIN checkout: 'start'
+              refuses to run from a git worktree.
 EOF
       exit 0 ;;
     *) err "unknown argument: $1 (try --help)"; exit 2 ;;
@@ -138,9 +154,18 @@ trap 'revoke_key' EXIT INT TERM
 
 [[ -f "$HTML" ]] || warn "doc/TUTORIAL.html not present yet — the page will 503 until it's built; /api demos still work."
 
+if (( LAUNCH_ENABLED )); then
+  ok "launch buttons ENABLED (--launch-enabled): the page can idempotently start watchable web UIs."
+  # 'start' refuses to run from a worktree; warn early if that's where we are.
+  if [[ "$(git -C "$AI_STACK" rev-parse --git-dir 2>/dev/null)" != "$(git -C "$AI_STACK" rev-parse --git-common-dir 2>/dev/null)" ]]; then
+    warn "  …but this looks like a git worktree — launch will fail. Run tutorial-serve from the MAIN checkout."
+  fi
+fi
+
 # NOT exec — keep the bash EXIT/INT/TERM trap alive so the key auto-revokes when
 # the server stops (exec would replace the shell and orphan the trap).
 # Pass the key by FILE PATH (TUT_KEY_FILE -> the 0600 $STATE file), not as an env
 # var, so the secret never shows up in `ps`/process environment to other local users.
-TUT_PORT="$PORT" TUT_LITELLM="$LITELLM" TUT_KEY_FILE="$STATE" TUT_HTML="$HTML" TUT_ROOT="$AI_STACK" TUT_MODELS="$DEMO_MODELS_DISPLAY" \
+# TUT_LAUNCH gates POST /api/launch server-side (the proxy 404s the route when != "1").
+TUT_PORT="$PORT" TUT_LITELLM="$LITELLM" TUT_KEY_FILE="$STATE" TUT_HTML="$HTML" TUT_ROOT="$AI_STACK" TUT_MODELS="$DEMO_MODELS_DISPLAY" TUT_LAUNCH="$LAUNCH_ENABLED" TUT_EMBED="$EMBED_MODEL" \
   python3 "$AI_STACK/installer/lib/tutorial_proxy.py"

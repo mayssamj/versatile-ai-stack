@@ -18,8 +18,13 @@ Env:
                   page's own relative links (../README.md, EXPLORE.html, …) resolve
   TUT_MODELS      comma-separated allowlist echoed to the page (display only;
                   LiteLLM enforces the real allowlist server-side via the key)
+  TUT_LAUNCH      "1" enables POST /api/launch (idempotently start a watchable
+                  web-UI service so the page can open it). Any other value / unset
+                  disables it AND the route is not handled at all (transport-layer
+                  404). Set only by `tutorial-serve --launch-enabled` (default OFF).
 """
-import json, os, posixpath, sys, urllib.parse, urllib.request, urllib.error
+import json, os, posixpath, socket, subprocess, sys, threading
+import urllib.parse, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT     = int(os.environ.get("TUT_PORT", "8899"))
@@ -38,6 +43,7 @@ if _KEY_FILE and os.path.isfile(_KEY_FILE):
 HTML     = os.environ.get("TUT_HTML", "")
 ROOT     = os.path.realpath(os.environ.get("TUT_ROOT", "")) if os.environ.get("TUT_ROOT") else ""
 MODELS   = [m for m in os.environ.get("TUT_MODELS", "local-gemma4").split(",") if m]
+EMBED    = os.environ.get("TUT_EMBED", "")   # embedding model id for the /api/embed demo (echoed by /api/health)
 
 # The page's canonical served path = its location under the repo root, so the
 # relative links inside it (EXPLORE.html, ../README.md, …) resolve correctly.
@@ -64,14 +70,54 @@ STATIC_TYPES = {
 ROUTES = {
     ("GET",  "/api/models"): "/v1/models",
     ("POST", "/api/chat"):   "/v1/chat/completions",
+    ("POST", "/api/embed"):  "/v1/embeddings",
 }
 MAX_BODY = 64 * 1024  # cap request bodies (the demo only needs small prompts)
+
+# --- /api/launch (opt-in, hardened) -------------------------------------------
+# The ONLY route that runs a subprocess: a browser button that idempotently starts
+# a watchable web-UI service so a learner can open it. Hardening (see _launch):
+#   * off unless TUT_LAUNCH=1 (set only by `tutorial-serve --launch-enabled`); the
+#     route 404s at the transport layer when disabled (LAUNCH_ENABLED computed once).
+#   * `svc` from the request is only a KEY into LAUNCH_SERVICES; the argv uses fixed
+#     literals + that validated key, never the raw caller string; no shell=True.
+#   * the child env is SCRUBBED of every TUT_* var (TUT_KEY_FILE is the live key path).
+#   * one launch at a time (lock for the whole subprocess); 30s timeout + kill.
+# `url` is the host-reachable address the page opens (bare hostname via /etc/hosts,
+# exactly as the tutorial documents); `probe` = (host, port) for the liveness check.
+LAUNCH_SERVICES = {
+    "openwebui": {"url": "http://openwebui:8080", "probe": ("openwebui", 8080)},
+    "phoenix":   {"url": "http://phoenix:6006",   "probe": ("phoenix", 6006)},
+    "autofyn":   {"url": "http://autofyn:3400",   "probe": ("autofyn", 3400)},
+    "claw3d":    {"url": "http://localhost:4310", "probe": ("localhost", 4310)},
+    "chatdev":   {"url": "http://chatdev:5274",   "probe": ("chatdev", 5274)},
+    "aitown":    {"url": "http://aitown:5273",    "probe": ("aitown", 5273)},
+}
+LAUNCH_ENV_STRIP = {"TUT_KEY", "TUT_KEY_FILE", "TUT_LITELLM", "TUT_ROOT",
+                    "TUT_PORT", "TUT_MODELS", "TUT_HTML", "TUT_LAUNCH"}
+VZ = os.path.join(ROOT, "vz-ai-stack.sh") if ROOT else ""
+# Enabled ONLY if explicitly opted in AND the entrypoint really exists (validated
+# once at startup; never construct the path at request time, never trust PATH).
+LAUNCH_ENABLED = (os.environ.get("TUT_LAUNCH") == "1" and bool(ROOT) and os.path.isfile(VZ))
+_launch_lock = threading.Lock()
+LAUNCH_TIMEOUT = 30
 
 
 def _cors(h):
     h.send_header("Access-Control-Allow-Origin", "*")  # loopback-bound; localhost only
     h.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     h.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+
+def _probe(host, port, timeout=2.0):
+    """True iff a TCP connection to (host, port) opens — a read-only liveness check.
+    `host` resolves through the system resolver (/etc/hosts) exactly like the browser,
+    so a bare hostname (chatdev) maps to its 127.0.10.x alias just as the page link does."""
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 class H(BaseHTTPRequestHandler):
@@ -93,7 +139,9 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.unquote(self.path.split("?", 1)[0])
         if path == "/api/health":
-            return self._json(200, {"ok": True, "models": MODELS})
+            return self._json(200, {"ok": True, "models": MODELS, "embed_model": EMBED})
+        if path == "/api/status":
+            return self._status()
         if ("GET", path) in ROUTES:
             return self._proxy("GET", ROUTES[("GET", path)], None)
         # Root + aliases -> redirect to the page's canonical path so its relative
@@ -110,6 +158,8 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+        if path == "/api/launch":
+            return self._launch()
         if ("POST", path) not in ROUTES:
             return self._json(404, {"error": f"route not allowed: POST {path}"})
         try:
@@ -173,6 +223,77 @@ class H(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers(); self.wfile.write(data)
         return True
+
+    def _host_ok(self):
+        """Reject a non-loopback Host header. The server binds 127.0.0.1, but a
+        DNS-rebinding page could resolve an attacker hostname to 127.0.0.1 and POST
+        here; pinning Host to loopback closes that on the sensitive routes."""
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+        return host in ("127.0.0.1", "localhost", "::1")
+
+    def _status(self):
+        """Read-only liveness of the launchable web UIs. Returns ONLY {name, healthy}
+        (never internal container IPs/ports) plus launch_enabled, so the page can
+        enable the launch grid + degrade gracefully when a sim is down."""
+        if not self._host_ok():
+            return self._json(403, {"error": "forbidden host"})
+        services = [{"name": n, "healthy": _probe(*meta["probe"])}
+                    for n, meta in LAUNCH_SERVICES.items()]
+        self._json(200, {"launch_enabled": LAUNCH_ENABLED, "services": services})
+
+    def _launch(self):
+        """Start ONE allowlisted web-UI service (opt-in, hardened — see LAUNCH_* above).
+        Not handled at all unless LAUNCH_ENABLED (computed once at startup)."""
+        if not LAUNCH_ENABLED:
+            return self._json(404, {"error": "launch not enabled — restart with: "
+                                             "vz-ai-stack.sh tutorial-serve --launch-enabled"})
+        if not self._host_ok():
+            return self._json(403, {"error": "forbidden host"})
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (ValueError, TypeError):
+            return self._json(400, {"error": "invalid Content-Length"})
+        if n < 0 or n > MAX_BODY:
+            return self._json(413, {"error": "request too large"})
+        try:
+            body = json.loads(self.rfile.read(n) if n else b"{}")
+        except (ValueError, TypeError):
+            return self._json(400, {"error": "invalid JSON body"})
+        # `svc` is used ONLY as a lookup key; the argv below uses fixed literals + the key.
+        svc = body.get("svc") if isinstance(body, dict) else None
+        if not isinstance(svc, str) or svc not in LAUNCH_SERVICES:
+            return self._json(404, {"error": "unknown service (not in the launch allowlist)"})
+        meta = LAUNCH_SERVICES[svc]
+        if _probe(*meta["probe"]):                       # already up → idempotent, no spawn
+            return self._json(200, {"ok": True, "svc": svc, "url": meta["url"], "already_running": True})
+        if not _launch_lock.acquire(blocking=False):     # one launch at a time
+            return self._json(409, {"ok": False, "svc": svc,
+                                    "error": "another launch is in progress — try again in a moment"})
+        try:
+            # SCRUB every proxy-internal var from the child env so the launched service can
+            # never read the ephemeral key. Strip the WHOLE TUT_* namespace (covers TUT_KEY /
+            # TUT_KEY_FILE — the live key + its path — and any TUT_ var added in future),
+            # plus the explicit LAUNCH_ENV_STRIP set (belt-and-suspenders for non-TUT_ vars).
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith("TUT_") and k not in LAUNCH_ENV_STRIP}
+            # argv list, no shell=True; --no-open suppresses vz's own browser-open (the
+            # page opens the URL on the user's click). svc is the validated allowlist key.
+            proc = subprocess.run([VZ, "start", svc, "--no-open"], env=env, cwd=ROOT,
+                                  capture_output=True, timeout=LAUNCH_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            return self._json(504, {"ok": False, "svc": svc,
+                                    "error": f"start timed out after {LAUNCH_TIMEOUT}s"})
+        except Exception as e:
+            return self._json(500, {"ok": False, "svc": svc, "error": str(e)})
+        finally:
+            _launch_lock.release()                       # released right after the subprocess returns
+        up = _probe(*meta["probe"], timeout=3.0)         # confirm it actually came up
+        if up or proc.returncode == 0:
+            return self._json(200, {"ok": True, "svc": svc, "url": meta["url"],
+                                    "already_running": False, "running": up})
+        log = ((proc.stderr or b"") or (proc.stdout or b""))[-1000:].decode("utf-8", "replace")
+        return self._json(502, {"ok": False, "svc": svc,
+                                "error": "start ran but the service is not responding", "log": log})
 
     def _proxy(self, method, upstream_path, body):
         req = urllib.request.Request(

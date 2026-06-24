@@ -10,7 +10,9 @@
   This is the INTERACTIVE on-ramp companion to doc/TUTORIAL.md (the full 7-act / 31-lesson journey).
   - Copy-run blocks work everywhere (file:// or served).
   - "Try it live" demo panels call a SAME-ORIGIN proxy (installer/lib/tutorial_proxy.py) — the
-    browser never holds a key. Routes: GET /api/health · GET /api/models · POST /api/chat.
+    browser never holds a key. Read-only routes: GET /api/health · GET /api/models · GET /api/status ·
+    POST /api/chat · POST /api/embed. Opt-in: POST /api/launch (start a watchable web UI; OFF unless
+    the server was started with `tutorial-serve --launch-enabled`).
   - On load we GET /api/health; if it fails (page opened via file:// without the proxy) the demo
     panels are DISABLED with an inline hint to run `vz-ai-stack.sh tutorial-serve`.
   - Model output is rendered with textContent only — never innerHTML — to avoid injection.
@@ -275,7 +277,7 @@
   <div class="stat-row">
     <div class="stat"><span class="n">7</span><span class="l">Acts</span></div>
     <div class="stat"><span class="n">30</span><span class="l">Lessons</span></div>
-    <div class="stat"><span class="n">39</span><span class="l">Services</span></div>
+    <div class="stat"><span class="n">49</span><span class="l">Services</span></div>
     <div class="stat"><span class="n">0</span><span class="l">Cloud keys needed</span></div>
   </div>
 </section>
@@ -396,8 +398,10 @@
     <strong>budget-capped</strong> ($0.50) LiteLLM key, allowlisted to the models you've actually
     wired in — local (Ollama/LM Studio), plus any Claude-subscription and cloud routes — and injects it
     <strong>server-side</strong>. Your browser never holds a token. The proxy is loopback-bound and
-    exposes only a tiny allowlist — <code>GET /api/health</code>, <code>GET /api/models</code>,
-    <code>POST /api/chat</code> — nothing else. The key auto-revokes when you stop the server.
+    exposes only a tiny <strong>read-only</strong> allowlist — <code>GET /api/health</code>,
+    <code>GET /api/models</code>, <code>GET /api/status</code>, <code>POST /api/chat</code>,
+    <code>POST /api/embed</code> — plus an <strong>opt-in</strong> <code>POST /api/launch</code>
+    (off unless you pass <code>--launch-enabled</code>). The key auto-revokes when you stop the server.
     Listing a model loads nothing; local models load lazily on first use, and cloud/subscription
     routes stay capped by the budget.</p>
   </div>
@@ -483,6 +487,42 @@
       <button class="danger" id="btnGuard">Send the risky prompt</button>
     </div>
     <div class="out muted" id="outGuard">The blocked / redacted response appears here.</div>
+  </div>
+
+  <!-- DEMO 5 — Embeddings -->
+  <div class="demo-panel" id="demoEmbedPanel">
+    <h3>5 · Embeddings <span class="tier inter">intermediate</span></h3>
+    <p class="sub">Turn text into a vector with <code>POST /api/embed</code> — the same embedding step that
+    powers RAG and memory search (Act III). You'll see the vector's dimension and its first few numbers.</p>
+    <div class="form-row">
+      <textarea id="embedText" placeholder="Text to embed…">A Merkle tree lets you verify one leaf without downloading the whole dataset.</textarea>
+    </div>
+    <div class="btn-row"><button id="btnEmbed">Embed</button></div>
+    <div class="out muted" id="outEmbed">The vector summary appears here.</div>
+  </div>
+
+  <!-- DEMO 6 — Service status -->
+  <div class="demo-panel" id="demoStatusPanel">
+    <h3>6 · Service status <span class="tier basic">basic</span></h3>
+    <p class="sub">Ask <code>GET /api/status</code> which watchable web UIs are up right now — a read-only
+    liveness probe (only up/down per service; no internal addresses leave the box).</p>
+    <div class="btn-row"><button id="btnStatus">Refresh status</button></div>
+    <div class="out muted" id="outStatus">Click “Refresh status”.</div>
+  </div>
+
+  <!-- DEMO 7 — Launch a service (opt-in) -->
+  <div class="demo-panel" id="demoLaunchPanel">
+    <h3>7 · Launch a service <span class="tier inter">intermediate</span></h3>
+    <p class="sub">Start a watchable web UI and open it — each button runs
+    <code>vz-ai-stack.sh start &lt;svc&gt;</code> <strong>locally</strong> (idempotent, start-only).
+    This is <strong>opt-in</strong>: it works only when the server was started with
+    <code>--launch-enabled</code>, and only for a fixed allowlist.</p>
+    <div class="callout warn" id="launchOffNote" hidden>
+      <p>Launch buttons are <strong>off</strong>. Restart from your <strong>main checkout</strong> with
+      <code>vz-ai-stack.sh tutorial-serve --launch-enabled</code> to enable them.</p>
+    </div>
+    <div class="btn-row" id="launchGrid"></div>
+    <div class="out muted" id="outLaunch">Enable launch, then pick a service to start + open it.</div>
   </div>
 </section>
 
@@ -1455,8 +1495,12 @@ const API = {
   health: "/api/health",
   models: "/api/models",
   chat:   "/api/chat",
+  embed:  "/api/embed",
+  status: "/api/status",
+  launch: "/api/launch",
 };
 const DEFAULT_MODEL = "local-gemma4";
+let EMBED_MODEL = "";      // set from /api/health on boot (the embedding model for the Embeddings demo)
 // Generous budget: the default local model (gemma4:e4b) is a "thinking" model —
 // it spends tokens reasoning before the answer, so a small cap can be consumed
 // entirely by the reasoning trace, leaving an empty final answer. 1024 leaves
@@ -1661,10 +1705,95 @@ document.getElementById("btnGuard").addEventListener("click", async () => {
   }
 });
 
+// ============================ DEMO 5 — embeddings ============================
+const outEmbed = document.getElementById("outEmbed");
+document.getElementById("btnEmbed").addEventListener("click", async () => {
+  const input = document.getElementById("embedText").value.trim() || "hello world";
+  if (!EMBED_MODEL) { setOut(outEmbed, "No embedding model is wired into LiteLLM on this stack.", "error"); return; }
+  setOut(outEmbed, "Embedding via " + EMBED_MODEL + "…", "muted");
+  try {
+    const r = await fetch(API.embed, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: EMBED_MODEL, input: input }),
+    });
+    const text = await r.text();
+    let data = null; try { data = JSON.parse(text); } catch (e) {}
+    if (!r.ok) throw new Error("HTTP " + r.status + ": " + (data && data.error ? (typeof data.error === "string" ? data.error : JSON.stringify(data.error)) : text.slice(0, 200)));
+    const vec = data && data.data && data.data[0] && data.data[0].embedding;
+    if (!Array.isArray(vec) || !vec.length) throw new Error("no embedding returned");
+    const head = vec.slice(0, 8).map((x) => (typeof x === "number" ? x.toFixed(4) : x)).join(", ");
+    setOut(outEmbed, "▸ " + EMBED_MODEL + "\ndimension: " + vec.length + "\nfirst 8: [" + head + ", …]", "success");
+  } catch (e) {
+    setOut(outEmbed, proxyError(e), "error");
+  }
+});
+
+// ============================ DEMO 6 — service status ============================
+const outStatus = document.getElementById("outStatus");
+async function refreshStatus() {
+  setOut(outStatus, "Checking services…", "muted");
+  try {
+    const r = await fetch(API.status, { cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
+    const lines = (data.services || []).map((s) => (s.healthy ? "✓ up    " : "✗ down  ") + s.name);
+    setOut(outStatus, lines.length ? lines.join("\n") : "(no services)", "success");
+    renderLaunch(data);
+    return data;
+  } catch (e) {
+    setOut(outStatus, proxyError(e), "error");
+    return null;
+  }
+}
+document.getElementById("btnStatus").addEventListener("click", refreshStatus);
+
+// ============================ DEMO 7 — launch a service (opt-in) ============================
+const LAUNCH_META = {   // display labels for the FIXED server-side allowlist (mirror tutorial_proxy.py)
+  openwebui: "Open WebUI", phoenix: "Phoenix", autofyn: "AutoFyn",
+  claw3d: "claw3d", chatdev: "ChatDev", aitown: "AI Town",
+};
+const outLaunch = document.getElementById("outLaunch");
+const launchGrid = document.getElementById("launchGrid");
+const launchOffNote = document.getElementById("launchOffNote");
+function renderLaunch(status) {
+  launchGrid.textContent = "";
+  const enabled = !!(status && status.launch_enabled);
+  launchOffNote.hidden = enabled;
+  if (!enabled) return;
+  const health = {}; (status.services || []).forEach((s) => { health[s.name] = s.healthy; });
+  Object.keys(LAUNCH_META).forEach((svc) => {
+    const b = document.createElement("button");
+    b.textContent = (health[svc] ? "Open " : "Launch ") + LAUNCH_META[svc];
+    b.addEventListener("click", () => launchService(svc, b));
+    launchGrid.appendChild(b);
+  });
+}
+async function launchService(svc, btn) {
+  const label = LAUNCH_META[svc] || svc;
+  setOut(outLaunch, "Starting " + label + "…", "muted");
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(API.launch, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ svc: svc }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
+    setOut(outLaunch, "✓ " + label + " " + (data.already_running ? "already running" : "started") + " — opening " + data.url, "success");
+    window.open(data.url, "_blank", "noopener");
+    setTimeout(refreshStatus, 1200);
+  } catch (e) {
+    setOut(outLaunch, "Could not launch " + label + ": " + (e && e.message ? e.message : String(e)), "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ============================ Boot — graceful degradation ============================
 const banner = document.getElementById("liveBanner");
 const bannerText = document.getElementById("liveBannerText");
-const demoPanels = ["demoModelsPanel", "demoChatPanel", "demoComparePanel", "demoGuardPanel"]
+const demoPanels = ["demoModelsPanel", "demoChatPanel", "demoComparePanel", "demoGuardPanel",
+                    "demoEmbedPanel", "demoStatusPanel", "demoLaunchPanel"]
   .map((id) => document.getElementById(id));
 
 function setDemosEnabled(on) {
@@ -1687,9 +1816,11 @@ async function boot() {
       MODEL_IDS = data.models.slice();
       refreshModelSelects();
     }
+    EMBED_MODEL = (data && data.embed_model) || "";
     banner.classList.remove("offline"); banner.classList.add("online");
     setBanner([{ b: "Live demos enabled." }, " Connected to the local tutorial proxy — the demos below are interactive."]);
     setDemosEnabled(true);
+    refreshStatus();   // populate the status panel + launch grid
   } catch (e) {
     LIVE = false;
     banner.classList.remove("online"); banner.classList.add("offline");
