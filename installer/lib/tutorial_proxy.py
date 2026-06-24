@@ -44,6 +44,12 @@ HTML     = os.environ.get("TUT_HTML", "")
 ROOT     = os.path.realpath(os.environ.get("TUT_ROOT", "")) if os.environ.get("TUT_ROOT") else ""
 MODELS   = [m for m in os.environ.get("TUT_MODELS", "local-gemma4").split(",") if m]
 EMBED    = os.environ.get("TUT_EMBED", "")   # embedding model id for the /api/embed demo (echoed by /api/health)
+# Two READ-ONLY 'Try it live' upstreams beyond LiteLLM (empty -> that demo is disabled and
+# its route degrades to {available:false}). Set by tutorial-serve.sh from .env. The proxy only
+# ever GET/POSTs FIXED paths on these (see the literals below); the browser never supplies a
+# workspace / collection / host, so neither is an SSRF or namespace-traversal sink.
+HONCHO   = os.environ.get("TUT_HONCHO", "").rstrip("/")   # honcho-api base for the memory demo
+QDRANT   = os.environ.get("TUT_QDRANT", "").rstrip("/")   # qdrant base for the docs-search demo
 
 # The page's canonical served path = its location under the repo root, so the
 # relative links inside it (EXPLORE.html, ../README.md, …) resolve correctly.
@@ -73,6 +79,19 @@ ROUTES = {
     ("POST", "/api/embed"):  "/v1/embeddings",
 }
 MAX_BODY = 64 * 1024  # cap request bodies (the demo only needs small prompts)
+
+# --- read-only memory + docs-search demos (FIXED server-side literals) ----------
+# Honcho memory demo reads ONE pre-existing, non-sensitive demo session. EVERY honcho
+# identifier below is a hardcoded literal; the request body is ignored, so no caller input
+# reaches a honcho URL — the 'default' workspace (real fleet agent-memory) is never named,
+# enumerated, or reachable through this route.
+HONCHO_WS, HONCHO_SID, HONCHO_PEER = "tutorial", "session-1", "mayssam"
+# Docs/RAG search reads a FIXED qdrant collection. The browser's query is ONLY ever an
+# embedding input + the resulting search vector — never a collection name, URL segment, or
+# qdrant filter (no injection surface). Upstream errors are normalized to a clean hint (a raw
+# qdrant body is never surfaced, which would leak internal schema/shard topology).
+DOCS_COLL, DOCS_TOP_K = "ai-stack-docs", 5
+DOCS_INGEST_CMD = "vz-ai-stack.sh install docs_ingestor"
 
 # --- /api/launch (opt-in, hardened) -------------------------------------------
 # The ONLY route that runs a subprocess: a browser button that idempotently starts
@@ -120,6 +139,35 @@ def _probe(host, port, timeout=2.0):
         return False
 
 
+def _backend_json(method, url, payload=None, timeout=10):
+    """GET/POST an INTERNAL backend (honcho/qdrant) at a FIXED url; return
+    (status_code, parsed_json | None). Never reaches LiteLLM (that's _proxy / _litellm_json,
+    which carry the key). On transport failure the urllib error propagates for the caller to
+    map to a clean degrade message — a raw upstream body is NEVER surfaced to the browser."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Content-Type": "application/json", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+            return r.status, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        # Discard the upstream error body AT THE SOURCE — the "raw upstream body is never surfaced"
+        # guarantee is enforced here, not left to every caller to remember to drop it.
+        return e.code, None
+
+
+def _litellm_json(upstream_path, payload, timeout=60):
+    """POST to LiteLLM WITH the server-side key; return (code, parsed_json | None). Used by the
+    docs-search demo to embed the query IN-PROCESS — the key and the raw vector stay server-side;
+    only ranked snippets reach the browser."""
+    req = urllib.request.Request(LITELLM + upstream_path, data=json.dumps(payload).encode(), method="POST",
+        headers={"Authorization": "Bearer %s" % KEY, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read()
+        return r.status, (json.loads(raw) if raw else None)
+
+
 class H(BaseHTTPRequestHandler):
     server_version = "tutorial-proxy/1.0"
 
@@ -139,7 +187,8 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.unquote(self.path.split("?", 1)[0])
         if path == "/api/health":
-            return self._json(200, {"ok": True, "models": MODELS, "embed_model": EMBED})
+            return self._json(200, {"ok": True, "models": MODELS, "embed_model": EMBED,
+                                    "honcho": bool(HONCHO), "docs_search": bool(QDRANT and EMBED)})
         if path == "/api/status":
             return self._status()
         if ("GET", path) in ROUTES:
@@ -158,12 +207,16 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
-        # Host-pin every POST (chat/embed/launch) to loopback — closes DNS-rebinding for
-        # the budget-consuming + mutating routes (GET /api/status is host-pinned too).
+        # Host-pin every POST (chat/embed/launch/honcho/docs) to loopback — closes DNS-rebinding
+        # for the budget-consuming + backend-reaching routes (GET /api/status is host-pinned too).
         if not self._host_ok():
             return self._json(403, {"error": "forbidden host"})
         if path == "/api/launch":
             return self._launch()
+        if path == "/api/honcho/demo":
+            return self._honcho_demo()
+        if path == "/api/docs/search":
+            return self._docs_search()
         if ("POST", path) not in ROUTES:
             return self._json(404, {"error": f"route not allowed: POST {path}"})
         try:
@@ -298,6 +351,111 @@ class H(BaseHTTPRequestHandler):
         log = ((proc.stderr or b"") or (proc.stdout or b""))[-1000:].decode("utf-8", "replace")
         return self._json(502, {"ok": False, "svc": svc,
                                 "error": "start ran but the service is not responding", "log": log})
+
+    def _honcho_demo(self):
+        """READ-ONLY view of ONE fixed, non-sensitive honcho demo session (Act III — memory).
+        Shows the raw messages ('what was said') + the derived peer representation ('what Honcho
+        knows', which the deriver computes asynchronously and may legitimately be empty). Every
+        honcho identifier is a server-side literal and the request body is IGNORED, so no caller
+        input can reach a honcho URL or the 'default' fleet-memory workspace. Response carries
+        only peer+content+representation text — never raw item blobs or internal addresses."""
+        # Drain any request body (the page sends "{}") so a keep-alive connection can't be mis-parsed.
+        # The body is intentionally IGNORED — no caller input is ever used (fixed-literal namespace).
+        try:
+            _n = int(self.headers.get("Content-Length", 0) or 0)
+            if 0 < _n <= MAX_BODY:
+                self.rfile.read(_n)
+        except (ValueError, TypeError):
+            pass
+        if not HONCHO:
+            return self._json(200, {"available": False,
+                                    "hint": "honcho isn't wired into this tutorial-serve session"})
+        base = "%s/v3/workspaces/%s" % (HONCHO, HONCHO_WS)
+        try:
+            mcode, mbody = _backend_json("POST", "%s/sessions/%s/messages/list" % (base, HONCHO_SID), {})
+        except Exception:
+            return self._json(503, {"available": False, "hint": "honcho is unreachable right now"})
+        if mcode != 200 or not isinstance(mbody, dict):
+            return self._json(200, {"available": False,
+                                    "hint": "the demo memory session isn't present on this box"})
+        msgs = [{"peer": str(m.get("peer_id", "?")), "content": str(m.get("content", ""))[:400]}
+                for m in (mbody.get("items") or []) if isinstance(m, dict)][:8]
+        derived = ""
+        try:
+            rcode, rbody = _backend_json("POST", "%s/peers/%s/representation" % (base, HONCHO_PEER), {})
+            if rcode == 200 and isinstance(rbody, dict):
+                derived = (rbody.get("representation") or "").strip()[:1200]
+        except Exception:
+            derived = ""
+        return self._json(200, {"available": True, "workspace": HONCHO_WS, "peer": HONCHO_PEER,
+                                "messages": msgs, "derived": derived})
+
+    def _docs_search(self):
+        """READ-ONLY RAG search: embed the query via LiteLLM (server-side key) then vector-search
+        a FIXED qdrant collection. The query is ONLY ever an embedding input + the resulting search
+        vector — never a collection name, URL segment, or qdrant filter. If the collection isn't
+        built yet we degrade to the exact populate command (a lesson, not a raw 404)."""
+        if not QDRANT:
+            return self._json(200, {"available": False,
+                                    "hint": "docs search isn't wired into this tutorial-serve session"})
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (ValueError, TypeError):
+            return self._json(400, {"error": "invalid Content-Length"})
+        if n < 0 or n > MAX_BODY:
+            return self._json(413, {"error": "request too large"})
+        try:
+            body = json.loads(self.rfile.read(n) if n else b"{}")
+        except (ValueError, TypeError):
+            return self._json(400, {"error": "invalid JSON body"})
+        q = body.get("q") if isinstance(body, dict) else None
+        if not isinstance(q, str) or not q.strip():
+            return self._json(400, {"error": "missing query 'q'"})
+        q = q.strip()[:2000]
+        if not EMBED:   # no embedder wired -> search is impossible; short-circuit before any network call
+            return self._json(200, {"available": False, "hint": "no local embedding model is wired for search"})
+        # 1) collection-exists check FIRST (cheap metadata GET) -> degrade-as-lesson if absent,
+        #    BEFORE any search call, so a raw qdrant 404 never reaches the browser.
+        try:
+            ccode, _ = _backend_json("GET", "%s/collections/%s" % (QDRANT, DOCS_COLL), None, timeout=8)
+        except Exception:
+            return self._json(503, {"available": False, "hint": "the vector store is unreachable right now"})
+        if ccode != 200:
+            return self._json(200, {"available": False, "indexed": False,
+                                    "hint": "the docs index isn't built yet — run  %s  then search" % DOCS_INGEST_CMD})
+        # 2) embed q via LiteLLM (server-side key). q is ONLY ever this embed input.
+        try:
+            ecode, ebody = _litellm_json("/v1/embeddings", {"model": EMBED, "input": q})
+            vec = ebody["data"][0]["embedding"] if (ecode == 200 and isinstance(ebody, dict)) else None
+        except Exception:
+            vec = None
+        if not isinstance(vec, list) or not vec:
+            return self._json(502, {"available": False, "hint": "the embedding step failed"})
+        # 3) qdrant vector search — body built via json.dumps (never string-concat); q never here.
+        try:
+            scode, sbody = _backend_json("POST", "%s/collections/%s/points/search" % (QDRANT, DOCS_COLL),
+                                         {"vector": vec, "limit": DOCS_TOP_K, "with_payload": True}, timeout=15)
+        except Exception:
+            return self._json(502, {"available": False, "hint": "the vector search failed"})
+        if scode != 200 or not isinstance(sbody, dict):
+            return self._json(200, {"available": False, "indexed": True,
+                                    "hint": "the vector search returned nothing"})
+        results = []
+        for h in (sbody.get("result") or [])[:DOCS_TOP_K]:
+            if not isinstance(h, dict):
+                continue
+            payload = h.get("payload") or {}
+            text = payload.get("text") or payload.get("_node_content") or ""
+            # llama_index stores the chunk JSON under _node_content; pull its .text if so.
+            if isinstance(text, str) and text.startswith("{") and '"text"' in text:
+                try:
+                    text = json.loads(text).get("text", text)
+                except ValueError:
+                    pass
+            src = payload.get("file_name") or payload.get("source") or payload.get("doc_id") or ""
+            results.append({"score": round(float(h.get("score", 0) or 0), 3),
+                            "snippet": str(text or "")[:280], "source": str(src or "")[:120]})
+        return self._json(200, {"available": True, "indexed": True, "query": q[:120], "results": results})
 
     def _proxy(self, method, upstream_path, body):
         req = urllib.request.Request(

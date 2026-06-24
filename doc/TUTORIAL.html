@@ -416,7 +416,7 @@
   <h2>Interactive demos <span class="small">each calls the same-origin proxy</span></h2>
   <p class="lede">These mirror the early lessons of the journey — list the routed models, chat one,
   compare two, watch a guardrail block a risky prompt, turn text into an embedding vector, check which
-  services are up, and (opt-in) launch a watchable web UI.</p>
+  services are up, (opt-in) launch a watchable web UI, read an agent's memory, and search the docs.</p>
 
   <!-- DEMO 1 — List models -->
   <div class="demo-panel" id="demoModelsPanel">
@@ -524,6 +524,30 @@
     </div>
     <div class="btn-row" id="launchGrid"></div>
     <div class="out muted" id="outLaunch">Enable launch, then pick a service to start + open it.</div>
+  </div>
+
+  <!-- DEMO 8 — Agent memory (Honcho) -->
+  <div class="demo-panel" id="demoHonchoPanel">
+    <h3>8 · Agent memory <span class="tier inter">intermediate</span></h3>
+    <p class="sub">Honcho separates what was <em>said</em> (messages on a session) from what is
+    <em>known</em> (a peer's derived representation, computed in the background). <code>POST /api/honcho/demo</code>
+    reads one fixed, non-sensitive local demo session — read-only; the browser sends no input, and the
+    private fleet memory is never reachable.</p>
+    <div class="btn-row"><button id="btnHoncho">Load demo memory</button></div>
+    <div class="out muted" id="outHoncho">Click to read the demo session's messages + derived memory.</div>
+  </div>
+
+  <!-- DEMO 9 — Docs search (RAG) -->
+  <div class="demo-panel" id="demoDocsPanel">
+    <h3>9 · Docs search (RAG) <span class="tier inter">intermediate</span></h3>
+    <p class="sub">Ask a question; <code>POST /api/docs/search</code> embeds it locally and vector-searches the
+    <code>ai-stack-docs</code> index, returning the closest doc snippets with a score + source. If the index
+    isn't built yet, it shows you the one command to build it — the same embed-then-retrieve flow as Act III.</p>
+    <div class="form-row">
+      <input id="docsQuery" type="text" placeholder="e.g. how does the ephemeral tutorial key work?" />
+    </div>
+    <div class="btn-row"><button id="btnDocs">Search docs</button></div>
+    <div class="out muted" id="outDocs">Type a question and search the indexed docs.</div>
   </div>
 </section>
 
@@ -744,7 +768,7 @@ me = honcho.peer("mayssam")
 print(me.chat("What kind of hardware does the user have and what models do they prefer?"))
 PY</code></pre>
 <p><strong>Expected.</strong> The second script — which never sees session-1's messages — answers with something like <em>"The user has a 24GB M4 Mac and prefers to run local models exclusively."</em> The knowledge survived the session boundary because Honcho derived it onto the <strong>peer</strong>, not the session.</p>
-<p><strong>Try it live.</strong> A first-party <code>/api/honcho</code> proxy route is planned so you can curl memory without the SDK <em>(planned proxy route; copy-run for now)</em>. Until then, the copy-run scripts above are the supported path. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (<code>http://phoenix:6006</code>); filter for the <code>claude-opus-sub-xhigh</code> model.</p>
+<p><strong>Try it live.</strong> The tutorial page ships a first-party read-only route for this: the <strong>Agent memory</strong> demo (demo 8, under <em>Interactive demos</em>) calls <code>POST /api/honcho/demo</code>, which reads this same <code>tutorial</code> session server-side and shows <em>what was said</em> (the messages) beside <em>what Honcho knows</em> (the derived representation — empty until the async deriver runs, exactly as above). It only ever reads one fixed, non-sensitive demo session with server-hardcoded identifiers; the browser sends nothing, so your private fleet memory is never reachable. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (<code>http://phoenix:6006</code>); filter for the <code>claude-opus-sub-xhigh</code> model.</p>
 <p><strong>Lesson.</strong> Honcho separates <em>what was said</em> (messages on a session) from <em>what is known</em> (the peer representation). Writing is cheap and synchronous; <strong>derivation is async</strong> — that 20s sleep is the deriver routing your messages through LiteLLM → the Claude subscription (<code>claude-opus-sub-xhigh</code> via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down) to update the representation. Peers are cross-agent and per-user: the same <code>mayssam</code> peer is visible to every agent in the <code>tutorial</code> workspace.</p>
 <p><strong>Go deeper.</strong> Honcho's LLM roles default to <code>claude-opus-sub-xhigh</code>; override the model via <code>HONCHO_MODEL</code> in <code>~/ai-stack/.env</code> (e.g. a local slug for offline work), then recreate Honcho (<code>docker compose up -d --force-recreate api deriver</code> from <code>honcho/</code> — a plain restart won't reload env). Read the peer/session model in <code>doc/STACK-GUIDE.md</code> (Honcho section) and the upstream SDK in <code>honcho/sdks/python/</code>.</p>
 <h3 id="l9">L9 · RAG: make it know YOUR documents · 🟡 · ~15 min <span class="tier inter">intermediate</span></h3>
@@ -792,7 +816,7 @@ async def main():
 asyncio.run(main())
 PY</code></pre>
 <p><strong>Expected.</strong> <code>ingest.py</code> prints <code>ingested: my-runbook.md</code> then <code>done: 1 docs ingested.</code>, and the file moves to <code>ingestor/processed/</code>. The search returns the runbook chunk — text mentioning <em>Priya</em> and the rollback command — each hit carrying a <code>score</code> and a <code>meta.source</code> pointing back to the original file. That <code>source</code> is your citation.</p>
-<p><strong>Try it live.</strong> Open WebUI (<code>http://openwebui:8080</code>) has built-in file-RAG: click the <code>+</code> in the chat box, upload <code>my-runbook.md</code>, then ask <em>"Who is on call for Aurora and how do I roll back?"</em>. The answer comes back grounded, with the uploaded file shown as the source. (Open WebUI's RAG embeds via the same local Ollama embedder — no cloud calls.)</p>
+<p><strong>Try it live.</strong> The tutorial page ships a first-party <strong>Docs search</strong> demo (demo 9, under <em>Interactive demos</em>): type a question and <code>POST /api/docs/search</code> embeds it locally and vector-searches the <code>ai-stack-docs</code> collection, returning each snippet with a score + source. Before you've run the ingester it shows you the one command to build the index — that empty-then-built arc <em>is</em> the lesson. Open WebUI (<code>http://openwebui:8080</code>) also has built-in file-RAG: click the <code>+</code> in the chat box, upload <code>my-runbook.md</code>, then ask <em>"Who is on call for Aurora and how do I roll back?"</em> — the answer comes back grounded, with the uploaded file shown as the source. (Both embed via the same local Ollama embedder — no cloud calls.)</p>
 <p><strong>Lesson.</strong> RAG is <strong>embed-then-retrieve</strong>: the embedder turns text into vectors, Qdrant finds the nearest vectors to your question, and those chunks are fed to the model as context. The grounding comes from the retrieved <code>meta.source</code>, which is why every good answer can cite where it came from. The ingester is one-shot by design — re-run it whenever you add files; processed files won't be re-ingested.</p>
 <p><strong>Go deeper.</strong> Dimensions must match the embedder: <code>embed-local</code> (nomic-embed-text) is <strong>768-dim</strong>, so the <code>ai-stack-docs</code> collection is created at 768. Switching embedders means re-creating the collection (the ingester guards against silent data loss — see <code>ingestor/ingest.py</code>). For the agent path, the Hermes researcher profile reaches <code>search_documents</code> over MCP. Architecture in <code>doc/STACK-GUIDE.md</code> (Qdrant + Docs MCP sections).</p>
 <h3 id="l10">L10 · Knowledge as a graph (FalkorDB) · 🟡 · ~10 min <span class="tier inter">intermediate</span></h3>
@@ -1522,6 +1546,8 @@ const API = {
   embed:  "/api/embed",
   status: "/api/status",
   launch: "/api/launch",
+  honchoDemo: "/api/honcho/demo",
+  docsSearch: "/api/docs/search",
 };
 const DEFAULT_MODEL = "local-gemma4";
 let EMBED_MODEL = "";      // set from /api/health on boot (the embedding model for the Embeddings demo)
@@ -1813,11 +1839,60 @@ async function launchService(svc, btn) {
   }
 }
 
+// ============================ DEMO 8 — agent memory (Honcho) ============================
+const outHoncho = document.getElementById("outHoncho");
+document.getElementById("btnHoncho").addEventListener("click", async () => {
+  setOut(outHoncho, "Reading demo memory…", "muted");
+  try {
+    const r = await fetch(API.honchoDemo, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
+    if (!data.available) { setOut(outHoncho, (data.hint || "the memory demo isn't available right now") + ".", "muted"); return; }
+    const said = (data.messages || []).map((m) => "  " + m.peer + ": " + m.content).join("\n") || "  (no messages)";
+    const known = data.derived
+      ? data.derived
+      : "(empty for now — Honcho's deriver computes a peer's facts asynchronously in the background. "
+        + "That's the split: the messages above are immediate; derived memory is not. Re-run later to watch it fill.)";
+    setOut(outHoncho,
+      "workspace: " + data.workspace + "    peer: " + data.peer + "\n\n"
+      + "WHAT WAS SAID  (messages)\n" + said + "\n\n"
+      + "WHAT HONCHO KNOWS  (derived representation)\n  " + known, "success");
+  } catch (e) {
+    setOut(outHoncho, proxyError(e), "error");
+  }
+});
+
+// ============================ DEMO 9 — docs search (RAG) ============================
+const outDocs = document.getElementById("outDocs");
+async function searchDocs() {
+  const q = document.getElementById("docsQuery").value.trim();
+  if (!q) { setOut(outDocs, "Type a question first.", "muted"); return; }
+  setOut(outDocs, "Embedding + searching…", "muted");
+  try {
+    const r = await fetch(API.docsSearch, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q: q }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
+    if (!data.available) { setOut(outDocs, data.hint || "docs search isn't available right now", "muted"); return; }
+    const hits = data.results || [];
+    if (!hits.length) { setOut(outDocs, "No matching snippets for: " + (data.query || q), "muted"); return; }
+    const lines = hits.map((h, i) => (i + 1) + ". [" + h.score + "]  " + (h.source || "?") + "\n   " + h.snippet);
+    setOut(outDocs, "results for: " + (data.query || q) + "\n\n" + lines.join("\n\n"), "success");
+  } catch (e) {
+    setOut(outDocs, proxyError(e), "error");
+  }
+}
+document.getElementById("btnDocs").addEventListener("click", searchDocs);
+document.getElementById("docsQuery").addEventListener("keydown", (e) => { if (e.key === "Enter") searchDocs(); });
+
 // ============================ Boot — graceful degradation ============================
 const banner = document.getElementById("liveBanner");
 const bannerText = document.getElementById("liveBannerText");
 const demoPanels = ["demoModelsPanel", "demoChatPanel", "demoComparePanel", "demoGuardPanel",
-                    "demoEmbedPanel", "demoStatusPanel", "demoLaunchPanel"]
+                    "demoEmbedPanel", "demoStatusPanel", "demoLaunchPanel",
+                    "demoHonchoPanel", "demoDocsPanel"]
   .map((id) => document.getElementById(id));
 
 function setDemosEnabled(on) {

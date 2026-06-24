@@ -20,6 +20,13 @@ LAUNCH_ENABLED=0   # opt-in: --launch-enabled wires TUT_LAUNCH=1 so the page's
 HTML="$AI_STACK/doc/TUTORIAL.html"
 STATE="$AI_STACK/installer/state/tutorial-token"   # holds the live ephemeral key (0600)
 LITELLM="$(get_env LITELLM_BASE_URL 'http://litellm:4000')"
+# Read-only backends for the Act III memory + docs-search demos. Bare hostnames resolve via
+# /etc/hosts (honcho->127.0.10.6, qdrant->127.0.10.5); if a box lacks the ingress aliases the
+# bare name simply won't resolve and the route degrades to {available:false}. Reads only.
+# Keys are repo-canonical and intentionally asymmetric: HONCHO_BASE_URL vs QDRANT_URL (the latter
+# is what 06_documents.sh / the ingester read) — do NOT "fix" QDRANT_URL into QDRANT_BASE_URL.
+HONCHO_URL="$(get_env HONCHO_BASE_URL 'http://honcho:8000')"
+QDRANT_URL="$(get_env QDRANT_URL 'http://qdrant:6333')"
 CONFIG="$AI_STACK/litellm/config.yaml"
 # Demo allowlist = EVERY chat model wired into LiteLLM (local + LM Studio +
 # Claude-subscription + cloud), minus embedding models. Listing or calling these
@@ -167,5 +174,5 @@ fi
 # Pass the key by FILE PATH (TUT_KEY_FILE -> the 0600 $STATE file), not as an env
 # var, so the secret never shows up in `ps`/process environment to other local users.
 # TUT_LAUNCH gates POST /api/launch server-side (the proxy 404s the route when != "1").
-TUT_PORT="$PORT" TUT_LITELLM="$LITELLM" TUT_KEY_FILE="$STATE" TUT_HTML="$HTML" TUT_ROOT="$AI_STACK" TUT_MODELS="$DEMO_MODELS_DISPLAY" TUT_LAUNCH="$LAUNCH_ENABLED" TUT_EMBED="$EMBED_MODEL" \
+TUT_PORT="$PORT" TUT_LITELLM="$LITELLM" TUT_KEY_FILE="$STATE" TUT_HTML="$HTML" TUT_ROOT="$AI_STACK" TUT_MODELS="$DEMO_MODELS_DISPLAY" TUT_LAUNCH="$LAUNCH_ENABLED" TUT_EMBED="$EMBED_MODEL" TUT_HONCHO="$HONCHO_URL" TUT_QDRANT="$QDRANT_URL" \
   python3 "$AI_STACK/installer/lib/tutorial_proxy.py"
