@@ -486,14 +486,14 @@ _sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
 ok "scoped key reaches $AT_MODEL through LiteLLM (HTTP 200)"
 
 log "Smoke: the backend container carries LLM_API_URL (the town is actually wired)…"
-_be_env="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" exec -T backend printenv LLM_API_URL 2>/dev/null) | tr -d '\r' )"
+_be_env="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" exec -T backend printenv LLM_API_URL 2>/dev/null) | tr -d '\r' || true )"  # printenv EXITS 1 when unset (Convex vars live in its DB, not container OS env) — || true so set -e/pipefail doesn't abort before the convex-env-get fallback below
 # Convex env vars set via `convex env set` are stored in the DB and surfaced to functions,
 # NOT necessarily as container env — so accept EITHER the container env OR a successful
 # `convex env get` as proof the wiring landed.
 if [[ "$_be_env" == "$AT_CONVEX_LLM_URL" ]]; then
   ok "backend container env LLM_API_URL=$AT_CONVEX_LLM_URL"
 else
-  _cvx_get="$( (cd "$AT_DIR" && env CONVEX_SELF_HOSTED_URL="$AT_CONVEX_URL" CONVEX_SELF_HOSTED_ADMIN_KEY="$AT_ADMIN_KEY" npx --yes convex env get LLM_API_URL 2>/dev/null) | tr -d '\r' )"
+  _cvx_get="$( (cd "$AT_DIR" && env CONVEX_SELF_HOSTED_URL="$AT_CONVEX_URL" CONVEX_SELF_HOSTED_ADMIN_KEY="$AT_ADMIN_KEY" npx --yes convex env get LLM_API_URL 2>/dev/null) | tr -d '\r' || true )"  # || true: a CLI error yields the clean err below, not a cryptic set -e trap
   [[ "$_cvx_get" == "$AT_CONVEX_LLM_URL" ]] \
     && ok "Convex env LLM_API_URL=$AT_CONVEX_LLM_URL (via convex env get)" \
     || { err "neither container env nor 'convex env get' shows LLM_API_URL=$AT_CONVEX_LLM_URL — the town is NOT wired to LiteLLM. Re-run step 8. NOT stamping."; exit 1; }
