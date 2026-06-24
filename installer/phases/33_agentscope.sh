@@ -48,6 +48,19 @@ AS_MODEL_DEFAULT="local-gemma4"
 AS_LLM_HOST="http://litellm:4000"
 AS_LLM_FALLBACK="http://127.0.0.1:4000"
 
+# --- OPT-IN Studio GUI (host launchd daemon, NOT docker; gated on AGENTSCOPE_STUDIO=1) ---
+# Studio is the npm `@agentscope/studio` app (binary `as_studio`) — a web GUI that
+# RECEIVES the OpenTelemetry spans the sims emit and visualizes a swarm run. It is
+# NOT part of the pip agentscope package. Pinned for reproducibility.
+AS_STUDIO_ENABLED=0
+[[ "$(get_env AGENTSCOPE_STUDIO "${AGENTSCOPE_STUDIO:-}")" == "1" ]] && AS_STUDIO_ENABLED=1
+AS_STUDIO_NPM_PKG="@agentscope/studio@1.0.9"
+AS_STUDIO_PORT=5275          # the UI port the daemon pins (PORT=); matches aliases.tsv
+AS_STUDIO_OTLP_GRPC=4317     # the OTLP gRPC receiver the sims export to
+AS_STUDIO_LAUNCHER="$AI_STACK/bin/start-agentscope-studio.sh"
+# The gRPC endpoint the sim's OTLP exporter targets when Studio is on (see the wrapper).
+AS_OTLP_ENDPOINT="http://127.0.0.1:${AS_STUDIO_OTLP_GRPC}"
+
 precheck() {
   [[ -x "$AS_PY" ]] || return 1
   [[ -x "$AS_WRAPPER" ]] || return 1
@@ -57,6 +70,14 @@ precheck() {
   curl -sf --max-time 5 -H "Authorization: Bearer $key" "$AS_LLM_HOST/v1/models" >/dev/null 2>&1 \
     || curl -sf --max-time 5 -H "Authorization: Bearer $key" "$AS_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
+  # When Studio is enabled, a passing precheck ALSO requires the launchd plist to
+  # exist AND the UI to answer 200 on :5275 — otherwise re-run so the daemon is
+  # (re)installed. Lib-only (flag unset) skips this entirely and is UNCHANGED.
+  if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
+    [[ -f "$HOME/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist" ]] || return 1
+    curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${AS_STUDIO_PORT}/" 2>/dev/null \
+      | grep -q '^200$' || return 1
+  fi
   return 0
 }
 
@@ -141,6 +162,14 @@ ok "AgentScope model = $AS_MODEL (routed via LiteLLM → Phoenix project ai-stac
 # --- 4. bin/agentscope wrapper (injects key from .env at RUNTIME) ---
 # The wrapper points at 127.0.0.1:4000 — the host-shell route that always resolves
 # (the container DNS name litellm:4000 only resolves after Phase 00n writes /etc/hosts).
+# When Studio is enabled, bake an OTEL endpoint export into the wrapper so every sim
+# the wrapper runs emits its trace spans to the Studio OTLP gRPC receiver (:4317).
+# When Studio is OFF this is the EMPTY string → the seeded sim's OTLP setup is itself
+# a no-op when this env is absent (so lib-only behavior is unchanged).
+AS_OTEL_EXPORT_LINE=""
+if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
+  AS_OTEL_EXPORT_LINE="export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=\"$AS_OTLP_ENDPOINT\""
+fi
 cat > "$AS_WRAPPER" <<WRAPEOF
 #!/usr/bin/env bash
 # bin/agentscope — stack wrapper around the agentscope venv (Phase 33). Regenerate: install 33.
@@ -159,6 +188,7 @@ export AGENTSCOPE_LITELLM_KEY="\$_key"
 export OPENAI_API_KEY="\$_key"
 export OPENAI_BASE_URL="http://127.0.0.1:4000/v1"
 export AGENTSCOPE_MODEL="\${AGENTSCOPE_MODEL:-$AS_MODEL}"
+$AS_OTEL_EXPORT_LINE
 cd "\$AI_STACK"
 exec "\$PY" "\$@"
 WRAPEOF
@@ -199,6 +229,52 @@ except Exception as e:  # import/API drift — NOT an auth problem
     print(f"AGENTSCOPE_SMOKE_IMPORT_FAIL: {type(e).__name__}: {e}", file=sys.stderr)
     sys.exit(4)
 
+# --- OPT-IN: stream traces to AgentScope Studio when bin/agentscope set the endpoint.
+# When OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is UNSET (lib-only / no Studio), this is a
+# pure no-op and the sim behaves exactly as the shipped version. All imports are
+# guarded so a missing/changed OTel API can NEVER break the core 2-agent smoke.
+_OTLP_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
+
+
+def _setup_tracing():
+    """Wire an OTLP exporter + global SDK TracerProvider so TracingMiddleware emits
+    spans to Studio. Returns a TracingMiddleware instance to attach to agents, or
+    None when Studio isn't configured / the OTel stack isn't importable."""
+    if not _OTLP_ENDPOINT:
+        return None  # no Studio → lib-only behavior, no tracing overhead
+    try:
+        from opentelemetry import trace as _otel_trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from agentscope.middleware import TracingMiddleware
+        # Pick the exporter by endpoint shape: an HTTP /v1/traces path → HTTP
+        # exporter; anything else (bare host:port or http://host:4317) → gRPC.
+        if _OTLP_ENDPOINT.rstrip("/").endswith("/v1/traces"):
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter,
+            )
+            exporter = OTLPSpanExporter(endpoint=_OTLP_ENDPOINT)
+        else:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
+            # insecure=True: Studio's gRPC receiver is plaintext on loopback.
+            exporter = OTLPSpanExporter(endpoint=_OTLP_ENDPOINT, insecure=True)
+        provider = TracerProvider(
+            resource=Resource.create({"service.name": "agentscope-sim"}),
+        )
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        _otel_trace.set_tracer_provider(provider)
+        print(f"  [studio] tracing -> {_OTLP_ENDPOINT}")
+        return TracingMiddleware()
+    except Exception as e:  # missing OTel / API drift — Studio is optional, NEVER fatal
+        print(f"  [studio] tracing disabled ({type(e).__name__}: {e})")
+        return None
+
+
+_TRACE_MW = _setup_tracing()
+
 BASE  = os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:4000/v1")
 KEY   = os.environ.get("OPENAI_API_KEY", "")
 MODEL = os.environ.get("AGENTSCOPE_MODEL", "local-gemma4")
@@ -221,8 +297,9 @@ def _clean_text_msg(name, text):
 
 
 try:
-    alice = Agent(name="Alice", system_prompt="You are Alice, an optimist. Reply in ONE short sentence.", model=_make_model())
-    bob   = Agent(name="Bob",   system_prompt="You are Bob, a skeptic. Reply in ONE short sentence.",   model=_make_model())
+    _mw = [_TRACE_MW] if _TRACE_MW is not None else []
+    alice = Agent(name="Alice", system_prompt="You are Alice, an optimist. Reply in ONE short sentence.", model=_make_model(), middlewares=_mw)
+    bob   = Agent(name="Bob",   system_prompt="You are Bob, a skeptic. Reply in ONE short sentence.",   model=_make_model(), middlewares=_mw)
 except Exception as e:  # construction rejected = AgentScope API drift, not a key problem
     print(f"AGENTSCOPE_SMOKE_MODEL_FAIL: {type(e).__name__}: {e}", file=sys.stderr)
     sys.exit(5)
@@ -245,6 +322,12 @@ async def _run():
             replies += 1
     except Exception as e:  # a per-call failure (401, network, model)
         print(f"  AGENT_FAIL: {type(e).__name__}: {str(e)[:140]}")
+    if _TRACE_MW is not None:
+        try:
+            from opentelemetry import trace as _otel_trace
+            _otel_trace.get_tracer_provider().force_flush()  # ship batched spans to Studio now
+        except Exception:
+            pass  # best-effort; never let a flush error change the sim's exit code
     return replies
 
 
@@ -261,6 +344,42 @@ cat > "$AS_DIR/.gitignore" <<'GI'
 # AgentScope venv is regenerable (uv); agentscope/sims is DATA (your sim scripts + output) — keep it.
 .venv/
 GI
+
+# --- 6b. OPT-IN: AgentScope Studio GUI (npm @agentscope/studio + launchd daemon) ---
+# Gated on AGENTSCOPE_STUDIO=1. Studio is a standalone Node app (NOT pip agentscope):
+# a web GUI on host :5275 that RECEIVES the OTLP trace spans the sims emit and
+# visualizes the swarm. Fail-SOFT: Studio is optional, so a failed global npm install
+# (it has native modules — better-sqlite3 / grpc) WARNS and continues; the core lib
+# stays installed + stamped. Mirrors the aionui daemon (Phase 28 / bin/start-aionui.sh).
+if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
+  hdr "Phase 33 — AgentScope Studio GUI (opt-in: AGENTSCOPE_STUDIO=1)"
+  command -v node >/dev/null 2>&1 || warn "node not on PATH — Studio needs Node>=20 (host has 22); skipping Studio"
+  command -v npm  >/dev/null 2>&1 || warn "npm not on PATH — Studio needs npm>=10; skipping Studio"
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    # Idempotent: skip the (slow, native-module) global install if as_studio is already
+    # resolvable. `npm prefix -g`/bin is the canonical global bin (brew node → /opt/homebrew/bin).
+    _npm_bin="$(npm prefix -g 2>/dev/null)/bin"
+    if [[ -x "$_npm_bin/as_studio" ]] || command -v as_studio >/dev/null 2>&1; then
+      ok "as_studio already installed (skipping npm install -g $AS_STUDIO_NPM_PKG)"
+    else
+      log "Installing AgentScope Studio (npm install -g $AS_STUDIO_NPM_PKG; native modules — a minute or two)…"
+      if npm install -g "$AS_STUDIO_NPM_PKG" 2>&1 | tail -6; then
+        ok "installed $AS_STUDIO_NPM_PKG"
+      else
+        warn "npm install -g $AS_STUDIO_NPM_PKG FAILED (native better-sqlite3/grpc build?) — Studio is OPTIONAL; the core lib is fine. Retry: npm install -g $AS_STUDIO_NPM_PKG, then: bash $AS_STUDIO_LAUNCHER install"
+      fi
+    fi
+    # Install/refresh the launchd daemon ONLY if the binary actually resolved.
+    if [[ -x "$_npm_bin/as_studio" ]] || command -v as_studio >/dev/null 2>&1; then
+      if PORT="$AS_STUDIO_PORT" OTEL_GRPC_PORT="$AS_STUDIO_OTLP_GRPC" bash "$AS_STUDIO_LAUNCHER" install; then
+        ok "AgentScope Studio daemon up — open http://127.0.0.1:${AS_STUDIO_PORT}"
+        note "Security: Studio binds 0.0.0.0 (its host:'localhost' config is inert) — loopback relies on NOT exposing this box."
+      else
+        warn "start-agentscope-studio.sh install did not report healthy — check installer/state/agentscope-studio.launchd.log"
+      fi
+    fi
+  fi
+fi
 
 # --- 7. Smoke gate: prove the REAL AgentScope path BEFORE stamping, so a broken wiring
 # fails the INSTALL (not just a later `test 33`). A fast key-reachability curl first gives
@@ -289,3 +408,8 @@ note "Run the demo:     bin/agentscope agentscope/sims/smoke_sim.py"
 note "Watch it:         Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Write your own:   agentscope/sims/<your_sim>.py  then  bin/agentscope agentscope/sims/<your_sim>.py"
 note "Reversible:       rm -rf $AS_VENV && rm -f $AI_STACK/installer/state/phase_33.done"
+if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
+  note "Studio GUI:    http://127.0.0.1:${AS_STUDIO_PORT}   (watch the swarm — opt-in via AGENTSCOPE_STUDIO=1)"
+  note "Studio status: bash $AS_STUDIO_LAUNCHER status"
+  note "Studio off:    bash $AS_STUDIO_LAUNCHER uninstall   # removes the launchd daemon (npm pkg stays)"
+fi

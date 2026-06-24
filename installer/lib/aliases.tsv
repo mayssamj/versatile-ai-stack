@@ -38,10 +38,18 @@ paperclip	127.0.10.14	http		3100		3100		08		paperclip
 unsloth		127.0.10.16	http		8898		8898		14		unsloth
 openwork	127.0.0.1	http	8787	8787	29	openwork
 aionui	127.0.0.1	http	25808	25808	28	aionui
+agentscope-studio	127.0.0.1	http	5275	5275	33	agentscope
+chatdev	127.0.10.18	http	5274	5173	35	chatdev
+aitown	127.0.10.19	http	5273	5173	36	aitown
 # NOTE — openwork/aionui (above) get a NAMED alias mapped to 127.0.0.1 (their actual
 #        loopback bind) so the Mac browses http://openwork:8787/ui instead of the raw IP.
 #        They use 127.0.0.1 (NOT a 127.0.10.x alias) because the daemons bind 127.0.0.1;
 #        the lo0-bind step + doctor checks 19/20 skip 127.0.0.1 by design.
+#        agentscope-studio (Phase 33, opt-in via AGENTSCOPE_STUDIO=1) also uses a
+#        127.0.0.1 alias, BUT note its server actually binds 0.0.0.0 (the upstream
+#        host:'localhost' default is inert) — the loopback posture relies on the box
+#        not being exposed, NOT on the bind. Studio also opens an OTLP gRPC trace
+#        RECEIVER on :4317 (not aliased; sims export to http://127.0.0.1:4317).
 # The following host services stay INTENTIONALLY alias-free (reached at localhost:PORT):
 #   • claw3d UI (:4310)     — claw3d REFUSES to bind a public host without
 #                             STUDIO_ACCESS_TOKEN (its own security), so it binds

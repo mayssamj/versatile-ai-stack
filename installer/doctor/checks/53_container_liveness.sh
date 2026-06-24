@@ -34,7 +34,7 @@
 
 # Hardcoded known-good compose projects (fallback floor; union'd with the
 # services.yml-derived set below). Namespaced to avoid collisions with other checks.
-_53_STACK_PROJECTS_FALLBACK="honcho autofyn deer-flow hermes-workspace"
+_53_STACK_PROJECTS_FALLBACK="honcho autofyn deer-flow hermes-workspace aitown"
 
 CHECKS+=(container_liveness)
 CHECK_TITLE[container_liveness]="Every stack container that EXISTS is running & healthy (no crash-loop / dead / unhealthy)"

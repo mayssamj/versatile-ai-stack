@@ -1231,15 +1231,89 @@ services:
       - AGENTSCOPE_LITELLM_KEY
     help:
       "what": "AgentScope (agentscope-ai/agentscope, Apache-2.0) is a developer framework for BUILDING and scaling your own multi-agent applications and simulations — agents that converse, observe each other, and act. Installed as a host uv venv (Python 3.11, agentscope 2.x); run sim scripts via bin/agentscope agentscope/sims/<file>.py."
-      "why": "The 'bring your own swarm' tool — where OASIS hands you a ready-made social world and MetaGPT a fixed software team, AgentScope is the framework you compose arbitrary multi-agent sims with (roles, message-passing, observe/reply loops). Agents' LLM calls route through LiteLLM (scoped key) → traced in Phoenix. The optional Studio web GUI to WATCH a swarm run is a deferred follow-up."
+      "why": "The 'bring your own swarm' tool — where OASIS hands you a ready-made social world and MetaGPT a fixed software team, AgentScope is the framework you compose arbitrary multi-agent sims with (roles, message-passing, observe/reply loops). Agents' LLM calls route through LiteLLM (scoped key) → traced in Phoenix. The optional Studio web GUI to WATCH a swarm run is opt-in (AGENTSCOPE_STUDIO=1; host :5275)."
       "usage":
         - bin/agentscope agentscope/sims/smoke_sim.py   # tiny bundled demo (2 agents converse)
         - "# write your own sim in agentscope/sims/ then: bin/agentscope agentscope/sims/my_sim.py"
         - vz-ai-stack.sh test 33        # smoke: a real 2-agent exchange via LiteLLM
-      "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at agentscope/.venv (Python 3.11) — regenerable; agentscope/sims is DATA (your sim scripts + output). bin/agentscope exports AGENTSCOPE_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://127.0.0.1:4000/v1; sims build an OpenAIChatModel whose OpenAICredential.base_url points there (default local-gemma4). API IS ASYNC (agentscope 2.x rewrite: OpenAIChatModel + OpenAICredential + OpenAIChatFormatter, await agent.reply/observe). local-gemma4 is a reasoning model → use max_tokens>=512 and rebuild a clean text-only Msg between agents (observe() rejects ThinkingBlocks). SCALE REALITY: on the M4/24GB box local inference serializes, so keep swarms to dozens on local-gemma4 or route to a cloud model (metered). Studio web GUI (host :5275) is a deferred follow-up. Rollback: rm -rf agentscope/.venv + installer/state/phase_33.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
+      "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at agentscope/.venv (Python 3.11) — regenerable; agentscope/sims is DATA (your sim scripts + output). bin/agentscope exports AGENTSCOPE_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://127.0.0.1:4000/v1; sims build an OpenAIChatModel whose OpenAICredential.base_url points there (default local-gemma4). API IS ASYNC (agentscope 2.x rewrite: OpenAIChatModel + OpenAICredential + OpenAIChatFormatter, await agent.reply/observe). local-gemma4 is a reasoning model → use max_tokens>=512 and rebuild a clean text-only Msg between agents (observe() rejects ThinkingBlocks). SCALE REALITY: on the M4/24GB box local inference serializes, so keep swarms to dozens on local-gemma4 or route to a cloud model (metered). OPTIONAL Studio web GUI (opt-in: AGENTSCOPE_STUDIO=1) — a host launchd daemon (npm @agentscope/studio, binary as_studio; NOT pip agentscope) on http://127.0.0.1:5275 that VISUALIZES the OTLP trace spans the sims emit (it makes no LLM calls). When enabled, bin/agentscope exports OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4317 and the seeded sim attaches TracingMiddleware + an OTLP exporter (a no-op when that env is unset). SECURITY: as_studio binds 0.0.0.0 (its host:''localhost'' config is inert), so the loopback posture relies on NOT exposing this box. Manage: bash bin/start-agentscope-studio.sh [install|status|stop|uninstall]. Rollback: rm -rf agentscope/.venv + installer/state/phase_33.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
       "_gen":
         "at": "2026-06-23T00:00:00Z"
         "source": phase-33-agentscope
+        "reviewed": true
+  chatdev:
+    enabled: true # Phase 35 (opt-in) — multi-agent software-company WEB app (ChatDev 2.0)
+    type: docker
+    desc: "ChatDev — multi-agent software-company sim (Vue+FastAPI web app; role agents collaborate to build software)"
+    image: ai-stack/chatdev:local
+    phase: "35"
+    alias: chatdev
+    host_ip: 127.0.10.18
+    host_port: 5274
+    container_port: 5173
+    network: ai-stack
+    add_host: ['ollama:host-gateway']
+    health: http://chatdev:5274/
+    open_url: http://chatdev:5274
+    consumes_env:
+      - CHATDEV_LITELLM_KEY
+    help:
+      "what": "ChatDev 2.0 'DevAll' (OpenBMB/ChatDev, Apache-2.0) is a multi-agent 'software company' — a workflow of role agents (CEO/CTO/programmer/reviewer/tester) collaborate to turn a brief into software. Unlike MetaGPT/OASIS/AgentScope (host-venv CLI sims), ChatDev 2.0's default branch is a WEB APP: a Vue 3 + Vite frontend (http://chatdev:5274) talking to a FastAPI/uvicorn backend (:6400). The stack runs it as ONE derived image (Python 3.12 + uv + Node) split into TWO managed containers (chatdev frontend + chatdev-backend) on the ai-stack bridge."
+      "why": "Reach for it when you want a GUI to drive a role-playing software-dev agent swarm — compose a workflow of agents in the browser and watch them collaborate, every agent's LLM call routed through LiteLLM (scoped key) so it's traced in Phoenix. The web-app sibling of the CLI sims: MetaGPT (fixed PM→QA team, CLI), OASIS (emergent social swarm, CLI), AgentScope (bring-your-own-swarm framework, CLI)."
+      "usage":
+        - vz-ai-stack.sh install chatdev
+        - vz-ai-stack.sh start chatdev          # builds image if needed + starts both containers
+        - open http://chatdev:5274                # the web app (backend API: http://chatdev:6400/docs)
+        - vz-ai-stack.sh test 35                  # headless 1-agent workflow → LiteLLM
+        - vz-ai-stack.sh help chatdev
+        - vz-ai-stack.sh stop chatdev
+      "config_notes": "OPT-IN (NOT in `install all`); needs docker + git + host Node>=18. ARCHETYPE = container web app: ONE derived image (ai-stack/chatdev:local, chatdev/Dockerfile — Python 3.12 hard pin per ChatDev 2.0's requires-python>=3.12,<3.13; uv installs clean on arm64) run as TWO containers by bin/start-chatdev.sh — chatdev (Vite dev server, 127.0.10.18:5274→:5173) + chatdev-backend (uvicorn server_main:app, 127.0.10.18:6400). Both join the ai-stack bridge, publish LOOPBACK-only on 127.0.10.18, and are capped (--cpus/--memory). LLM wiring: Phase 35 writes chatdev/repo/.env with BASE_URL=http://litellm:4000/v1 (container Docker DNS, native port) + API_KEY=the scoped CHATDEV_LITELLM_KEY (never master); workflow YAML agent nodes default to ${BASE_URL}/${API_KEY}, model = the node name: (default local-gemma4). UPSTREAM GOTCHAS baked into the seeded smoke workflow: do NOT set `protocol: chat` in a node's params (TypeError); keep max_tokens>=512 (the reasoning model returns empty content at tiny budgets). Frontend deps are installed on the HOST (npm install in chatdev/repo/frontend) because the runtime bind mount masks any baked node_modules. SCALE REALITY: on the M4/24GB box local inference serializes — keep the swarm small on local-gemma4, or set a node's name: to claude-opus-4.8-sub-xhigh (metered). Rollback: bin/start-chatdev.sh uninstall; docker rmi ai-stack/chatdev:local; rm -rf chatdev/; rm installer/state/phase_35.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
+      "_gen":
+        "at": "2026-06-23T00:00:00Z"
+        "source": phase-35-chatdev
+        "reviewed": true
+  # --- Agent-swarm sims (Phase 32-36; OPT-IN — install by name) ---------
+  aitown:
+    enabled: true
+    type: compose
+    desc: "Watchable virtual town — AI characters live, move & chat in a Convex world (browser sim)"
+    path: ~/ai-stack/ai-town
+    # Stable compose project name. AI Town's containers carry NEITHER an
+    # ai-stack-bridge membership NOR (intrinsically) the docker-run managed label —
+    # they're a self-contained Convex stack that dials the HOST (host.docker.internal)
+    # for LiteLLM. So check 53's container-liveness census sees them ONLY via the
+    # compose-project signal — this `project:` is load-bearing (also added to check 53's
+    # _53_STACK_PROJECTS_FALLBACK floor). The override pins `name: aitown`.
+    project: aitown
+    port: 5273
+    bind: 127.0.0.1
+    phase: "36"
+    open_url: http://aitown:5273
+    alias: aitown
+    host_ip: 127.0.10.19
+    host_port: 5273
+    container_port: 5173
+    # The Convex containers stay on their OWN ai-town-network (bridge-exempt; see the
+    # override labels) and reach LiteLLM via host.docker.internal:4000 — they do NOT
+    # join ai-stack, so no add_host: ['ollama:host-gateway'] here.
+    network: none
+    consumes_env: [AITOWN_LITELLM_KEY, AITOWN_ADMIN_KEY]
+    help:
+      "what": A watchable virtual town (a16z-infra/ai-town) — a Convex-backed docker-compose stack (backend + frontend + dashboard) where a cast of AI characters live, move around a map, and hold conversations in real time. You open it in a browser and watch the town tick.
+      "why": Reach for it when you want to SEE a swarm of agents doing things in a persistent shared world (not just calling models independently) — the most demo-able of the agent-sim set. Every character action is an LLM call routed through LiteLLM, so it all shows up in Phoenix.
+      "usage":
+        - open http://aitown:5273                                  # watch the town (frontend)
+        - open http://127.0.10.19:6791                             # Convex dashboard (admin; loopback)
+        - bash ~/ai-stack/bin/start-aitown.sh                      # bring the stack up (first build is heavy)
+        - bash ~/ai-stack/bin/start-aitown.sh status               # compose ps + caps + frontend health
+        - "docker compose -p aitown ps"
+        - "docker compose -p aitown logs -f backend"
+        - bash ~/ai-stack/bin/start-aitown.sh uninstall            # 'down' — PRESERVES the town world
+        - bash ~/ai-stack/bin/start-aitown.sh uninstall --nuke     # 'down -v' + rm data (backup-first; invalidates admin key)
+      "config_notes": 'AI Town is a 3-container Convex COMPOSE stack under the stable project `aitown` (backend ghcr.io/get-convex/convex-backend on :3210/:3211, frontend Vite on :5273→:5173, dashboard on :6791), all published LOOPBACK-ONLY on 127.0.10.19 — the override uses `ports: !override` to REPLACE upstream''s 0.0.0.0 binds (which otherwise leak 3210/3211/11434 off-box and collide 0.0.0.0:11434 with host Ollama). The install does a HOST `npm ci` (the predev schema-push runs the LOCAL node_modules/.bin/convex CLI) AND a HEAVY frontend IMAGE build (Ubuntu 22.04 + Node 18 + a full npm build — several minutes, ~2-4GB RAM); on the RAM-saturated M4/24GB box, free memory first. LLM WIRING is NOT compose env / NOT a .env — it lives in CONVEX env vars set against the running backend via `npx convex env set` (LLM_API_URL=http://host.docker.internal:4000 with NO trailing slash and NO /v1; LLM_API_KEY=<scoped AITOWN_LITELLM_KEY>; LLM_MODEL=local-gemma4; LLM_EMBEDDING_MODEL=embed-local). With LLM_API_URL set, provider=custom routes BOTH chat (/v1/chat/completions) and embeddings (/v1/embeddings) through LiteLLM. MANDATORY install patch: convex/util/llm.ts EMBEDDING_DIMENSION 1024→768 (a compile-time constant baked into the vector index at schema-push) — embed-local (Ollama nomic-embed-text) is 768-dim; without the patch every vector write fails. THROUGHPUT (M4/24GB): the phase pins NUM_MEMORIES_TO_SEARCH=1 (convex/constants.ts) and runs a small cast on local-gemma4 — local inference is the limiter; route to claude-opus-4.8-sub-xhigh (metered) for a livelier town. DATA: the town world is a STATEFUL SQLite DB BIND-MOUNTED to ~/ai-stack/data/aitown/convex, so it survives `docker compose down` and even an accidental `down -v` (the bind mount is on the host, not a named volume). Teardown default PRESERVES the world; `start-aitown.sh uninstall --nuke` does `down -v` + removes the data dir AFTER a timestamped backup, and INVALIDATES the Convex admin key (re-`install 36` regenerates it + re-pushes the schema). The Convex containers are bridge-exempt (ai-stack.bridge-exempt=true) by design — they are a self-contained stack on their own ai-town-network that dials the host for LiteLLM; they never use the ai-stack bridge, so check 16 must not flag them.'
+      "_gen":
+        "at": "2026-06-23T00:00:00Z"
+        "source": phase36-authored
         "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.

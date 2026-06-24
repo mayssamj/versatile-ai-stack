@@ -8,8 +8,9 @@
 # 57->59 gap left by Wave 1: MetaGPT=57, OASIS=59). doctor keys checks by NAME and the
 # count auto-derives from the file set, so adding this file ticks the count by one.
 #
-# The optional Studio web GUI (host :5275) is a deferred follow-up; this check is for the
-# core lib only — if/when Studio lands it adds a conditional :5275/ probe here.
+# The optional Studio web GUI (host :5275) is probed ONLY when enabled (its launchd
+# plist exists, i.e. Phase 33 ran with AGENTSCOPE_STUDIO=1). Lib-only stacks skip the
+# probe and PASS unchanged.
 CHECKS+=(agentscope)
 CHECK_TITLE[agentscope]="AgentScope venv + scoped LiteLLM key (Phase 33)"
 
@@ -39,10 +40,32 @@ agentscope_diagnose() {
     echo "AGENTSCOPE_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'vz-ai-stack.sh install 33'"
     return 1
   fi
+  # --- OPT-IN Studio GUI probe (only when Studio is enabled in this stack) ---
+  # Marker: the launchd plist (written by Phase 33 ONLY when AGENTSCOPE_STUDIO=1),
+  # OR a persisted .env AGENTSCOPE_STUDIO=1 line. Lib-only stacks have neither, so
+  # they SKIP this and PASS on the line below — the shipped behavior is unchanged.
+  local studio_plist="$HOME/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist"
+  local studio_on=0
+  [[ -f "$studio_plist" ]] && studio_on=1
+  [[ "$(get_env AGENTSCOPE_STUDIO '')" == "1" ]] && studio_on=1
+  if [[ "$studio_on" == "1" ]]; then
+    local sc
+    sc="$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:5275/ 2>/dev/null || echo 000)"
+    if [[ "$sc" == "200" ]]; then
+      echo "AgentScope ready (venv + scoped key) + Studio GUI healthy on http://127.0.0.1:5275"
+      return 0
+    fi
+    echo "AgentScope lib OK, but Studio GUI (http://127.0.0.1:5275) returned HTTP $sc — (re)start it: bash bin/start-agentscope-studio.sh install  (or disable: bash bin/start-agentscope-studio.sh uninstall)"
+    return 1
+  fi
+
   echo "AgentScope ready (venv + import + scoped key lists models); prove the swarm: vz-ai-stack.sh test 33"
   return 0
 }
 
 agentscope_fix() {
   echo "vz-ai-stack.sh install 33   # rebuild venv + re-mint scoped key + refresh bin/agentscope"
+  if [[ -f "$HOME/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist" ]]; then
+    echo "bash bin/start-agentscope-studio.sh install   # (re)start the Studio GUI daemon (:5275)"
+  fi
 }
