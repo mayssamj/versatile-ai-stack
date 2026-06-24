@@ -16,6 +16,8 @@ set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
 
-[[ -d "$AI_STACK/chatdev" ]] || { ok "chatdev not installed; nothing to stop."; exit 0; }
+# Installed sentinel: the install-written Dockerfile (mirrors stop-aitown.sh's -f docker-compose.yml;
+# present once the build descriptor exists, i.e. far enough that the containers could be running).
+[[ -f "$AI_STACK/chatdev/Dockerfile" ]] || { ok "chatdev not installed; nothing to stop."; exit 0; }
 
 exec bash "$AI_STACK/bin/start-chatdev.sh" stop
