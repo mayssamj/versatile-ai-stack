@@ -50,7 +50,7 @@ aitown_diagnose() {
   fi
 
   # Frontend serves 200 (explicit ^200$ — NOT the http_ok helper; documented 000-bug).
-  if ! curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$ip:$fe_port/" 2>/dev/null | grep -q '^200$'; then
+  if ! curl -sL -o /dev/null -w '%{http_code}' --max-time 5 "http://$ip:$fe_port/" 2>/dev/null | grep -q '^200$'; then
     echo "AI Town frontend not serving 200 on http://$ip:$fe_port/ — Vite may still be building, or the stack is down ('vz-ai-stack.sh start aitown'; 'docker compose -p $project logs frontend')"
     return 1
   fi

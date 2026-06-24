@@ -28,6 +28,10 @@ AT_PROJECT="aitown"
 AT_IP="${ALIAS_IP[aitown]:-127.0.10.19}"
 AT_FE_PORT="${ALIAS_HOST_PORT[aitown]:-5273}"
 AT_BE_PORT="3210"
+# Host→backend admin URL: the override publishes Convex on the loopback ALIAS $AT_IP, NOT
+# 127.0.0.1, so the host-side `npx convex env get` must dial $AT_IP:$AT_BE_PORT (else
+# "TypeError: fetch failed"). Mirrors the phase's AT_CONVEX_URL.
+AT_CONVEX_URL="http://${AT_IP}:${AT_BE_PORT}"
 AT_CONVEX_LLM_URL="http://host.docker.internal:4000"
 AT_MODEL_DEFAULT="local-gemma4"
 
@@ -44,7 +48,7 @@ _running="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" ps --status runnin
   || { err "compose stack not fully up (only ${_running:-0}/3) — 'vz-ai-stack.sh start aitown'"; exit 1; }
 
 # 2. frontend serves 200 (loopback alias)
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://$AT_IP:$AT_FE_PORT/" 2>/dev/null || true)"
+code="$(curl -sL -o /dev/null -w '%{http_code}' --max-time 8 "http://$AT_IP:$AT_FE_PORT/" 2>/dev/null || true)"
 [[ "$code" == "200" ]] && ok "frontend serves HTTP 200 on http://$AT_IP:$AT_FE_PORT/ (alias http://aitown:$AT_FE_PORT/)" \
   || { err "frontend not serving 200 on :$AT_FE_PORT (got $code) — Vite may still be building; 'docker compose -p $AT_PROJECT logs frontend'"; exit 1; }
 
@@ -82,7 +86,7 @@ else
   _admin="$(get_env AITOWN_ADMIN_KEY '')"
   [[ -n "$_admin" ]] || { err "AITOWN_ADMIN_KEY absent from .env — cannot run the authoritative 'convex env get' wiring check. Re-run 'install 36' (step 7 mints + persists it)."; exit 1; }
   command -v npx >/dev/null 2>&1 || { err "npx not on PATH — cannot run 'convex env get' to PROVE the town is wired. node@22 is a core dep: 'vz-ai-stack.sh deps'."; exit 1; }
-  _cvx_get="$( (cd "$AT_DIR" && env CONVEX_SELF_HOSTED_URL="http://127.0.0.1:${AT_BE_PORT}" CONVEX_SELF_HOSTED_ADMIN_KEY="$_admin" npx --yes convex env get LLM_API_URL 2>/dev/null) | tr -d '\r' )"
+  _cvx_get="$( (cd "$AT_DIR" && env CONVEX_SELF_HOSTED_URL="$AT_CONVEX_URL" CONVEX_SELF_HOSTED_ADMIN_KEY="$_admin" npx --yes convex env get LLM_API_URL 2>/dev/null) | tr -d '\r' )"
   [[ "$_cvx_get" == "$AT_CONVEX_LLM_URL" ]] \
     && ok "Convex env LLM_API_URL=$AT_CONVEX_LLM_URL (via convex env get) — town is wired" \
     || { err "Convex LLM_API_URL is not '$AT_CONVEX_LLM_URL' (container env empty AND convex env get returned '${_cvx_get:-<none>}') — the town is NOT wired to LiteLLM; re-run 'install 36' step 8"; exit 1; }

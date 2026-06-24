@@ -65,7 +65,7 @@ _compose() {
 _present() { [[ -f "$AT_DIR/docker-compose.yml" && -f "$AT_DIR/docker-compose.override.yml" ]]; }
 
 _healthy() {
-  curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$AT_IP:$AT_FE_PORT/" 2>/dev/null | grep -q '^200$'
+  curl -sL -m 5 -o /dev/null -w '%{http_code}' "http://$AT_IP:$AT_FE_PORT/" 2>/dev/null | grep -q '^200$'
 }
 
 # Resolve a container id for a compose service (empty if not up).
