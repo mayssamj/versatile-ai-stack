@@ -105,15 +105,18 @@ with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
     f.write(WF); wf_path = f.name
 
 try:
-    result = run_workflow(wf_path)
-except TypeError as e:
-    # Signature mismatch = API drift (e.g. run_workflow now needs an input/kwargs).
-    try:
-        result = run_workflow(wf_path, task="Write a one-line python hello function.")
-    except Exception as e2:
-        print(f"CHATDEV_SMOKE_API_FAIL: {type(e2).__name__}: {e2}", file=sys.stderr)
-        sys.exit(5)
-except Exception as e:
+    # VERIFIED signature: run_workflow(yaml_file, *, task_prompt, variables=..., ...).
+    # task_prompt is keyword-only + REQUIRED; variables injects ${BASE_URL}/${API_KEY}
+    # (the scoped key) into the node config so the agent routes through LiteLLM.
+    result = run_workflow(
+        wf_path,
+        task_prompt="Write a one-line Python function that returns the string 'hello'.",
+        variables={"BASE_URL": BASE, "API_KEY": KEY},
+    )
+except TypeError as e:  # signature drift (e.g. task_prompt renamed) — distinct from a routing failure
+    print(f"CHATDEV_SMOKE_API_FAIL: {type(e).__name__}: {e}", file=sys.stderr)
+    sys.exit(5)
+except Exception as e:  # the agent ran but failed (401/empty/model error)
     print(f"CHATDEV_SMOKE_RUN_FAIL: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
     sys.exit(3)
 
