@@ -73,11 +73,11 @@ MODEL = os.environ.get("MODEL", "local-gemma4")
 run_workflow = None
 try:
     try:
-        from chatdev.runtime import sdk as _sdk           # common 2.0 layout
-        run_workflow = _sdk.run_workflow
+        from runtime.sdk import run_workflow as _rw       # VERIFIED path (project=DevAll, top-level module `runtime`; backend WORKDIR=/app)
+        run_workflow = _rw
     except Exception:
-        from chatdev import runtime as _rt                # fallback layout
-        run_workflow = _rt.sdk.run_workflow
+        from chatdev.runtime import sdk as _sdk           # fallback (older/alt namespaced layout)
+        run_workflow = _sdk.run_workflow
 except Exception as e:
     print(f"CHATDEV_SMOKE_IMPORT_FAIL: {type(e).__name__}: {e}", file=sys.stderr)
     sys.exit(4)
