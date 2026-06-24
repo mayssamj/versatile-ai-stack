@@ -188,7 +188,15 @@ validate() {
             *) err "models.yml: $rt model '$m' has invalid effort '$re' (want none|low|medium|high|xhigh)"; return 2 ;;
           esac
         fi ;;
-      *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian|openai|codex-bridge)"; return 2 ;;
+      openai-compat)
+        # Generic OpenAI-compatible cloud route — api_base + key_env are REQUIRED
+        # (the endpoint isn't hardcoded like the other runtimes); no effort knob.
+        local ocab ocke
+        ocab="$(my_q ".models.\"$m\".api_base")"
+        ocke="$(my_q ".models.\"$m\".key_env")"
+        [[ -n "$ocab" && "$ocab" != "null" ]] || { err "models.yml: openai-compat model '$m' missing .api_base"; return 2; }
+        [[ -n "$ocke" && "$ocke" != "null" ]] || { err "models.yml: openai-compat model '$m' missing .key_env"; return 2; } ;;
+      *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian|openai|codex-bridge|openai-compat)"; return 2 ;;
     esac
     [[ -n "$sv" && "$sv" != "null" ]] || { err "models.yml: model '$m' missing .served"; return 2; }
   done < <(my_q '.models | keys | .[]')
@@ -212,6 +220,21 @@ validate() {
     fi
   done < <(my_q '.assignments | keys | .[]')
 
+  # config.yaml invariant: NO duplicate model_name. With openai-compat a declared
+  # model is rendered into config.yaml by register_model_list (single-owner); a
+  # left-behind hand-authored entry for the same name would silently double-own it.
+  # yq-authoritative — NOT grep, which counts commented-out '#- model_name:' lines
+  # (the false-positive the last §24 council hit). Skipped if config.yaml is absent.
+  if [[ -n "${CONFIG:-}" && -f "$CONFIG" ]]; then
+    local cdups
+    cdups="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null | LC_ALL=C sort | uniq -d || true)"
+    if [[ -n "$cdups" ]]; then
+      err "config.yaml has duplicate model_name(s): $(echo "$cdups" | tr '\n' ' ')"
+      err "  remove the hand-added copy — models.yml is the source of truth for declared models."
+      return 2
+    fi
+  fi
+
   return 0
 }
 
@@ -222,6 +245,10 @@ agent_profile()  { my_q ".kinds.\"$1\".profile"; }
 agent_keyenv()   { my_q ".kinds.\"$1\".key_env"; }
 model_runtime()  { my_q ".models.\"$1\".runtime"; }
 model_served()   { my_q ".models.\"$1\".served"; }
+# openai-compat route data (endpoint + the .env key that holds its secret). Empty
+# string when absent (yq prints "null") so callers can test [[ -n ]] cleanly.
+model_api_base() { local v; v="$(my_q ".models.\"$1\".api_base")"; [[ "$v" == "null" ]] && v=""; echo "$v"; }
+model_key_env()  { local v; v="$(my_q ".models.\"$1\".key_env")";  [[ "$v" == "null" ]] && v=""; echo "$v"; }
 # model_effort <model> — the effort knob: meridian's `effort` / openai+codex-bridge's
 # reasoning_effort. Normalizes a missing key (yq prints "null") to "" so an
 # optional-effort model (e.g. gpt-5.5-pro) renders NO effort key, and meridian's
@@ -318,6 +345,15 @@ resolve_effective() {
       if codex_bridge_up && config_has_slug "$declared"; then
         echo "$declared"; return 0
       fi ;;
+    openai-compat)
+      # Generic metered cloud route (e.g. Sakana Fugu): render only when its key_env
+      # is present in .env; else gate to the default so a keyless box never hard-fails
+      # (invariant 1/2). When keyed, LiteLLM's per-route fallback covers a transient
+      # upstream outage. We probe the key, not the vendor (no network hop here).
+      local ockey; ockey="$(model_key_env "$declared")"
+      if [[ -n "$ockey" && -n "$(get_env "$ockey" '')" ]] && config_has_slug "$declared"; then
+        echo "$declared"; return 0
+      fi ;;
     *)
       echo "$declared"; return 0 ;;
   esac
@@ -339,7 +375,7 @@ is_gated() {
   local declared; declared="$(agent_assigned "$1")"
   [[ -z "$declared" || "$declared" == "null" ]] && declared="$(primary_model)"
   local rt; rt="$(model_runtime "$declared")"
-  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" || "$rt" == "openai" || "$rt" == "codex-bridge" ) && "$2" != "$declared" ]]
+  [[ ( "$rt" == "lmstudio" || "$rt" == "meridian" || "$rt" == "openai" || "$rt" == "codex-bridge" || "$rt" == "openai-compat" ) && "$2" != "$declared" ]]
 }
 
 _record_pending() {
@@ -367,12 +403,20 @@ _clear_pending() {
 # Returns 0 always; sets _CONFIG_CHANGED=1 (global) if config.yaml changed.
 register_model_list() {
   _CONFIG_CHANGED=0
-  local m rt sv ef res
+  local m rt sv ef ab ke rp tp res
   while IFS= read -r m; do
     [[ -z "$m" ]] && continue
     rt="$(model_runtime "$m")"; sv="$(model_served "$m")"
-    ef=""; case "$rt" in meridian|openai|codex-bridge) ef="$(model_effort "$m")" ;; esac
-    res="$(lms_register_model "$m" "$sv" "$rt" "$ef")" || { warn "register_model_list: $m failed"; continue; }
+    ef=""; ab=""; ke=""; rp=""; tp=""
+    case "$rt" in
+      meridian|openai|codex-bridge) ef="$(model_effort "$m")" ;;
+      openai-compat)
+        ab="$(model_api_base "$m")"; ke="$(model_key_env "$m")"
+        rp="$(my_q ".models.\"$m\".rpm")"; [[ "$rp" == "null" ]] && rp=""
+        tp="$(my_q ".models.\"$m\".tpm")"; [[ "$tp" == "null" ]] && tp=""
+        ;;
+    esac
+    res="$(lms_register_model "$m" "$sv" "$rt" "$ef" "$ab" "$ke" "$rp" "$tp")" || { warn "register_model_list: $m failed"; continue; }
     [[ "$res" == "CHANGED" ]] && _CONFIG_CHANGED=1
   done < <(my_q '.models | keys | .[]')
   return 0

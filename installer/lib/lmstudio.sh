@@ -108,7 +108,7 @@ lms_is_served() {
   lms_served_ids | grep -qxF "$want"
 }
 
-# lms_register_model <model_name> <served> <runtime> [effort]
+# lms_register_model <model_name> <served> <runtime> [effort] [api_base] [key_env] [rpm] [tpm]
 # yq-UPSERT one entry into litellm/config.yaml's model_list, keyed on
 # model_name (replace litellm_params in place if it exists, else append).
 # Atomic temp+mv. Returns 0 + prints CHANGED to stdout if the file's bytes
@@ -121,8 +121,12 @@ lms_is_served() {
 #               (metered GPT; api_key is a LITERAL env-ref sentinel, never shell-expanded)
 #   codex-bridge => model: openai/<served>,  api_base: http://host.docker.internal:<CODEX_BRIDGE_PORT>/v1,
 #               api_key: codex-bridge, rpm/tpm (int) [+ reasoning_effort: <effort>]  (ChatGPT subscription)
+#   openai-compat => model: openai/<served>, api_base: <api_base from models.yml>,
+#               api_key: os.environ/<KEY_ENV> [+ rpm/tpm int]  (generic metered cloud
+#               route, e.g. Sakana Fugu; the ONLY runtime whose endpoint+key are DATA,
+#               not hardcoded — so any OpenAI-compatible vendor is declarable)
 lms_register_model() {
-  local model_name="$1" served="$2" runtime="$3" effort="${4:-}"
+  local model_name="$1" served="$2" runtime="$3" effort="${4:-}" api_base="${5:-}" key_env="${6:-}" rpm="${7:-}" tpm="${8:-}"
   command -v yq >/dev/null 2>&1 || { err "yq not on PATH (Phase 00 installs it)"; return 1; }
   [[ -f "$LMS_CONFIG" ]] || { err "litellm config not found: $LMS_CONFIG"; return 1; }
 
@@ -175,6 +179,28 @@ lms_register_model() {
     if [[ -n "$effort" ]]; then
       MN="$model_name" EF="$effort" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.reasoning_effort) = strenv(EF)' "$tmp" \
         || { rm -f "$tmp"; err "yq set reasoning_effort failed for $model_name"; return 1; }
+    fi
+  elif [[ "$runtime" == "openai-compat" ]]; then
+    # Generic OpenAI-compatible cloud route (e.g. Sakana Fugu). UNLIKE every other
+    # runtime the endpoint is NOT hardcoded — api_base + key_env are DATA from
+    # models.yml. api_key stays the LITERAL "os.environ/<KEY_ENV>" sentinel (LiteLLM
+    # resolves it at load) — NEVER a shell expansion of the real secret. The key MUST
+    # also be in bin/start-litellm.sh's -e allowlist (env is injected at container
+    # CREATE — a NEW key needs `start-litellm.sh --recreate`, not `docker restart`).
+    [[ -n "$api_base" ]] || { rm -f "$tmp"; err "openai-compat $model_name: missing api_base"; return 1; }
+    [[ -n "$key_env"  ]] || { rm -f "$tmp"; err "openai-compat $model_name: missing key_env"; return 1; }
+    MN="$model_name" SV="$served" AB="$api_base" KE="$key_env" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": strenv(AB), "api_key": "os.environ/" + strenv(KE)}' "$tmp" \
+      || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
+    # Optional rpm/tpm runaway-cost backstop for a METERED route — INTEGER literals
+    # (a string churns the SHA -> false CHANGED -> needless restart). Rendered only
+    # when declared in models.yml; tune to your plan (not a per-usage quota).
+    if [[ -n "$rpm" ]]; then
+      MN="$model_name" RP="$rpm" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.rpm) = (strenv(RP) | tonumber)' "$tmp" \
+        || { rm -f "$tmp"; err "yq set rpm failed for $model_name"; return 1; }
+    fi
+    if [[ -n "$tpm" ]]; then
+      MN="$model_name" TP="$tpm" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.tpm) = (strenv(TP) | tonumber)' "$tmp" \
+        || { rm -f "$tmp"; err "yq set tpm failed for $model_name"; return 1; }
     fi
   else
     MN="$model_name" SV="$served" PRT="$LMS_PORT" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(PRT) + "/v1", "api_key": "lm-studio"}' "$tmp" \

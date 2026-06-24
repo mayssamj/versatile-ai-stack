@@ -7,9 +7,10 @@
 # NAMING CONVENTION (2026-06-23): the model ALIAS is VERSION-LESS; the provider
 # version lives only in the `served`/wire id, so you can bump the underlying model
 # without renaming every assignment (e.g. alias claude-opus-sub-max -> served
-# claude-opus-4-8). Custom OpenAI-compatible cloud routes (openrouter-*,
-# google-gemini-*, sakana-fugu*) live ONLY in litellm/config.yaml — they have no
-# `runtime` here and are not rendered/assignable by `model sync`.
+# claude-opus-4-8). A custom OpenAI-compatible cloud route is made declarative +
+# assignable with `runtime: openai-compat` (served + api_base + key_env), as the
+# sakana-fugu* models are below. Routes that stay ONLY in litellm/config.yaml (e.g.
+# openrouter-*, google-gemini-*) have no `runtime` here and aren't `model`-assignable.
 version: 1
 models:
   local-gemma4:
@@ -73,6 +74,17 @@ models:
   openai-gpt-pro: {runtime: openai, served: gpt-5.5-pro, big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
   openai-gpt-sub: {runtime: codex-bridge, served: gpt-5.5, effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
   openai-gpt-pro-sub: {runtime: codex-bridge, served: gpt-5.5-pro, effort: xhigh, big: false, note: "GPT-5.5 Pro on your ChatGPT SUBSCRIPTION (codex-bridge). effort passthrough unverified."}
+  # Sakana Fugu — a multi-agent orchestrator delivered as ONE OpenAI-compatible model
+  # (https://sakana.ai/fugu/). runtime: openai-compat renders openai/<served> @
+  # <api_base> with api_key os.environ/<key_env> — the ONLY runtime whose endpoint+key
+  # are DATA, so any OpenAI-compatible vendor is declarable + assignable this way.
+  # METERED ($20–200/mo sub OR Ultra PAYG), so each carries an `rpm` runaway-backstop
+  # (tune to your plan — NOT a usage quota; tpm omitted so a full ~1M-ctx Ultra request
+  # isn't capped). Availability-gates to `default` (local-gemma4) when SAKANA_API_KEY is
+  # absent; litellm/config.yaml ALSO fails it over to local-qwen3 — never a silent bill.
+  # Key must be in .env (console.sakana.ai) AND start-litellm.sh's -e allowlist (--recreate).
+  sakana-fugu: {runtime: openai-compat, served: fugu, api_base: https://api.sakana.ai/v1, key_env: SAKANA_API_KEY, rpm: 10, big: false, note: "Sakana Fugu — balanced latency. METERED (sub or Ultra PAYG)."}
+  sakana-fugu-ultra: {runtime: openai-compat, served: fugu-ultra, api_base: https://api.sakana.ai/v1, key_env: SAKANA_API_KEY, rpm: 6, big: false, note: "Sakana Fugu Ultra — max accuracy (more agents, slower, ~1M ctx). METERED."}
 # EMBEDDING models (separate plane from the chat `models:` above — different
 # registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
 # vector size the model emits; `kind` is text|code (a code-tuned embedder degrades

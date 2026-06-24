@@ -173,14 +173,14 @@ model_list:
       model: openai/fugu
       api_base: https://api.sakana.ai/v1
       api_key: os.environ/SAKANA_API_KEY
-      # cost = $20 / $100 / $200 per-month plans
+      rpm: 10
 
   - model_name: sakana-fugu-ultra
     litellm_params:
       model: openai/fugu-ultra
       api_base: https://api.sakana.ai/v1
       api_key: os.environ/SAKANA_API_KEY
-      # cost = 5/30$ (10/45$ >272K ctx) pay-as-you-go, ~1M ctx
+      rpm: 6
 
   # ============================================================
   # EMBEDDINGS — explicitly tagged with model_info.mode so LiteLLM
