@@ -34,10 +34,10 @@ code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$P
 # 4. minted key lists models + completes 1 token (the real AionUi → LiteLLM path)
 key="$(get_env AIONUI_LITELLM_KEY '')"
 [[ -n "$key" ]] || { err "AIONUI_LITELLM_KEY missing from .env"; exit 1; }
-curl -sf --max-time 6 -H "Authorization: Bearer $key" http://litellm:4000/v1/models >/dev/null 2>&1 \
+litellm_scoped_curl "$key" -sf --max-time 6 http://litellm:4000/v1/models >/dev/null 2>&1 \
   && ok "AIONUI_LITELLM_KEY lists models via LiteLLM" \
   || { err "AIONUI_LITELLM_KEY rejected by LiteLLM /v1/models"; exit 1; }
-chat_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+chat_code="$(litellm_scoped_curl "$key" -s -o /dev/null -w '%{http_code}' --max-time 30 -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/v1/chat/completions \
   -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || true)"
 [[ "$chat_code" == "200" ]] && ok "AIONUI_LITELLM_KEY completes a chat through LiteLLM (local-gemma4, HTTP 200)" \

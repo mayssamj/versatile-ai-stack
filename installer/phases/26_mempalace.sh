@@ -106,7 +106,7 @@ precheck() {
   [[ -f "$MP_CONFIG_FILE" ]] || return 1
   local key; key="$(get_env MEMPALACE_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $key" \
+  litellm_scoped_curl "$key" -sf --max-time 5 \
     http://litellm:4000/v1/models >/dev/null 2>&1 || return 1
   return 0
 }
@@ -154,7 +154,7 @@ MP_KEY_CURRENT="$(get_env MEMPALACE_LITELLM_KEY '')"
 # a 2xx — else the guard passes on a dead key and MemPalace can call nothing
 # (council SRE C-1/C-2). NOTE: `model sync` does NOT widen this key (MemPalace is
 # not in models.yml `kinds:`), so this phase is the only thing that re-mints it.
-_mp_models="$(curl -s --max-time 5 -H "Authorization: Bearer $MP_KEY_CURRENT" http://litellm:4000/v1/models 2>/dev/null)"
+_mp_models="$(litellm_scoped_curl "$MP_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)"
 if [[ -z "$MP_KEY_CURRENT" ]] || ! printf '%s' "$_mp_models" | grep -q '"id"'; then
   log "Minting LiteLLM virtual key for MemPalace (claude-opus-sub-xhigh + local-gemma4 fallback)..."
   MP_KEY_NEW="$(litellm_master_curl -s --max-time 15 \

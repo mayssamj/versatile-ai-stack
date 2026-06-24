@@ -112,7 +112,7 @@ fi
 PI_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"]'
 PI_KEY_CURRENT="$(get_env PI_LITELLM_KEY '')"
 if [[ -z "$PI_KEY_CURRENT" ]] \
-   || ! curl -sf --max-time 5 -H "Authorization: Bearer $PI_KEY_CURRENT" http://litellm:4000/v1/models >/dev/null 2>&1; then
+   || ! litellm_scoped_curl "$PI_KEY_CURRENT" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
   log "Minting LiteLLM virtual key for Pi (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
   PI_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
@@ -152,7 +152,7 @@ if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
     case "$_rt" in
       lmstudio)
         if _lms_up && grep -qF "model_name: ${_declared}" "$LITELLM_CFG" 2>/dev/null \
-           && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $PI_KEY_PROBE" 2>/dev/null | grep -qF "\"$_declared\""; then
+           && litellm_scoped_curl "$PI_KEY_PROBE" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null | grep -qF "\"$_declared\""; then
           PI_DEFAULT="$_declared"
         fi ;;
       meridian)
@@ -282,6 +282,10 @@ fi
 # --- Smoke test: Pi → LiteLLM via virtual key -----------------------------
 PI_KEY_FOR_PROBE="$(get_env PI_LITELLM_KEY '')"
 log "Smoke-test: curl http://host.docker.internal:4000/v1/models with PI_LITELLM_KEY from inside sandbox..."
+# This curl runs INSIDE the OpenShell sandbox via `sandbox exec` — it must stay a raw
+# curl: the host-side litellm_scoped_curl helper is undefined in the sandbox. The key is
+# in the installer's transient argv here either way; taking it off argv would need a
+# sandbox-stdin path (`--config -` fed across the exec boundary) — tracked follow-up.
 PROBE_OUT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- \
    curl -s --max-time 5 -H "Authorization: Bearer $PI_KEY_FOR_PROBE" -o /dev/null \
    -w '%{http_code}' http://host.docker.internal:4000/v1/models 2>/dev/null || true)"

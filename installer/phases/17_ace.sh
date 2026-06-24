@@ -63,7 +63,7 @@ precheck() {
   local ace_key
   ace_key="$(get_env ACE_LITELLM_KEY '')"
   [[ -n "$ace_key" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $ace_key" \
+  litellm_scoped_curl "$ace_key" -sf --max-time 5 \
     http://litellm:4000/v1/models >/dev/null 2>&1 || return 1
   return 0
 }
@@ -121,7 +121,7 @@ ok "venv ready: $ACE_VENV"
 # --- 3. Mint LiteLLM virtual key (mirrors Phase 15 pattern) ---
 ACE_KEY_CURRENT="$(get_env ACE_LITELLM_KEY '')"
 if [[ -z "$ACE_KEY_CURRENT" ]] \
-   || ! curl -sf --max-time 5 -H "Authorization: Bearer $ACE_KEY_CURRENT" \
+   || ! litellm_scoped_curl "$ACE_KEY_CURRENT" -sf --max-time 5 \
         http://litellm:4000/v1/models >/dev/null 2>&1; then
   # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
   # ACE without re-minting. Canonical IDs are registered in config.yaml by Phase

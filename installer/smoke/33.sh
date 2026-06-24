@@ -25,7 +25,7 @@ SIM="$AI_STACK/agentscope/sims/smoke_sim.py"
 
 KEY="$(get_env AGENTSCOPE_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "AGENTSCOPE_LITELLM_KEY absent from .env"; exit 1; }
-printf '%s' "$(curl -s --max-time 5 -H "Authorization: Bearer $KEY" http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
+printf '%s' "$(litellm_scoped_curl "$KEY" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
   && ok "scoped key lists models via LiteLLM" || { err "AGENTSCOPE_LITELLM_KEY lists no models (stale/rejected)"; exit 1; }
 
 log "Running the seeded AgentScope 2-agent exchange via bin/agentscope (real swarm step; bounded by the sim's 180s alarm)…"

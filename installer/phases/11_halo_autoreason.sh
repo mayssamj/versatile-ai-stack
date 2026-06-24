@@ -66,7 +66,7 @@ if (( HALO_OK )); then
     # Mint a HALO virtual key scoped to local models (mirrors ACE / Pi).
     HALO_KEY_CURRENT="$(get_env HALO_LITELLM_KEY '')"
     if [[ -z "$HALO_KEY_CURRENT" ]] \
-       || ! curl -sf --max-time 5 -H "Authorization: Bearer $HALO_KEY_CURRENT" http://litellm:4000/v1/models >/dev/null 2>&1; then
+       || ! litellm_scoped_curl "$HALO_KEY_CURRENT" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
       log "Minting LiteLLM virtual key for HALO (models=[local-gemma4, local-qwen3])..."
       HALO_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
         -X POST http://litellm:4000/key/generate \

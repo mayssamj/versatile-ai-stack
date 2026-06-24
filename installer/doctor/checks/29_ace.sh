@@ -41,7 +41,7 @@ ace_diagnose() {
     echo "ACE_LITELLM_KEY missing from .env"
     return 1
   fi
-  if ! curl -sf --max-time 5 -H "Authorization: Bearer $ace_key" \
+  if ! litellm_scoped_curl "$ace_key" -sf --max-time 5 \
        http://litellm:4000/v1/models >/dev/null 2>&1; then
     if declare -F litellm_db_down >/dev/null && litellm_db_down; then
       echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / start honcho-database); do NOT re-mint."

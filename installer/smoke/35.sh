@@ -47,7 +47,7 @@ code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://$FE_IP:$FE_H
 #    empty data[], so require a real "id"). Probed from the HOST against the loopback.
 KEY="$(get_env CHATDEV_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "CHATDEV_LITELLM_KEY absent from .env"; exit 1; }
-printf '%s' "$(curl -s --max-time 5 -H "Authorization: Bearer $KEY" http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
+printf '%s' "$(litellm_scoped_curl "$KEY" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
   && ok "scoped key lists models via LiteLLM" || { err "CHATDEV_LITELLM_KEY lists no models (stale/rejected)"; exit 1; }
 
 # 4. Run the headless 1-agent workflow INSIDE the backend container (the real agent

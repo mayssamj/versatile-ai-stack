@@ -63,9 +63,9 @@ aitown_diagnose() {
   # it first would burn a guaranteed ~5s timeout on boxes without that entry. Fall back to
   # the alias only if loopback didn't answer (parity with the phase's resolve-once order).
   local models
-  models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
+  models="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   printf '%s' "$models" | grep -q '"id"' \
-    || models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models 2>/dev/null || true)"
+    || models="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
       echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint"
@@ -88,7 +88,7 @@ aitown_diagnose() {
     local allow
     # Probe 127.0.0.1 FIRST (parity with this check's /v1/models probe + comment above):
     # the litellm:4000 alias only resolves with /etc/hosts, so trying it first burns ~5s.
-    allow="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/key/info 2>/dev/null || curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/key/info 2>/dev/null || true)"
+    allow="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/key/info 2>/dev/null || litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null || true)"
     allow="$(printf '%s' "$allow" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)

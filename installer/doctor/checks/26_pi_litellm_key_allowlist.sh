@@ -58,7 +58,7 @@ pi_litellm_key_allowlist_diagnose() {
 
   # (1) /v1/models returns exactly the allowlisted set.
   local models_json
-  models_json="$(curl -s --max-time 5 -H "Authorization: Bearer $pi_key" \
+  models_json="$(litellm_scoped_curl "$pi_key" -s --max-time 5 \
     http://litellm:4000/v1/models 2>/dev/null || echo '')"
   if [[ -z "$models_json" ]]; then
     echo "GET /v1/models with PI_LITELLM_KEY returned no body"
@@ -91,7 +91,7 @@ except Exception as e:
   # metered API-key route, never part of the local+meridian superset). max_tokens
   # is intentionally tiny; the request must be REJECTED before any upstream call.
   local denied_body
-  denied_body="$(curl -s --max-time 5 -H "Authorization: Bearer $pi_key" \
+  denied_body="$(litellm_scoped_curl "$pi_key" -s --max-time 5 \
     -H 'Content-Type: application/json' \
     -d '{"model":"claude-opus-4.7","messages":[{"role":"user","content":"x"}],"max_tokens":1}' \
     http://litellm:4000/v1/chat/completions 2>/dev/null || echo '')"

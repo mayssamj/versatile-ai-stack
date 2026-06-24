@@ -172,7 +172,7 @@ fi
 # --- 2. Mint scoped LiteLLM key (stale-aware; mirrors Phase 32/34) -----------
 CD_KEY_CURRENT="$(get_env CHATDEV_LITELLM_KEY '')"
 _cd_models=""
-[[ -n "$CD_KEY_CURRENT" ]] && _cd_models="$(curl -s --max-time 5 -H "Authorization: Bearer $CD_KEY_CURRENT" "$CD_LLM_BASE/v1/models" 2>/dev/null)"
+[[ -n "$CD_KEY_CURRENT" ]] && _cd_models="$(litellm_scoped_curl "$CD_KEY_CURRENT" -s --max-time 5 "$CD_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$CD_KEY_CURRENT" ]] || ! printf '%s' "$_cd_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for ChatDev (local-gemma4 + *-sub fallbacks)…"
   CD_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
@@ -306,8 +306,8 @@ done
 ok "smoke: ChatDev frontend serves 200 on http://$FE_IP:$FE_HOST_PORT"
 
 log "Smoke: scoped key → LiteLLM chat completion…"
-_sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H "Authorization: Bearer $CD_KEY" -H 'Content-Type: application/json' \
+_sc="$(litellm_scoped_curl "$CD_KEY" -s -o /dev/null -w '%{http_code}' --max-time 30 \
+  -H 'Content-Type: application/json' \
   -X POST "$CD_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$CD_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":512}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $CD_MODEL via LiteLLM) — not stamping"; exit 1; }

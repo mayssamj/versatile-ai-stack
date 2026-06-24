@@ -55,7 +55,7 @@ code="$(curl -sL -o /dev/null -w '%{http_code}' --max-time 8 "http://$AT_IP:$AT_
 # 3. scoped key lists models + completes 1 token (the real character → LiteLLM path)
 KEY="$(get_env AITOWN_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "AITOWN_LITELLM_KEY absent from .env"; exit 1; }
-printf '%s' "$(curl -s --max-time 5 -H "Authorization: Bearer $KEY" http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
+printf '%s' "$(litellm_scoped_curl "$KEY" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
   && ok "scoped key lists models via LiteLLM" \
   || { err "AITOWN_LITELLM_KEY lists no models (stale/rejected) — re-mint: vz-ai-stack.sh install 36"; exit 1; }
 
@@ -65,8 +65,8 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   _am="$(yq -r '.assignments.aitown // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
   [[ -n "$_am" && "$_am" != "null" ]] && AT_MODEL="$_am"
 fi
-chat_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+chat_code="$(litellm_scoped_curl "$KEY" -s -o /dev/null -w '%{http_code}' --max-time 30 \
+  -H 'Content-Type: application/json' \
   -X POST http://127.0.0.1:4000/v1/chat/completions \
   -d "{\"model\":\"$AT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$chat_code" == "200" ]] && ok "scoped key completes a chat through LiteLLM ($AT_MODEL, HTTP 200) — the town's character path works" \

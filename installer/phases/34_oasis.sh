@@ -45,8 +45,8 @@ precheck() {
   "$OA_PY" -c "import oasis" >/dev/null 2>&1 || return 1
   local key; key="$(get_env OASIS_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $key" "$OA_LLM_HOST/v1/models" >/dev/null 2>&1 \
-    || curl -sf --max-time 5 -H "Authorization: Bearer $key" "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
+  litellm_scoped_curl "$key" -sf --max-time 5 "$OA_LLM_HOST/v1/models" >/dev/null 2>&1 \
+    || litellm_scoped_curl "$key" -sf --max-time 5 "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
   return 0
 }
@@ -104,7 +104,7 @@ OA_KEY_CURRENT="$(get_env OASIS_LITELLM_KEY '')"
 # Only probe with the existing key when there IS one (an empty 'Bearer ' just logs a
 # spurious 401 in LiteLLM's audit trail).
 _oa_models=""
-[[ -n "$OA_KEY_CURRENT" ]] && _oa_models="$(curl -s --max-time 5 -H "Authorization: Bearer $OA_KEY_CURRENT" "$OA_LLM_BASE/v1/models" 2>/dev/null)"
+[[ -n "$OA_KEY_CURRENT" ]] && _oa_models="$(litellm_scoped_curl "$OA_KEY_CURRENT" -s --max-time 5 "$OA_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$OA_KEY_CURRENT" ]] || ! printf '%s' "$_oa_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for OASIS (local-gemma4 + *-sub fallbacks)…"
   OA_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
@@ -234,8 +234,8 @@ GI
 # (bounded by its own signal.alarm). ---
 log "Smoke: scoped key → LiteLLM chat completion…"
 _oa_key="$(get_env OASIS_LITELLM_KEY '')"
-_sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H "Authorization: Bearer $_oa_key" -H 'Content-Type: application/json' \
+_sc="$(litellm_scoped_curl "$_oa_key" -s -o /dev/null -w '%{http_code}' --max-time 30 \
+  -H 'Content-Type: application/json' \
   -X POST "$OA_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$OA_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $OA_MODEL via LiteLLM) — not stamping"; exit 1; }

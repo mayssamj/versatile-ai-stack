@@ -122,7 +122,7 @@ fi
 # Model-scoped (never master). A stale/revoked key returns 200 + empty data[], so
 # require a real model "id" in the response (council SRE pattern from Phase 26).
 AIONUI_KEY_CURRENT="$(get_env AIONUI_LITELLM_KEY '')"
-_models_resp="$(curl -s --max-time 5 -H "Authorization: Bearer $AIONUI_KEY_CURRENT" http://litellm:4000/v1/models 2>/dev/null)"
+_models_resp="$(litellm_scoped_curl "$AIONUI_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)"
 if [[ -z "$AIONUI_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"id"'; then
   log "Minting scoped LiteLLM virtual key for AionUi…"
   _gen_body="$(python3 -c 'import json,sys; print(json.dumps({"models":json.loads(sys.argv[1]),"key_alias":"aionui","metadata":{"owner":"aionui","purpose":"phase28"}}))' "$AIONUI_KEY_MODELS")"

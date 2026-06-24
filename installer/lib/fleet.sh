@@ -411,7 +411,7 @@ resolve_profile_model() {
   case "$rt" in
     lmstudio)
       if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
-         && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
+         && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null \
             | grep -qF "\"$declared\""; then
         echo "$declared"; return
       fi ;;

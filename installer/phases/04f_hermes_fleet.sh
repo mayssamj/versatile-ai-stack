@@ -397,7 +397,7 @@ fi
 HERMES_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"]'
 HERMES_KEY="$(get_env HERMES_LITELLM_KEY '')"
 if [[ -z "$HERMES_KEY" ]] \
-   || ! curl -sf --max-time 5 -H "Authorization: Bearer $HERMES_KEY" http://litellm:4000/v1/models >/dev/null 2>&1; then
+   || ! litellm_scoped_curl "$HERMES_KEY" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
   log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
   HERMES_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
@@ -439,7 +439,7 @@ resolve_profile_model() {
     lmstudio)
       # LM Studio: render the MLX slug only when the server is up AND registered AND served.
       if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
-         && curl -s --max-time 5 http://litellm:4000/v1/models -H "Authorization: Bearer $HERMES_KEY" 2>/dev/null \
+         && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null \
             | grep -qF "\"$declared\""; then
         echo "$declared"; return
       fi ;;

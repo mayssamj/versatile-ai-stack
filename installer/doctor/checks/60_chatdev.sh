@@ -49,9 +49,9 @@ chatdev_diagnose() {
   [[ -n "$key" ]] || { echo "CHATDEV_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 35'"; return 1; }
   # Gate the key probe on LiteLLM reachability so a down LiteLLM doesn't red-bar this.
   local models
-  models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models 2>/dev/null || true)"
+  models="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
   printf '%s' "$models" | grep -q '"id"' \
-    || models="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
+    || models="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
       echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint."
@@ -75,7 +75,7 @@ chatdev_diagnose() {
     want="$(yq -r '.assignments.chatdev // ""' "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
     [[ -n "$want" && "$want" != "null" ]] || want="local-gemma4"
     local allow
-    allow="$(curl -s --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/key/info 2>/dev/null || curl -s --max-time 5 -H "Authorization: Bearer $key" http://127.0.0.1:4000/key/info 2>/dev/null || true)"
+    allow="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null || litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/key/info 2>/dev/null || true)"
     allow="$(printf '%s' "$allow" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)

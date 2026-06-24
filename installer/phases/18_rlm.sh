@@ -45,7 +45,7 @@ precheck() {
   grep -q '^OPENAI_BASE_URL=http://litellm:4000/v1' "$RLM_DIR/.env" 2>/dev/null || return 1
   local k; k="$(get_env RLM_LITELLM_KEY '')"
   [[ -n "$k" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $k" http://litellm:4000/v1/models >/dev/null 2>&1 || return 1
+  litellm_scoped_curl "$k" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1 || return 1
   return 0
 }
 
@@ -76,7 +76,7 @@ ok "rlms installed in $RLM_VENV"
 # --- 2. Mint LiteLLM virtual key (mirrors Phase 17 ACE) ---
 RLM_KEY_CURRENT="$(get_env RLM_LITELLM_KEY '')"
 if [[ -z "$RLM_KEY_CURRENT" ]] \
-   || ! curl -sf --max-time 5 -H "Authorization: Bearer $RLM_KEY_CURRENT" http://litellm:4000/v1/models >/dev/null 2>&1; then
+   || ! litellm_scoped_curl "$RLM_KEY_CURRENT" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
   # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
   # RLM without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).

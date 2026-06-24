@@ -75,8 +75,8 @@ precheck() {
   "$AS_PY" -c "import agentscope" >/dev/null 2>&1 || return 1
   local key; key="$(get_env AGENTSCOPE_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $key" "$AS_LLM_HOST/v1/models" >/dev/null 2>&1 \
-    || curl -sf --max-time 5 -H "Authorization: Bearer $key" "$AS_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
+  litellm_scoped_curl "$key" -sf --max-time 5 "$AS_LLM_HOST/v1/models" >/dev/null 2>&1 \
+    || litellm_scoped_curl "$key" -sf --max-time 5 "$AS_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
   # When Studio is enabled, a passing precheck ALSO requires the launchd plist to
   # exist AND the UI to answer 200 on :5275 — otherwise re-run so the daemon is
@@ -143,7 +143,7 @@ AS_KEY_CURRENT="$(get_env AGENTSCOPE_LITELLM_KEY '')"
 # Only probe with the existing key when there IS one (an empty 'Bearer ' just logs a
 # spurious 401 in LiteLLM's audit trail).
 _as_models=""
-[[ -n "$AS_KEY_CURRENT" ]] && _as_models="$(curl -s --max-time 5 -H "Authorization: Bearer $AS_KEY_CURRENT" "$AS_LLM_BASE/v1/models" 2>/dev/null)"
+[[ -n "$AS_KEY_CURRENT" ]] && _as_models="$(litellm_scoped_curl "$AS_KEY_CURRENT" -s --max-time 5 "$AS_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$AS_KEY_CURRENT" ]] || ! printf '%s' "$_as_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for AgentScope (local-gemma4 + *-sub fallbacks)…"
   # Parse the key with the venv python ($AS_PY, built + import-verified above) rather
@@ -434,8 +434,8 @@ fi
 # its own signal.alarm). ---
 log "Smoke: scoped key → LiteLLM chat completion…"
 _as_key="$(get_env AGENTSCOPE_LITELLM_KEY '')"
-_sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H "Authorization: Bearer $_as_key" -H 'Content-Type: application/json' \
+_sc="$(litellm_scoped_curl "$_as_key" -s -o /dev/null -w '%{http_code}' --max-time 30 \
+  -H 'Content-Type: application/json' \
   -X POST "$AS_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$AS_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $AS_MODEL via LiteLLM) — not stamping"; exit 1; }

@@ -66,7 +66,7 @@ hermes_routing_diagnose() {
   # If the 'litellm' alias doesn't resolve (prepare-sudo not run), the probe
   # below returns 000 and would mis-report the key as revoked. Defer.
   dscacheutil -q host -a name litellm 2>/dev/null | grep -q ip_address || { echo "(litellm alias unresolved — see checks 15/19) [skip]"; return 0; }
-  if ! curl -sf --max-time 5 -H "Authorization: Bearer $hk" http://litellm:4000/v1/models >/dev/null 2>&1; then
+  if ! litellm_scoped_curl "$hk" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
     if declare -F litellm_db_down >/dev/null && litellm_db_down; then
       echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / start honcho-database); do NOT re-mint."
       return 1

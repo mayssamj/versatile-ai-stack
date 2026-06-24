@@ -39,8 +39,8 @@ MODEL="${METAGPT_MODEL:-local-gemma4}"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _mm="$(yq -r '.assignments.metagpt // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"; [[ -n "$_mm" && "$_mm" != "null" ]] && MODEL="$_mm"
 fi
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 40 \
-  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+code="$(litellm_scoped_curl "$KEY" -s -o /dev/null -w '%{http_code}' --max-time 40 \
+  -H 'Content-Type: application/json' \
   -X POST http://127.0.0.1:4000/v1/chat/completions \
   -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$code" == "200" ]] && ok "scoped key reaches $MODEL through LiteLLM (HTTP 200) — traced in Phoenix" \

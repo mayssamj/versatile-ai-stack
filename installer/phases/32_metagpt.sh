@@ -47,8 +47,8 @@ precheck() {
   "$MG_PY" -c "import metagpt" >/dev/null 2>&1 || return 1
   local key; key="$(get_env METAGPT_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $key" "$MG_LLM_HOST/v1/models" >/dev/null 2>&1 \
-    || curl -sf --max-time 5 -H "Authorization: Bearer $key" "$MG_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
+  litellm_scoped_curl "$key" -sf --max-time 5 "$MG_LLM_HOST/v1/models" >/dev/null 2>&1 \
+    || litellm_scoped_curl "$key" -sf --max-time 5 "$MG_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
   return 0
 }
@@ -117,7 +117,7 @@ MG_KEY_CURRENT="$(get_env METAGPT_LITELLM_KEY '')"
 # Only probe with the existing key when there IS one (an empty 'Bearer ' just logs a
 # spurious 401 in LiteLLM's audit trail).
 _mg_models=""
-[[ -n "$MG_KEY_CURRENT" ]] && _mg_models="$(curl -s --max-time 5 -H "Authorization: Bearer $MG_KEY_CURRENT" "$MG_LLM_BASE/v1/models" 2>/dev/null)"
+[[ -n "$MG_KEY_CURRENT" ]] && _mg_models="$(litellm_scoped_curl "$MG_KEY_CURRENT" -s --max-time 5 "$MG_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$MG_KEY_CURRENT" ]] || ! printf '%s' "$_mg_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for MetaGPT (local-gemma4 + *-sub fallbacks)…"
   MG_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
@@ -197,8 +197,8 @@ log "Smoke: bin/metagpt wrapper loads (writes ~/.metagpt/config2.yaml + the meta
 "$MG_WRAPPER" --help >/dev/null 2>&1 || { err "bin/metagpt --help failed — wrapper or metagpt CLI broken; not stamping"; exit 1; }
 ok "bin/metagpt runs end-to-end (wrapper + venv + CLI)"
 log "Smoke: scoped key → LiteLLM chat completion…"
-_sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H "Authorization: Bearer $(get_env METAGPT_LITELLM_KEY '')" -H 'Content-Type: application/json' \
+_sc="$(litellm_scoped_curl "$(get_env METAGPT_LITELLM_KEY '')" -s -o /dev/null -w '%{http_code}' --max-time 30 \
+  -H 'Content-Type: application/json' \
   -X POST "$MG_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$MG_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $MG_MODEL via LiteLLM) — not stamping"; exit 1; }

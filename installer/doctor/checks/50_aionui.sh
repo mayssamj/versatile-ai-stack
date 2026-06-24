@@ -28,7 +28,7 @@ aionui_diagnose() {
   local key; key="$(get_env AIONUI_LITELLM_KEY '')"
   [[ -n "$key" ]] || { echo "AIONUI_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 28'"; return 1; }
   # Gate the key probe on LiteLLM reachability so a down LiteLLM doesn't red-bar this.
-  if ! curl -sf --max-time 5 -H "Authorization: Bearer $key" http://litellm:4000/v1/models >/dev/null 2>&1; then
+  if ! litellm_scoped_curl "$key" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
     if declare -F litellm_db_down >/dev/null && litellm_db_down; then
       echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / start honcho-database); do NOT re-mint."
       return 1

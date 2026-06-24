@@ -152,6 +152,33 @@ litellm_master_curl() {
   return $_rc
 }
 
+# --- litellm_scoped_curl: run curl authenticated with a SCOPED LiteLLM key ------
+# Usage: litellm_scoped_curl <key> <curl-args...>   (pass the scoped key as $1, then
+# DROP the -H "Authorization: Bearer ..." at the call site and pass everything else
+# — -s, --max-time, -X, -d, the URL — through unchanged).
+# Companion to litellm_master_curl: a per-phase/fleet scoped key is still an sk-...
+# secret, and -H "Authorization: Bearer $key" puts it in the process arg list (visible
+# in `ps`/—/proc/PID/cmdline to any local process). This injects the Authorization
+# header via curl `--config` on STDIN so the secret never appears in argv. The call
+# site must NOT also feed curl data on stdin (e.g. `-d @-`) — stdin is consumed by the
+# config; all current callers use inline `-d '...'` or send no body.
+# SCOPE: this is for LiteLLM scoped keys. The Phoenix-key curls (09_phoenix check,
+# smoke/01h PKEY -> phoenix:6006) are a DIFFERENT service/credential and intentionally
+# NOT routed here — taking their key off argv is a separate follow-up.
+litellm_scoped_curl() {
+  local _k="$1"; shift
+  # Fail fast on an empty key (clear cause + non-zero), mirroring litellm_master_curl;
+  # callers already guard on a non-empty key, so this only catches a programming slip.
+  [[ -n "$_k" ]] || { warn 'litellm_scoped_curl: scoped key is empty — skipping authenticated call'; return 1; }
+  # Suppress xtrace while the secret is live: a caller under `set -x` would otherwise
+  # trace the fully-expanded key to stderr/any debug log. Mirrors litellm_master_curl.
+  local _x=''; case $- in *x*) _x=1; set +x;; esac
+  printf 'header = "Authorization: Bearer %s"\n' "$_k" | curl --config - "$@"
+  local _rc=$?
+  [[ -n "$_x" ]] && set -x
+  return $_rc
+}
+
 # --- litellm_reconcile_key: self-heal a scoped key's model allow-list --------
 # Usage: litellm_reconcile_key <KEY_ENV> <model...>           (positional names)
 #        litellm_reconcile_key <KEY_ENV> '["m1","m2",...]'    (one JSON array)
@@ -202,7 +229,7 @@ except Exception: pass' 2>/dev/null || true)"
   # never POST a narrowing update built from a falsely-empty current list.
   cur=""
   for base in "${LITELLM_BASE_URL:-http://litellm:4000}" "http://127.0.0.1:4000"; do
-    cur="$(curl -s --max-time 5 -H "Authorization: Bearer $key" "$base/key/info" 2>/dev/null \
+    cur="$(litellm_scoped_curl "$key" -s --max-time 5 "$base/key/info" 2>/dev/null \
       | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)            # no/invalid response -> print NOTHING (unreachable, not "[]")

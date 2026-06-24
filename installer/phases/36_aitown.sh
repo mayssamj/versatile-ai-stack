@@ -93,8 +93,8 @@ precheck() {
   curl -sL -o /dev/null -w '%{http_code}' --max-time 5 "http://$AT_IP:$AT_FE_HOST_PORT/" 2>/dev/null | grep -q '^200$' || return 1
   local key; key="$(get_env AITOWN_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
-  curl -sf --max-time 5 -H "Authorization: Bearer $key" "$AT_LLM_HOST/v1/models" >/dev/null 2>&1 \
-    || curl -sf --max-time 5 -H "Authorization: Bearer $key" "$AT_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
+  litellm_scoped_curl "$key" -sf --max-time 5 "$AT_LLM_HOST/v1/models" >/dev/null 2>&1 \
+    || litellm_scoped_curl "$key" -sf --max-time 5 "$AT_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
   return 0
 }
@@ -248,7 +248,7 @@ fi
 # --- 3. Mint scoped LiteLLM key (stale-aware; mirrors Ph32/34) ---------------
 AT_KEY_CURRENT="$(get_env AITOWN_LITELLM_KEY '')"
 _at_models=""
-[[ -n "$AT_KEY_CURRENT" ]] && _at_models="$(curl -s --max-time 5 -H "Authorization: Bearer $AT_KEY_CURRENT" "$AT_LLM_BASE/v1/models" 2>/dev/null)"
+[[ -n "$AT_KEY_CURRENT" ]] && _at_models="$(litellm_scoped_curl "$AT_KEY_CURRENT" -s --max-time 5 "$AT_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$AT_KEY_CURRENT" ]] || ! printf '%s' "$_at_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for AI Town (chat + embeddings; local-gemma4 + *-sub fallbacks)…"
   # Scope to the town's chat models AND embed-local (the town needs BOTH /v1/chat and
@@ -509,8 +509,8 @@ GI
 #     we set (so the town will route — not a silent default). A bare frontend-200 is NOT
 #     proof; this is.
 log "Smoke: scoped key → LiteLLM chat completion (the town's character path)…"
-_sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H "Authorization: Bearer $AT_KEY" -H 'Content-Type: application/json' \
+_sc="$(litellm_scoped_curl "$AT_KEY" -s -o /dev/null -w '%{http_code}' --max-time 30 \
+  -H 'Content-Type: application/json' \
   -X POST "$AT_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$AT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $AT_MODEL via LiteLLM) — not stamping"; exit 1; }
