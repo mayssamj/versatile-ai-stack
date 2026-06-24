@@ -155,7 +155,11 @@ verify_alias_routable() {
 verify_container_reachable_by_alias() {
   local container="${1:?usage: verify_container_reachable_by_alias <container> <alias> <internal_port> <path>}"
   local alias="${2:?need alias}"
-  local internal_port="${3:?need internal port}"
+  # NOTE (§24 council 2026-06-24): despite the name, this must be the HOST-published port
+  # (aliases.tsv host_port), NOT the container port — the URL below is dialed FROM THE HOST,
+  # where the alias IP listens on the published port. They differ when host_port != container_port
+  # (e.g. chatdev 5274->5173). Callers must pass ALIAS_HOST_PORT.
+  local internal_port="${3:?need host-published port}"
   local path="${4:-/}"
 
   # Container must actually be running, else the test is meaningless.

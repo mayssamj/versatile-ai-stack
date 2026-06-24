@@ -40,7 +40,11 @@ container_alias_routable_diagnose() {
     elif docker ps --format '{{.Names}}' | grep -qx "${svc_key}-api-1"; then
       name="${svc_key}-api-1"
     fi
-    [[ -z "$name" ]] && continue   # service not running; not our concern
+    # SCOPE LIMIT (§24 council 2026-06-24): the name-guessing above matches docker-run names
+    # and a couple of compose suffixes (-1/-api/-api-1), but NOT arbitrary compose member names
+    # like aitown-frontend-1. Such compose services are intentionally skipped here and covered by
+    # their own phase check (e.g. aitown → check 61). Empty $name also = service-not-running.
+    [[ -z "$name" ]] && continue
 
     # Determine a sensible probe path. Most ai-stack services support /health;
     # the rest accept "/" and return something HTTP-ish.

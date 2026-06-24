@@ -188,6 +188,11 @@ fi
 # provider via LLM_API_URL, so we short-circuit that guard when LLM_API_URL is set
 # (getLLMConfig's custom branch already returns without any dimension check — the guard simply
 # doesn't apply to a custom gateway). Both edits keep a .orig and are idempotent.
+# ASSUMPTION (§24 council, 2026-06-24): 768 is BOUND to embed-local (nomic-embed-text, 768-dim).
+# If you later wire a DIFFERENT embedding model through LLM_API_URL (e.g. a 1536-dim model), you
+# MUST bump EMBEDDING_DIMENSION to match — otherwise the schema bakes a 768-dim vector index, the
+# LLM_API_URL guard silences the upstream dimension-mismatch warning, and every embedding write
+# fails at RUNTIME with a dim mismatch (chat still works; only agent memory recall breaks).
 _LLM_TS="$AT_DIR/convex/util/llm.ts"
 [[ -f "$_LLM_TS" ]] || { err "expected $_LLM_TS not found — upstream moved EMBEDDING_DIMENSION; re-locate it before pushing (a 1024-dim index breaks embed-local writes)"; exit 1; }
 grep -Eq '^export const EMBEDDING_DIMENSION: number = ' "$_LLM_TS" \
