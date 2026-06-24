@@ -31,10 +31,11 @@ lms_register_model fugu-test fugu openai-compat "" https://api.sakana.ai/v1 SAKA
   && yes_ "api_base is DATA (passthrough, not hardcoded)" || no_ "api_base wrong: '$(q fugu-test .litellm_params.api_base)'"
 [[ "$(q fugu-test .litellm_params.api_key)" == "os.environ/SAKANA_API_KEY" ]] \
   && yes_ "api_key is the literal os.environ/<KEY_ENV> sentinel" || no_ "api_key wrong: '$(q fugu-test .litellm_params.api_key)'"
-# the real secret must NEVER appear in the rendered file (sentinel only)
-if grep -q 'os.environ/SAKANA_API_KEY' "$LMS_CONFIG" && ! grep -qiE 'sk-|api_key:[[:space:]]*[A-Za-z0-9_-]{16,}' "$LMS_CONFIG"; then
-  yes_ "no expanded secret in the rendered config (sentinel only)"
-else no_ "rendered config may contain an expanded secret"; fi
+# the real secret must NEVER appear in the rendered file. Prove it: set a recognizable
+# fake value in the env and assert ONLY the os.environ sentinel renders (no expansion).
+SAKANA_API_KEY="LEAKCANARY_must_never_render_0000" lms_register_model leak-test fugu openai-compat "" https://api.sakana.ai/v1 SAKANA_API_KEY >/dev/null
+{ ! grep -q 'LEAKCANARY' "$LMS_CONFIG" && [[ "$(q leak-test .litellm_params.api_key)" == "os.environ/SAKANA_API_KEY" ]]; } \
+  && yes_ "no secret expansion: env value never reaches the rendered config (sentinel only)" || no_ "SECRET LEAK: expanded value in config"
 # no rpm/tpm declared -> neither key present
 [[ "$(q fugu-test '.litellm_params | has("rpm")')" == "false" && "$(q fugu-test '.litellm_params | has("tpm")')" == "false" ]] \
   && yes_ "no rpm/tpm keys when undeclared" || no_ "spurious rpm/tpm rendered"
@@ -47,6 +48,8 @@ lms_register_model ultra-test fugu-ultra openai-compat "" https://api.sakana.ai/
   && yes_ "tpm is a YAML int" || no_ "tpm not int: $(q ultra-test '.litellm_params.tpm | tag')"
 [[ "$(q ultra-test .litellm_params.rpm)" == "6" ]] \
   && yes_ "rpm value == 6" || no_ "rpm value wrong"
+[[ "$(q ultra-test .litellm_params.tpm)" == "120000" ]] \
+  && yes_ "tpm value == 120000" || no_ "tpm value wrong"
 
 # 3. fail-closed: missing api_base -> non-zero AND the model is NOT written
 rc=0; lms_register_model bad-noapi served openai-compat "" "" SAKANA_API_KEY >/dev/null 2>&1 || rc=$?

@@ -78,6 +78,21 @@ _mb_effective() {
     fi
     echo "$default"; return
   fi
+  # openai-compat: availability-gate on its .env key (mirrors lib/models.sh
+  # resolve_effective) — render the declared slug only when key_env is present, else
+  # the default. Without this, a keyless box renders `default` (gated) while this
+  # function returns `declared`, tripping a false DRIFT/RED in the check below.
+  # NOTE: the metered `openai` (OPENAI_API_KEY) + `codex-bridge` (daemon) runtimes
+  # similarly under-gate here (fall through to `declared`) — harmless today since none
+  # is a rendered default; fix likewise if one ever becomes one.
+  if [[ "$rt" == "openai-compat" ]]; then
+    local kenv; kenv="$(yq -r ".models.\"$declared\".key_env" "$yml" 2>/dev/null)"
+    if [[ -n "$kenv" && "$kenv" != "null" && -n "$(get_env "$kenv" '')" ]] \
+       && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
+      echo "$declared"; return
+    fi
+    echo "$default"; return
+  fi
   if [[ "$rt" != "lmstudio" ]]; then echo "$declared"; return; fi
   served="$(yq -r ".models.\"$declared\".served" "$yml" 2>/dev/null)"
   if _mb_lms_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then

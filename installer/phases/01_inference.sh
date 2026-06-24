@@ -142,8 +142,20 @@ if [[ -f "$MODELS_YML" ]]; then
     # defaults effort to `high` and flattens the subscription effort ladder
     # (claude-*-sub-{low,medium,high,xhigh,max}) on every install. Mirrors
     # lib/models.sh::register_model_list.
-    _ef=""; [[ "$_rt" == "meridian" ]] && _ef="$(yq -r ".models.\"$_mn\".effort // \"\"" "$MODELS_YML" 2>/dev/null)"
-    if [[ "$(lms_register_model "$_mn" "$_sv" "$_rt" "$_ef")" == "CHANGED" ]]; then
+    # Mirror lib/models.sh::register_model_list arg extraction. meridian -> effort;
+    # openai-compat -> api_base/key_env/rpm/tpm (else it fail-closes + sakana-* never
+    # registers on a fresh `install all`, silently leaning on the hand-authored config).
+    _ef=""; _ab=""; _ke=""; _rp=""; _tp=""
+    case "$_rt" in
+      meridian) _ef="$(yq -r ".models.\"$_mn\".effort // \"\"" "$MODELS_YML" 2>/dev/null)" ;;
+      openai-compat)
+        _ab="$(yq -r ".models.\"$_mn\".api_base // \"\"" "$MODELS_YML" 2>/dev/null)"
+        _ke="$(yq -r ".models.\"$_mn\".key_env // \"\"" "$MODELS_YML" 2>/dev/null)"
+        _rp="$(yq -r ".models.\"$_mn\".rpm // \"\"" "$MODELS_YML" 2>/dev/null)"
+        _tp="$(yq -r ".models.\"$_mn\".tpm // \"\"" "$MODELS_YML" 2>/dev/null)"
+        ;;
+    esac
+    if [[ "$(lms_register_model "$_mn" "$_sv" "$_rt" "$_ef" "$_ab" "$_ke" "$_rp" "$_tp")" == "CHANGED" ]]; then
       ok "registered $_mn ($_rt/$_sv${_ef:+, effort=$_ef}) in litellm/config.yaml"
     fi
   done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)

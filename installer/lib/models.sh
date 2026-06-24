@@ -195,7 +195,12 @@ validate() {
         ocab="$(my_q ".models.\"$m\".api_base")"
         ocke="$(my_q ".models.\"$m\".key_env")"
         [[ -n "$ocab" && "$ocab" != "null" ]] || { err "models.yml: openai-compat model '$m' missing .api_base"; return 2; }
-        [[ -n "$ocke" && "$ocke" != "null" ]] || { err "models.yml: openai-compat model '$m' missing .key_env"; return 2; } ;;
+        [[ -n "$ocke" && "$ocke" != "null" ]] || { err "models.yml: openai-compat model '$m' missing .key_env"; return 2; }
+        [[ "$ocab" =~ ^https?:// ]] || { err "models.yml: openai-compat model '$m' api_base must be an http(s):// URL (got '$ocab')"; return 2; }
+        local ocrp octp
+        ocrp="$(my_q ".models.\"$m\".rpm")"; octp="$(my_q ".models.\"$m\".tpm")"
+        [[ "$ocrp" == "null" || "$ocrp" =~ ^[0-9]+$ ]] || { err "models.yml: openai-compat model '$m' rpm must be a positive integer (got '$ocrp')"; return 2; }
+        [[ "$octp" == "null" || "$octp" =~ ^[0-9]+$ ]] || { err "models.yml: openai-compat model '$m' tpm must be a positive integer (got '$octp')"; return 2; } ;;
       *) err "models.yml: model '$m' has invalid runtime '$rt' (want ollama|lmstudio|meridian|openai|codex-bridge|openai-compat)"; return 2 ;;
     esac
     [[ -n "$sv" && "$sv" != "null" ]] || { err "models.yml: model '$m' missing .served"; return 2; }
@@ -1292,13 +1297,23 @@ _dry_run() {
   local tmp; tmp="$(mktemp -d)"
   cp "$CONFIG" "$tmp/before.yaml"
   cp "$CONFIG" "$tmp/after.yaml"
-  local m rt sv ef
+  local m rt sv ef ab ke rp tp
   ( LMS_CONFIG="$tmp/after.yaml"
     while IFS= read -r m; do
       [[ -z "$m" ]] && continue
       rt="$(model_runtime "$m")"; sv="$(model_served "$m")"
-      ef=""; case "$rt" in meridian|openai|codex-bridge) ef="$(model_effort "$m")" ;; esac
-      lms_register_model "$m" "$sv" "$rt" "$ef" >/dev/null 2>&1 || true
+      # MUST mirror register_model_list's per-runtime arg extraction, else
+      # openai-compat models fail-closed here and the dry-run shows a false "no change".
+      ef=""; ab=""; ke=""; rp=""; tp=""
+      case "$rt" in
+        meridian|openai|codex-bridge) ef="$(model_effort "$m")" ;;
+        openai-compat)
+          ab="$(model_api_base "$m")"; ke="$(model_key_env "$m")"
+          rp="$(my_q ".models.\"$m\".rpm")"; [[ "$rp" == "null" ]] && rp=""
+          tp="$(my_q ".models.\"$m\".tpm")"; [[ "$tp" == "null" ]] && tp=""
+          ;;
+      esac
+      lms_register_model "$m" "$sv" "$rt" "$ef" "$ab" "$ke" "$rp" "$tp" >/dev/null 2>&1 || true
     done < <(my_q '.models | keys | .[]')
   )
   if diff -u "$tmp/before.yaml" "$tmp/after.yaml" >"$tmp/diff.txt" 2>/dev/null; then
