@@ -69,14 +69,19 @@ command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): b
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
-# Reachability: try the container alias, then 127.0.0.1 (works even before Phase 00n
-# has written the /etc/hosts litellm entry — the spec's host-venv routing rule).
-if ! curl -sf --max-time 4 "$MG_LLM_HOST/health/liveliness" >/dev/null 2>&1 \
-   && ! curl -sf --max-time 4 "$MG_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1 \
-   && ! curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$MG_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then
-  err "LiteLLM not reachable at $MG_LLM_HOST or $MG_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."
-  exit 1
+# Reachability: resolve the LiteLLM base URL ONCE — prefer the container alias
+# (litellm:4000, present after core Phase 00n writes /etc/hosts) but fall back to
+# 127.0.0.1:4000 (always reachable from the host shell, even before 00n). Reusing the
+# RESOLVED base for the mint + smoke calls below removes the /etc/hosts ordering
+# dependency the §24 council flagged (2026-06-23) — without it, install 32 before 00n
+# would abort on a litellm: NXDOMAIN even though 127.0.0.1:4000 is alive.
+MG_LLM_BASE=""
+if   curl -sf --max-time 4 "$MG_LLM_HOST/health/liveliness" >/dev/null 2>&1; then MG_LLM_BASE="$MG_LLM_HOST"
+elif curl -sf --max-time 4 "$MG_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then MG_LLM_BASE="$MG_LLM_FALLBACK"
+elif curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$MG_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then MG_LLM_BASE="$MG_LLM_FALLBACK"
 fi
+[[ -n "$MG_LLM_BASE" ]] || { err "LiteLLM not reachable at $MG_LLM_HOST or $MG_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+ok "LiteLLM reachable at $MG_LLM_BASE"
 
 # --- 1. Venv (Python 3.11 — host 3.14 is too new for MetaGPT) + install ---
 mkdir -p "$MG_WORKSPACE"
@@ -112,13 +117,13 @@ MG_KEY_CURRENT="$(get_env METAGPT_LITELLM_KEY '')"
 # Only probe with the existing key when there IS one (an empty 'Bearer ' just logs a
 # spurious 401 in LiteLLM's audit trail).
 _mg_models=""
-[[ -n "$MG_KEY_CURRENT" ]] && _mg_models="$(curl -s --max-time 5 -H "Authorization: Bearer $MG_KEY_CURRENT" "$MG_LLM_HOST/v1/models" 2>/dev/null)"
+[[ -n "$MG_KEY_CURRENT" ]] && _mg_models="$(curl -s --max-time 5 -H "Authorization: Bearer $MG_KEY_CURRENT" "$MG_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$MG_KEY_CURRENT" ]] || ! printf '%s' "$_mg_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for MetaGPT (local-gemma4 + *-sub fallbacks)…"
   MG_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-    -H 'Content-Type: application/json' -X POST "$MG_LLM_HOST/key/generate" \
+    -H 'Content-Type: application/json' -X POST "$MG_LLM_BASE/key/generate" \
     -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"metagpt","metadata":{"owner":"metagpt","purpose":"phase32"}}' \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
+    | "$MG_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$MG_KEY_NEW" ]] || { err "Failed to mint METAGPT_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env METAGPT_LITELLM_KEY "$MG_KEY_NEW"
   ok "METAGPT_LITELLM_KEY minted + saved to .env (mode 0600)"
@@ -189,7 +194,7 @@ ok "bin/metagpt runs end-to-end (wrapper + venv + CLI)"
 log "Smoke: scoped key → LiteLLM chat completion…"
 _sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
   -H "Authorization: Bearer $(get_env METAGPT_LITELLM_KEY '')" -H 'Content-Type: application/json' \
-  -X POST "$MG_LLM_HOST/v1/chat/completions" \
+  -X POST "$MG_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$MG_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $MG_MODEL via LiteLLM) — not stamping"; exit 1; }
 ok "scoped key reaches $MG_MODEL through LiteLLM (HTTP 200)"

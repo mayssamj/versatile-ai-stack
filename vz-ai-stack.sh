@@ -287,7 +287,7 @@ ai-stack-installer — usage:
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 26
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork · 30 understand · 32 metagpt · 34 oasis
+  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork · 30 understand · 32 metagpt · 33 agentscope · 34 oasis · 35 chatdev · 36 aitown
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
   e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model   ·   vz-ai-stack.sh help embedding
@@ -585,7 +585,7 @@ install_plan() {
     fi
   done
   echo
-  [[ "$target" == "all" ]] && note "(Opt-in extras 21–25 · 27 · 28 · 29 · 30 · 32 · 34 — portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · oasis — are NOT in 'install all'; install them by name.)"
+  [[ "$target" == "all" ]] && note "(Opt-in extras 21–25 · 27 · 28 · 29 · 30 · 32 · 33 · 34 · 35 · 36 — portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · agentscope · oasis · chatdev · aitown — are NOT in 'install all'; install them by name.)"
   ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
   return 0
 }

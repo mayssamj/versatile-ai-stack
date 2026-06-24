@@ -384,7 +384,14 @@ model_list:
       model: ollama_chat/nemotron-3-nano:4b
       api_base: http://ollama:11434
       # size: 2.8 GB
- 
+
+  - model_name: local-nemotron3-nano-4b-mlx
+    litellm_params:
+      model: openai/nvidia/nemotron-3-nano-4b
+      api_base: http://host.docker.internal:1234/v1
+      api_key: lm-studio
+      # size: 3GB (LM Studio MLX variant of the Ollama local-nemotron3-nano-4b)
+
   - model_name: local-gemma4-12b
     litellm_params:
       model: openai/gemma-4-12b-it

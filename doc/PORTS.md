@@ -304,10 +304,10 @@ The compose stack publishes one host port via the new alias scheme and keeps thr
 ### `hermes_workspace` (compose)
 
 - **Listens**: `127.0.10.10:3000:3000` (Mac dials `http://workspace:3000`) → `workspace:3000`
-- **Internal**: _unverified_; clone of `NousResearch/hermes-workspace` not present locally at this writing (installer phase 05 best-effort).
+- **Internal**: two compose containers on the `hermes-workspace_default` bridge — the UI (`hermes-workspace`) and its backend `hermes-agent` (gateway `:8642` + dashboard `:9119`). The dashboard binds `0.0.0.0`/`--insecure` so the UI reaches it cross-container (it serves the Sessions API); `:9119` is **never host-published** (only the gateway `:8642` is, on `127.0.10.11`). Clone is `outsourc-e/hermes-workspace` (community UI for Nous's `hermes-agent`). Both images are **digest-pinned** in `docker-compose.override.yml` (no `:latest` drift), and the UI runs an ai-stack **hardened** derived image (guards the gateway sessions `.map` so a dashboard outage shows an empty sidebar, not a 500).
 - **Callers**: human in browser
 - **Healthcheck**: `curl -s http://workspace:3000/`
-- **Source**: `services.yml:119-125`, `installer/phases/05_uis.sh:62`, `installer/lib/aliases.tsv`
+- **Source**: `services.yml:119-125`, `installer/phases/05_uis.sh`, `installer/lib/aliases.tsv`
 
 ### `openwebui` (docker)
 

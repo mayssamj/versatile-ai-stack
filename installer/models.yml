@@ -27,6 +27,11 @@ models:
     served: nemotron-3-nano:4b
     big: false
     note: "2.8G -- tiny, on Ollama."
+  local-nemotron3-nano-4b-mlx:
+    runtime: lmstudio
+    served: nvidia/nemotron-3-nano-4b
+    big: false
+    note: "3G -- nemotron-3-nano-4b on LM Studio (MLX variant of the Ollama local-nemotron3-nano-4b)."
   local-gemma4-12b:
     runtime: lmstudio
     served: gemma-4-12b-it

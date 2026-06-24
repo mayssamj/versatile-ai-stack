@@ -65,14 +65,19 @@ command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): b
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
-# Reachability: try the container alias, then 127.0.0.1 (works even before Phase 00n
-# has written the /etc/hosts litellm entry — the spec's host-venv routing rule).
-if ! curl -sf --max-time 4 "$OA_LLM_HOST/health/liveliness" >/dev/null 2>&1 \
-   && ! curl -sf --max-time 4 "$OA_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1 \
-   && ! curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then
-  err "LiteLLM not reachable at $OA_LLM_HOST or $OA_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."
-  exit 1
+# Reachability: resolve the LiteLLM base URL ONCE — prefer the container alias
+# (litellm:4000, present after core Phase 00n writes /etc/hosts) but fall back to
+# 127.0.0.1:4000 (always reachable from the host shell, even before 00n). Reusing the
+# RESOLVED base for the mint + smoke calls below removes the /etc/hosts ordering
+# dependency the §24 council flagged (2026-06-23) — without it, install 34 before 00n
+# would abort on a litellm: NXDOMAIN even though 127.0.0.1:4000 is alive.
+OA_LLM_BASE=""
+if   curl -sf --max-time 4 "$OA_LLM_HOST/health/liveliness" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_HOST"
+elif curl -sf --max-time 4 "$OA_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
+elif curl -sf --max-time 4 -H "Authorization: Bearer $LITELLM_MASTER_KEY" "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
 fi
+[[ -n "$OA_LLM_BASE" ]] || { err "LiteLLM not reachable at $OA_LLM_HOST or $OA_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+ok "LiteLLM reachable at $OA_LLM_BASE"
 
 # --- 1. Venv (Python 3.11) + install camel-oasis ---
 mkdir -p "$OA_SIMS"
@@ -99,13 +104,13 @@ OA_KEY_CURRENT="$(get_env OASIS_LITELLM_KEY '')"
 # Only probe with the existing key when there IS one (an empty 'Bearer ' just logs a
 # spurious 401 in LiteLLM's audit trail).
 _oa_models=""
-[[ -n "$OA_KEY_CURRENT" ]] && _oa_models="$(curl -s --max-time 5 -H "Authorization: Bearer $OA_KEY_CURRENT" "$OA_LLM_HOST/v1/models" 2>/dev/null)"
+[[ -n "$OA_KEY_CURRENT" ]] && _oa_models="$(curl -s --max-time 5 -H "Authorization: Bearer $OA_KEY_CURRENT" "$OA_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$OA_KEY_CURRENT" ]] || ! printf '%s' "$_oa_models" | grep -q '"id"'; then
   log "Minting scoped LiteLLM key for OASIS (local-gemma4 + *-sub fallbacks)…"
   OA_KEY_NEW="$(curl -s --max-time 15 -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-    -H 'Content-Type: application/json' -X POST "$OA_LLM_HOST/key/generate" \
+    -H 'Content-Type: application/json' -X POST "$OA_LLM_BASE/key/generate" \
     -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"oasis","metadata":{"owner":"oasis","purpose":"phase34"}}' \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
+    | "$OA_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$OA_KEY_NEW" ]] || { err "Failed to mint OASIS_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env OASIS_LITELLM_KEY "$OA_KEY_NEW"
   ok "OASIS_LITELLM_KEY minted + saved to .env (mode 0600)"
@@ -226,7 +231,7 @@ log "Smoke: scoped key → LiteLLM chat completion…"
 _oa_key="$(get_env OASIS_LITELLM_KEY '')"
 _sc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
   -H "Authorization: Bearer $_oa_key" -H 'Content-Type: application/json' \
-  -X POST "$OA_LLM_HOST/v1/chat/completions" \
+  -X POST "$OA_LLM_BASE/v1/chat/completions" \
   -d "{\"model\":\"$OA_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $OA_MODEL via LiteLLM) — not stamping"; exit 1; }
 ok "scoped key reaches $OA_MODEL through LiteLLM (HTTP 200)"
