@@ -77,8 +77,8 @@ MAX_BODY = 64 * 1024  # cap request bodies (the demo only needs small prompts)
 # --- /api/launch (opt-in, hardened) -------------------------------------------
 # The ONLY route that runs a subprocess: a browser button that idempotently starts
 # a watchable web-UI service so a learner can open it. Hardening (see _launch):
-#   * off unless TUT_LAUNCH=1 (set only by `tutorial-serve --launch-enabled`); the
-#     route 404s at the transport layer when disabled (LAUNCH_ENABLED computed once).
+#   * off unless TUT_LAUNCH=1 (set only by `tutorial-serve --launch-enabled`); _launch()
+#     returns 404 when disabled — same effect as no route (LAUNCH_ENABLED computed once).
 #   * `svc` from the request is only a KEY into LAUNCH_SERVICES; the argv uses fixed
 #     literals + that validated key, never the raw caller string; no shell=True.
 #   * the child env is SCRUBBED of every TUT_* var (TUT_KEY_FILE is the live key path).
@@ -94,7 +94,7 @@ LAUNCH_SERVICES = {
     "aitown":    {"url": "http://aitown:5273",    "probe": ("aitown", 5273)},
 }
 LAUNCH_ENV_STRIP = {"TUT_KEY", "TUT_KEY_FILE", "TUT_LITELLM", "TUT_ROOT",
-                    "TUT_PORT", "TUT_MODELS", "TUT_HTML", "TUT_LAUNCH"}
+                    "TUT_PORT", "TUT_MODELS", "TUT_HTML", "TUT_LAUNCH", "TUT_EMBED"}
 VZ = os.path.join(ROOT, "vz-ai-stack.sh") if ROOT else ""
 # Enabled ONLY if explicitly opted in AND the entrypoint really exists (validated
 # once at startup; never construct the path at request time, never trust PATH).
@@ -158,6 +158,10 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+        # Host-pin every POST (chat/embed/launch) to loopback — closes DNS-rebinding for
+        # the budget-consuming + mutating routes (GET /api/status is host-pinned too).
+        if not self._host_ok():
+            return self._json(403, {"error": "forbidden host"})
         if path == "/api/launch":
             return self._launch()
         if ("POST", path) not in ROUTES:
@@ -247,8 +251,7 @@ class H(BaseHTTPRequestHandler):
         if not LAUNCH_ENABLED:
             return self._json(404, {"error": "launch not enabled — restart with: "
                                              "vz-ai-stack.sh tutorial-serve --launch-enabled"})
-        if not self._host_ok():
-            return self._json(403, {"error": "forbidden host"})
+        # (Host is already pinned to loopback in do_POST for every POST route.)
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
         except (ValueError, TypeError):
@@ -278,6 +281,7 @@ class H(BaseHTTPRequestHandler):
                    if not k.startswith("TUT_") and k not in LAUNCH_ENV_STRIP}
             # argv list, no shell=True; --no-open suppresses vz's own browser-open (the
             # page opens the URL on the user's click). svc is the validated allowlist key.
+            # subprocess.run kills+reaps the child internally on timeout before re-raising.
             proc = subprocess.run([VZ, "start", svc, "--no-open"], env=env, cwd=ROOT,
                                   capture_output=True, timeout=LAUNCH_TIMEOUT)
         except subprocess.TimeoutExpired:
