@@ -111,6 +111,18 @@ image_is_pinned() {
   esac
 }
 
+# image_is_local_built <image> — true (0) for an image the stack BUILDS locally and
+# that exists in NO registry, so `docker pull` returns "pull access denied". The
+# stack's convention for such derived images: the `ai-stack/` namespace, or a
+# `:local` / `:aistack-*` tag (e.g. ai-stack/chatdev:local, hermes-workspace:aistack-
+# hardened). These are (re)built by their per-service start script, never pulled.
+# NOTE: `:local` and `:aistack-*` are RESERVED internal-build tags — never tag a
+# registry-pulled image with them, or upgrade would skip its pull and try to rebuild.
+image_is_local_built() {
+  local image="$1"
+  [[ "$image" == ai-stack/* || "$image" == *:local || "$image" == *:aistack-* ]]
+}
+
 # --- availability check (read-only; downloads nothing) -----------------------
 # Local image digest (just the sha256:..., not repo@sha), or empty.
 # `|| true`: a SIGPIPE-killed sed under pipefail+inherit_errexit would otherwise
@@ -132,6 +144,10 @@ img_remote_digest() {
 #   unknown = local image exists but registry unreachable → couldn't check
 check_image() {
   local image="$1" l r
+  # Locally-built derived image (ai-stack/*, :local, :aistack-*) — no registry to
+  # compare against; it's rebuilt by start-<svc>.sh, never pulled. Report 'build'
+  # (NOT 'pinned') so --check is honest and --outdated never tries to pull it.
+  image_is_local_built "$image" && { echo build; return 0; }
   image_is_pinned "$image" && { echo pinned; return 0; }
   r="$(img_remote_digest "$image")"
   l="$(img_local_digest "$image")"
@@ -270,7 +286,7 @@ print_check_report() {
   else
     ok "Everything that can be auto-checked is up to date."
   fi
-  note "Legend: pinned=fixed tag (no rolling updates) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=no version oracle (sandbox/CLI/npm/pip) · unknown=registry unreachable or no local image"
+  note "Legend: pinned=fixed tag (no rolling updates) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=no version oracle (sandbox/CLI/npm/pip) · unknown=registry unreachable or no local image"
 }
 
 # --- phase / start-script resolution (lock-free recreate paths) --------------
@@ -336,6 +352,25 @@ up_docker() {
     err "$svc: no image declared"
     return 0
   fi
+
+  # Locally-built image (e.g. ai-stack/chatdev:local) — exists in NO registry, so
+  # `docker pull` would fail "pull access denied" and hard-FAIL the whole `upgrade all`.
+  # "Upgrade" for a derived image = REBUILD via its per-service start script
+  # (start-<svc>.sh --recreate rebuilds the image), exactly like the deerflow case in
+  # up_compose. Skip the pull (and the pointless pinned-pull prompt) entirely.
+  if image_is_local_built "$image"; then
+    if (( DRY )); then
+      note "PLAN $svc docker: $image is locally built (no registry) — would rebuild via its start script (start-$svc.sh --recreate), no pull"
+      RESULT="planned"; return 0
+    fi
+    if (( DOCKER_OK == 0 )); then RESULT="skipped (docker unavailable)"; return 0; fi
+    # Heads-up at the upgrade layer: the rebuild is a docker build (can take several
+    # minutes), not a quick pull — so `upgrade all` doesn't look like it hung here.
+    note "$svc: locally-built image ($image) — rebuilding via its start script (docker build; first build can take several minutes; no registry pull)…"
+    if recreate_via_start_script "$svc"; then RESULT="upgraded"; else RESULT=FAILED; fi
+    return 0
+  fi
+
   cur="$(docker_local_digest "$image")"
   [[ -z "$cur" ]] && cur="unknown"
 
