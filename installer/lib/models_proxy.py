@@ -41,6 +41,7 @@ ROOT       = os.path.realpath(os.environ.get("MC_ROOT", "")) if os.environ.get("
 MODELS_SH  = os.environ.get("MC_MODELS_SH", "")
 EMBED_SH   = os.environ.get("MC_EMBED_SH", "")
 START_LL   = os.environ.get("MC_START_LITELLM", "")
+DOCKER     = os.environ.get("MC_DOCKER", "docker")   # binary used to restart litellm on restore; overridable so a test can stub it (never the real daemon)
 MODELS_YML = os.environ.get("MC_MODELS_YML", "")
 CONFIG     = os.environ.get("MC_CONFIG", "")
 ENV_FILE   = os.environ.get("MC_ENV_FILE", "")
@@ -326,6 +327,12 @@ class H(BaseHTTPRequestHandler):
             if not _loopback_origin_ok(self.headers):
                 return self._json(403, {"error": "forbidden origin (cross-site request blocked)"})
             return self._state()
+        if path == "/api/backups":
+            if not self._host_ok():
+                return self._json(403, {"error": "forbidden host"})
+            if not _loopback_origin_ok(self.headers):
+                return self._json(403, {"error": "forbidden origin (cross-site request blocked)"})
+            return self._json(200, {"backups": _list_backups(), "read_only": READONLY})
         if path in ("/", "/index.html", "/models", "/MODELS.html"):
             if PAGE_ROUTE != "/":
                 return self._redirect(PAGE_ROUTE)
@@ -345,6 +352,8 @@ class H(BaseHTTPRequestHandler):
             return self._stage()
         if path == "/api/apply":
             return self._apply()
+        if path == "/api/restore":
+            return self._restore()
         if path == "/api/test":
             return self._test()
         self._json(404, {"error": f"route not allowed: POST {path}"})
@@ -530,6 +539,63 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(200, {"ok": False, "model": model, "error": str(e)[:300]})
 
+    # ----------------------------------------------------------------- restore (one-click rollback)
+    def _restore(self):
+        """Roll back models.yml + config.yaml to a prior apply's timestamped backup, then
+        RESTART LiteLLM to load it. The CURRENT state is backed up first, so a restore is
+        itself reversible. .env is intentionally NOT restored (the console never edits it;
+        rolling it back could clobber vendor keys added since). Read-only refuses; the
+        LiteLLM restart is gated behind confirm_restart (fleet downtime), mirroring apply."""
+        if READONLY:
+            return self._json(403, {"ok": False, "error": "read-only mode: restore is disabled (restart without --read-only)"})
+        body, err = self._read_body()
+        if err:
+            return self._json(err[0], {"error": err[1]})
+        ts = _str(body, "ts") if isinstance(body, dict) else None
+        confirm_restart = bool(body.get("confirm_restart")) if isinstance(body, dict) else False
+        if not (ts and _is_backup_ts(ts)):
+            return self._json(400, {"ok": False, "error": "restore requires a valid backup 'ts' (YYYYMMDD-HHMMSS)"})
+        if not BACKUP_DIR:
+            return self._json(500, {"ok": False, "error": "no backup dir configured"})
+        src_models = os.path.join(BACKUP_DIR, f"models.yml.{ts}")
+        src_config = os.path.join(BACKUP_DIR, f"config.yaml.{ts}")
+        # containment: the resolved source MUST live inside BACKUP_DIR (defense vs a crafted ts,
+        # though _is_backup_ts already constrains it to digits+dash — belt-and-suspenders).
+        rbd = os.path.realpath(BACKUP_DIR)
+        if os.path.commonpath([rbd, os.path.realpath(src_models)]) != rbd:
+            return self._json(400, {"ok": False, "error": "invalid backup path"})
+        if not os.path.isfile(src_models):
+            return self._json(404, {"ok": False, "error": f"no models.yml backup for {ts}"})
+        if not confirm_restart:
+            return self._json(409, {"ok": False, "needs_confirm": True, "ts": ts,
+                "reason": f"restoring {ts} overwrites models.yml" + (" + config.yaml" if os.path.isfile(src_config) else "")
+                          + " (the current state is backed up first) and RESTARTS LiteLLM to load it — a brief drop for the whole fleet."})
+        if not _apply_lock.acquire(blocking=False):
+            return self._json(409, {"ok": False, "error": "another apply/restore is in progress — try again in a moment"})
+        try:
+            pre = _backup_sources()   # snapshot CURRENT state first -> the restore is itself reversible
+            restored = []
+            try:
+                shutil.copy2(src_models, MODELS_YML); restored.append("models.yml")
+                if os.path.isfile(src_config):
+                    shutil.copy2(src_config, CONFIG); restored.append("config.yaml")
+            except OSError as e:
+                return self._json(500, {"ok": False, "error": f"restore copy failed: {e}", "pre_restore_backup": pre})
+            # Load the restored config into the running router — a docker restart (reloads the
+            # mounted config.yaml), NOT a recreate (no new -e keys are involved in a rollback).
+            restart_ok = False; restart_log = ""
+            try:
+                env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
+                p = subprocess.run([DOCKER, "restart", "litellm"], env=env, capture_output=True, text=True, timeout=120)
+                restart_ok = (p.returncode == 0)
+                restart_log = ((p.stderr or "") + (p.stdout or ""))[-400:]
+            except Exception as e:
+                restart_log = str(e)[:300]
+            return self._json(200, {"ok": True, "ts": ts, "restored": restored,
+                                    "pre_restore_backup": pre, "restart_ok": restart_ok, "restart_log": restart_log})
+        finally:
+            _apply_lock.release()
+
     # ----------------------------------------------------------------- static / html
     def _serve_html(self):
         if not HTML or not os.path.isfile(HTML):
@@ -636,6 +702,33 @@ def _backup_sources():
         except OSError:
             pass
     return made
+
+
+def _is_backup_ts(s):
+    """A backup timestamp is exactly YYYYMMDD-HHMMSS (the strftime format _backup_sources
+    writes). Validating this also forbids path-traversal in the restore 'ts' (no '/', '.')."""
+    return isinstance(s, str) and len(s) == 15 and s[8] == "-" and s[:8].isdigit() and s[9:].isdigit()
+
+
+def _list_backups():
+    """Group BACKUP_DIR files (<basename>.<ts>) into restore sets, newest first. Returns
+    [{ts, models, config, env}] booleans — which of the three sources exist for each ts.
+    Read-only; surfaces nothing but timestamps + presence flags."""
+    if not BACKUP_DIR or not os.path.isdir(BACKUP_DIR):
+        return []
+    KNOWN = {"models.yml": "models", "config.yaml": "config", ".env": "env"}
+    try:
+        names = os.listdir(BACKUP_DIR)
+    except OSError:
+        return []
+    sets = {}
+    for fn in names:
+        base, _, ts = fn.rpartition(".")
+        if base not in KNOWN or not _is_backup_ts(ts):
+            continue
+        e = sets.setdefault(ts, {"ts": ts, "models": False, "config": False, "env": False})
+        e[KNOWN[base]] = True
+    return sorted(sets.values(), key=lambda x: x["ts"], reverse=True)
 
 
 def main():

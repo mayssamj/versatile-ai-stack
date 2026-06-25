@@ -399,6 +399,27 @@ input[type="checkbox"].check { width:auto; cursor:pointer; }
 .w-full { width:100%; }
 .word-break { word-break:break-all; }
 
+/* ─── Backups section ────────────────────────────────────────────────── */
+.backup-list { display:flex; flex-direction:column; gap:var(--sp2); }
+.backup-row {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:var(--sp2) var(--sp3);
+  display:flex; align-items:center; gap:var(--sp2); flex-wrap:wrap;
+}
+.backup-ts { font-family:var(--mono-font); font-size:var(--t4); font-weight:600; }
+.backup-chips { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+.backup-chip-file {
+  background:var(--raised); border:1px solid var(--border);
+  border-radius:999px; padding:2px 9px; font-size:var(--t5);
+  font-family:var(--mono-font); color:var(--mono);
+}
+.backup-chip-env {
+  background:var(--raised); border:1px solid var(--border);
+  border-radius:999px; padding:2px 9px; font-size:var(--t5);
+  font-family:var(--mono-font); color:var(--muted);
+  opacity:.65;
+}
+
 /* drawer toggle btn (mobile) */
 #drawer-toggle-wrap {
   padding:var(--sp2) var(--sp4);
@@ -547,6 +568,37 @@ input[type="checkbox"].check { width:auto; cursor:pointer; }
               <tbody id="embeddings-tbody"></tbody>
             </table>
           </div>
+        </section>
+
+        <!-- Backups & Restore section -->
+        <section class="section" id="backups-section" aria-labelledby="backups-section-title">
+          <div class="section-header">
+            <h2 id="backups-section-title" class="section-title">Backups &amp; Restore</h2>
+            <span id="backups-count" class="badge badge-muted section-meta hidden"></span>
+            <div class="section-actions">
+              <button class="btn btn-sm" id="backups-refresh-btn" aria-label="Refresh backup list" title="Refresh backups">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.21-3.67L9.5 6.5H15V1L13.65 2.35z" fill="currentColor"/>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+          <p class="text-xs text-muted" style="margin-bottom:var(--sp3)">
+            A backup of models.yml and config.yaml is created automatically before each Apply.
+            Restore rolls back both files and restarts LiteLLM. The .env file is captured for reference but is never restored automatically.
+          </p>
+          <div id="backups-loading" class="hidden">
+            <div class="backup-list">
+              <div class="skeleton skel-line" style="width:100%;height:40px;border-radius:6px"></div>
+              <div class="skeleton skel-line" style="width:100%;height:40px;border-radius:6px"></div>
+            </div>
+          </div>
+          <div id="backups-error" class="inline-error hidden" role="alert"></div>
+          <div id="backups-readonly-note" class="inline-info hidden">
+            Restore is disabled in read-only mode.
+          </div>
+          <div id="backups-list" class="backup-list" aria-label="Backup restore points" role="list"></div>
         </section>
       </div>
     </main>
@@ -770,6 +822,7 @@ function renderAll() {
   renderFallbacks();
   renderAgents();
   renderEmbeddings();
+  loadBackups();
 }
 
 // ── Header ───────────────────────────────────────────────────────────────
@@ -1389,6 +1442,7 @@ async function applyOp(confirmRecreate=false) {
     announce(msg);
     clearDrawer();
     await loadState();
+    await loadBackups();
   } catch(e) {
     toast(`Apply error: ${e.message}`, 'err');
     applyBtn.disabled = false;
@@ -1427,8 +1481,13 @@ applyBtn.addEventListener('click', () => applyOp(false));
 
 // ── Modal ────────────────────────────────────────────────────────────────
 let modalConfirmCb = null;
-function openModal(onConfirm) {
+const modalTitle = $('modal-title');
+function openModal(onConfirm, titleText, confirmLabel) {
   modalConfirmCb = onConfirm;
+  if (titleText != null) setText(modalTitle, titleText);
+  else setText(modalTitle, 'Confirm Container Recreate');
+  if (confirmLabel != null) setText(modalConfirm, confirmLabel);
+  else setText(modalConfirm, 'Recreate & Apply');
   modalOverlay.classList.add('open');
   modalOverlay.removeAttribute('aria-hidden');
   modalConfirm.focus();
@@ -1706,6 +1765,212 @@ function getFieldVal(wrap, name) {
   const el = wrap.querySelector(`#field-${name}`) || wrap.querySelector(`[name="${name}"]`);
   return el ? el.value.trim() : '';
 }
+
+// ── Backups & Restore ────────────────────────────────────────────────────
+const backupsList       = $('backups-list');
+const backupsLoading    = $('backups-loading');
+const backupsError      = $('backups-error');
+const backupsCount      = $('backups-count');
+const backupsReadonlyNote = $('backups-readonly-note');
+
+// Format "20260101-120000" → "2026-01-01 12:00:00"
+function fmtBackupTs(ts) {
+  if (!ts || ts.length !== 15) return ts;
+  const d = ts.slice(0,8);
+  const t = ts.slice(9,15);
+  return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)} ${t.slice(0,2)}:${t.slice(2,4)}:${t.slice(4,6)}`;
+}
+
+async function loadBackups() {
+  backupsLoading.classList.remove('hidden');
+  backupsError.classList.add('hidden');
+  backupsList.innerHTML = '';
+  backupsCount.classList.add('hidden');
+
+  try {
+    const res = await apiFetch('/api/backups');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    backupsLoading.classList.add('hidden');
+    const readOnly = (STATE && STATE.read_only) || data.read_only;
+    if (readOnly) {
+      backupsReadonlyNote.classList.remove('hidden');
+    } else {
+      backupsReadonlyNote.classList.add('hidden');
+    }
+    renderBackups(data.backups || [], readOnly);
+  } catch(e) {
+    backupsLoading.classList.add('hidden');
+    setText(backupsError, `Failed to load backups: ${e.message}`);
+    backupsError.classList.remove('hidden');
+  }
+}
+
+function renderBackups(backups, readOnly) {
+  backupsList.innerHTML = '';
+
+  if (backups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No backups yet — one is created automatically before each Apply.';
+    backupsList.appendChild(empty);
+    return;
+  }
+
+  setText(backupsCount, backups.length);
+  backupsCount.classList.remove('hidden');
+
+  for (const b of backups) {
+    const row = document.createElement('div');
+    row.className = 'backup-row';
+    row.setAttribute('role','listitem');
+
+    const tsEl = document.createElement('span');
+    tsEl.className = 'backup-ts';
+    tsEl.textContent = fmtBackupTs(b.ts);
+    row.appendChild(tsEl);
+
+    const chips = document.createElement('span');
+    chips.className = 'backup-chips';
+
+    if (b.models) {
+      const c = mkEl('span', {className:'backup-chip-file'}, 'models.yml');
+      chips.appendChild(c);
+    }
+    if (b.config) {
+      const c = mkEl('span', {className:'backup-chip-file'}, 'config.yaml');
+      chips.appendChild(c);
+    }
+    if (b.env) {
+      const c = mkEl('span', {className:'backup-chip-env'}, 'env (not restored)');
+      c.setAttribute('title', '.env is captured for reference only and is never automatically restored');
+      chips.appendChild(c);
+    }
+    row.appendChild(chips);
+
+    // Restore button
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'btn btn-sm btn-danger ml-auto';
+    restoreBtn.textContent = 'Restore';
+    restoreBtn.setAttribute('aria-label', `Restore to backup from ${fmtBackupTs(b.ts)}`);
+    restoreBtn.disabled = !!readOnly;
+    restoreBtn.addEventListener('click', () => doRestore(b.ts, restoreBtn));
+    row.appendChild(restoreBtn);
+
+    backupsList.appendChild(row);
+  }
+}
+
+async function doRestore(ts, btn) {
+  btn.disabled = true;
+  const origText = btn.textContent;
+  setText(btn, 'Restoring…');
+  announce(`Requesting restore to ${fmtBackupTs(ts)}…`);
+
+  try {
+    // First call — expects 409 with reason
+    const res1 = await apiFetch('/api/restore', {
+      method: 'POST',
+      body: JSON.stringify({ts, confirm_restart: false})
+    });
+
+    if (res1.status === 409) {
+      const d1 = await res1.json();
+      if (d1.needs_confirm) {
+        // Show confirm modal with 409 reason text
+        const reason = d1.reason || `Restore to ${fmtBackupTs(ts)} will overwrite models.yml + config.yaml and restart LiteLLM.`;
+        setText(modalBody, reason);
+        openModal(
+          async () => {
+            btn.disabled = true;
+            setText(btn, 'Restoring…');
+            await confirmRestore(ts, btn, origText);
+          },
+          'Confirm Restore',
+          'Restore & Restart'
+        );
+        btn.disabled = false;
+        setText(btn, origText);
+        return;
+      }
+    }
+
+    // Handle non-409 success/error directly (server may not gate first call)
+    await handleRestoreResponse(res1, ts, btn, origText);
+
+  } catch(e) {
+    toast(`Restore error: ${e.message}`, 'err');
+    btn.disabled = false;
+    setText(btn, origText);
+  }
+}
+
+async function confirmRestore(ts, btn, origText) {
+  try {
+    const res = await apiFetch('/api/restore', {
+      method: 'POST',
+      body: JSON.stringify({ts, confirm_restart: true})
+    });
+    await handleRestoreResponse(res, ts, btn, origText);
+  } catch(e) {
+    toast(`Restore error: ${e.message}`, 'err');
+    btn.disabled = false;
+    setText(btn, origText);
+  }
+}
+
+async function handleRestoreResponse(res, ts, btn, origText) {
+  if (res.status === 403) {
+    toast('Read-only mode — restore not permitted.', 'err');
+    btn.disabled = false;
+    setText(btn, origText);
+    return;
+  }
+  if (res.status === 400) {
+    toast(`Bad restore request (ts: ${ts}).`, 'err');
+    btn.disabled = false;
+    setText(btn, origText);
+    return;
+  }
+  if (res.status === 404) {
+    toast(`No backup found for ${fmtBackupTs(ts)}.`, 'err');
+    btn.disabled = false;
+    setText(btn, origText);
+    return;
+  }
+
+  let data;
+  try { data = await res.json(); } catch(_) { data = {}; }
+
+  if (!res.ok || !data.ok) {
+    const errMsg = data.error || data.reason || `HTTP ${res.status}`;
+    toast(`Restore failed: ${errMsg}`, 'err');
+    btn.disabled = false;
+    setText(btn, origText);
+    return;
+  }
+
+  // Success
+  const restored = (data.restored || []).join(', ') || 'files';
+  let msg = `Rolled back to ${fmtBackupTs(ts)} — restored ${restored}.`;
+  if (data.restart_ok === false) {
+    msg += ' Files restored but LiteLLM restart reported an error — check the stack.';
+    toast(msg, 'err', 9000);
+  } else {
+    msg += ' LiteLLM restarted. (Your pre-restore state was backed up.)';
+    toast(msg, 'ok', 8000);
+  }
+  announce(msg);
+
+  // Full state refresh
+  await loadState();
+  await loadBackups();
+}
+
+$('backups-refresh-btn').addEventListener('click', async () => {
+  await loadBackups();
+  announce('Backup list refreshed.');
+});
 
 // ── Keyboard: trap focus in modals ───────────────────────────────────────
 function trapFocus(el, e) {
