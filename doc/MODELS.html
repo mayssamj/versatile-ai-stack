@@ -228,6 +228,14 @@ select.model-select:disabled { opacity:.45; cursor:not-allowed; }
   border-radius:999px; padding:2px 9px; font-size:var(--t5);
   font-family:var(--mono-font); color:var(--mono);
 }
+.fallback-item-actions { display:flex; gap:5px; margin-left:auto; flex-shrink:0; }
+.fallback-warn {
+  background:var(--warn-dim); border:1px solid var(--warn);
+  border-radius:var(--radius-xs); padding:3px 8px; font-size:var(--t5); color:var(--warn);
+}
+.fallback-target-list { display:flex; flex-direction:column; gap:5px; }
+.fallback-target-row { display:flex; gap:5px; align-items:center; }
+.fallback-target-row select { flex:1; }
 
 /* ─── Embeddings ─────────────────────────────────────────────────────── */
 .embed-table { width:100%; border-collapse:collapse; font-size:var(--t4); }
@@ -521,11 +529,19 @@ input[type="checkbox"].check { width:auto; cursor:pointer; }
         <section class="section" aria-labelledby="fallbacks-section-title">
           <div class="section-header">
             <h2 id="fallbacks-section-title" class="section-title">Fallback Chains</h2>
+            <div class="section-actions">
+              <button class="btn btn-sm" id="add-fallback-btn" aria-label="Add a new fallback chain">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                Add Fallback
+              </button>
+            </div>
           </div>
           <p class="text-xs text-muted" style="margin-bottom:var(--sp3)">
-            Fallback chains are hand-curated policy in config.yaml. They are view-only here.
+            Edits config.yaml fallback policy and restart LiteLLM (brief fleet drop — same gravity as Restore).
           </p>
-          <div id="fallbacks-list"></div>
+          <div id="fallbacks-list" role="list" aria-label="Fallback chain list"></div>
         </section>
 
         <!-- Agents section -->
@@ -1094,44 +1110,515 @@ async function testModel(name, btn) {
 function renderFallbacks() {
   fallbacksList.innerHTML = '';
   const fallbacks = STATE.fallbacks || [];
+  const readOnly = STATE.read_only;
+
   if (fallbacks.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'text-muted text-sm';
+    empty.setAttribute('role','listitem');
     empty.textContent = 'No fallback chains configured.';
     fallbacksList.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'fallback-list';
+    for (const entry of fallbacks) {
+      const [primary, targets] = Object.entries(entry)[0];
+      const targetArr = Array.isArray(targets) ? targets : [targets];
+      const item = document.createElement('div');
+      item.className = 'fallback-item';
+      item.setAttribute('role','listitem');
+
+      const pEl = document.createElement('span');
+      pEl.className = 'fallback-primary';
+      pEl.textContent = primary;
+      item.appendChild(pEl);
+
+      const arrow = document.createElement('span');
+      arrow.className = 'fallback-arrow';
+      arrow.setAttribute('aria-label','falls back to');
+      arrow.textContent = '→';
+      item.appendChild(arrow);
+
+      targetArr.forEach((t, i) => {
+        const chip = mkChip(t);
+        item.appendChild(chip);
+        if (i < targetArr.length - 1) {
+          const sep = document.createElement('span');
+          sep.className = 'fallback-arrow';
+          sep.setAttribute('aria-hidden','true');
+          sep.textContent = '›';
+          item.appendChild(sep);
+        }
+      });
+
+      // v1.1 scope: only add Edit/Remove when the key model is NOT a local (ollama) model
+      const models = STATE.models || {};
+      const keyModel = models[primary];
+      const keyIsLocal = keyModel && keyModel.runtime === 'ollama';
+      if (!keyIsLocal) {
+        const actions = document.createElement('div');
+        actions.className = 'fallback-item-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-sm';
+        editBtn.textContent = 'Edit';
+        editBtn.setAttribute('aria-label', `Edit fallback chain for ${primary}`);
+        editBtn.disabled = !!readOnly;
+        editBtn.addEventListener('click', () => openFallbackEditForm(primary, targetArr));
+        actions.appendChild(editBtn);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn btn-sm btn-danger';
+        removeBtn.textContent = 'Remove';
+        removeBtn.setAttribute('aria-label', `Remove fallback chain for ${primary}`);
+        removeBtn.disabled = !!readOnly;
+        removeBtn.addEventListener('click', () => doFallbackRemove(primary, removeBtn));
+        actions.appendChild(removeBtn);
+
+        item.appendChild(actions);
+      }
+
+      list.appendChild(item);
+    }
+    fallbacksList.appendChild(list);
+  }
+
+  // Wire "Add Fallback" button (disable when read-only)
+  const addBtn = $('add-fallback-btn');
+  if (addBtn) addBtn.disabled = !!readOnly;
+}
+
+// ── Fallback: remove (quick confirm via modal, no 409 first pass) ──────────
+async function doFallbackRemove(model, btn) {
+  const origText = btn.textContent;
+  openModal(
+    async () => {
+      btn.disabled = true;
+      setText(btn, 'Removing…');
+      announce(`Removing fallback chain for ${model}…`);
+      await doFallbackOp('remove', model, [], false, btn, origText);
+    },
+    `Remove fallback chain for "${model}"?`,
+    'Remove & Restart'
+  );
+}
+
+// ── Fallback form (Add / Edit) ────────────────────────────────────────────
+let fbFormMode = null;   // 'add' | 'edit'
+let fbFormModel = null;  // string: primary model key (for edit)
+
+// Second pane: we reuse the existing #form-pane / #form-box infrastructure.
+// fbFormMode/fbFormModel distinguish this mode from the model add/edit mode.
+
+function openFallbackAddForm() {
+  fbFormMode = 'add';
+  fbFormModel = null;
+  setText(formTitle, 'Add Fallback Chain');
+  renderFallbackForm(null, []);
+  openFormPane();
+}
+
+function openFallbackEditForm(primary, currentTargets) {
+  fbFormMode = 'edit';
+  fbFormModel = primary;
+  setText(formTitle, `Edit Fallback: ${primary}`);
+  renderFallbackForm(primary, currentTargets);
+  openFormPane();
+}
+
+// Classify a target name for warning copy
+function fbTargetClass(name) {
+  if (!name) return 'local';
+  const models = STATE.models || {};
+  const m = models[name];
+  if (m && m.runtime === 'ollama') return 'local';
+  if (/-sub/.test(name)) return 'subscription';
+  return 'metered';
+}
+
+function fbTargetWarning(name) {
+  const cls = fbTargetClass(name);
+  if (cls === 'local') return '';
+  if (cls === 'subscription') return 'depends on the subscription/bridge daemon — may be unavailable during the same outage that triggers the fallback (no per-token cost).';
+  return 'per-token billing — may incur cost, and may be unavailable during the outage.';
+}
+
+function renderFallbackForm(primaryModel, currentTargets) {
+  formBody.innerHTML = '';
+  const models = STATE.models || {};
+  const fallbacks = STATE.fallbacks || [];
+
+  // Build sorted model name lists
+  const localModels = Object.entries(models)
+    .filter(([, m]) => m.runtime === 'ollama')
+    .map(([n]) => n).sort();
+  const otherModels = Object.entries(models)
+    .filter(([, m]) => m.runtime !== 'ollama')
+    .map(([n]) => n).sort();
+
+  // ── model (chain key) field — fixed for edit, dropdown for add ──────────
+  const modelField = document.createElement('div');
+  modelField.className = 'field';
+
+  const modelLabel = document.createElement('label');
+  modelLabel.setAttribute('for','fb-model-sel');
+  modelLabel.textContent = 'Model (chain key)';
+  modelField.appendChild(modelLabel);
+
+  if (fbFormMode === 'edit') {
+    const fixedEl = document.createElement('div');
+    fixedEl.className = 'field input';
+    fixedEl.style.cssText = 'background:var(--raised);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-family:var(--mono-font);font-size:var(--t3);opacity:.7';
+    fixedEl.textContent = primaryModel;
+    modelField.appendChild(fixedEl);
+  } else {
+    // Add: exclude models already keyed in STATE.fallbacks
+    const keyedModels = new Set(fallbacks.map(e => Object.keys(e)[0]));
+    const availableModels = Object.keys(models).filter(n => !keyedModels.has(n)).sort();
+
+    const sel = document.createElement('select');
+    sel.id = 'fb-model-sel';
+    sel.className = 'field select';
+    sel.style.cssText = 'background:var(--raised);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-family:var(--mono-font);font-size:var(--t3);width:100%';
+    if (availableModels.length === 0) {
+      const opt = document.createElement('option');
+      opt.textContent = '— all models already have chains —';
+      opt.disabled = true;
+      sel.appendChild(opt);
+      sel.disabled = true;
+    } else {
+      availableModels.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        sel.appendChild(opt);
+      });
+    }
+    modelField.appendChild(sel);
+  }
+  formBody.appendChild(modelField);
+
+  // ── allow non-local checkbox ────────────────────────────────────────────
+  const allowWrap = document.createElement('div');
+  allowWrap.className = 'field';
+  allowWrap.style.flexDirection = 'row';
+  allowWrap.style.alignItems = 'center';
+  allowWrap.style.gap = '8px';
+
+  const allowCheck = document.createElement('input');
+  allowCheck.type = 'checkbox';
+  allowCheck.className = 'check';
+  allowCheck.id = 'fb-allow-nonlocal';
+  // Pre-check if current targets contain non-local
+  const hasNonLocal = currentTargets.some(t => fbTargetClass(t) !== 'local');
+  allowCheck.checked = hasNonLocal;
+
+  const allowLabel = document.createElement('label');
+  allowLabel.setAttribute('for','fb-allow-nonlocal');
+  allowLabel.textContent = 'Allow non-local target (may be unavailable in an outage)';
+  allowLabel.style.fontSize = 'var(--t4)';
+  allowWrap.appendChild(allowCheck);
+  allowWrap.appendChild(allowLabel);
+  formBody.appendChild(allowWrap);
+
+  // ── target list ─────────────────────────────────────────────────────────
+  const targetsField = document.createElement('div');
+  targetsField.className = 'field';
+  const targetsLabel = document.createElement('label');
+  targetsLabel.textContent = 'Targets (failover order)';
+  targetsLabel.style.fontSize = 'var(--t4)';
+  targetsLabel.style.fontWeight = '600';
+  targetsField.appendChild(targetsLabel);
+
+  const targetList = document.createElement('div');
+  targetList.className = 'fallback-target-list';
+  targetList.id = 'fb-target-list';
+  targetsField.appendChild(targetList);
+
+  const addTargetBtn = document.createElement('button');
+  addTargetBtn.type = 'button';
+  addTargetBtn.className = 'btn btn-sm';
+  addTargetBtn.style.marginTop = '4px';
+  addTargetBtn.style.alignSelf = 'flex-start';
+  addTargetBtn.textContent = '+ Add target';
+  addTargetBtn.addEventListener('click', () => {
+    appendTargetRow(targetList, localModels, otherModels, '', allowCheck.checked);
+    updateTargetWarnings(targetList);
+  });
+  targetsField.appendChild(addTargetBtn);
+
+  formBody.appendChild(targetsField);
+
+  // ── warnings area ───────────────────────────────────────────────────────
+  const warnArea = document.createElement('div');
+  warnArea.id = 'fb-warn-area';
+  warnArea.style.display = 'flex';
+  warnArea.style.flexDirection = 'column';
+  warnArea.style.gap = '4px';
+  formBody.appendChild(warnArea);
+
+  // Populate initial targets (at least one row)
+  const initTargets = currentTargets.length > 0 ? currentTargets : [''];
+  initTargets.forEach(t => appendTargetRow(targetList, localModels, otherModels, t, allowCheck.checked));
+  updateTargetWarnings(targetList);
+
+  // React to allow-nonlocal toggle: re-filter selects and update warnings
+  allowCheck.addEventListener('change', () => {
+    rebuildTargetSelects(targetList, localModels, otherModels, allowCheck.checked);
+    updateTargetWarnings(targetList);
+  });
+}
+
+function appendTargetRow(listEl, localModels, otherModels, selectedVal, allowNonLocal) {
+  const row = document.createElement('div');
+  row.className = 'fallback-target-row';
+
+  const sel = document.createElement('select');
+  sel.className = 'field select fb-target-sel';
+  sel.style.cssText = 'background:var(--raised);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-family:var(--mono-font);font-size:var(--t4);flex:1;min-width:0';
+  sel.setAttribute('aria-label','Target model');
+
+  populateTargetSelect(sel, localModels, otherModels, selectedVal, allowNonLocal);
+
+  sel.addEventListener('change', () => {
+    const listEl2 = sel.closest('#fb-target-list');
+    if (listEl2) updateTargetWarnings(listEl2);
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn-sm btn-danger';
+  removeBtn.textContent = '✕';
+  removeBtn.setAttribute('aria-label','Remove this target');
+  removeBtn.addEventListener('click', () => {
+    row.remove();
+    updateTargetWarnings(listEl);
+  });
+
+  row.appendChild(sel);
+  row.appendChild(removeBtn);
+  listEl.appendChild(row);
+}
+
+function populateTargetSelect(sel, localModels, otherModels, selectedVal, allowNonLocal) {
+  sel.innerHTML = '';
+  // Local group
+  if (localModels.length > 0) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Local (Ollama)';
+    localModels.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      if (n === selectedVal) opt.selected = true;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+  // Non-local group (only when allowed)
+  if (allowNonLocal && otherModels.length > 0) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Non-local';
+    otherModels.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      if (n === selectedVal) opt.selected = true;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+  // If selectedVal is non-local but checkbox just got unchecked, keep it visible
+  // as a disabled placeholder so user sees what they had
+  if (!allowNonLocal && selectedVal && fbTargetClass(selectedVal) !== 'local') {
+    const opt = document.createElement('option');
+    opt.value = selectedVal;
+    opt.textContent = `${selectedVal} (non-local — enable checkbox to keep)`;
+    opt.selected = true;
+    sel.insertBefore(opt, sel.firstChild);
+  }
+}
+
+function rebuildTargetSelects(listEl, localModels, otherModels, allowNonLocal) {
+  listEl.querySelectorAll('.fb-target-sel').forEach(sel => {
+    const current = sel.value;
+    populateTargetSelect(sel, localModels, otherModels, current, allowNonLocal);
+  });
+}
+
+function updateTargetWarnings(listEl) {
+  const warnArea = $('fb-warn-area');
+  if (!warnArea) return;
+  warnArea.innerHTML = '';
+  listEl.querySelectorAll('.fb-target-sel').forEach(sel => {
+    const val = sel.value;
+    if (!val) return;
+    const msg = fbTargetWarning(val);
+    if (!msg) return;
+    const w = document.createElement('div');
+    w.className = 'fallback-warn';
+    w.textContent = `"${val}": ${msg}`;
+    warnArea.appendChild(w);
+  });
+}
+
+// ── Fallback form submit ──────────────────────────────────────────────────
+// Overrides the existing #form-submit-btn handler via formMode dispatch.
+// We add 'fallback-add' and 'fallback-edit' to the existing mode switch.
+
+// ── Fallback op: set ──────────────────────────────────────────────────────
+async function submitFallbackForm() {
+  const models = STATE.models || {};
+  const localModels = Object.entries(models)
+    .filter(([,m]) => m.runtime === 'ollama').map(([n]) => n);
+  const otherModels = Object.entries(models)
+    .filter(([,m]) => m.runtime !== 'ollama').map(([n]) => n);
+
+  // Get model key
+  let modelKey;
+  if (fbFormMode === 'edit') {
+    modelKey = fbFormModel;
+  } else {
+    const sel = $('fb-model-sel');
+    modelKey = sel ? sel.value : '';
+  }
+  if (!modelKey) { toast('Select a model key first.', 'err'); return; }
+
+  // Get targets
+  const targetSels = ($('fb-target-list') || document.createElement('div')).querySelectorAll('.fb-target-sel');
+  const targets = Array.from(targetSels).map(s => s.value).filter(Boolean);
+  if (targets.length === 0) { toast('Add at least one target.', 'err'); return; }
+
+  // Self-reference guard
+  if (targets.includes(modelKey)) { toast(`Target cannot be the same as the chain key ("${modelKey}").`, 'err'); return; }
+
+  const allowNonLocal = !!($('fb-allow-nonlocal') || {checked:false}).checked;
+
+  closeFormPane();
+
+  const submitBtn = $('form-submit-btn');
+  if (submitBtn) submitBtn.disabled = true;
+
+  await doFallbackOp('set', modelKey, targets, allowNonLocal, null, null);
+
+  if (submitBtn) submitBtn.disabled = false;
+}
+
+// ── Core fallback op (set | remove), mirrors doRestore pattern ────────────
+async function doFallbackOp(op, model, targets, allowNonLocal, triggerBtn, origBtnText) {
+  announce(`${op === 'set' ? 'Setting' : 'Removing'} fallback chain for ${model}…`);
+
+  const body = {fb_op: op, model, allow_non_local: allowNonLocal, confirm_restart: false};
+  if (op === 'set') body.targets = targets;
+
+  try {
+    const res1 = await apiFetch('/api/fallback', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+
+    if (res1.status === 409) {
+      const d1 = await res1.json();
+      if (d1.needs_confirm) {
+        const reasonText = d1.reason || `This will edit config.yaml and restart LiteLLM.`;
+        const previewText = d1.preview ? `\n\n${d1.preview}` : '';
+        setText(modalBody, `${reasonText}${previewText}`);
+        openModal(
+          async () => {
+            if (triggerBtn) { triggerBtn.disabled = true; setText(triggerBtn, triggerBtn.textContent.replace(/…$/,'') + '…'); }
+            await confirmFallbackOp(op, model, targets, allowNonLocal, triggerBtn, origBtnText);
+          },
+          `Confirm Fallback ${op === 'set' ? 'Edit' : 'Remove'}`,
+          `${op === 'set' ? 'Edit' : 'Remove'} & Restart`
+        );
+        if (triggerBtn) { triggerBtn.disabled = false; setText(triggerBtn, origBtnText); }
+        return;
+      }
+    }
+
+    await handleFallbackResponse(res1, op, model, triggerBtn, origBtnText);
+
+  } catch(e) {
+    toast(`Fallback error: ${e.message}`, 'err');
+    if (triggerBtn) { triggerBtn.disabled = false; setText(triggerBtn, origBtnText); }
+  }
+}
+
+async function confirmFallbackOp(op, model, targets, allowNonLocal, triggerBtn, origBtnText) {
+  const body = {fb_op: op, model, allow_non_local: allowNonLocal, confirm_restart: true};
+  if (op === 'set') body.targets = targets;
+  try {
+    const res = await apiFetch('/api/fallback', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    await handleFallbackResponse(res, op, model, triggerBtn, origBtnText);
+  } catch(e) {
+    toast(`Fallback error: ${e.message}`, 'err');
+    if (triggerBtn) { triggerBtn.disabled = false; setText(triggerBtn, origBtnText); }
+  }
+}
+
+async function handleFallbackResponse(res, op, model, triggerBtn, origBtnText) {
+  if (res.status === 403) {
+    toast('Read-only mode — fallback edits not permitted.', 'err');
+    if (triggerBtn) { triggerBtn.disabled = false; setText(triggerBtn, origBtnText); }
     return;
   }
-  const list = document.createElement('div');
-  list.className = 'fallback-list';
-  for (const entry of fallbacks) {
-    const [primary, targets] = Object.entries(entry)[0];
-    const item = document.createElement('div');
-    item.className = 'fallback-item';
-    const pEl = document.createElement('span');
-    pEl.className = 'fallback-primary';
-    pEl.textContent = primary;
-    item.appendChild(pEl);
-    const arrow = document.createElement('span');
-    arrow.className = 'fallback-arrow';
-    arrow.setAttribute('aria-label','falls back to');
-    arrow.textContent = '→';
-    item.appendChild(arrow);
-    const targetArr = Array.isArray(targets) ? targets : [targets];
-    targetArr.forEach((t, i) => {
-      const chip = mkChip(t);
-      item.appendChild(chip);
-      if (i < targetArr.length - 1) {
-        const sep = document.createElement('span');
-        sep.className = 'fallback-arrow';
-        sep.setAttribute('aria-hidden','true');
-        sep.textContent = '›';
-        item.appendChild(sep);
-      }
-    });
-    list.appendChild(item);
+  if (res.status === 400) {
+    let errMsg = `Bad fallback request.`;
+    try { const d = await res.json(); errMsg = d.error || errMsg; } catch(_) {}
+    toast(errMsg, 'err');
+    if (triggerBtn) { triggerBtn.disabled = false; setText(triggerBtn, origBtnText); }
+    return;
   }
-  fallbacksList.appendChild(list);
+
+  let data;
+  try { data = await res.json(); } catch(_) { data = {}; }
+
+  if (!res.ok || !data.ok) {
+    const errMsg = data.error || data.reason || `HTTP ${res.status}`;
+    toast(`Fallback failed: ${errMsg}`, 'err');
+    if (triggerBtn) { triggerBtn.disabled = false; setText(triggerBtn, origBtnText); }
+    return;
+  }
+
+  // Success — surface restart/ready/reverted status honestly
+  let msg, toastType, toastDuration;
+
+  if (data.reverted === true) {
+    msg = `LiteLLM did not come ready; config auto-reverted to the previous chain.`;
+    toastType = 'err';
+    toastDuration = 9000;
+  } else if (data.restart_ok === false) {
+    const logSnippet = data.restart_log ? ` Log: ${String(data.restart_log).slice(0,120)}` : '';
+    msg = `Fallback ${op} written but LiteLLM restart failed — check the stack.${logSnippet}`;
+    toastType = 'err';
+    toastDuration = 9000;
+  } else if (data.ready === false) {
+    msg = `Fallback ${op} "${model}" written; LiteLLM restarted but not yet confirmed ready (give it a moment / Refresh).`;
+    toastType = 'info';
+    toastDuration = 9000;
+  } else if (data.chain_verified === false) {
+    msg = `Fallback ${op} "${model}" applied but not yet confirmed live (bind-mount cache — may need a moment).`;
+    toastType = 'info';
+    toastDuration = 7000;
+  } else {
+    msg = `Fallback ${op} "${model}" applied.`;
+    toastType = 'ok';
+    toastDuration = 5000;
+  }
+
+  toast(msg, toastType, toastDuration);
+  announce(msg);
+
+  await loadState();
+  await loadBackups();
+
+  if (triggerBtn) { triggerBtn.disabled = false; if (origBtnText) setText(triggerBtn, origBtnText); }
 }
+
+// "Add Fallback" button is wired below alongside the other form buttons.
 
 // ── Agents ───────────────────────────────────────────────────────────────
 function renderAgents() {
@@ -1499,8 +1986,12 @@ function closeModal() {
 }
 modalCancel.addEventListener('click', closeModal);
 modalConfirm.addEventListener('click', () => {
+  // Capture the callback BEFORE closeModal() — closeModal() nulls modalConfirmCb, so
+  // reading it after would always skip the confirm action (this silently broke every
+  // modal confirm: restore, recreate, and now fallback — caught by browser E2E).
+  const cb = modalConfirmCb;
   closeModal();
-  if (modalConfirmCb) modalConfirmCb();
+  if (cb) cb();
 });
 modalOverlay.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
@@ -1536,9 +2027,13 @@ function openFormPane() {
 function closeFormPane() {
   formPane.classList.remove('open');
   formPane.setAttribute('aria-hidden','true');
+  // Reset both mode flags so submit dispatch is unambiguous on next open
+  formMode = null;
+  fbFormMode = null;
 }
 
 $('add-model-btn').addEventListener('click', openAddForm);
+$('add-fallback-btn').addEventListener('click', openFallbackAddForm);
 $('form-close-btn').addEventListener('click', closeFormPane);
 $('form-cancel-btn').addEventListener('click', closeFormPane);
 formPane.addEventListener('keydown', e => {
@@ -1548,6 +2043,7 @@ formPane.addEventListener('keydown', e => {
 $('form-submit-btn').addEventListener('click', async () => {
   if (formMode === 'add') await submitAddForm();
   else if (formMode === 'edit') await submitEditForm();
+  else if (fbFormMode === 'add' || fbFormMode === 'edit') await submitFallbackForm();
 });
 
 // ── Add form ─────────────────────────────────────────────────────────────
