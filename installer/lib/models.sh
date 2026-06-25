@@ -1721,6 +1721,219 @@ cmd_superset() {
 }
 
 # ---------------------------------------------------------------------------
+# 7b. fallback — view / edit the hand-curated LiteLLM failover chains (v1.1)
+# ---------------------------------------------------------------------------
+# `litellm_settings.fallbacks` (config.yaml) is hand-curated policy: every
+# metered/subscription PRIMARY fails over to the always-on LOCAL (Ollama) tier so
+# an outage degrades to local compute, never a silent bill. It is config.yaml-ONLY
+# (model sync never writes it) and COMMENT-RICH (policy header + inter-entry notes
+# + a trailing commented-out reference block). yq -i would shred those comments, so
+# edits are LINE-SURGICAL inside the fallbacks block then round-trip VALIDATED
+# (yq parse + structural + entry-count + duplicate-key asserts) before an atomic mv.
+#
+#   model fallback list [--json]
+#   model fallback set <model> <target...> [--allow-non-local] [--dry-run]
+#   model fallback remove <model> [--dry-run]
+#
+# DEFAULT GUARD: every target must be an ollama-runtime (local-tier) model — the one
+# tier guaranteed up when cloud/daemon is dark. --allow-non-local opts into sub/metered
+# targets (which can be unavailable in the SAME outage that triggers the fallback, and
+# may incur cost). No live restart here: LiteLLM reads config.yaml at startup, so a
+# `docker restart litellm` is needed for an edit to take effect — the console
+# /api/fallback drives that (gated + readiness-checked); a CLI user is told to restart.
+
+_fb_config_model_exists() {            # is $1 a model_name in config.yaml model_list?
+  [[ -f "$CONFIG" ]] || return 1
+  # capture-then-here-string (NOT a pipe): grep -q closes the pipe on first match,
+  # which SIGPIPEs yq and trips `set -o pipefail` into a false negative.
+  local names; names="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null)" || return 1
+  LC_ALL=C grep -qxF "$1" <<<"$names"
+}
+_fb_is_local() { [[ "$(model_runtime "$1")" == "ollama" ]]; }   # safe (always-on) target?
+_fb_count() { yq -r '.litellm_settings.fallbacks // [] | length' "$CONFIG" 2>/dev/null || echo 0; }
+_fb_targets_of() { MN="$1" yq -r '[.litellm_settings.fallbacks // [] | .[] | select(has(strenv(MN)))] | .[0][strenv(MN)] // [] | join(",")' "$CONFIG" 2>/dev/null || true; }
+_fb_entry_count_for() { MN="$1" yq -r '[.litellm_settings.fallbacks // [] | .[] | select(has(strenv(MN)))] | length' "$CONFIG" 2>/dev/null || echo 0; }
+_fb_list_tsv() { yq -r '.litellm_settings.fallbacks // [] | .[] | (keys[0]) as $k | $k + "\t" + (.[$k] | join(","))' "$CONFIG" 2>/dev/null || true; }
+
+_fb_render_inner() {                   # echo  '- <model>: ["t1", "t2"]'  (no leading indent)
+  local model="$1"; shift
+  local out="- $model: [" first=1 t
+  for t in "$@"; do (( first )) || out+=", "; first=0; out+="\"$t\""; done
+  printf '%s]' "$out"
+}
+
+# line-surgical editor: stdin=config, stdout=edited, stderr="MODE <m>" or an abort token.
+# exit: 0 ok, 3 abort (DUPLICATE/BLOCKSTYLE/CRLF), 4 remove-not-found.
+_fb_apply_awk() {                      # $1=op  $2=model  $3=inner(set only)
+  awk -v op="$1" -v model="$2" -v inner="$3" '
+  function keyof(line,   s){ if(line !~ /^ *- /) return ""; s=line; sub(/^ *- /,"",s); if(s ~ /^#/) return ""; if(s !~ /:/) return ""; sub(/:.*/,"",s); sub(/^"/,"",s); sub(/"$/,"",s); return s }
+  function indentof(line){ match(line,/^ */); return RLENGTH }
+  function single_line(line,   v){ v=line; sub(/^[^:]*:/,"",v); gsub(/^[ \t]+|[ \t]+$/,"",v); return (v!="" && v !~ /^#/) }
+  function flush(   i,found,midx,lastreal,hasreal){
+    found=0; midx=0; lastreal=0; hasreal=0
+    for(i=1;i<=nb;i++){ if(indentof(buf[i])==entryind && keyof(buf[i])!=""){ hasreal=1; lastreal=i; if(keyof(buf[i])==model){found++; midx=i} } }
+    if(found>1){ print "DUPLICATE" > "/dev/stderr"; aborted=3; return }
+    if(op=="remove"){
+      if(found==0){ print "NOTFOUND" > "/dev/stderr"; aborted=4; return }
+      if(!single_line(buf[midx])){ print "BLOCKSTYLE" > "/dev/stderr"; aborted=3; return }
+      print "MODE remove" > "/dev/stderr"
+      for(i=1;i<=nb;i++) if(i!=midx) print buf[i]
+      return
+    }
+    if(found==1){
+      if(!single_line(buf[midx])){ print "BLOCKSTYLE" > "/dev/stderr"; aborted=3; return }
+      print "MODE replace" > "/dev/stderr"
+      for(i=1;i<=nb;i++){ if(i==midx) print pad inner; else print buf[i] }
+      return
+    }
+    print "MODE insert" > "/dev/stderr"
+    if(hasreal){ for(i=1;i<=nb;i++){ print buf[i]; if(i==lastreal) print pad inner } }
+    else { print pad inner; for(i=1;i<=nb;i++) print buf[i] }
+  }
+  BEGIN{ state=0; nb=0; aborted=0 }
+  {
+    if(aborted){ next }
+    if(state==0){ print; if($0 ~ /^ +fallbacks:[ \t\r]*$/){ blkindent=indentof($0); entryind=blkindent+2; pad=""; for(j=0;j<entryind;j++) pad=pad" "; state=1 } next }
+    if(state==1){
+      if($0 ~ /\r/){ print "CRLF" > "/dev/stderr"; aborted=3; next }
+      if($0 ~ /^[ \t]*$/){ buf[++nb]=$0; next }
+      if(indentof($0) <= blkindent){ flush(); if(aborted) next; print; state=2; next }
+      buf[++nb]=$0; next
+    }
+    print
+  }
+  END{ if(aborted) exit aborted; if(state==1){ flush(); if(aborted) exit aborted } }
+  '
+}
+
+_fb_list() {
+  local json=0 a
+  for a in "$@"; do case "$a" in --json) json=1 ;; -*) err "fallback list: unknown flag '$a'"; exit 2 ;; esac; done
+  [[ -f "$CONFIG" ]] || { err "config.yaml not found at $CONFIG"; exit 2; }
+  if (( json )); then yq -o=json -I=0 '.litellm_settings.fallbacks // []' "$CONFIG"; return 0; fi
+  local any=0 m targets
+  while IFS=$'\t' read -r m targets; do [[ -z "$m" ]] && continue; any=1; printf '  %-30s -> %s\n' "$m" "$targets"; done < <(_fb_list_tsv)
+  (( any )) || note "no fallback chains configured in $CONFIG"
+}
+
+_fb_set() {
+  local model="" allow=0 dry=0 a; local -a targets=()
+  for a in "$@"; do
+    case "$a" in
+      --allow-non-local) allow=1 ;;
+      --dry-run) dry=1 ;;
+      -*) err "fallback set: unknown flag '$a'"; exit 2 ;;
+      *) if [[ -z "$model" ]]; then model="$a"; else targets+=("$a"); fi ;;
+    esac
+  done
+  { [[ -n "$model" ]] && (( ${#targets[@]} >= 1 )); } || { err "usage: vz-ai-stack.sh model fallback set <model> <target...> [--allow-non-local] [--dry-run]"; exit 2; }
+  [[ -f "$CONFIG" ]] || { err "config.yaml not found at $CONFIG"; exit 2; }
+  local x
+  for x in "$model" "${targets[@]}"; do
+    [[ "$x" =~ ^[a-zA-Z0-9_./@-]+$ ]] || { err "fallback: name '$x' is outside the safe charset [a-zA-Z0-9_./@-]"; exit 2; }
+  done
+  _fb_config_model_exists "$model" || { err "fallback: '$model' is not a model_name in config.yaml model_list"; exit 2; }
+  for x in "${targets[@]}"; do
+    [[ "$x" != "$model" ]] || { err "fallback: target '$x' cannot be the model itself (self-reference)"; exit 2; }
+    _fb_config_model_exists "$x" || { err "fallback: target '$x' is not a model_name in config.yaml model_list"; exit 2; }
+    if ! _fb_is_local "$x"; then
+      (( allow )) || { err "fallback: target '$x' is not a local (ollama) model — it can be unavailable during the same outage that triggers the fallback (and may incur cost)."; err "  re-run with --allow-non-local to override (the local tier is the always-on safe target — 'never a silent bill')."; exit 2; }
+      warn "target '$x' is non-local (sub/metered) — allowed via --allow-non-local; may be unavailable in a correlated outage."
+    fi
+  done
+  local inner exp; inner="$(_fb_render_inner "$model" "${targets[@]}")"; exp="$(IFS=,; echo "${targets[*]}")"
+  _fb_commit set "$model" "$inner" "$dry" "$exp"
+}
+
+_fb_remove() {
+  local model="" dry=0 a
+  for a in "$@"; do
+    case "$a" in
+      --dry-run) dry=1 ;;
+      -*) err "fallback remove: unknown flag '$a'"; exit 2 ;;
+      *) [[ -z "$model" ]] && model="$a" ;;
+    esac
+  done
+  [[ -n "$model" ]] || { err "usage: vz-ai-stack.sh model fallback remove <model> [--dry-run]"; exit 2; }
+  [[ -f "$CONFIG" ]] || { err "config.yaml not found at $CONFIG"; exit 2; }
+  [[ "$model" =~ ^[a-zA-Z0-9_./@-]+$ ]] || { err "fallback: name '$model' is outside the safe charset"; exit 2; }
+  _fb_commit remove "$model" "" "$dry" ""
+}
+
+# transactional edit: lock → awk → validate (parse + structural + count + dup) → atomic mv.
+_fb_commit() {
+  local op="$1" model="$2" inner="$3" dry="$4" exp="$5"
+  local before after mode rc staging errf distinct got
+  (( dry )) || lock_acquire            # hold across the whole read-modify-write (TOCTOU-safe vs cmd_sync)
+  before="$(_fb_count)"
+  staging="$CONFIG.fbtmp.$$"; errf="$(mktemp "${TMPDIR:-/tmp}/fberr.XXXXXX")" || { err "mktemp failed"; exit 1; }
+  cp -p "$CONFIG" "$staging" 2>/dev/null || { err "cannot stage $CONFIG"; rm -f "$errf"; exit 1; }
+  rc=0; _fb_apply_awk "$op" "$model" "$inner" < "$CONFIG" > "$staging" 2> "$errf" || rc=$?   # ||: set -e would kill before rc=$?
+  if (( rc == 4 )); then note "no fallback entry for '$model' in $CONFIG (nothing to remove)"; rm -f "$staging" "$errf"; exit 0; fi
+  if (( rc != 0 )); then
+    case "$(grep -Eom1 'DUPLICATE|BLOCKSTYLE|CRLF' "$errf" || true)" in
+      DUPLICATE)  err "fallback: '$model' appears more than once in the fallbacks list — resolve the duplicate by hand." ;;
+      BLOCKSTYLE) err "fallback: '$model' is a multi-line (block-style) entry — the editor only handles inline [\"...\"] entries; edit it by hand." ;;
+      CRLF)       err "fallback: the fallbacks block has CRLF line endings — normalize config.yaml to LF first." ;;
+      *)          err "fallback: edit failed (awk rc=$rc)." ;;
+    esac
+    rm -f "$staging" "$errf"; exit 2
+  fi
+  mode="$(awk '/^MODE /{print $2; exit}' "$errf")"
+  if [[ -z "$mode" ]]; then
+    if [[ "$op" == "remove" ]]; then note "no fallback entry for '$model' (nothing to remove)"; rm -f "$staging" "$errf"; exit 0; fi
+    err "fallback: no editable 'fallbacks:' block found in config.yaml (key absent or inline '[]'). Add a 'fallbacks:' block with at least one entry by hand, then use the editor."
+    rm -f "$staging" "$errf"; exit 2
+  fi
+  if ! yq -e '.' "$staging" >/dev/null 2>&1; then err "fallback: edited config.yaml failed to parse — aborting (no changes written)."; rm -f "$staging" "$errf"; exit 1; fi
+  after="$(CONFIG="$staging" _fb_count)"
+  distinct="$(yq -r '.litellm_settings.fallbacks // [] | .[] | keys[0]' "$staging" 2>/dev/null | LC_ALL=C sort | uniq | grep -c . || true)"
+  [[ "$after" == "$distinct" ]] || { err "fallback: post-edit validation found duplicate keys ($after entries, $distinct distinct) — aborting."; rm -f "$staging" "$errf"; exit 1; }
+  case "$op:$mode" in
+    set:replace)   (( after == before ))     || { err "fallback: count delta invalid (replace $before->$after) — aborting."; rm -f "$staging" "$errf"; exit 1; } ;;
+    set:insert)    (( after == before + 1 )) || { err "fallback: count delta invalid (insert $before->$after) — aborting."; rm -f "$staging" "$errf"; exit 1; } ;;
+    remove:remove) (( after == before - 1 )) || { err "fallback: count delta invalid (remove $before->$after) — aborting."; rm -f "$staging" "$errf"; exit 1; } ;;
+    *) err "fallback: unexpected mode '$mode' for op '$op' — aborting."; rm -f "$staging" "$errf"; exit 1 ;;
+  esac
+  if [[ "$op" == "set" ]]; then
+    got="$(CONFIG="$staging" _fb_targets_of "$model")"
+    [[ "$got" == "$exp" ]] || { err "fallback: post-edit targets mismatch (want '$exp', got '$got') — aborting."; rm -f "$staging" "$errf"; exit 1; }
+  else
+    (( "$(CONFIG="$staging" _fb_entry_count_for "$model")" == 0 )) || { err "fallback: '$model' still present after remove — aborting."; rm -f "$staging" "$errf"; exit 1; }
+  fi
+  if (( dry )); then
+    note "[dry-run] fallback $op '$model' ($mode) — proposed change:"
+    { diff -u "$CONFIG" "$staging" || true; } | sed -n '1,40p' | sed 's/^/    /' >&2
+    rm -f "$staging" "$errf"; exit 0
+  fi
+  cp -p "$CONFIG" "$CONFIG.bak" 2>/dev/null || true
+  mv "$staging" "$CONFIG" || { err "fallback: atomic mv failed — config.yaml unchanged (backup: $CONFIG.bak)."; rm -f "$staging" "$errf"; exit 1; }
+  rm -f "$errf"
+  ok "fallback $op '$model' applied to config.yaml ($mode; backup: $(basename "$CONFIG").bak)"
+  note "LiteLLM reads config at startup — run from MAIN: 'docker restart litellm' (or apply via the model console) to load the new chain."
+}
+
+cmd_fallback() {
+  local sub="${1:-list}"; shift || true
+  case "$sub" in
+    list)   _fb_list "$@" ;;
+    set)    _fb_set "$@" ;;
+    remove) _fb_remove "$@" ;;
+    -h|--help|help) cat <<'EOF'
+vz-ai-stack.sh model fallback — view/edit the hand-curated LiteLLM failover chains
+  model fallback list [--json]                                            show the chains (config.yaml-only policy)
+  model fallback set <model> <target...> [--allow-non-local] [--dry-run]  set/replace <model>'s failover chain
+  model fallback remove <model> [--dry-run]                               delete <model>'s failover chain
+Targets default to the local (ollama) tier — the always-on safe target ('never a silent bill').
+--allow-non-local opts into sub/metered targets (may be unavailable in the same outage; may incur cost).
+Edits are comment-preserving + round-trip validated; restart LiteLLM from MAIN to apply.
+EOF
+      ;;
+    *) err "fallback: unknown subcommand '$sub' (want list|set|remove)"; exit 2 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 main() {
@@ -1736,6 +1949,7 @@ main() {
     park)     cmd_park "$@" ;;
     unpark)   cmd_unpark "$@" ;;
     sync)     cmd_sync "$@" ;;
+    fallback) cmd_fallback "$@" ;;
     superset) cmd_superset "$@" ;;
     -h|--help|help)
       cat <<'EOF'
@@ -1753,10 +1967,11 @@ vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml
   model park <agent> [--dry-run] [--no-sync]                 disable an agent (renders the default sentinel; assignment kept)
   model unpark <agent> [--dry-run] [--no-sync]               re-enable a parked agent
   model sync [<agent>] [--dry-run] [--no-restart]
+  model fallback list|set|remove ...   view/edit hand-curated LiteLLM failover chains (config.yaml policy)
   model superset [--json]          print the canonical scoped-key allowlist
 EOF
       ;;
-    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|edit|remove|park|unpark|sync|superset)"; exit 2 ;;
+    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|edit|remove|park|unpark|sync|fallback|superset)"; exit 2 ;;
   esac
 }
 

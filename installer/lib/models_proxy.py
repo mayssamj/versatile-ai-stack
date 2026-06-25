@@ -116,6 +116,17 @@ class StageError(Exception):
     """Raised with a clean message when an op's request is malformed (-> 400)."""
 
 
+_NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./@-")
+
+
+def _charset_ok(s):
+    """Reject a model/target name outside the safe charset BEFORE it reaches the bash
+    subprocess (adversarial B3). _posarg already blocks leading-dash flag-smuggling; this
+    bounds the rest so a name can never carry shell/yq metacharacters."""
+    if not s or any(c not in _NAME_CHARS for c in s):
+        raise StageError(f"name '{s}' is outside the safe charset [A-Za-z0-9_./@-]")
+
+
 def build_argv(op, args, *, sync):
     """Return the `model` subcommand argv for (op, args). Appends --no-sync when
     sync is False (staging). Raises StageError on malformed input (-> 400, never 500)."""
@@ -188,6 +199,29 @@ def build_argv(op, args, *, sync):
         elif rt in ("openai-compat",):
             raise StageError("openai-compat add requires an alias 'name'")
         return argv + tail
+    if op == "fallback":
+        fb = _str(args, "fb_op")
+        if fb not in ("set", "remove"):
+            raise StageError("fallback requires 'fb_op' in {set, remove}")
+        model = _posarg(args, "model")
+        if not model:
+            raise StageError("fallback requires 'model'")
+        _charset_ok(model)
+        argv = ["fallback", fb, model]
+        if fb == "set":
+            targets = args.get("targets")
+            if not isinstance(targets, list) or not targets:
+                raise StageError("fallback set requires a non-empty 'targets' list")
+            for t in targets:
+                if not isinstance(t, str) or not t:
+                    raise StageError("each fallback target must be a non-empty string")
+                if t.lstrip().startswith("-"):
+                    raise StageError("fallback target must not start with '-'")
+                _charset_ok(t)
+                argv.append(t)
+            if args.get("allow_non_local"):
+                argv.append("--allow-non-local")
+        return argv
     raise StageError(f"unknown op '{op}'")
 
 
@@ -355,6 +389,8 @@ class H(BaseHTTPRequestHandler):
             return self._apply()
         if path == "/api/restore":
             return self._restore()
+        if path == "/api/fallback":
+            return self._fallback()
         if path == "/api/test":
             return self._test()
         self._json(404, {"error": f"route not allowed: POST {path}"})
@@ -622,6 +658,81 @@ class H(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "ts": ts, "restored": restored,
                                     "pre_restore_backup": pre, "restart_ok": restart_ok,
                                     "ready": ready, "restart_log": restart_log, "recreate_hint": recreate_hint})
+        finally:
+            _apply_lock.release()
+
+    # ----------------------------------------------------------------- fallback editor
+    def _fallback(self):
+        """Edit one hand-curated LiteLLM failover chain (litellm_settings.fallbacks) via the
+        `model fallback` CLI, then RESTART LiteLLM to load it. Mirrors _restore: validate via
+        a --dry-run first (so a bad request is 400, not a half-applied edit), gate the restart
+        behind confirm_restart, snapshot current state first (reversible), AUTO-REVERT if the
+        router fails to come ready, and CHAIN_VERIFY the edit is actually live (bind-mount race)."""
+        if READONLY:
+            return self._json(403, {"ok": False, "error": "read-only mode: fallback edits are disabled (restart without --read-only)"})
+        body, err = self._read_body()
+        if err:
+            return self._json(err[0], {"error": err[1]})
+        args = body if isinstance(body, dict) else {}
+        confirm_restart = bool(args.get("confirm_restart"))
+        try:
+            argv = build_argv("fallback", args, sync=True)
+        except StageError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        fb_op = _str(args, "fb_op"); model = _str(args, "model")
+        over = {"CONFIG": CONFIG, "MODELS_YML": MODELS_YML}
+        # --dry-run runs the SAME guards (existence, self-ref, metered/local-tier) without writing.
+        rc, out, errs = run_model(argv + ["--dry-run"], env_override=over)
+        if rc == 2:
+            return self._json(400, {"ok": False, "error": (errs or out)[-800:]})
+        if rc != 0:
+            return self._json(500, {"ok": False, "error": (errs or out)[-1200:]})
+        if not confirm_restart:
+            return self._json(409, {"ok": False, "needs_confirm": True, "op": fb_op, "model": model,
+                "preview": (errs or out)[-2000:],
+                "reason": f"fallback {fb_op} '{model}' edits config.yaml and RESTARTS LiteLLM to load it — a brief drop for the whole fleet."})
+        if not _apply_lock.acquire(blocking=False):
+            return self._json(409, {"ok": False, "error": "another apply/restore is in progress — try again in a moment"})
+        try:
+            pre = _backup_sources()   # snapshot current state first -> the edit is reversible
+            pre_config = next((p for p in pre if os.path.basename(p).startswith("config.yaml.")), None)
+            rc, out, errs = run_model(argv, env_override=over)
+            if rc == 2:
+                return self._json(400, {"ok": False, "error": (errs or out)[-800:], "backups": pre})
+            if rc != 0:
+                return self._json(500, {"ok": False, "error": (errs or out)[-1200:], "backups": pre})
+            # restart (NOT recreate — a fallback edit changes config content only, no new -e key).
+            restart_ok = False; restart_log = ""
+            try:
+                env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
+                p = subprocess.run([DOCKER, "restart", "litellm"], env=env, capture_output=True, text=True, timeout=120)
+                restart_ok = (p.returncode == 0)
+                restart_log = ((p.stderr or "") + (p.stdout or ""))[-400:]
+            except Exception as e:
+                restart_log = str(e)[:300]
+            ready = _litellm_ready(RESTART_WAIT) if (restart_ok and RESTART_WAIT > 0) else None
+            reverted = False
+            # AUTO-REVERT: if the router did NOT come ready, roll config.yaml back to the pre-edit
+            # snapshot and restart again — never leave the fleet on a chain that won't load.
+            if ready is False and pre_config and os.path.isfile(pre_config):
+                try:
+                    shutil.copy2(pre_config, CONFIG)
+                    env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
+                    subprocess.run([DOCKER, "restart", "litellm"], env=env, capture_output=True, text=True, timeout=120)
+                    reverted = True
+                except Exception:
+                    pass
+            # CHAIN_VERIFY: re-read config.yaml and confirm the edit is actually live (restart_ok +
+            # ready alone can be a false positive in the bind-mount cache window). None if we didn't wait.
+            chain_verified = None
+            if ready and not reverted:
+                fbs = yq_json(".litellm_settings.fallbacks // []", CONFIG) or []
+                present = any(isinstance(e, dict) and model in e for e in fbs)
+                chain_verified = present if fb_op == "set" else (not present)
+            return self._json(200, {"ok": True, "op": fb_op, "model": model,
+                "output": out.strip()[-2000:], "restart_ok": restart_ok, "ready": ready,
+                "reverted": reverted, "chain_verified": chain_verified, "restart_log": restart_log,
+                "backups": pre})
         finally:
             _apply_lock.release()
 
