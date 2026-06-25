@@ -613,7 +613,7 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
-- **29 core install phases (+14 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · agentscope · oasis · chatdev · aitown) · 49 services · 65 doctor checks.**
+- **29 core install phases (+15 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown) · 49 services · 65 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);

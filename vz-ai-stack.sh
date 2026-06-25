@@ -290,7 +290,7 @@ ai-stack-installer — usage:
                                         (enable/disable are accepted as aliases for start/stop)
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
-  00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 26
+  00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h 26
   opt-in extras (not in `install all` — add them all with `install all --include-optionals`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork · 30 understand · 31 ingress · 32 metagpt · 33 agentscope · 34 oasis · 35 chatdev · 36 aitown
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
@@ -1058,6 +1058,8 @@ cmd_stop() {
     err "Usage: vz-ai-stack.sh stop <service>"
     exit 2
   fi
+  worktree_guard stop
+
   local script="$AI_STACK/bin/stop-${svc}.sh"
   if [[ -f "$script" ]]; then   # -f not -x: invoked via `bash`, +x is irrelevant
     exec bash "$script"
