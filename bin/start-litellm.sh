@@ -155,6 +155,29 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY "")"
 PHOENIX_API_KEY="$(get_env PHOENIX_API_KEY "")"
 set -u
 
+# Dynamic per-vendor key injection (model console). Inject every `key_env`
+# DECLARED in installer/models.yml (openai-compat vendors) that is BEYOND the
+# fixed set above — so adding a vendor needs only `.env` + a --recreate, never an
+# edit here. SCOPED to declared key_env values ONLY (never all of .env), present-
+# only, and ENV-name-validated — preserving the no-secret-leak boundary above.
+DYNAMIC_KEYENV_ARGS=()
+_mc_models_yml="$AI_STACK/installer/models.yml"
+if [[ -f "$_mc_models_yml" ]] && command -v yq >/dev/null 2>&1; then
+  _mc_fixed=" ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GOOGLE_API_KEY SAKANA_API_KEY LITELLM_MASTER_KEY PHOENIX_API_KEY "
+  while IFS= read -r _ke; do
+    [[ -z "$_ke" || "$_ke" == "null" ]] && continue
+    [[ "$_mc_fixed" == *" $_ke "* ]] && continue          # already injected above
+    [[ "$_ke" =~ ^[A-Z_][A-Z0-9_]*$ ]] || { warn "start-litellm: skipping odd key_env '$_ke' from models.yml"; continue; }
+    _kv="$(get_env "$_ke" "")"
+    if [[ -z "$_kv" ]]; then
+      note "start-litellm: key_env $_ke declared in models.yml but absent from .env — that vendor route will gate to the default until set"
+      continue
+    fi
+    DYNAMIC_KEYENV_ARGS+=( -e "$_ke=$_kv" )
+    unset _kv
+  done < <(yq -r '.models[].key_env' "$_mc_models_yml" 2>/dev/null | LC_ALL=C sort -u)
+fi
+
 # Engine-derived host.docker.internal add-host (LiteLLM dials Postgres at
 # host.docker.internal:5432). OrbStack/Docker Desktop auto-inject it (so this is
 # empty + the flag is omitted); Colima/Podman need it explicitly. Sourced from the
@@ -187,6 +210,7 @@ docker run -d \
   -e SAKANA_API_KEY="$SAKANA_API_KEY" \
   -e LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" \
   -e PHOENIX_API_KEY="$PHOENIX_API_KEY" \
+  "${DYNAMIC_KEYENV_ARGS[@]}" \
   -e PHOENIX_COLLECTOR_HTTP_ENDPOINT="$PHOENIX_ENDPOINT" \
   -e PHOENIX_PROJECT_NAME="$PHOENIX_PROJECT" \
   -e TRACE_FILE=/traces/litellm.jsonl \
@@ -206,7 +230,7 @@ docker run -d \
 
 # Clear local copies of secrets ASAP.
 unset ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GOOGLE_API_KEY \
-      SAKANA_API_KEY LITELLM_MASTER_KEY PHOENIX_API_KEY
+      SAKANA_API_KEY LITELLM_MASTER_KEY PHOENIX_API_KEY DYNAMIC_KEYENV_ARGS
 
 ok "started container: $NAME (http://litellm:${ALIAS_HOST_PORT[litellm]} (= ${ALIAS_IP[litellm]}:${ALIAS_HOST_PORT[litellm]}))"
 record "start-litellm: pid=$$ image=$IMAGE PHOENIX_PROJECT=$PHOENIX_PROJECT"

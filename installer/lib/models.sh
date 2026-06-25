@@ -1036,7 +1036,102 @@ if embs:
 # cmd_add <lms-slug> [as <name>] [--dry-run] [--no-sync] — declare an existing
 # LM Studio library LLM into models.yml + (unless --no-sync) register it via
 # cmd_sync. NEVER loads a model. Does NOT take its own lock (cmd_sync takes it).
+# cmd_add_remote — add a NON-LM-Studio model by id (council P1c). ollama +
+# openai-compat are declared into models.yml (sync registers + widens keys);
+# openrouter is config.yaml-ONLY (no models.yml runtime, NOT agent-assignable in
+# v1) with an id-FORMAT check (openrouter ids are routinely hallucinated -> a bad
+# id registers fine but 404s at call time, so we at least require provider/model).
+cmd_add_remote() {
+  local runtime="" served="" name="" api_base="" key_env="" rpm="" tpm="" big="" dry=0 nosync=0 a expect=""
+  for a in "$@"; do
+    if [[ -n "$expect" ]]; then
+      case "$expect" in
+        runtime) runtime="$a" ;; served) served="$a" ;; api_base) api_base="$a" ;;
+        key_env) key_env="$a" ;; rpm) rpm="$a" ;; tpm) tpm="$a" ;; big) big="$a" ;; name) name="$a" ;;
+      esac
+      expect=""; continue
+    fi
+    case "$a" in
+      --runtime) expect=runtime ;; --served) expect=served ;; --api-base) expect=api_base ;;
+      --key-env) expect=key_env ;; --rpm) expect=rpm ;; --tpm) expect=tpm ;; --big) expect=big ;;
+      as) expect=name ;;
+      --dry-run) dry=1 ;; --no-sync) nosync=1 ;;
+      -*) err "add: unknown flag '$a'"; exit 2 ;;
+      *) [[ -z "$name" ]] && name="$a" ;;
+    esac
+  done
+  validate || exit $?
+  [[ -n "$served" ]] || { err "add --runtime $runtime: --served <id> is required"; exit 2; }
+
+  case "$runtime" in
+    ollama)
+      if [[ -z "$name" ]]; then
+        name="local-$(printf '%s' "$served" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9.]+/-/g; s/-+/-/g; s/^[.-]+//; s/[.-]+$//')"
+      fi
+      [[ "$name" =~ ^local-[a-z0-9]([a-z0-9._-]*[a-z0-9])?$ ]] || { err "ollama add: name '$name' invalid (use \`as local-<name>\`)"; exit 2; }
+      case "$name" in local|local-heavy|local-lfm2) err "name '$name' is reserved"; exit 2 ;; esac
+      model_exists "$name" && { err "name '$name' already declared"; exit 2; }
+      [[ -n "$big" ]] || big=false
+      case "$big" in true|false) : ;; *) err "--big must be true|false (got '$big')"; exit 2 ;; esac
+      if (( dry )); then note "[dry-run] would declare models.$name {runtime: ollama, served: $served, big: $big}; ollama add does NOT pull — run: ollama pull $served"; exit 0; fi
+      NM="$name" SV="$served" BIG="$big" yq -i '.models[strenv(NM)] = {"runtime":"ollama","served":strenv(SV),"big":(strenv(BIG)=="true"),"note":"added via model add"}' "$MODELS_YML" || { err "yq -i add failed"; exit 1; }
+      ok "declared models.$name (ollama, served=$served, big=$big)"
+      note "ollama add does NOT pull the weights — run: ollama pull $served" ;;
+    openai-compat)
+      [[ -n "$name" ]] || { err "openai-compat add: an alias is required (\`as <name>\`)"; exit 2; }
+      [[ -n "$api_base" ]] || { err "openai-compat add: --api-base <https-url> is required"; exit 2; }
+      [[ "$api_base" =~ ^https?:// ]] || { err "--api-base must be an http(s):// URL (got '$api_base')"; exit 2; }
+      [[ -n "$key_env" ]] || { err "openai-compat add: --key-env <ENV_VAR> is required"; exit 2; }
+      [[ "$key_env" =~ ^[A-Z_][A-Z0-9_]*$ ]] || { err "--key-env must be an ENV-style name (got '$key_env')"; exit 2; }
+      [[ -z "$rpm" || "$rpm" =~ ^[0-9]+$ ]] || { err "--rpm must be a positive integer (got '$rpm')"; exit 2; }
+      [[ -z "$tpm" || "$tpm" =~ ^[0-9]+$ ]] || { err "--tpm must be a positive integer (got '$tpm')"; exit 2; }
+      model_exists "$name" && { err "name '$name' already declared"; exit 2; }
+      if (( dry )); then note "[dry-run] would declare models.$name {runtime: openai-compat, served: $served, api_base: $api_base, key_env: $key_env${rpm:+, rpm: $rpm}${tpm:+, tpm: $tpm}}"; exit 0; fi
+      NM="$name" SV="$served" AB="$api_base" KE="$key_env" yq -i '.models[strenv(NM)] = {"runtime":"openai-compat","served":strenv(SV),"api_base":strenv(AB),"key_env":strenv(KE),"note":"added via model add"}' "$MODELS_YML" || { err "yq -i add failed"; exit 1; }
+      [[ -n "$rpm" ]] && NM="$name" RP="$rpm" yq -i '.models[strenv(NM)].rpm = (strenv(RP)|tonumber)' "$MODELS_YML"
+      [[ -n "$tpm" ]] && NM="$name" TP="$tpm" yq -i '.models[strenv(NM)].tpm = (strenv(TP)|tonumber)' "$MODELS_YML"
+      ok "declared models.$name (openai-compat, served=$served, key_env=$key_env)"
+      [[ -n "$(get_env "$key_env" '')" ]] || warn "key_env $key_env not in .env yet — set it, then recreate LiteLLM (bash bin/start-litellm.sh --recreate) so the route serves" ;;
+    openrouter)
+      [[ "$served" == */* ]] || { err "openrouter add: --served must look like 'provider/model' (e.g. anthropic/claude-3.7-sonnet); got '$served'. Verify the exact id at https://openrouter.ai/models"; exit 2; }
+      if [[ -z "$name" ]]; then
+        name="openrouter-$(printf '%s' "$served" | tr '[:upper:]/' '[:lower:]-' | sed -E 's/[^a-z0-9.-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+      fi
+      [[ -f "$CONFIG" ]] || { err "litellm/config.yaml not found at $CONFIG"; exit 2; }
+      if yq -e ".model_list[] | select(.model_name == \"$name\")" "$CONFIG" >/dev/null 2>&1; then err "config.yaml already has model_name '$name'"; exit 2; fi
+      if (( dry )); then note "[dry-run] would add to litellm/config.yaml model_list: {model_name: $name, model: openrouter/$served, api_key: os.environ/OPENROUTER_API_KEY} — NOT agent-assignable (fallback-eligible)"; exit 0; fi
+      NM="$name" MD="openrouter/$served" yq -i '.model_list += [{"model_name": strenv(NM), "litellm_params": {"model": strenv(MD), "api_key": "os.environ/OPENROUTER_API_KEY"}}]' "$CONFIG" || { err "yq -i add to config.yaml failed"; exit 1; }
+      ok "added '$name' (openrouter/$served) to litellm/config.yaml model_list"
+      note "NOT agent-assignable in v1 (fallback-eligible). VERIFY the id exists at https://openrouter.ai/models — a wrong id registers fine but 404s at call time."
+      [[ -n "$(get_env OPENROUTER_API_KEY '')" ]] || warn "OPENROUTER_API_KEY not in .env — set it, then recreate LiteLLM."
+      if (( nosync )); then
+        note "--no-sync: restart LiteLLM to load the route (bash bin/start-litellm.sh)."
+      else
+        log "restarting LiteLLM to load the new route..."
+        docker restart litellm >/dev/null 2>&1 || warn "docker restart litellm failed — restart manually (bash bin/start-litellm.sh)"
+        litellm_wait_ready 60 || warn "LiteLLM did not report ready within 60s"
+      fi
+      return 0 ;;
+    *) err "add --runtime: want ollama|lmstudio|openai-compat|openrouter (got '$runtime')"; exit 2 ;;
+  esac
+
+  # ollama + openai-compat declared into models.yml -> sync registers + widens keys.
+  if (( nosync )); then
+    note "declared only; run vz-ai-stack.sh model sync to register it into LiteLLM + widen scoped keys"
+  else
+    cmd_sync
+  fi
+}
+
 cmd_add() {
+  # Explicit-runtime add (ollama / openai-compat / openrouter) -> delegate. The
+  # bare form (or `--runtime lmstudio`) keeps the LM Studio slug path below.
+  local _ra _rprev="" _rrt=""
+  for _ra in "$@"; do
+    [[ "$_rprev" == "--runtime" ]] && { _rrt="$_ra"; break; }
+    _rprev="$_ra"
+  done
+  if [[ -n "$_rrt" && "$_rrt" != "lmstudio" ]]; then cmd_add_remote "$@"; return $?; fi
   local slug="" name="" dry=0 nosync=0 expect_name=0 a
   for a in "$@"; do
     if (( expect_name )); then name="$a"; expect_name=0; continue; fi
@@ -1590,7 +1685,10 @@ vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml
   model assign <agent> <model> [--dry-run] [--no-sync]    re-point one agent
   model assign all <model> [--dry-run] [--no-sync]        re-point EVERY agent (blanket)
   model discover                   READ-ONLY LM Studio library (LLMs + embeddings); loads nothing
-  model add <lms-slug> [as <name>] [--dry-run] [--no-sync]   declare a library LLM (no load)
+  model add <lms-slug> [as <name>] [--dry-run] [--no-sync]   declare an LM Studio library LLM (no load)
+  model add --runtime ollama --served <tag> [as local-<name>] [--big true|false]    declare an Ollama model (does NOT pull)
+  model add --runtime openai-compat --served <id> --api-base <url> --key-env <VAR> [--rpm N] [--tpm N] as <name>
+  model add --runtime openrouter --served <provider/model> [as <name>]              add an OpenRouter route (config.yaml; not agent-assignable)
   model edit <name> <field> <value> [--dry-run] [--no-sync]  edit a safe field: rpm|tpm|ttl|big|effort|note
   model remove <name> [--dry-run] [--no-sync]                delete a model (guarded) from models.yml + config.yaml
   model park <agent> [--dry-run] [--no-sync]                 disable an agent (renders the default sentinel; assignment kept)
