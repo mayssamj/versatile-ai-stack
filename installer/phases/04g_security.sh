@@ -83,14 +83,14 @@ check() {
 echo "Security audit:"
 
 # 1. All services bind to loopback (127.0.0.1 or 127.0.10.x) — no 0.0.0.0 / [::].
-#    Split each container's ports on "," FIRST so a 0.0.0.0 mapping co-located with a
-#    127.x one on the same line can't hide; print the offending mapping(s) on FAIL.
+#    Parse PORTS only (NOT "name ports") and anchor each mapping's bind-IP at its
+#    start, so a container NAME containing "127.<digit>" can't mask its own 0.0.0.0
+#    publish; split on "," so a co-located 0.0.0.0 can't hide either.
 check "Services bind to loopback only (127.0.x.x)" '
-  bad="$(docker ps --format "{{.Names}} {{.Ports}}" \
+  bad="$(docker ps --format "{{.Ports}}" \
     | tr "," "\n" \
-    | grep -E "[0-9]+->" \
-    | grep -vE "127\.[0-9]|::1\]" \
-    | grep ":" || true)"
+    | grep -E "\->" \
+    | grep -vE "^ *(127\.[0-9.]+:|\[::1\]:)" || true)"
   if [[ -n "$bad" ]]; then printf "non-loopback bind(s):\n%s\n" "$bad"; false; fi'
 
 # 2. .env is 0600
