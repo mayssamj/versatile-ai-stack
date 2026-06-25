@@ -545,6 +545,11 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 
 ### Modify or extend
 
+- **Becoming the owner** (a new agent or human taking over development) — read
+  **[AGENT-ONBOARDING.md](doc/AGENT-ONBOARDING.md)** first. The owner's handoff: the
+  mental model, the operating constitution + non-negotiables, the model/memory/fleet
+  planes, the quirks that bite, the key decisions and *why*, and the file-by-file recipe
+  for adding a feature — plus a copy-paste activation prompt that self-onboards a fresh agent.
 - **Modifying the installer** — read [ARCHITECTURE.md](doc/ARCHITECTURE.md). Design
   decisions, file-by-file responsibilities, idempotency model, lock strategy,
   the multi-agent review cycle that produced the current shape.
