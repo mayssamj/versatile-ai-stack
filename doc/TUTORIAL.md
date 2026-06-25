@@ -699,13 +699,22 @@ Five more shared skills back the protocol: `tdd`, `hypothesis-debugging`, `verif
 > vz-ai-stack.sh fleet list
 > ```
 
-For a point-and-click view, the **Hermes Workspace** web UI at `http://workspace:3000` (Dashboard / Chat / Conductor / Memory / Sessions / Profiles) shows the same roster, their load, and per-profile souls — see the companion [§1](HERMES-HANDSON.md#1-the-hermes-workspace-web-command-center--).
+For a point-and-click view, the **Hermes Workspace** web UI at `http://workspace:3000` (Dashboard / Chat / Conductor / Memory / Sessions / Profiles) shows the same roster, their load, and per-profile souls — see the companion [§1](HERMES-HANDSON.md).
 
 ---
 
 ### L12 · Talk to one role · 🟡
 
-You don't have to summon the whole team. Hand a small, self-contained task to a single specialist. There are two equivalent ways: the **claw3d bridge** (one HTTP endpoint that fronts the Hermes fleet) or **Pi wearing the role's persona**.
+You don't have to summon the whole team. Hand a small, self-contained task to a single specialist.
+
+**The simplest way — `vz-ai-stack.sh hermes <role>`.** One command runs a single agent in the `hermes-fleet-v1` sandbox — interactive with no prompt, one-shot with a prompt:
+
+```bash
+vz-ai-stack.sh hermes backend "Sketch the interface for a POST /tokens endpoint that issues a JWT in an httpOnly cookie. Contract only."
+vz-ai-stack.sh hermes techlead          # no prompt → interactive TUI (Ctrl-D to leave)
+```
+
+Roles: `manager techlead frontend backend ml qa reviewing sre incident` (add `-m <model>` to override the bound model). Two lower-level alternatives also work — the **claw3d bridge** (one HTTP endpoint that fronts the Hermes fleet) or **Pi wearing the role's persona**:
 
 **Via the bridge (live demo if the bridge is running; copy-run otherwise).** The claw3d bridge exposes an OpenAI-shaped endpoint on `127.0.0.1:7780`. The `role` field selects which agent answers — here, the backend engineer:
 
@@ -741,6 +750,8 @@ openshell sandbox connect hermes-fleet-v1
 # inside the sandbox:
 hermes --profile hermes_manager --yolo -z "Feature request: add a /healthz endpoint to our service that returns 200 + a JSON body {status, version, uptime_seconds}. Frame it, decompose it, and run it through the team to a reviewed diff."
 ```
+
+The one-liner equivalent (no shell needed): `vz-ai-stack.sh hermes manager "<the same request>"`. If `openshell sandbox connect` errors with **`Connection refused (os error 61)`**, the OpenShell gateway is down — almost always because Docker/OrbStack is hung: **check `docker ps` first** (if it *hangs*, OrbStack is thrashing — free RAM and it recovers), *then* `brew services restart openshell`. Full recovery: the companion's [troubleshooting table](HERMES-HANDSON.md#troubleshooting-and-the-security-model).
 
 What you should see, in order:
 1. **manager** restates the goal, refuses if it can't extract ≥1 testable AC, then emits a **SPEC** with acceptance criteria (e.g. `AC-1: GET /healthz → 200`, `AC-2: body has status/version/uptime_seconds`) and a delivery plan with one owner per task.
@@ -822,7 +833,7 @@ vz-ai-stack.sh install 20
 
 **The security model is the headline.** The gateway is **secure-by-default**: with *no allowlist and no allow-all*, it connects but **denies every user** — the bot stays silent. It can drive all nine profiles, so it must never be open by accident. To use it, set `HERMES_TELEGRAM_ALLOWED_USERS=<your numeric Telegram id>` in `.env` and re-run the phase. `HERMES_TELEGRAM_ALLOW_ALL=true` exists but is explicitly *not recommended*.
 
-**Slack** is also supported natively by hermes-agent but is **not pre-wired** by ai-stack — it's a documented self-setup that needs a `slack.com` egress add to the sandbox policy plus a bot token; see the companion [§5](HERMES-HANDSON.md#5-reach-hermes-from-chat-apps--telegram--slack--).
+**Slack** is also supported natively by hermes-agent but is **not pre-wired** by ai-stack — it's a documented self-setup that needs a `slack.com` egress add to the sandbox policy plus a bot token; see the companion [§5](HERMES-HANDSON.md).
 
 **claw3d — the 3D agent office.** claw3d is a Next.js "virtual office" that visualizes the agents, fronted by the **stack-agents bridge** (`claw3d-bridge/bridge.py`) — the same one-endpoint API you used in L12. `install all` (or `install claw3d`) provisions it (clone + npm); `start claw3d` runs it:
 

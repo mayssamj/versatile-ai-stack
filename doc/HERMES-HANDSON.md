@@ -115,6 +115,22 @@ response degrades gracefully instead of white-screening the sidebar.
 and configure. The catch: `hermes` lives **inside** the `hermes-fleet-v1`
 sandbox — you don't run it on the host directly, you run it *through* OpenShell.
 
+**The easy way — `vz-ai-stack.sh hermes <role>`.** One command does the OpenShell
+dance for you: it maps a short role to its `hermes_<role>` profile and runs it in
+the `hermes-fleet-v1` sandbox. No prompt → interactive TUI; a prompt → one-shot.
+This is the recommended day-to-day entry point.
+
+```bash
+vz-ai-stack.sh hermes techlead                                  # interactive TUI
+vz-ai-stack.sh hermes backend "Sketch a POST /tokens contract (JWT in an httpOnly cookie). Contract only."   # one-shot
+vz-ai-stack.sh hermes manager -m claude-opus-sub-max "Frame + route a /healthz endpoint to a reviewed diff."
+```
+
+Roles: `manager techlead frontend backend ml qa reviewing sre incident` (or a full
+`hermes_<name>`). If the sandbox isn't Ready, it prints the exact recovery steps
+(see Troubleshooting). Everything below is what this wrapper runs under the hood —
+reach for it when you want the raw control.
+
 **Enter the fleet sandbox (interactive shell).** This drops you into a shell
 *inside* the sandbox, where `hermes …` is on the PATH:
 
@@ -559,15 +575,17 @@ vz-ai-stack.sh doctor claw3d                  # health check
 
 ---
 
-## Troubleshooting & the security model
+## Troubleshooting and the security model
 
 A compact map of what breaks, why, and the fix — and the security invariants that
 make the fleet safe to hand a goal to.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `openshell sandbox exec/connect` fails fast | OpenShell relay idle-timed-out | `brew services restart openshell`; confirm with `openshell sandbox list` (sandbox must be `Ready`) |
+| `openshell sandbox …` → **"Connection refused (os error 61)"** | the OpenShell **gateway** (:17670) is down — most often because Docker/OrbStack is **hung** (it crash-loops trying to reach a dead docker socket) | **Check Docker FIRST:** `docker ps` — if it *hangs*, OrbStack's daemon is thrashing (often swap-full). **Free RAM** (close apps) and it recovers when pressure eases, or restart OrbStack from its menu-bar app (note: `orb restart` is for Linux *machines*, NOT the engine). *Then* `brew services restart openshell` and confirm `openshell sandbox list` shows `Ready`. If a sandbox shows `Error`: `vz-ai-stack.sh install 04 04f 15`. |
+| `openshell sandbox exec/connect` fails fast (gateway already up) | relay idle-timed-out | `brew services restart openshell`; confirm `openshell sandbox list` (`Ready`) |
 | Bridge / office shows `[<name> unavailable]` | that agent's relay is down | `brew services restart openshell` (§6) |
+| Local-model 500: **"No fallback model group found for local-gemma4"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local-gemma4` has no fallback group | warm it once (`ollama run gemma4:e4b-mlx ''`), or just use the role's **default** model — `vz-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
 | Workspace **Sessions sidebar** crashes (`reading 'map'`) | dashboard not bound `0.0.0.0` cross-container | ai-stack ships the hardened image + `HERMES_DASHBOARD_HOST=0.0.0.0` (§1) |
 | Slack connection hangs | sandbox is deny-by-default; no Slack egress | add the Slack egress block + `openshell policy set … --wait` (§5) |
 | Telegram bot silent | secure-by-default denies all with no allowlist | set `HERMES_TELEGRAM_ALLOWED_USERS` + re-run `install 20` (§5) |
