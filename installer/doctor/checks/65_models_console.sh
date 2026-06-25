@@ -11,7 +11,9 @@
 #      is the regression this guards).
 #   3. doc/MODELS.html (the console page) is present.
 #   4. installer/models.yml parses (fail-closed — the console reads it via the CLI).
-#   5. ADVISORY (WARN, never red): every models.yml model with a key_env has that env
+#   5. litellm/config.yaml .litellm_settings.fallbacks parses and is a LIST (the fallback
+#      editor + LiteLLM failover policy read it). yq type-check only — still NO cold-start.
+#   6. ADVISORY (WARN, never red): every models.yml model with a key_env has that env
 #      var set in .env. A missing vendor key is surfaced as a red dot in the console and
 #      means that route will 401 at call time — worth flagging, but not a stack fault
 #      (a keyless box is a legitimate local-only setup).
@@ -50,6 +52,17 @@ models_console_diagnose() {
   if command -v yq >/dev/null 2>&1; then
     yq -e '.models | keys' "$yml" >/dev/null 2>&1 \
       || { echo "installer/models.yml does not parse (yq) — the console cannot read the catalog."; return 1; }
+  fi
+
+  # config.yaml fallback policy must parse + be a LIST (the fallback editor edits it and
+  # LiteLLM reads it for failover). yq TYPE-CHECK only — no cold-start. Absent/null -> [] (ok).
+  local cfg="$AI_STACK/litellm/config.yaml"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$cfg" ]]; then
+    local fbtype; fbtype="$(yq -r '.litellm_settings.fallbacks // [] | type' "$cfg" 2>/dev/null || echo ERR)"
+    [[ "$fbtype" != "ERR" ]] \
+      || { echo "litellm/config.yaml does not parse for .litellm_settings.fallbacks — fallback editor + failover policy unreadable."; return 1; }
+    [[ "$fbtype" == "!!seq" ]] \
+      || { echo "litellm/config.yaml .litellm_settings.fallbacks is not a list (got '$fbtype') — fallback policy is malformed."; return 1; }
   fi
 
   # ADVISORY: declared key_env present in .env? (WARN-only — keyless box is legitimate.)
