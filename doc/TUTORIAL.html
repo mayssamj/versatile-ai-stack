@@ -92,6 +92,24 @@
   }
   .icon-btn:hover { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
 
+  /* Lightweight floating lesson navigator — steps through every lesson/act anchor. */
+  .lesson-nav {
+    position: fixed; right: 18px; bottom: 18px; z-index: 50;
+    display: flex; gap: 6px; align-items: center;
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 8px; box-shadow: 0 2px 10px rgba(0,0,0,.25);
+    font-size: 13px;
+  }
+  .lesson-nav button {
+    background: transparent; border: 1px solid var(--border); color: var(--fg-soft);
+    border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer; font-size: 13px;
+    transition: all 0.15s;
+  }
+  .lesson-nav button:hover { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
+  .lesson-nav .ln-here { color: var(--fg-soft); max-width: 180px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+  @media (max-width: 720px) { .lesson-nav .ln-here { display: none; } }
+
   main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 80px; }
   section { margin-bottom: 64px; scroll-margin-top: 70px; }
   section > h2 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.02em; }
@@ -234,7 +252,7 @@
 
   /* Print */
   @media print {
-    header, footer, .controls, .copy-btn, .demo-panel, .live-banner { display: none; }
+    header, footer, .controls, .copy-btn, .demo-panel, .live-banner, .lesson-nav { display: none; }
     main { max-width: none; padding: 0; }
     a.act-card { break-inside: avoid; }
     pre { page-break-inside: avoid; }
@@ -264,6 +282,13 @@
     <button class="icon-btn" id="printBtn" title="Print">⎙</button>
   </div>
 </header>
+
+<!-- Lightweight prev/next lesson navigator (jumps through every act + lesson anchor). -->
+<div class="lesson-nav" id="lessonNav" aria-label="Lesson navigation">
+  <button id="lnPrev" title="Previous lesson">‹ Prev</button>
+  <span class="ln-here" id="lnHere">Lesson</span>
+  <button id="lnNext" title="Next lesson">Next ›</button>
+</div>
 
 <main id="top">
 
@@ -416,7 +441,8 @@
   <h2>Interactive demos <span class="small">each calls the same-origin proxy</span></h2>
   <p class="lede">These mirror the early lessons of the journey — list the routed models, chat one,
   compare two, watch a guardrail block a risky prompt, turn text into an embedding vector, check which
-  services are up, (opt-in) launch a watchable web UI, read an agent's memory, and search the docs.</p>
+  services are up, (opt-in) launch a watchable web UI, read an agent's memory, search the docs, and read
+  the most recent Phoenix traces.</p>
 
   <!-- DEMO 1 — List models -->
   <div class="demo-panel" id="demoModelsPanel">
@@ -548,6 +574,17 @@
     </div>
     <div class="btn-row"><button id="btnDocs">Search docs</button></div>
     <div class="out muted" id="outDocs">Type a question and search the indexed docs.</div>
+  </div>
+
+  <!-- DEMO 10 — Recent traces (Phoenix) -->
+  <div class="demo-panel" id="demoTracesPanel">
+    <h3>10 · Recent traces <span class="tier inter">intermediate</span></h3>
+    <p class="sub">Every call through LiteLLM lands in Phoenix as a span. <code>GET /api/traces</code>
+    reads the most recent spans for project <code>ai-stack</code> (last ~1 hour) — read-only; the browser
+    sends nothing, and only span name / model / status / latency leave the box (Act II, L7). Run the Chat
+    demo above first, then refresh to see your call appear.</p>
+    <div class="btn-row"><button id="btnTraces">Load recent traces</button></div>
+    <div class="out muted" id="outTraces">Click to read the most recent Phoenix spans.</div>
   </div>
 </section>
 
@@ -1589,6 +1626,7 @@ const API = {
   launch: "/api/launch",
   honchoDemo: "/api/honcho/demo",
   docsSearch: "/api/docs/search",
+  traces: "/api/traces",
 };
 const DEFAULT_MODEL = "local-gemma4";
 let EMBED_MODEL = "";      // set from /api/health on boot (the embedding model for the Embeddings demo)
@@ -1644,6 +1682,41 @@ function updateActiveNav() {
   navLinks.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + (current && current.id)));
 }
 window.addEventListener("scroll", updateActiveNav, { passive: true });
+
+// ---- floating prev/next lesson navigator ----
+// Build an ordered list of jump targets: each Act <section> + every lesson <h3 id> inside the acts.
+const lnTargets = Array.from(
+  document.querySelectorAll('section[id^="act-"], section[id^="act-"] h3[id]')
+);
+const lnHere = document.getElementById("lnHere");
+function lnCurrentIndex() {
+  const y = window.scrollY + 96;
+  let idx = 0;
+  lnTargets.forEach((el, i) => { if (el.offsetTop <= y) idx = i; });
+  return idx;
+}
+function lnLabel(el) {
+  if (el.tagName === "SECTION") {
+    const h = el.querySelector("h2");
+    return h ? h.textContent.trim() : (el.id || "Section");
+  }
+  return el.textContent.replace(/\s+/g, " ").trim();
+}
+function lnUpdate() {
+  if (!lnTargets.length) return;
+  lnHere.textContent = lnLabel(lnTargets[lnCurrentIndex()]);
+}
+function lnGo(delta) {
+  if (!lnTargets.length) return;
+  const next = Math.max(0, Math.min(lnTargets.length - 1, lnCurrentIndex() + delta));
+  const el = lnTargets[next];
+  if (el.id) { location.hash = "#" + el.id; }
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+document.getElementById("lnPrev").addEventListener("click", () => lnGo(-1));
+document.getElementById("lnNext").addEventListener("click", () => lnGo(1));
+window.addEventListener("scroll", lnUpdate, { passive: true });
+lnUpdate();
 
 // ---- small helpers ----
 function setOut(el, msg, cls) {
@@ -1928,12 +2001,36 @@ async function searchDocs() {
 document.getElementById("btnDocs").addEventListener("click", searchDocs);
 document.getElementById("docsQuery").addEventListener("keydown", (e) => { if (e.key === "Enter") searchDocs(); });
 
+// ============================ DEMO 10 — recent traces (Phoenix) ============================
+const outTraces = document.getElementById("outTraces");
+document.getElementById("btnTraces").addEventListener("click", async () => {
+  setOut(outTraces, "Reading recent traces…", "muted");
+  try {
+    const r = await fetch(API.traces, { cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
+    if (!data.available) { setOut(outTraces, (data.hint || "traces aren't available right now") + ".", "muted"); return; }
+    const spans = data.spans || [];
+    if (!spans.length) { setOut(outTraces, "No spans in the last " + (data.window_s || 3600) / 60 + " min. Run the Chat demo, then refresh.", "muted"); return; }
+    // textContent only — span fields are server-supplied but treated as untrusted.
+    const lines = spans.map((s, i) => {
+      const lat = (s.latency_ms === "" || s.latency_ms == null) ? "" : "  " + s.latency_ms + "ms";
+      const model = s.model ? "  [" + s.model + "]" : "";
+      const status = s.status ? "  " + s.status : "";
+      return (i + 1) + ". " + s.name + model + status + lat;
+    });
+    setOut(outTraces, "project: " + data.project + "    (last " + (data.window_s || 3600) / 60 + " min)\n\n" + lines.join("\n"), "success");
+  } catch (e) {
+    setOut(outTraces, proxyError(e), "error");
+  }
+});
+
 // ============================ Boot — graceful degradation ============================
 const banner = document.getElementById("liveBanner");
 const bannerText = document.getElementById("liveBannerText");
 const demoPanels = ["demoModelsPanel", "demoChatPanel", "demoComparePanel", "demoGuardPanel",
                     "demoEmbedPanel", "demoStatusPanel", "demoLaunchPanel",
-                    "demoHonchoPanel", "demoDocsPanel"]
+                    "demoHonchoPanel", "demoDocsPanel", "demoTracesPanel"]
   .map((id) => document.getElementById(id));
 
 function setDemosEnabled(on) {
