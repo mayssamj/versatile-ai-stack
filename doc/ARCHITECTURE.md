@@ -352,7 +352,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │
 │   ├── doctor/
 │   │   ├── doctor.sh                — discovers + runs all checks/*.sh
-│   │   └── checks/                  — one file per failure mode (62 today; 39–61 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness, openshell_gateway, codex_bridge, bare_hostname_ingress, metagpt, agentscope, oasis, chatdev, aitown)
+│   │   └── checks/                  — one file per failure mode (65 today; 39–64 cover openshell_storm, models_binding, meridian, agent_fleet, watchdog_alert, mempalace, tutorial, fleet_parity, docker_engine, sourcegraph_mcp, aionui, openwork, understand, container_liveness, openshell_gateway, codex_bridge, bare_hostname_ingress, metagpt, agentscope, oasis, chatdev, aitown, audit_drift, loopback_publish, hostname_alias_coverage)
 │   │       ├── 01_orbstack_running.sh
 │   │       ├── 02_host_docker_internal.sh
 │   │       ├── 03_env_valid.sh
@@ -375,7 +375,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 56_bare_hostname_ingress.sh  — full list in doc/DOCTOR.md (62 checks total)
+│   │       └── 23_… 56_bare_hostname_ingress.sh  — full list in doc/DOCTOR.md (65 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
