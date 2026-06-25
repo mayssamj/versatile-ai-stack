@@ -168,6 +168,51 @@ validate() {
     [[ -z "$m" ]] && continue
     rt="$(my_q ".models.\"$m\".runtime")"
     sv="$(my_q ".models.\"$m\".served")"
+
+    # F09: validate model_name against a CONSERVATIVE charset BEFORE it reaches
+    # yq strenv or any shell interpolation. Allowed: a-z0-9 + - . _ / @ (covers
+    # all real names in models.yml: 'local-gemma4', 'nvidia/nemotron-3-nano-4b',
+    # 'ordis/jina-embeddings-v2-base-code', 'qwen3.6-27b-mtplx-optimized-speed',
+    # 'claude-opus-4-8', 'fugu-ultra', 'sakana-fugu-ultra', etc.). Colons (:)
+    # appear in ollama tags (e.g. 'gemma4:e4b-mlx') which live in `served`, not
+    # the model NAME key — so the NAME charset stays colon-free. The charset was
+    # verified against every .models key in installer/models.yml; widen only if a
+    # real new name fails (note the failure so the charset rationale stays honest).
+    if [[ ! "$m" =~ ^[a-zA-Z0-9_./@-]+$ ]]; then
+      err "models.yml: model name '$m' contains characters outside the safe charset [a-zA-Z0-9_./@-] — rename it to avoid injection risk"
+      return 2
+    fi
+
+    # Validate `served` similarly (the wire id sent to yq + the LiteLLM slug).
+    # Served ids may include colons for ollama tags (e.g. 'gemma4:e4b-mlx').
+    if [[ -n "$sv" && "$sv" != "null" && ! "$sv" =~ ^[a-zA-Z0-9_./:-]+$ ]]; then
+      err "models.yml: model '$m' served id '$sv' contains characters outside the safe charset [a-zA-Z0-9_./:-]"
+      return 2
+    fi
+
+    # Validate openai-compat fields (api_base / key_env) used directly in yq strenv.
+    if [[ "$rt" == "openai-compat" ]]; then
+      local _ocab _ocke
+      _ocab="$(my_q ".models.\"$m\".api_base")"
+      _ocke="$(my_q ".models.\"$m\".key_env")"
+      # api_base: must be a valid http(s) URL with safe chars (no shell-injection risk).
+      # Store the regex in a variable — bash's [[ =~ ]] parser can choke on & and #
+      # inside a bare character class literal (bash bug / parser edge case); a variable
+      # RHS is treated as an unquoted pattern and parsed correctly.
+      local _url_re='^https?://[a-zA-Z0-9_./:@%?=&#-]+$'
+      if [[ -n "$_ocab" && "$_ocab" != "null" ]] \
+         && [[ ! "$_ocab" =~ $_url_re ]]; then
+        err "models.yml: openai-compat model '$m' api_base '$_ocab' contains unsafe characters"
+        return 2
+      fi
+      # key_env: must be a legal shell env-var name (no injection via strenv).
+      if [[ -n "$_ocke" && "$_ocke" != "null" ]] \
+         && [[ ! "$_ocke" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+        err "models.yml: openai-compat model '$m' key_env '$_ocke' is not a valid env-var name ([A-Z_][A-Z0-9_]*)"
+        return 2
+      fi
+    fi
+
     case "$rt" in
       ollama|lmstudio) : ;;
       meridian)
