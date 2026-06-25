@@ -14,14 +14,10 @@ model_list:
     litellm_params:
       model: ollama_chat/gemma4:e4b-mlx
       api_base: http://ollama:11434
-      # size = 9.6GB
-    
   - model_name: local-qwen3
     litellm_params:
       model: ollama_chat/qwen3:8b
       api_base: http://ollama:11434
-      # size = 5.2GB
-
   # ============================================================
   # CLOUD CHAT — OpenAI (direct API)
   # ============================================================
@@ -30,14 +26,10 @@ model_list:
       model: openai/gpt-5.5
       api_key: os.environ/OPENAI_API_KEY
       reasoning_effort: xhigh
-      # cost = 5/30$ , 10/45$ , 1M ctx
-
   - model_name: openai-gpt-pro
     litellm_params:
       model: openai/gpt-5.5-pro
       api_key: os.environ/OPENAI_API_KEY
-      # cost = 30/180$ , 60-270$ , 1M ctx
-
   # ============================================================
   # CLOUD CHAT — OpenAI on your ChatGPT SUBSCRIPTION (no metered key).
   # OPT-IN + ToS-GRAY. Routed through the codex-bridge host daemon
@@ -62,8 +54,6 @@ model_list:
       rpm: 6
       tpm: 60000
       reasoning_effort: xhigh
-      # cost = 5/30$ , 10/45$ , 1M ctx
-
   - model_name: openai-gpt-pro-sub
     litellm_params:
       model: openai/gpt-5.5-pro
@@ -72,8 +62,6 @@ model_list:
       rpm: 6
       tpm: 60000
       reasoning_effort: xhigh
-      # cost = 30/180$ , 60-270$ , 1M ctx
-
   # ============================================================
   # CLOUD CHAT — OpenRouter (Anthropic models routed via OR)
   # Note: OpenRouter slugs use DOTS not hyphens.
@@ -84,13 +72,11 @@ model_list:
       model: openrouter/anthropic/claude-opus-4.8
       api_key: os.environ/OPENROUTER_API_KEY
       # cost = 5/25 $ , 1 M ctx, speed = 50 tps
-
   - model_name: openrouter-claude-opus-fast
     litellm_params:
       model: openrouter/anthropic/claude-opus-4.8-fast
       api_key: os.environ/OPENROUTER_API_KEY
       # cost = 10/50 $ , 1 M ctx, speed = 65 tps
-
   # ============================================================
   # CLOUD CHAT — OpenRouter (OpenAI models routed via OR)
   # ============================================================
@@ -98,13 +84,11 @@ model_list:
     litellm_params:
       model: openrouter/openai/gpt-5.5
       api_key: os.environ/OPENROUTER_API_KEY
-  
   - model_name: openrouter-gpt-pro
     litellm_params:
       model: openrouter/openai/gpt-5.5-pro
       api_key: os.environ/OPENROUTER_API_KEY
       # cost: 30/180 $ 1M ctx, speed: 16 tps
-
   # ============================================================
   # CLOUD CHAT — OpenRouter (other providers)
   # DeepSeek V4 and Kimi K2.6 confirmed real (April 2026 releases).
@@ -114,36 +98,30 @@ model_list:
       model: openrouter/deepseek/deepseek-v4-pro
       api_key: os.environ/OPENROUTER_API_KEY
       # cost: .5/.9 $ , 40-60 tps
-
   - model_name: openrouter-deepseek-flash
     litellm_params:
       model: openrouter/deepseek/deepseek-v4-flash
       api_key: os.environ/OPENROUTER_API_KEY
       # cost: .02/.30 $ , 10-60 tps
-  
   - model_name: openrouter-kimi
     litellm_params:
       model: openrouter/moonshotai/kimi-k2.6
       api_key: os.environ/OPENROUTER_API_KEY
       # cost: .68 / 3.41 $ ctx 256k , tps 20 - 100 tps
-  
   - model_name: openrouter-kimi-code
     litellm_params:
       model: openrouter/moonshotai/kimi-k2.7-code
       api_key: os.environ/OPENROUTER_API_KEY
       # cost: .68 / 3.41 $ ctx 256k , tps 20 - 100 tps
-  
   - model_name: openrouter-glm
     litellm_params:
       model: openrouter/z-ai/glm-5.2
       api_key: os.environ/OPENROUTER_API_KEY
       # $0.98 / $3.08per 1M, 25-100 tps
-      
   - model_name: openrouter-glm-vision
     litellm_params:
       model: openrouter/z-ai/glm-5v-turbo
       api_key: os.environ/OPENROUTER_API_KEY
-
   # ============================================================
   # CLOUD CHAT — Google (direct Gemini API)
   # Gemini 3.1 Pro is the verified flagship (Dec 2025).
@@ -152,12 +130,10 @@ model_list:
     litellm_params:
       model: gemini/gemini-3.5-flash
       api_key: os.environ/GEMINI_API_KEY
-
   - model_name: google-gemini-pro
     litellm_params:
       model: gemini/gemini-3.1-pro-preview
       api_key: os.environ/GEMINI_API_KEY
-
   # ============================================================
   # CLOUD CHAT — Sakana Fugu: a multi-agent orchestrator "delivered as one
   # model" (https://sakana.ai/fugu/). OpenAI-compatible API at
@@ -174,14 +150,12 @@ model_list:
       api_base: https://api.sakana.ai/v1
       api_key: os.environ/SAKANA_API_KEY
       rpm: 10
-
   - model_name: sakana-fugu-ultra
     litellm_params:
       model: openai/fugu-ultra
       api_base: https://api.sakana.ai/v1
       api_key: os.environ/SAKANA_API_KEY
       rpm: 6
-
   # ============================================================
   # EMBEDDINGS — explicitly tagged with model_info.mode so LiteLLM
   # routes them to /v1/embeddings, not /v1/chat/completions.
@@ -259,20 +233,6 @@ model_list:
       #   litellm_params:
       #     model: openai/gpt-realtime
       #     api_key: os.environ/OPENAI_API_KEY
-#  - model_name: local-gemma4
-#    litellm_params:
-#      model: ollama_chat/gemma4:e4b
-#      api_base: http://ollama:11434
-#  - model_name: local-qwen3.6
-#    litellm_params:
-#      model: openai/qwen/qwen3.6-27b
-#      api_base: http://host.docker.internal:1234/v1
-#      api_key: lm-studio
-#  - model_name: local-qwen3-coder
-#    litellm_params:
-#      model: openai/qwen3-coder-30b-a3b-instruct-mlx
-#      api_base: http://host.docker.internal:1234/v1
-#      api_key: lm-studio
   # ============================================================
   # CLAUDE CODE — your Claude Pro/Max SUBSCRIPTION (no API key).
   # Routed through Meridian, a host daemon that reuses your
@@ -318,13 +278,27 @@ model_list:
   #    extra_body:
   #      effort: medium
   - model_name: claude-opus-sub-high
+    #  - model_name: local-gemma4
+    #    litellm_params:
+    #      model: ollama_chat/gemma4:e4b
+    #      api_base: http://ollama:11434
+    #  - model_name: local-qwen3.6
+    #    litellm_params:
+    #      model: openai/qwen/qwen3.6-27b
+    #      api_base: http://host.docker.internal:1234/v1
+    #      api_key: lm-studio
+    #  - model_name: local-qwen3-coder
+    #    litellm_params:
+    #      model: openai/qwen3-coder-30b-a3b-instruct-mlx
+    #      api_base: http://host.docker.internal:1234/v1
+    #      api_key: lm-studio
+
     litellm_params:
       model: openai/claude-opus-4-8
       api_base: http://host.docker.internal:3456/v1
       api_key: meridian
       extra_body:
         effort: high
-
   - model_name: claude-opus-sub-xhigh
     litellm_params:
       model: openai/claude-opus-4-8
@@ -332,7 +306,6 @@ model_list:
       api_key: meridian
       extra_body:
         effort: xhigh
-
   - model_name: claude-opus-sub-max
     litellm_params:
       model: openai/claude-opus-4-8
@@ -340,7 +313,6 @@ model_list:
       api_key: meridian
       extra_body:
         effort: max
-
   - model_name: claude-opus-sub-ultracode
     litellm_params:
       model: openai/claude-opus-4-8
@@ -348,7 +320,6 @@ model_list:
       api_key: meridian
       extra_body:
         effort: ultracode
-
   # --- Sonnet 4.6 (subscription) — high / max / ultracode (no xhigh: ≡ high) ---
   - model_name: claude-sonnet-sub-high
     litellm_params:
@@ -357,7 +328,6 @@ model_list:
       api_key: meridian
       extra_body:
         effort: high
-
   - model_name: claude-sonnet-sub-max
     litellm_params:
       model: openai/claude-sonnet-4-6
@@ -365,7 +335,6 @@ model_list:
       api_key: meridian
       extra_body:
         effort: max
-
   - model_name: claude-sonnet-sub-ultracode
     litellm_params:
       model: openai/claude-sonnet-4-6
@@ -373,46 +342,34 @@ model_list:
       api_key: meridian
       extra_body:
         effort: ultracode
-
   #- model_name: local-gemma4-mlx
   #  litellm_params:
   #    model: ollama_chat/gemma4:e4b-mlx
   #    api_base: http://ollama:11434
-  
   - model_name: local-nemotron3-nano-4b
     litellm_params:
       model: ollama_chat/nemotron-3-nano:4b
       api_base: http://ollama:11434
-      # size: 2.8 GB
-
   - model_name: local-nemotron3-nano-4b-mlx
     litellm_params:
       model: openai/nvidia/nemotron-3-nano-4b
       api_base: http://host.docker.internal:1234/v1
       api_key: lm-studio
-      # size: 3GB (LM Studio MLX variant of the Ollama local-nemotron3-nano-4b)
-
   - model_name: local-gemma4-12b
     litellm_params:
       model: openai/gemma-4-12b-it
       api_base: http://host.docker.internal:1234/v1
       api_key: lm-studio
-      # size: 7.5GB
-
   - model_name: local-nemotron3-heavy
     litellm_params:
       model: openai/nvidia-nemotron-3-nano-30b-a3b-mlx
       api_base: http://host.docker.internal:1234/v1
       api_key: lm-studio
-      # size: 18GB
-
   - model_name: local-qwen-heavy-fast
     litellm_params:
       model: openai/qwen3.6-27b-mtplx-optimized-speed
       api_base: http://host.docker.internal:1234/v1
       api_key: lm-studio
-      # size: 16.5 GB
-
 litellm_settings:
   # Custom callback writes each call to /traces/litellm.jsonl
   # (mounted to ~/ai-stack/traces on host).
@@ -454,14 +411,14 @@ litellm_settings:
     # Sakana Fugu (metered) — fail over to local, never a silent bill.
     - sakana-fugu: ["local-qwen3"]
     - sakana-fugu-ultra: ["local-qwen3"]
-    # Cross-model cloud chains (commented, for reference). The openrouter-* /
-    # openai-gpt* targets need provider API keys, so those hops dangle until a
-    # key is set. local / local-heavy / claude-opus-4.7 are no longer in the
-    # model_list (removed in the version-less rename), so no fallback for them.
-    #- claude-opus-4.7: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
-    #- claude-sonnet-4.6: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
-    #- openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus-4.7"]
-    #- openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet-4.6"]
+      # Cross-model cloud chains (commented, for reference). The openrouter-* /
+      # openai-gpt* targets need provider API keys, so those hops dangle until a
+      # key is set. local / local-heavy / claude-opus-4.7 are no longer in the
+      # model_list (removed in the version-less rename), so no fallback for them.
+      #- claude-opus-4.7: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
+      #- claude-sonnet-4.6: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
+      #- openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus-4.7"]
+      #- openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet-4.6"]
       # Phase 01·H adds the arize_phoenix callback to the list above:
       # callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
 # Guardrails — populated by Phase 01·G. Leave empty here.
