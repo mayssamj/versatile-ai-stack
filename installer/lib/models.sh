@@ -225,6 +225,14 @@ validate() {
     fi
   done < <(my_q '.assignments | keys | .[]')
 
+  # Parked agents (optional .parked map) must reference a known kind — a typo'd
+  # entry would silently never take effect.
+  local pk
+  while IFS= read -r pk; do
+    [[ -z "$pk" ]] && continue
+    if ! agent_exists "$pk"; then err "models.yml: parked '$pk' has no matching kinds: entry"; return 2; fi
+  done < <(my_q '.parked // {} | keys | .[]')
+
   # config.yaml invariant: NO duplicate model_name. With openai-compat a declared
   # model is rendered into config.yaml by register_model_list (single-owner); a
   # left-behind hand-authored entry for the same name would silently double-own it.
@@ -248,6 +256,11 @@ agent_assigned() { my_q ".assignments.\"$1\""; }
 agent_kind()     { my_q ".kinds.\"$1\".kind"; }
 agent_profile()  { my_q ".kinds.\"$1\".profile"; }
 agent_keyenv()   { my_q ".kinds.\"$1\".key_env"; }
+# agent_parked <agent> — true if the agent is PARKED (disabled). Parked agents keep
+# their .assignments entry (so unpark restores it) but render to the always-on
+# `default` sentinel. State lives in a top-level `.parked` map (a scalar assignment
+# can't hold a flag), kept reversible: park sets it, unpark/assign delete it.
+agent_parked()   { [[ "$(my_q ".parked.\"$1\"")" == "true" ]]; }
 model_runtime()  { my_q ".models.\"$1\".runtime"; }
 model_served()   { my_q ".models.\"$1\".served"; }
 # openai-compat route data (endpoint + the .env key that holds its secret). Empty
@@ -314,6 +327,10 @@ resolve_effective() {
   local agent="$1" declared rt default
   declared="$(agent_assigned "$agent")"
   default="$(default_model)"
+  # PARKED (disabled) agents render the always-on sentinel ON PURPOSE — short-circuit
+  # before any availability gate so it is NOT recorded as pending (it's intentional,
+  # not a fallback). rendered==effective==default => no drift in list/verify/doctor.
+  if agent_parked "$agent"; then _GATED=0; echo "$default"; return 0; fi
   # Unassigned agent -> the `primary` default model (availability-gated to `default`,
   # the always-on ollama fallback, exactly like an assigned model would be).
   [[ -z "$declared" || "$declared" == "null" ]] && declared="$(primary_model)"
@@ -372,6 +389,7 @@ resolve_effective() {
 # reaches the caller. Gated == the assigned model is lmstudio but we rendered
 # something else (the availability fallback).
 is_gated() {
+  agent_parked "$1" && return 1   # parked renders the sentinel ON PURPOSE — not a gate
   # Mirror resolve_effective's declared resolution: an UNASSIGNED agent routes through
   # `primary`, so gating (and its pending/warning observability) must resolve it too.
   local declared; declared="$(agent_assigned "$1")"
@@ -838,6 +856,7 @@ PYEOF
     # ACE caveat (constraint: list must say allowlist-only for ACE).
     local effdisp="$eff"
     [[ "$kind" == "ace" ]] && effdisp="$eff (allowlist-only)"
+    agent_parked "$a" && effdisp="$eff (PARKED)"
 
     printf '  %-26s %-26s %-9s %-7s %-8s %-6s %s\n' "$a" "$assigned" "$in_cfg" "$served_ok" "$key_ok" "$drift" "$effdisp"
   done < <(agents)
@@ -898,6 +917,7 @@ cmd_assign() {
     if ! MODEL="$model" yq -i "$_expr" "$MODELS_YML"; then
       err "blanket assign failed — models.yml unchanged (restore: cp $MODELS_YML.bak $MODELS_YML)"; exit 1
     fi
+    yq -i 'del(.parked)' "$MODELS_YML" 2>/dev/null || true   # blanket assign re-enables everyone (unpark all)
     ok "assigned all $n agents -> $model  (prior models.yml backed up to $(basename "$MODELS_YML").bak)"
     if (( nosync )); then
       note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync' to apply."
@@ -920,6 +940,10 @@ cmd_assign() {
   AG="$agent" MODEL="$model" yq -i '.assignments[strenv(AG)] = strenv(MODEL)' "$MODELS_YML" \
     || { err "yq -i set assignment failed"; exit 1; }
   ok "assignments.$agent: $before -> $model"
+  # Assigning a model re-enables a parked agent (council: assign always unparks).
+  if agent_parked "$agent"; then
+    AG="$agent" yq -i 'del(.parked[strenv(AG)])' "$MODELS_YML" 2>/dev/null && note "unparked '$agent' (assigning re-enables it)"
+  fi
   if (( nosync )); then
     note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync $agent' to apply."
     exit 0
@@ -1316,6 +1340,61 @@ cmd_remove() {
 }
 
 # ---------------------------------------------------------------------------
+# 6e. park / unpark — disable / re-enable an agent (renders the default sentinel)
+# ---------------------------------------------------------------------------
+# `model park <agent>` disables an agent WITHOUT losing its assignment: it sets
+# .parked[agent]=true and the agent renders the always-on `default` (local-gemma4)
+# sentinel until unparked. `model unpark <agent>` clears it. (assign also auto-
+# unparks.) Reversible; doctor stays green because rendered==effective==default
+# for a parked agent (resolve_effective short-circuits to the sentinel).
+cmd_park() {
+  local agent="" dry=0 nosync=0 a
+  for a in "$@"; do
+    case "$a" in
+      --dry-run) dry=1 ;;
+      --no-sync) nosync=1 ;;
+      -*) err "park: unknown flag '$a'"; exit 2 ;;
+      *) [[ -z "$agent" ]] && agent="$a" ;;
+    esac
+  done
+  validate || exit $?
+  [[ -n "$agent" ]] || { err "usage: vz-ai-stack.sh model park <agent> [--dry-run] [--no-sync]"; exit 2; }
+  if ! agent_exists "$agent"; then
+    err "unknown agent '$agent'. Valid agents:"; my_q '.kinds | keys | .[]' | sed 's/^/    /' >&2; exit 2
+  fi
+  local def; def="$(default_model)"
+  if agent_parked "$agent"; then ok "agent '$agent' already parked (renders to $def)"; exit 0; fi
+  if (( dry )); then note "[dry-run] would park '$agent' -> renders to $def (assignment '$(agent_assigned "$agent")' preserved)"; exit 0; fi
+  AG="$agent" yq -i '.parked[strenv(AG)] = true' "$MODELS_YML" || { err "yq -i park failed"; exit 1; }
+  ok "parked '$agent' (assignment '$(agent_assigned "$agent")' preserved); renders to $def until unparked"
+  if (( nosync )); then note "--no-sync: run 'vz-ai-stack.sh model sync $agent' to apply."; exit 0; fi
+  cmd_sync "$agent"
+}
+
+cmd_unpark() {
+  local agent="" dry=0 nosync=0 a
+  for a in "$@"; do
+    case "$a" in
+      --dry-run) dry=1 ;;
+      --no-sync) nosync=1 ;;
+      -*) err "unpark: unknown flag '$a'"; exit 2 ;;
+      *) [[ -z "$agent" ]] && agent="$a" ;;
+    esac
+  done
+  validate || exit $?
+  [[ -n "$agent" ]] || { err "usage: vz-ai-stack.sh model unpark <agent> [--dry-run] [--no-sync]"; exit 2; }
+  if ! agent_exists "$agent"; then
+    err "unknown agent '$agent'. Valid agents:"; my_q '.kinds | keys | .[]' | sed 's/^/    /' >&2; exit 2
+  fi
+  if ! agent_parked "$agent"; then ok "agent '$agent' is not parked (nothing to do)"; exit 0; fi
+  if (( dry )); then note "[dry-run] would unpark '$agent' -> restores assignment '$(agent_assigned "$agent")'"; exit 0; fi
+  AG="$agent" yq -i 'del(.parked[strenv(AG)])' "$MODELS_YML" || { err "yq -i unpark failed"; exit 1; }
+  ok "unparked '$agent'; restored '$(agent_assigned "$agent")'"
+  if (( nosync )); then note "--no-sync: run 'vz-ai-stack.sh model sync $agent' to apply."; exit 0; fi
+  cmd_sync "$agent"
+}
+
+# ---------------------------------------------------------------------------
 # 7. sync — the crash-safe 6-phase reconcile (constraint 4)
 # ---------------------------------------------------------------------------
 cmd_sync() {
@@ -1500,6 +1579,8 @@ main() {
     add)      cmd_add "$@" ;;
     edit)     cmd_edit "$@" ;;
     remove)   cmd_remove "$@" ;;
+    park)     cmd_park "$@" ;;
+    unpark)   cmd_unpark "$@" ;;
     sync)     cmd_sync "$@" ;;
     superset) cmd_superset "$@" ;;
     -h|--help|help)
@@ -1512,11 +1593,13 @@ vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml
   model add <lms-slug> [as <name>] [--dry-run] [--no-sync]   declare a library LLM (no load)
   model edit <name> <field> <value> [--dry-run] [--no-sync]  edit a safe field: rpm|tpm|ttl|big|effort|note
   model remove <name> [--dry-run] [--no-sync]                delete a model (guarded) from models.yml + config.yaml
+  model park <agent> [--dry-run] [--no-sync]                 disable an agent (renders the default sentinel; assignment kept)
+  model unpark <agent> [--dry-run] [--no-sync]               re-enable a parked agent
   model sync [<agent>] [--dry-run] [--no-restart]
   model superset [--json]          print the canonical scoped-key allowlist
 EOF
       ;;
-    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|edit|remove|sync|superset)"; exit 2 ;;
+    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|edit|remove|park|unpark|sync|superset)"; exit 2 ;;
   esac
 }
 

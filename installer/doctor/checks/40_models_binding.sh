@@ -77,6 +77,11 @@ _mb_effective() {
   local declared default rt served
   declared="$(yq -r ".assignments.\"$agent\"" "$yml" 2>/dev/null)"
   default="$(yq -r '.default' "$yml" 2>/dev/null)"
+  # PARKED agents render the default sentinel ON PURPOSE (mirrors lib/models.sh
+  # resolve_effective) — so rendered==effective==default and no false DRIFT/coverage red.
+  if [[ "$(yq -r ".parked.\"$agent\" // false" "$yml" 2>/dev/null)" == "true" ]]; then
+    echo "$default"; return
+  fi
   rt="$(yq -r ".models.\"$declared\".runtime" "$yml" 2>/dev/null)"
   # meridian: availability-gate on the Meridian daemon (mirrors lib/models.sh).
   if [[ "$rt" == "meridian" ]]; then
