@@ -111,7 +111,13 @@ if [[ ! -f "$DF_CONFIG" && -f "$DF_DIR/config.example.yaml" ]]; then
   ok "seeded $DF_CONFIG from config.example.yaml"
 fi
 
-# Patch 1: inject local-model entries under `models:` if none exist.
+# Patch 1: populate DeerFlow's `models:` block = the model picker. The picker is
+# 100% DATA-DRIVEN (config.yaml `models:` → GET /api/models → the frontend's
+# models.map()), so each entry here = one selectable option. We expose the two
+# stable tiers FIRST — `local` (basic) + `local-heavy` (reasoning), which DeerFlow
+# uses as models[0] default and references by name — THEN one entry per assignable
+# chat model from installer/models.yml that LiteLLM actually serves, so the user
+# can pick any model on their box (not just the two tiers).
 # Resolve DeerFlow's two-tier models from installer/models.yml. Platform policy
 # (2026-06-20): both tiers default to claude-opus-sub-xhigh — the "basic"
 # entry (name: local) tracks `.primary` and the "reasoning" entry (name:
@@ -129,7 +135,7 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   if [[ -n "$_dfa" && "$_dfa" != "null" ]]; then
     if [[ "$_dfrt" == "lmstudio" ]] \
        && ! { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null \
-              && grep -qF "model_name: ${_dfa}" "$AI_STACK/litellm/config.yaml" 2>/dev/null; }; then
+              && grep -qE "model_name: ${_dfa}\$" "$AI_STACK/litellm/config.yaml" 2>/dev/null; }; then  # end-anchored so openai-gpt != openai-gpt-pro
       DF_REASON_MODEL="$DF_BASIC_MODEL"   # gated fallback
     else
       DF_REASON_MODEL="$_dfa"
@@ -137,75 +143,77 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   fi
 fi
 
-if [[ -f "$DF_CONFIG" ]] && ! grep -q '# ai-stack: local models via LiteLLM' "$DF_CONFIG"; then
-  DF_BASIC_MODEL="$DF_BASIC_MODEL" DF_REASON_MODEL="$DF_REASON_MODEL" python3 - "$DF_CONFIG" <<'PYEOF'
+# Build the picker entry list: the two stable tiers (local/local-heavy) FIRST
+# (DeerFlow's factory uses models[0] as the default and references both by name),
+# then ONE entry per assignable chat model from installer/models.yml that LiteLLM
+# actually serves (its model_name is in litellm/config.yaml) — so every option is
+# routable with DeerFlow's MASTER key (no scoped allowlist to widen). TSV columns:
+# name<TAB>display<TAB>model<TAB>max_tokens. model: is the LiteLLM model_name (alias).
+DF_MODELS_TSV="$(printf 'local\tBasic (ai-stack default via LiteLLM)\t%s\t4096\nlocal-heavy\tReasoning (ai-stack deerflow assignment via LiteLLM)\t%s\t8192\n' "$DF_BASIC_MODEL" "$DF_REASON_MODEL")"
+if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
+  # exact whole-line membership against LiteLLM's served model_names (avoids the
+  # prefix false-positive of a substring grep, e.g. openai-gpt vs openai-gpt-pro).
+  _df_served="$(yq -r '.model_list[].model_name' "$AI_STACK/litellm/config.yaml" 2>/dev/null)"
+  # prettify an alias into a picker label so display_name isn't identical to the
+  # model: subtitle (e.g. claude-opus-sub-xhigh -> "Claude Opus Sub Xhigh").
+  _df_pretty() { printf '%s' "$1" | sed -E 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1)) substr($i,2)}1'; }
+  while IFS= read -r _alias; do
+    [[ -z "$_alias" || "$_alias" == "null" ]] && continue
+    printf '%s\n' "$_df_served" | grep -qxF "$_alias" || continue   # only if LiteLLM serves it
+    DF_MODELS_TSV+=$'\n'"$(printf '%s\t%s\t%s\t8192' "$_alias" "$(_df_pretty "$_alias")" "$_alias")"
+  done < <(yq -r '.models | to_entries | .[] | .key' "$AI_STACK/installer/models.yml" 2>/dev/null)
+fi
+
+# Inject (first run) or regenerate (subsequent) the ai-stack `models:` block.
+# Delimited by BEGIN/END markers and rewritten WHOLESALE each run so it converges
+# on add/remove/rename of models; upstream's commented example models (after END)
+# are left untouched. Also MIGRATES the pre-marker two-entry block (older phase).
+if [[ -f "$DF_CONFIG" ]]; then
+  DF_MODELS_TSV="$DF_MODELS_TSV" python3 - "$DF_CONFIG" <<'PYEOF'
 import os, re, sys
 path = sys.argv[1]
-basic = os.environ.get("DF_BASIC_MODEL", "claude-opus-sub-xhigh")
-reason = os.environ.get("DF_REASON_MODEL", "claude-opus-sub-xhigh")
-src = open(path).read()
-# Two-tier `models:` block: a "basic" entry (name: local) pinned to the default,
-# and a "reasoning" entry (name: local-heavy) pointed at the deerflow assignment
-# (availability-gated). Entry NAMES stay stable (DeerFlow references them by name);
-# only the LiteLLM model_name each targets changes.
-patch = """models:
-  # ai-stack: local models via LiteLLM (port 4000 on host). Two tiers —
-  # basic (name: local) and reasoning (name: local-heavy) — wired to the
-  # canonical model<->agent slugs from installer/models.yml. Re-render with
-  # `vz-ai-stack.sh model sync`. `api_key: $LITELLM_MASTER_KEY` resolves from env;
-  # `host.docker.internal` reaches the host LiteLLM from the deer-flow network.
-  - name: local
-    display_name: Basic (ai-stack default via LiteLLM)
-    use: langchain_openai:ChatOpenAI
-    model: %s
-    api_key: $LITELLM_MASTER_KEY
-    base_url: http://host.docker.internal:4000/v1
-    request_timeout: 600.0
-    max_retries: 2
-    max_tokens: 4096
-    temperature: 0.7
-
-  - name: local-heavy
-    display_name: Reasoning (ai-stack deerflow assignment via LiteLLM)
-    use: langchain_openai:ChatOpenAI
-    model: %s
-    api_key: $LITELLM_MASTER_KEY
-    base_url: http://host.docker.internal:4000/v1
-    request_timeout: 600.0
-    max_retries: 2
-    max_tokens: 8192
-    temperature: 0.7
-
-  """ % (basic, reason)
-# Replace the bare `models:` line with the patched block.
-new = re.sub(r'^models:\s*\n', patch, src, count=1, flags=re.MULTILINE)
-if new == src:
-    sys.exit("WARNING: no `models:` line found in config.yaml; not patched")
-open(path, "w").write(new)
-PYEOF
-  ok "patched $DF_CONFIG: injected two-tier models (basic=$DF_BASIC_MODEL, reasoning=$DF_REASON_MODEL)"
-else
-  # Already injected: idempotently RE-RENDER both tiers' model: lines so a later
-  # 'model sync' / re-run converges them. Rewrites only the `model:` line of the
-  # named entry; never touches one tier silently.
-  DF_BASIC_MODEL="$DF_BASIC_MODEL" DF_REASON_MODEL="$DF_REASON_MODEL" python3 - "$DF_CONFIG" <<'PYEOF'
-import os, re, sys
-path = sys.argv[1]
-basic = os.environ.get("DF_BASIC_MODEL", "claude-opus-sub-xhigh")
-reason = os.environ.get("DF_REASON_MODEL", "claude-opus-sub-xhigh")
-src = open(path).read()
-def set_model(text, entry_name, model_name):
-    # group1 anchored to the single `- name:` line ([^\n]*, no re.DOTALL) with a
-    # (?![\w-]) guard so `local` does not match inside `local-heavy` — otherwise
-    # the basic tier never re-renders (review finding). Mirrors lib/models.sh.
-    pat = re.compile(r'(- name: %s(?![\w-])[^\n]*\n)((?:\s+\w[\w-]*:.*\n)*?)(\s*model:\s*)([^\n]*)' % re.escape(entry_name))
-    return pat.subn(lambda m: m.group(1) + m.group(2) + m.group(3) + model_name, text, count=1)
-new, n1 = set_model(src, "local", basic)
-new, n2 = set_model(new, "local-heavy", reason)
-if new != src:
+tsv = os.environ.get("DF_MODELS_TSV", "")
+BEGIN = "  # >>> ai-stack: local models via LiteLLM — BEGIN (data-driven picker; regenerated when phase 10 re-runs / on `model sync` — edit installer/models.yml + litellm, NOT here)"
+END   = "  # <<< ai-stack: local models via LiteLLM — END"
+def render(tsv):
+    out = [BEGIN]
+    for line in tsv.splitlines():
+        if not line.strip():
+            continue
+        name, display, model, max_tokens = line.split("\t")
+        out.append(
+            "  - name: %s\n"
+            "    display_name: %s\n"
+            "    use: langchain_openai:ChatOpenAI\n"
+            "    model: %s\n"
+            "    api_key: $LITELLM_MASTER_KEY\n"
+            "    base_url: http://host.docker.internal:4000/v1\n"
+            "    request_timeout: 600.0\n"
+            "    max_retries: 2\n"
+            "    max_tokens: %s\n"
+            "    temperature: 0.7\n" % (name, display, model, max_tokens))
+    out.append(END)
+    return "\n".join(out) + "\n"
+block = render(tsv)
+orig = open(path).read()
+src = orig
+# MIGRATION: strip the OLD pre-marker block (comment header through the local-heavy
+# entry) so a re-run with this phase does not double-inject `name: local`.
+if BEGIN not in src:
+    src = re.sub(
+        r'  # ai-stack: local models via LiteLLM \(port 4000.*?\n  - name: local-heavy\n(?:    [^\n]*\n)+?    temperature:[^\n]*\n',
+        '', src, count=1, flags=re.DOTALL)
+if BEGIN in src and END in src:
+    new = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", block, src, count=1, flags=re.DOTALL)
+else:
+    new = re.sub(r'^models:[ \t]*\n', "models:\n" + block, src, count=1, flags=re.MULTILINE)
+    if new == src:
+        sys.exit("WARNING: no `models:` line found in config.yaml; not patched")
+if new != orig:
     open(path, "w").write(new)
 PYEOF
-  ok "$DF_CONFIG: two-tier models re-rendered (basic=$DF_BASIC_MODEL, reasoning=$DF_REASON_MODEL)"
+  _df_n="$(printf '%s\n' "$DF_MODELS_TSV" | grep -c .)"
+  ok "patched $DF_CONFIG: $_df_n models in the picker (local, local-heavy + served models.yml chat models)"
 fi
 
 # Patch 2: ensure docker-compose.yaml passes LITELLM_MASTER_KEY to gateway.

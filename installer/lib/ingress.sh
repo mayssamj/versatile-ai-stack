@@ -95,10 +95,22 @@ ingress_alias_in_scope() {
 ingress_caddyfile_content() {
   aliases_load || return 1
   printf '{\n\tadmin off\n\tauto_https disable_redirects\n\tskip_install_trust\n}\n'
-  local a ip port
+  local a ip port lo0_ips
+  # Snapshot the loopback aliases once. A site whose `bind <ip>` address is NOT on
+  # lo0 makes `caddy run` fail to bind at STARTUP — and with KeepAlive=Crashed that
+  # crash-loops the WHOLE daemon, taking every other ingress site down. So SKIP such
+  # a site (with a warning) instead of emitting an unbindable `bind`; the operator
+  # runs `sudo vz-ai-stack.sh prepare-sudo` then re-reloads and the site self-heals.
+  # (`caddy validate` only checks syntax, not address availability, so it won't catch
+  # this — the guard must live here. Exact-match, mirroring the start-script guards.)
+  lo0_ips="$(/sbin/ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+')"
   for a in "${ALIASES_LIST[@]}"; do
     ingress_alias_in_scope "$a" || continue
     ip="${ALIAS_IP[$a]}"; port="${ALIAS_HOST_PORT[$a]}"
+    if ! printf '%s\n' "$lo0_ips" | grep -qxF "$ip"; then
+      warn "ingress: skipping http(s)://$a — its loopback IP $ip is not on lo0 (run: sudo vz-ai-stack.sh prepare-sudo, then re-reload)" >&2
+      continue
+    fi
     printf '\nhttp://%s {\n\tbind %s\n\treverse_proxy %s:%s\n}\n' "$a" "$ip" "$ip" "$port"
     printf 'https://%s {\n\tbind %s\n\ttls internal\n\treverse_proxy %s:%s\n}\n' "$a" "$ip" "$ip" "$port"
   done

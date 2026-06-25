@@ -42,6 +42,7 @@ agentscope-studio	127.0.0.1	http	5275	5275	33	agentscope
 chatdev	127.0.10.18	http	5274	5173	35	chatdev
 aitown	127.0.10.19	http	5273	5173	36	aitown
 deerflow	127.0.10.17	http	2026	2026	10	deerflow
+sourcegraph	127.0.10.20	http	7080	7080	27	sourcegraph
 # NOTE — openwork/aionui (above) get a NAMED alias mapped to 127.0.0.1 (their actual
 #        loopback bind) so the Mac browses http://openwork:8787/ui instead of the raw IP.
 #        They use 127.0.0.1 (NOT a 127.0.10.x alias) because the daemons bind 127.0.0.1;

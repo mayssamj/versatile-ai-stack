@@ -62,6 +62,18 @@ mkdir -p "$SG_DIR/config" "$SG_DIR/data"
 # host.docker.internal), intentionally NOT on the ai-stack bridge (absent from
 # aliases.tsv; dials no stack service). The exempt label tells doctor check 16 to
 # skip the ai-stack-network-membership requirement for it (it would else false-flag).
+#
+# DUAL-bind: 127.0.0.1:7080 (host + the sandbox's host.docker.internal:7080 path)
+# AND 127.0.10.20:7080 (the `sourcegraph` lo0 alias → http://sourcegraph:7080 + the
+# Caddy ingress http://sourcegraph/), loopback-only, never 0.0.0.0. The alias bind
+# needs the 127.0.10.20 lo0 alias (prepare-sudo) — guarded so a missing alias gives
+# a clear instruction, not a cryptic "cannot assign requested address" Docker error.
+SG_BIND_IP=127.0.10.20
+if ! ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+' | grep -qxF "$SG_BIND_IP"; then
+  err "lo0 alias $SG_BIND_IP (sourcegraph) is missing — the container dual-binds it loopback-only and won't start without it."
+  err "Run once:  sudo $AI_STACK/vz-ai-stack.sh prepare-sudo"
+  exit 1
+fi
 docker run -d \
   --name "$NAME" \
   --label "ai-stack.managed=true" \
@@ -71,9 +83,13 @@ docker run -d \
   --restart unless-stopped \
   --cpus 4 --memory 4g --memory-swap 4g \
   -p 127.0.0.1:7080:7080 \
+  -p "$SG_BIND_IP":7080:7080 \
   -v "$SG_DIR/config:/etc/sourcegraph" \
   -v "$SG_DIR/data:/var/opt/sourcegraph" \
   "$IMAGE" \
   >/dev/null
-ok "started container: $NAME (http://localhost:7080 ; sandbox: host.docker.internal:7080)"
+ok "started container: $NAME (http://localhost:7080 + http://sourcegraph:7080 ; sandbox: host.docker.internal:7080)"
+# NOTE: a sourcegraph container created BEFORE this dual-bind change stays bound to
+# 127.0.0.1 only until it is recreated (`docker rm -f sourcegraph` then install);
+# `docker start` of an existing container does NOT re-publish ports.
 record "start-sourcegraph: pid=$$ image=$IMAGE platform=$PLATFORM"
