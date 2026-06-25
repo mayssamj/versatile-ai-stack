@@ -174,8 +174,16 @@ lms_register_model() {
     # CHANGED -> needless LiteLLM restart every sync). Optional effort ->
     # reasoning_effort, but its passthrough to the Codex backend is UNVERIFIED
     # (see the models.yml note) — the metered `openai` runtime is the verified one.
-    MN="$model_name" SV="$served" CP="${CODEX_BRIDGE_PORT:-3457}" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(CP) + "/v1", "api_key": "codex-bridge", "rpm": 6, "tpm": 60000}' "$tmp" \
+    MN="$model_name" SV="$served" CP="${CODEX_BRIDGE_PORT:-3457}" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params) = {"model": "openai/" + strenv(SV), "api_base": "http://host.docker.internal:" + strenv(CP) + "/v1", "api_key": "codex-bridge"}' "$tmp" \
       || { rm -f "$tmp"; err "yq set-params failed for $model_name"; return 1; }
+    if [[ -n "$rpm" ]]; then
+      MN="$model_name" RP="$rpm" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.rpm) = (strenv(RP) | tonumber)' "$tmp" \
+        || { rm -f "$tmp"; err "yq set rpm failed for $model_name"; return 1; }
+    fi
+    if [[ -n "$tpm" ]]; then
+      MN="$model_name" TP="$tpm" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.tpm) = (strenv(TP) | tonumber)' "$tmp" \
+        || { rm -f "$tmp"; err "yq set tpm failed for $model_name"; return 1; }
+    fi
     if [[ -n "$effort" ]]; then
       MN="$model_name" EF="$effort" yq -i '(.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.reasoning_effort) = strenv(EF)' "$tmp" \
         || { rm -f "$tmp"; err "yq set reasoning_effort failed for $model_name"; return 1; }
