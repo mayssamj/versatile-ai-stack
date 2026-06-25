@@ -84,21 +84,32 @@ except Exception as e:
     return 1
   fi
 
-  # (2) Denied-model chat completion returns a 4xx with "key not allowed".
-  # We use grep -q on a substring instead of the full message because
-  # LiteLLM has reworded this between minor versions.
-  # Probe a REAL model that is NOT in Pi's allowlist (claude-opus-4.7 is the
-  # metered API-key route, never part of the local+meridian superset). max_tokens
-  # is intentionally tiny; the request must be REJECTED before any upstream call.
-  local denied_body
-  denied_body="$(litellm_scoped_curl "$pi_key" -s --max-time 5 \
-    -H 'Content-Type: application/json' \
-    -d '{"model":"claude-opus-4.7","messages":[{"role":"user","content":"x"}],"max_tokens":1}' \
-    http://litellm:4000/v1/chat/completions 2>/dev/null || echo '')"
-  if ! echo "$denied_body" | grep -qi "key not allowed"; then
-    echo "POST chat with model=claude-opus-4.7 did NOT return 'key not allowed' — allowlist may be bypassed!"
-    echo "  body: ${denied_body:0:200}"
-    return 1
+  # (2) Denied-model real-inference probe (OPT-IN ONLY — default OFF).
+  #
+  # This sends a real chat completion to verify the allowlist is enforced
+  # server-side, not just client-side. It does NOT call any inference backend
+  # (the request should be rejected by LiteLLM before reaching a model), but
+  # it does hit LiteLLM's /v1/chat/completions endpoint and constitutes a
+  # network call that is NOT appropriate on every routine `doctor` run.
+  #
+  # Gate: PI_LITELLM_KEY_DEEP_CHECK=1 (mirrors MODELS_BINDING_DEEP_CHECK=1 and
+  # CODEX_BRIDGE_DEEP_CHECK=1 — the established fleet pattern for opt-in probes).
+  if [[ "${PI_LITELLM_KEY_DEEP_CHECK:-0}" == "1" ]]; then
+    # Probe a REAL model that is NOT in Pi's allowlist (claude-opus-4.7 is the
+    # metered API-key route, never part of the local+meridian superset). max_tokens
+    # is intentionally tiny; the request must be REJECTED before any upstream call.
+    local denied_body
+    denied_body="$(litellm_scoped_curl "$pi_key" -s --max-time 5 \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"claude-opus-4.7","messages":[{"role":"user","content":"x"}],"max_tokens":1}' \
+      http://litellm:4000/v1/chat/completions 2>/dev/null || echo '')"
+    if ! echo "$denied_body" | grep -qi "key not allowed"; then
+      echo "POST chat with model=claude-opus-4.7 did NOT return 'key not allowed' — allowlist may be bypassed!"
+      echo "  body: ${denied_body:0:200}"
+      return 1
+    fi
+  else
+    echo "  (allowlist enforcement probe skipped on routine run — set PI_LITELLM_KEY_DEEP_CHECK=1 to verify server-side rejection)"
   fi
 }
 
