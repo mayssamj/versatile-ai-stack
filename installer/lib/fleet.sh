@@ -695,6 +695,79 @@ cmd_fleet_destroy() {
 }
 
 # ===========================================================================
+# run — drive ONE Hermes profile from the host (vz-ai-stack.sh hermes <role>)
+# ===========================================================================
+# _hermes_role <short|full> — map a short alias (techlead, backend, …) to its
+# hermes_<role> profile; validate against CORE7 (custom full hermes_* allowed).
+_hermes_role() {
+  local r="$1" p
+  case "$r" in
+    hermes_*)                                      p="$r" ;;
+    manager|mgr)                                   p="hermes_manager" ;;
+    techlead|tech|lead|architect)                  p="hermes_techlead" ;;
+    frontend|frontend_engineer|fe)                 p="hermes_frontend_engineer" ;;
+    backend|backend_engineer|be)                   p="hermes_backend_engineer" ;;
+    ml|ml_engineer|mle)                            p="hermes_ml_engineer" ;;
+    qa|qa_test_engineer|test|tester)               p="hermes_qa_test_engineer" ;;
+    review|reviewer|reviewing|reviewing_engineer)  p="hermes_reviewing_engineer" ;;
+    sre|sre_engineer)                              p="hermes_sre_engineer" ;;
+    incident|incident_manager|im)                  p="hermes_incident_manager" ;;
+    *)                                             p="hermes_$r" ;;
+  esac
+  local c ok=0
+  for c in "${CORE7[@]}"; do [[ "$c" == "$p" ]] && ok=1; done
+  [[ "$r" == hermes_* ]] && ok=1   # allow a custom full profile name (fleet add)
+  (( ok )) || { err "unknown role '$r' — valid: manager techlead frontend backend ml qa reviewing sre incident (or a full hermes_<name>)"; return 2; }
+  printf '%s' "$p"
+}
+
+# cmd_run <role> ["prompt" | -m <model>] — interactive TUI when no prompt is
+# given; one-shot (--yolo -z) when a prompt is. Routes through hermes-fleet-v1.
+cmd_run() {
+  local role="${1:-}"
+  if [[ -z "$role" || "$role" == "-h" || "$role" == "--help" ]]; then
+    cat <<'EOF'
+vz-ai-stack.sh hermes <role> ["prompt"] [-m <model>]
+  Run one Hermes agent in the hermes-fleet-v1 sandbox.
+    (no prompt)  -> interactive TUI   (Ctrl-D / 'exit' to leave)
+    "prompt"     -> one-shot          (--yolo -z)
+  roles: manager techlead frontend backend ml qa reviewing sre incident  (or a full hermes_<name>)
+  examples:
+    vz-ai-stack.sh hermes techlead
+    vz-ai-stack.sh hermes backend "Sketch a POST /tokens contract (JWT in an httpOnly cookie). Contract only."
+    vz-ai-stack.sh hermes manager -m claude-opus-sub-max "Frame + route a /healthz endpoint to a reviewed diff."
+EOF
+    return 0
+  fi
+  shift
+  local profile; profile="$(_hermes_role "$role")" || return 2
+  local model="" prompt=""
+  while (( $# )); do
+    case "$1" in
+      -m|--model) model="${2:-}"; shift 2 || { err "-m needs a model"; return 2; } ;;
+      -z)         prompt="${2:-}"; shift 2 || { err "-z needs a prompt"; return 2; } ;;
+      *)          prompt="${prompt:+$prompt }$1"; shift ;;
+    esac
+  done
+  local osh; osh="$(osh_bin)"; [[ -n "$osh" ]] || { err "openshell not on PATH — run: vz-ai-stack.sh install 04"; return 1; }
+  if ! hermes_sandbox_ready; then
+    err "sandbox $SANDBOX is not Ready — the OpenShell gateway/relay or Docker is down."
+    note "1) Docker first:  docker ps   (if it HANGS, OrbStack is thrashing — free RAM; it recovers when pressure eases)"
+    note "2) Gateway:       brew services restart openshell   (wait ~10s, then: openshell sandbox list)"
+    note "3) Still Error:   vz-ai-stack.sh install 04 04f 15"
+    return 1
+  fi
+  local margs=(); [[ -n "$model" ]] && margs=(-m "$model")
+  if [[ -n "$prompt" ]]; then
+    note "▶ hermes $profile — one-shot${model:+ (model=$model)}"
+    "$osh" sandbox exec -n "$SANDBOX" --no-tty -- hermes --profile "$profile" "${margs[@]}" --yolo -z "$prompt"
+  else
+    note "▶ hermes $profile — interactive (Ctrl-D / 'exit' to leave)${model:+ [model=$model]}"
+    "$osh" sandbox exec -n "$SANDBOX" --tty -- hermes --profile "$profile" "${margs[@]}"
+  fi
+}
+
+# ===========================================================================
 # usage + dispatch
 # ===========================================================================
 fleet_usage() {
@@ -717,6 +790,7 @@ main() {
   local sub="${1:-}"
   shift || true
   case "$sub" in
+    run)               cmd_run "$@" ;;
     list)              cmd_fleet_list "$@" ;;
     add)               cmd_fleet_add "$@" ;;
     remove)            cmd_fleet_remove "$@" ;;
