@@ -231,7 +231,7 @@ ai-stack-installer — usage:
                                         [--force]. Refuses code-tuned (lumen) / on-device (mempalace).
                                         (assignments live in models.yml .embeddings/.embedding_assignments;
                                         re-run the owning service phase to apply.)
-    vz-ai-stack.sh hermes <role> ["prompt"] run ONE Hermes agent (manager techlead frontend backend ml qa
+    vz-ai-stack.sh hermes <role> ["prompt"] [-m <model>]  run ONE Hermes agent (manager techlead frontend backend ml qa
                                         reviewing sre incident) — interactive TUI, or one-shot with a "prompt".
                                         e.g. vz-ai-stack.sh hermes techlead   |   hermes backend "design POST /tokens"
     vz-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)

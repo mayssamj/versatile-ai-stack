@@ -575,7 +575,7 @@ vz-ai-stack.sh doctor claw3d                  # health check
 
 ---
 
-## Troubleshooting & the security model
+## Troubleshooting and the security model
 
 A compact map of what breaks, why, and the fix — and the security invariants that
 make the fleet safe to hand a goal to.

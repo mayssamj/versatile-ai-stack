@@ -744,8 +744,7 @@ EOF
   local model="" prompt=""
   while (( $# )); do
     case "$1" in
-      -m|--model) model="${2:-}"; shift 2 || { err "-m needs a model"; return 2; } ;;
-      -z)         prompt="${2:-}"; shift 2 || { err "-z needs a prompt"; return 2; } ;;
+      -m|--model) model="${2:-}"; [[ -n "$model" && "$model" != -* ]] || { err "-m/--model needs a model name"; return 2; }; shift 2 ;;
       *)          prompt="${prompt:+$prompt }$1"; shift ;;
     esac
   done
@@ -797,7 +796,7 @@ main() {
     new)               cmd_fleet_new "$@" ;;
     destroy)           cmd_fleet_destroy "$@" ;;
     ""|-h|--help|help) fleet_usage ;;
-    *) err "fleet: unknown subcommand '$sub' (want list|add|remove|new|destroy)"; exit 2 ;;
+    *) err "fleet: unknown subcommand '$sub' (want run|list|add|remove|new|destroy)"; exit 2 ;;
   esac
 }
 

@@ -699,7 +699,7 @@ Five more shared skills back the protocol: `tdd`, `hypothesis-debugging`, `verif
 > vz-ai-stack.sh fleet list
 > ```
 
-For a point-and-click view, the **Hermes Workspace** web UI at `http://workspace:3000` (Dashboard / Chat / Conductor / Memory / Sessions / Profiles) shows the same roster, their load, and per-profile souls — see the companion [§1](HERMES-HANDSON.md#1-the-hermes-workspace-web-command-center--).
+For a point-and-click view, the **Hermes Workspace** web UI at `http://workspace:3000` (Dashboard / Chat / Conductor / Memory / Sessions / Profiles) shows the same roster, their load, and per-profile souls — see the companion [§1](HERMES-HANDSON.md).
 
 ---
 
@@ -751,7 +751,7 @@ openshell sandbox connect hermes-fleet-v1
 hermes --profile hermes_manager --yolo -z "Feature request: add a /healthz endpoint to our service that returns 200 + a JSON body {status, version, uptime_seconds}. Frame it, decompose it, and run it through the team to a reviewed diff."
 ```
 
-The one-liner equivalent (no shell needed): `vz-ai-stack.sh hermes manager "<the same request>"`. If `openshell sandbox connect` errors with **`Connection refused (os error 61)`**, the OpenShell gateway is down — almost always because Docker/OrbStack is hung: **check `docker ps` first** (if it *hangs*, OrbStack is thrashing — free RAM and it recovers), *then* `brew services restart openshell`. Full recovery: the companion's [troubleshooting table](HERMES-HANDSON.md#troubleshooting--the-security-model).
+The one-liner equivalent (no shell needed): `vz-ai-stack.sh hermes manager "<the same request>"`. If `openshell sandbox connect` errors with **`Connection refused (os error 61)`**, the OpenShell gateway is down — almost always because Docker/OrbStack is hung: **check `docker ps` first** (if it *hangs*, OrbStack is thrashing — free RAM and it recovers), *then* `brew services restart openshell`. Full recovery: the companion's [troubleshooting table](HERMES-HANDSON.md#troubleshooting-and-the-security-model).
 
 What you should see, in order:
 1. **manager** restates the goal, refuses if it can't extract ≥1 testable AC, then emits a **SPEC** with acceptance criteria (e.g. `AC-1: GET /healthz → 200`, `AC-2: body has status/version/uptime_seconds`) and a delivery plan with one owner per task.
@@ -833,7 +833,7 @@ vz-ai-stack.sh install 20
 
 **The security model is the headline.** The gateway is **secure-by-default**: with *no allowlist and no allow-all*, it connects but **denies every user** — the bot stays silent. It can drive all nine profiles, so it must never be open by accident. To use it, set `HERMES_TELEGRAM_ALLOWED_USERS=<your numeric Telegram id>` in `.env` and re-run the phase. `HERMES_TELEGRAM_ALLOW_ALL=true` exists but is explicitly *not recommended*.
 
-**Slack** is also supported natively by hermes-agent but is **not pre-wired** by ai-stack — it's a documented self-setup that needs a `slack.com` egress add to the sandbox policy plus a bot token; see the companion [§5](HERMES-HANDSON.md#5-reach-hermes-from-chat-apps--telegram--slack--).
+**Slack** is also supported natively by hermes-agent but is **not pre-wired** by ai-stack — it's a documented self-setup that needs a `slack.com` egress add to the sandbox policy plus a bot token; see the companion [§5](HERMES-HANDSON.md).
 
 **claw3d — the 3D agent office.** claw3d is a Next.js "virtual office" that visualizes the agents, fronted by the **stack-agents bridge** (`claw3d-bridge/bridge.py`) — the same one-endpoint API you used in L12. `install all` (or `install claw3d`) provisions it (clone + npm); `start claw3d` runs it:
 
