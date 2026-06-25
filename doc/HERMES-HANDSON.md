@@ -62,6 +62,10 @@ open http://workspace:3000        # loopback alias 127.0.10.10:3000
 curl -s http://hermes-gw:8642/health | jq      # alias 127.0.10.11:8642
 ```
 
+(The fleet's published services get name aliases like `hermes-gw`; the claw3d
+bridge in §6 is deliberately loopback-only, so you reach *it* by raw
+`127.0.0.1:7780`, never a name.)
+
 **Expected.**
 
 ```json
@@ -292,9 +296,17 @@ vs what it *effectively* renders, and flags **DRIFT**:
 vz-ai-stack.sh model list           # add --json for machine-readable
 ```
 
-**Expected.** A catalog of models plus a per-agent matrix with columns including
-**ASSIGNED**, **EFFECTIVE**, and **DRIFT** — DRIFT is set when a role's effective
-model differs from what you assigned (see availability-gating below).
+**Expected.** A catalog of models plus a per-agent "Agent matrix" whose columns are:
+
+```
+AGENT   ASSIGNED   LITELLM   SERVED   KEY-OK   DRIFT   EFFECTIVE
+```
+
+`ASSIGNED` is what you set; `EFFECTIVE` (last column) is what the role actually
+renders; **`DRIFT`** is set when those two differ — i.e. the assigned model's
+upstream was unavailable and the role fell back (see availability-gating below).
+`LITELLM` / `SERVED` / `KEY-OK` show whether the route is registered, the
+upstream is reachable, and the scoped key may use it.
 
 **Reassign one role:**
 
@@ -346,17 +358,9 @@ vz-ai-stack.sh model edit claude-opus-sub-max effort xhigh
 vz-ai-stack.sh model sync
 ```
 
-<!-- TODO(orchestrator): verify the spec's "there is NO model edit command" claim.
-     It is FALSE against the real code: installer/lib/models.sh defines `cmd_edit`,
-     dispatched as `model edit <name> <field> <value>` (main() ~L1734), help text
-     ~L1751 "edit a safe field: rpm|tpm|ttl|big|effort|note", and `effort` is an
-     explicitly-editable, runtime-validated field (cmd_edit ~L1385-1393, identity/
-     endpoint fields are refused). I documented BOTH the real `model edit … effort`
-     command AND the models.yml-edit path rather than write a documented falsehood
-     (SOUL r1/r15: verify, don't assume; never invent OR mis-state a command). The
-     offline grep "no `model edit` string appears" will therefore NOT pass by design —
-     please confirm you want `model edit` documented (it exists) or re-confirm the
-     spec's non-existence claim. -->
+`model edit` only touches **safe** fields (`rpm | tpm | ttl | big | effort | note`);
+identity/endpoint fields (`runtime | served | api_base | key_env`) are refused —
+changing those is a `model remove` + `model add`.
 
 **Verify a role's live model.** `config check` reports the agent's
 **configuration/env status** (config version, which env keys are set), not the
@@ -501,7 +505,8 @@ brings up the **UI on `:4310`** and opens the browser — so you never land on
 vz-ai-stack.sh stop claw3d
 ```
 
-**At the Connect screen.** `http://localhost:4310` redirects to `/office`:
+**At the Connect screen.** `http://localhost:4310` redirects to `/office`
+(`:4310` = the office UI; `:7780` = the bridge it talks to):
 
 1. **Backend:** **Custom**.
 2. **Upstream URL:** `http://127.0.0.1:7780` — the bridge, normally pre-filled.
