@@ -1590,6 +1590,10 @@ async function handleFallbackResponse(res, op, model, triggerBtn, origBtnText) {
     msg = `LiteLLM did not come ready; config auto-reverted to the previous chain.`;
     toastType = 'err';
     toastDuration = 9000;
+  } else if (data.revert_skipped_no_backup === true) {
+    msg = `Fallback ${op} "${model}" written but LiteLLM did NOT come ready, and there was no backup to auto-revert — restore config.yaml manually and restart litellm.`;
+    toastType = 'err';
+    toastDuration = 12000;
   } else if (data.restart_ok === false) {
     const logSnippet = data.restart_log ? ` Log: ${String(data.restart_log).slice(0,120)}` : '';
     msg = `Fallback ${op} written but LiteLLM restart failed — check the stack.${logSnippet}`;
