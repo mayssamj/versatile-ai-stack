@@ -15,6 +15,7 @@ source "$AI_STACK/installer/lib/env.sh"
 PORT=8899
 TTL="30m"
 REVOKE_ONLY=0
+FORCE=0            # --force: free the port even from a FOREIGN holder (kill + rebind)
 LAUNCH_ENABLED=0   # opt-in: --launch-enabled wires TUT_LAUNCH=1 so the page's
                    # "Launch a service" buttons can idempotently start a web UI.
 HTML="$AI_STACK/doc/TUTORIAL.html"
@@ -62,15 +63,19 @@ while (( $# )); do
     --ttl=*)  TTL="${1#*=}" ;;
     --ttl)    shift; TTL="${1:-30m}" ;;
     --revoke) REVOKE_ONLY=1 ;;
+    --force)  FORCE=1 ;;
     --launch-enabled) LAUNCH_ENABLED=1 ;;
     -h|--help)
       cat <<EOF
-vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke] [--launch-enabled]
+vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--force] [--revoke] [--launch-enabled]
   Serve doc/TUTORIAL.html + a loopback proxy for safe 'Try it live' demos.
   Mints an ephemeral, budget-capped LiteLLM key allowlisted to your wired models
   (auto-revoked on exit).
   --port N    loopback port (default 8899)
   --ttl 30m   key time-to-live (LiteLLM duration; default 30m)
+  --force     if the port is held, kill WHATEVER holds it (even a non-tutorial process)
+              and rebind. Without --force a stale tutorial-serve is auto-reaped but a
+              FOREIGN holder is reported and left alone. (Manual: lsof -ti tcp:8899 | xargs kill)
   --revoke    revoke a lingering tutorial key and exit
   --launch-enabled  EXPERIMENTAL (default OFF): enable the page's "Launch a service"
               buttons — they idempotently run \`vz-ai-stack.sh start <svc>\` for a small
@@ -120,19 +125,31 @@ ensure_port_free() {
       warn "Port $port held by a stale tutorial-serve (PID $pid) — stopping it."
       kill "$pid" 2>/dev/null || true
       killed=1
+    elif (( FORCE )); then
+      warn "Port $port held by a FOREIGN process (PID $pid) — --force: killing it."
+      warn "  $cmd"
+      kill "$pid" 2>/dev/null || true
+      killed=1
     else
       err "Port $port is already in use by PID $pid — not a tutorial-serve process:"
       err "  $cmd"
-      err "Free that port, or pick another: vz-ai-stack.sh tutorial-serve --port <N>"
+      err "Re-run with --force to kill it and rebind, or pick another: vz-ai-stack.sh tutorial-serve --port <N>"
       exit 1
     fi
   done
   (( killed )) || return 0
-  for i in $(seq 1 12); do            # wait up to ~6s for the stale instance to release
+  for i in $(seq 1 12); do            # wait up to ~6s for the holder(s) to release
     lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
     sleep 0.5
   done
-  err "Port $port still busy after stopping the stale instance — retry, or use --port <N>."
+  # Last resort under --force: SIGKILL any lingering holder, then re-check once.
+  if (( FORCE )); then
+    warn "Port $port still busy — --force: sending SIGKILL to the remaining holder(s)."
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    sleep 0.5
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
+  fi
+  err "Port $port still busy after stopping the holder(s) — retry, use --force, or use --port <N>."
   exit 1
 }
 

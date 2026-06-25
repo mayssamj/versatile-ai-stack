@@ -4,6 +4,12 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-25
+
+### Added
+
+- **`--force` to free a held port on `tutorial-serve` + `models-serve`** (`feat/serve-port-force`): both launchers already auto-reap a stale OWN instance holding the default port (a dangling serve from a closed terminal — just re-run it), but a FOREIGN holder was reported and left alone with no override. `--force` now kills WHATEVER holds the port (graceful TERM, then SIGKILL as a last resort) and rebinds, printing the offending command first. Without `--force` the behavior is unchanged (refuse with a clear message that now points at `--force`). `--port N`/`--port=N` was already supported on both; a manual `lsof -ti tcp:PORT | xargs kill` hint is documented in `--help`. Verified end-to-end: a foreign listener is refused without the flag and killed+rebound with it.
+
 ## 2026-06-24
 
 ### Added

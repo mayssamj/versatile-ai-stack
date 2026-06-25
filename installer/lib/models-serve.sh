@@ -27,6 +27,7 @@ source "$AI_STACK/installer/lib/env.sh"
 PORT=8898                          # one above tutorial-serve's 8899 default
 TTL="30m"
 REVOKE_ONLY=0
+FORCE=0                            # --force: free the port even from a FOREIGN holder (kill + rebind)
 READ_ONLY=0                        # --read-only: view + stage (sandbox) only; POST /api/apply 403s
 HTML="$AI_STACK/doc/MODELS.html"
 STATE="$AI_STACK/installer/state/models-console-token"   # holds the live ephemeral key (0600)
@@ -53,14 +54,18 @@ while (( $# )); do
     --ttl)    shift; TTL="${1:-30m}" ;;
     --read-only) READ_ONLY=1 ;;
     --revoke) REVOKE_ONLY=1 ;;
+    --force)  FORCE=1 ;;
     -h|--help)
       cat <<EOF
-vz-ai-stack.sh models-serve [--port N] [--ttl 30m] [--read-only] [--revoke]
+vz-ai-stack.sh models-serve [--port N] [--ttl 30m] [--read-only] [--force] [--revoke]
   Serve doc/MODELS.html (the Model & Agent Console) + a loopback proxy that wraps
   the \`model\` CLI to view / stage / apply model + agent-binding changes via UI.
   --port N      loopback port (default 8898)
   --ttl 30m     ephemeral test-key time-to-live (LiteLLM duration; default 30m)
   --read-only   view + stage (diff) only; POST /api/apply is refused (no writes)
+  --force       if the port is held, kill WHATEVER holds it (even a non-models-serve
+                process) and rebind. Without --force a stale models-serve is auto-reaped
+                but a FOREIGN holder is reported and left alone. (Manual: lsof -ti tcp:8898 | xargs kill)
   --revoke      revoke a lingering console key and exit
   Run from the MAIN checkout — apply may restart/recreate the live LiteLLM container.
 EOF
@@ -101,10 +106,15 @@ ensure_port_free() {
       warn "Port $port held by a stale models-serve (PID $pid) — stopping it."
       kill "$pid" 2>/dev/null || true
       killed=1
+    elif (( FORCE )); then
+      warn "Port $port held by a FOREIGN process (PID $pid) — --force: killing it."
+      warn "  $cmd"
+      kill "$pid" 2>/dev/null || true
+      killed=1
     else
       err "Port $port is already in use by PID $pid — not a models-serve process:"
       err "  $cmd"
-      err "Free that port, or pick another: vz-ai-stack.sh models-serve --port <N>"
+      err "Re-run with --force to kill it and rebind, or pick another: vz-ai-stack.sh models-serve --port <N>"
       exit 1
     fi
   done
@@ -113,7 +123,14 @@ ensure_port_free() {
     lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
     sleep 0.5
   done
-  err "Port $port still busy after stopping the stale instance — retry, or use --port <N>."
+  # Last resort under --force: SIGKILL any lingering holder, then re-check once.
+  if (( FORCE )); then
+    warn "Port $port still busy — --force: sending SIGKILL to the remaining holder(s)."
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    sleep 0.5
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
+  fi
+  err "Port $port still busy after stopping the holder(s) — retry, use --force, or use --port <N>."
   exit 1
 }
 
