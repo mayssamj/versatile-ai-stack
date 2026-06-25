@@ -490,13 +490,36 @@ up_brew() {
   STRATEGY=brew
   # ollama only. BINARY ONLY — never `ollama pull` (24GB RAM; KEEP_ALIVE=30m warm-not-resident).
   if (( DRY )); then
-    note "PLAN $svc brew-service: would: brew upgrade $svc && brew services restart $svc (binary only; NO model pull)"
+    if [[ "$svc" == ollama ]]; then
+      note "PLAN $svc brew-service: would: brew upgrade $svc, then RE-ASSERT OLLAMA_HOST=0.0.0.0 via the deps env-patch (PlistBuddy + launchctl bootout/bootstrap) — NOT 'brew services restart', which regenerates the plist and wipes it, rebinding 127.0.0.1 so LiteLLM's local-* models 500. (If deps.sh can't load, falls back to brew services restart.) NO model pull."
+    else
+      note "PLAN $svc brew-service: would: brew upgrade $svc && brew services restart $svc (binary only; NO model pull)"
+    fi
     brew outdated --verbose "$svc" || true
     RESULT="planned"
     return 0
   fi
   brew upgrade "$svc" || true            # no-op if already current
-  brew services restart "$svc" || true
+  if [[ "$svc" == ollama ]]; then
+    # `brew upgrade ollama` REGENERATES the launchd plist and DROPS OLLAMA_HOST=0.0.0.0,
+    # rebinding 127.0.0.1 so in-stack containers (LiteLLM via ollama:host-gateway) can no
+    # longer reach it → every local-* model 500s ("no fallback model group"). Re-assert the
+    # cross-container env-patch the stack's way instead of `brew services restart` (which
+    # would re-wipe it). _dep_ollama_patch_env enforces 0.0.0.0/*/30m + reloads via
+    # launchctl bootout/bootstrap. deps.sh is functions-only → safe to source here.
+    # Source first (if this context hasn't already), THEN gate the call on the function
+    # actually being defined — so the fallback branch is unambiguously reachable if
+    # deps.sh fails to load or the function was renamed (review finding).
+    declare -f _dep_ollama_patch_env >/dev/null 2>&1 || source "$LIB/deps.sh" 2>/dev/null || true
+    if declare -f _dep_ollama_patch_env >/dev/null 2>&1; then
+      _dep_ollama_patch_env || warn "$svc: OLLAMA_HOST re-assert failed — check 'lsof -nP -iTCP:11434' (want *:11434), then 'vz-ai-stack.sh doctor ollama_models'"
+    else
+      warn "$svc: could not load deps.sh to re-assert OLLAMA_HOST — falling back to brew services restart (may rebind 127.0.0.1; LiteLLM local-* models would 500)"
+      brew services restart "$svc" || true
+    fi
+  else
+    brew services restart "$svc" || true
+  fi
   RESULT="upgraded"
 }
 

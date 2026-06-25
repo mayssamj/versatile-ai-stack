@@ -278,10 +278,16 @@ _dep_ollama_patch_env() {
   # on-disk plist as-is; `brew services list` still reports it started. Fallback to
   # brew restart only if the launchctl path is unavailable.
   local _uid; _uid="$(id -u)"
-  if launchctl bootout "gui/${_uid}/homebrew.mxcl.ollama" 2>/dev/null; sleep 1; \
-     launchctl bootstrap "gui/${_uid}" "$plist" 2>/dev/null; then
-    :
-  else
+  # bootout may legitimately fail (service not currently loaded) — tolerate it so the
+  # branch is decided ONLY by bootstrap (loading the edited plist), not by bootout.
+  launchctl bootout "gui/${_uid}/homebrew.mxcl.ollama" 2>/dev/null || true
+  sleep 1
+  if ! launchctl bootstrap "gui/${_uid}" "$plist" 2>/dev/null; then
+    # Last resort. WARNING: `brew services restart` REGENERATES the plist from the
+    # formula and RE-WIPES the env we just set (the exact regression this function
+    # exists to prevent) — a container call may still hit 127.0.0.1. Surface it loudly
+    # so it isn't a silent re-break (review finding).
+    warn "ollama: launchctl bootstrap failed — falling back to 'brew services restart', which may RE-WIPE OLLAMA_HOST. Verify 'lsof -nP -iTCP:11434' shows *:11434; re-run 'vz-ai-stack.sh doctor ollama_models' if local models 500."
     brew services restart ollama 2>&1 | tail -2 || warn "ollama reload failed"
   fi
 }
