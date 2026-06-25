@@ -242,7 +242,7 @@ Each entry: ports listened on, what calls in, healthcheck command.
 - **Listens**: `127.0.10.5:6333:6333` (Mac dials `http://qdrant:6333`) → `qdrant:6333` (REST)
 - **Internal**: `6334/tcp` (gRPC; not published)
 - **Callers**:
-  - `docs_ingestor` → `http://qdrant:6333` (host-side; collection `ai-stack-docs`, vectors size 1536)
+  - `docs_ingestor` → `http://qdrant:6333` (host-side; collection `ai-stack-docs`, vectors size 768 — `embed-local` = Ollama `nomic-embed-text`; the ingestor auto-recreates a stale 1536-dim collection left by the old cloud embedder)
   - `docs_mcp` → `http://qdrant:6333` (host-side search reads)
 - **Healthcheck**: `curl -s http://qdrant:6333/collections`
 - **Source**: `services.yml:64-71`, `bin/start-qdrant.sh:24`, `installer/phases/06_documents.sh:71-77`
