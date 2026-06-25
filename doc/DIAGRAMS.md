@@ -579,7 +579,7 @@ sequenceDiagram
   participant DC as Docling
   participant LI as LlamaIndex
   participant L as litellm :4000
-  participant E as embed-openai-small
+  participant E as embed-local (ollama/nomic-embed-text)
   participant Q as qdrant :6333
   participant DONE as ingestor/processed/
 
@@ -592,7 +592,7 @@ sequenceDiagram
     ING->>LI: build Document, store via VectorStoreIndex
     LI->>L: POST /v1/embeddings (per chunk)
     L->>E: forward
-    E-->>L: 1536-dim vector
+    E-->>L: 768-dim vector
     L-->>LI: vector
     LI->>Q: upsert points
     Q-->>LI: ok
