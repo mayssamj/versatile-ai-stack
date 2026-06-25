@@ -53,7 +53,7 @@ boot(){  # boot $1=readonly(0/1) ; MC_DOCKER stubs the litellm restart (never th
     MC_ROOT="$SBROOT" MC_MODELS_SH="$AI_STACK/installer/lib/models.sh" \
     MC_EMBED_SH="$AI_STACK/installer/lib/embeddings.sh" MC_START_LITELLM="$AI_STACK/bin/start-litellm.sh" \
     MC_MODELS_YML="$tmp/models.yml" MC_CONFIG="$tmp/config.yaml" MC_ENV_FILE="$tmp/.env" MC_READONLY="$1" \
-    MC_DOCKER="$stubdir/docker" \
+    MC_DOCKER="$stubdir/docker" MC_RESTART_WAIT=0 \
     python3 "$PROXY" >"$tmp/proxy.log" 2>&1 &
   PROXY_PID=$!
   for _ in $(seq 1 25); do curl -s $H -o /dev/null "http://127.0.0.1:$PORT/api/health" 2>/dev/null && return 0; sleep 0.2; done
@@ -92,8 +92,48 @@ assert len(d.get("pre_restore_backup",[]))>=1, "current state not backed up befo
 ' 2>/dev/null && yes_ "restore+confirm -> ok, restored both files, pre-restore backup made" || no_ "restore+confirm failed: $(cat $tmp/proxy.log | tail -2)"
 grep -q 'ROLLBACK-MARKER' "$tmp/models.yml" && yes_ "live models.yml now carries the restored marker (swap proven)" || no_ "restore did not swap models.yml"
 [[ -f "$tmp/docker_called" ]] && yes_ "restore used the STUBBED docker (real daemon never touched)" || no_ "stub docker not invoked — restore may have hit the real daemon"
-# .env must NOT have been created/restored by the operation
-[[ "$before_env_exists" == "0" && ! -f "$tmp/.env" ]] && yes_ "restore did NOT touch .env (no clobber)" || yes_ ".env handling unchanged"
+# .env must NOT have been created/restored by the operation (|| arm is no_, not a vacuous pass).
+{ [[ "$before_env_exists" == "0" && ! -f "$tmp/.env" ]] || { [[ "$before_env_exists" == "1" ]] && [[ -f "$tmp/.env" ]]; }; } \
+  && yes_ "restore did NOT create/clobber .env" || no_ ".env was touched by restore"
+
+# 6. well-formed but NON-EXISTENT ts -> 404 (distinct from the 400 traversal case).
+code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/restore" -d '{"ts":"20200101-000000","confirm_restart":true}' || true)"
+[[ "$code" == "404" ]] && yes_ "non-existent (valid-format) ts -> 404" || no_ "expected 404, got $code"
+
+# 7. PARTIAL-COPY auto-revert: make the live config.yaml read-only so the config copy FAILS after
+#    models.yml is written -> expect 500 + reverted:[models.yml] + live models.yml unchanged from
+#    its pre-attempt content (no mismatched pair left on disk).
+before_sha="$(shasum "$tmp/models.yml" | awk '{print $1}')"
+chmod 0444 "$tmp/config.yaml"
+curl -s $H -X POST "http://127.0.0.1:$PORT/api/restore" -d '{"ts":"'"$TS"'","confirm_restart":true}' > "$tmp/partial.json" 2>/dev/null || true
+chmod 0644 "$tmp/config.yaml"
+python3 -c 'import sys,json
+d=json.load(open(sys.argv[1]))
+assert d.get("ok") is False, d
+assert "models.yml" in d.get("reverted",[]), ("models.yml not auto-reverted", d)
+' "$tmp/partial.json" 2>/dev/null && yes_ "partial-copy failure -> 500 + models.yml auto-reverted" || no_ "partial-copy not handled: $(tail -c 300 $tmp/partial.json)"
+after_sha="$(shasum "$tmp/models.yml" | awk '{print $1}')"
+[[ "$before_sha" == "$after_sha" ]] && yes_ "live models.yml unchanged after the reverted partial restore (no mismatched pair)" || no_ "models.yml left in a partial state"
+
+# 8. models-only restore point (config absent for that ts) -> restores models.yml only.
+TS2=20200202-020202
+cp "$AI_STACK/installer/models.yml" "$BK/models.yml.$TS2"   # NO config.yaml.$TS2
+curl -s $H -X POST "http://127.0.0.1:$PORT/api/restore" -d '{"ts":"'"$TS2"'","confirm_restart":true}' | python3 -c 'import sys,json
+d=json.load(sys.stdin)
+assert d.get("ok") is True, d
+assert d.get("restored")==["models.yml"], ("should restore models.yml only", d)
+' 2>/dev/null && yes_ "models-only restore point -> restores models.yml only (config optional)" || no_ "models-only restore failed"
+
+# 9. SYMLINK backup entry -> rejected 400, never followed (adversarial F1: a planted
+#    config.yaml.<ts> symlink to an outside file must not be copied over the live config).
+TS3=20200303-030303
+cp "$AI_STACK/installer/models.yml" "$BK/models.yml.$TS3"
+ln -s /etc/hosts "$BK/config.yaml.$TS3"
+cfg_before="$(shasum "$tmp/config.yaml" | awk '{print $1}')"
+code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/restore" -d '{"ts":"'"$TS3"'","confirm_restart":true}' || true)"
+cfg_after="$(shasum "$tmp/config.yaml" | awk '{print $1}')"
+{ [[ "$code" == "400" ]] && [[ "$cfg_before" == "$cfg_after" ]]; } \
+  && yes_ "symlink backup entry -> 400 (not followed; live config untouched)" || no_ "symlink not rejected (code=$code)"
 stop
 
 # ---- read-only instance: restore must refuse ----

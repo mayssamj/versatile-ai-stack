@@ -42,6 +42,7 @@ MODELS_SH  = os.environ.get("MC_MODELS_SH", "")
 EMBED_SH   = os.environ.get("MC_EMBED_SH", "")
 START_LL   = os.environ.get("MC_START_LITELLM", "")
 DOCKER     = os.environ.get("MC_DOCKER", "docker")   # binary used to restart litellm on restore; overridable so a test can stub it (never the real daemon)
+RESTART_WAIT = int(os.environ.get("MC_RESTART_WAIT", "30"))   # seconds to wait for LiteLLM readiness after a restore restart (0 = don't wait; tests set 0)
 MODELS_YML = os.environ.get("MC_MODELS_YML", "")
 CONFIG     = os.environ.get("MC_CONFIG", "")
 ENV_FILE   = os.environ.get("MC_ENV_FILE", "")
@@ -559,11 +560,16 @@ class H(BaseHTTPRequestHandler):
             return self._json(500, {"ok": False, "error": "no backup dir configured"})
         src_models = os.path.join(BACKUP_DIR, f"models.yml.{ts}")
         src_config = os.path.join(BACKUP_DIR, f"config.yaml.{ts}")
-        # containment: the resolved source MUST live inside BACKUP_DIR (defense vs a crafted ts,
-        # though _is_backup_ts already constrains it to digits+dash — belt-and-suspenders).
+        # containment: BOTH sources must be real files INSIDE BACKUP_DIR, and NEITHER may be a
+        # symlink. _is_backup_ts already forbids path separators in `ts`, but a symlink planted in
+        # BACKUP_DIR (e.g. config.yaml.<valid-ts> -> /etc/...) would otherwise be followed by
+        # shutil.copy2 and overwrite the live file — so reject symlinks + re-check containment.
         rbd = os.path.realpath(BACKUP_DIR)
-        if os.path.commonpath([rbd, os.path.realpath(src_models)]) != rbd:
-            return self._json(400, {"ok": False, "error": "invalid backup path"})
+        for src_check in (src_models, src_config):
+            if os.path.islink(src_check):
+                return self._json(400, {"ok": False, "error": "invalid backup (symlink not allowed)"})
+            if os.path.commonpath([rbd, os.path.realpath(src_check)]) != rbd:
+                return self._json(400, {"ok": False, "error": "invalid backup path"})
         if not os.path.isfile(src_models):
             return self._json(404, {"ok": False, "error": f"no models.yml backup for {ts}"})
         if not confirm_restart:
@@ -574,13 +580,23 @@ class H(BaseHTTPRequestHandler):
             return self._json(409, {"ok": False, "error": "another apply/restore is in progress — try again in a moment"})
         try:
             pre = _backup_sources()   # snapshot CURRENT state first -> the restore is itself reversible
+            pre_models = next((p for p in pre if os.path.basename(p).startswith("models.yml.")), None)
             restored = []
             try:
                 shutil.copy2(src_models, MODELS_YML); restored.append("models.yml")
                 if os.path.isfile(src_config):
                     shutil.copy2(src_config, CONFIG); restored.append("config.yaml")
             except OSError as e:
-                return self._json(500, {"ok": False, "error": f"restore copy failed: {e}", "pre_restore_backup": pre})
+                # AUTO-REVERT any partial write so disk is never left a mismatched pair: if models.yml
+                # was already overwritten but config.yaml failed, copy models.yml back from the pre-backup.
+                reverted = []
+                if "models.yml" in restored and pre_models:
+                    try:
+                        shutil.copy2(pre_models, MODELS_YML); reverted.append("models.yml")
+                    except OSError:
+                        pass
+                return self._json(500, {"ok": False, "error": f"restore copy failed: {e}",
+                                        "reverted": reverted, "pre_restore_backup": pre})
             # Load the restored config into the running router — a docker restart (reloads the
             # mounted config.yaml), NOT a recreate (no new -e keys are involved in a rollback).
             restart_ok = False; restart_log = ""
@@ -591,8 +607,15 @@ class H(BaseHTTPRequestHandler):
                 restart_log = ((p.stderr or "") + (p.stdout or ""))[-400:]
             except Exception as e:
                 restart_log = str(e)[:300]
+            # Don't report success before the router is actually serving (mirrors cmd_sync's
+            # litellm_wait_ready). ready=None means we didn't wait (restart failed or MC_RESTART_WAIT=0).
+            ready = _litellm_ready(RESTART_WAIT) if (restart_ok and RESTART_WAIT > 0) else None
+            # A restored config referencing a vendor key OUTSIDE the base -e set won't be re-injected by
+            # a plain `docker restart` (start-litellm.sh injects those only on a recreate) -> surface it.
+            recreate_hint = _nonfixed_keyenv_hint()
             return self._json(200, {"ok": True, "ts": ts, "restored": restored,
-                                    "pre_restore_backup": pre, "restart_ok": restart_ok, "restart_log": restart_log})
+                                    "pre_restore_backup": pre, "restart_ok": restart_ok,
+                                    "ready": ready, "restart_log": restart_log, "recreate_hint": recreate_hint})
         finally:
             _apply_lock.release()
 
@@ -708,6 +731,44 @@ def _is_backup_ts(s):
     """A backup timestamp is exactly YYYYMMDD-HHMMSS (the strftime format _backup_sources
     writes). Validating this also forbids path-traversal in the restore 'ts' (no '/', '.')."""
     return isinstance(s, str) and len(s) == 15 and s[8] == "-" and s[:8].isdigit() and s[9:].isdigit()
+
+
+def _litellm_ready(timeout):
+    """Poll LiteLLM /health/readiness up to `timeout`s; True once it 200s, else False. Used so a
+    restore doesn't report success before the restarted router is actually serving."""
+    end = time.monotonic() + timeout
+    url = LITELLM + "/health/readiness"
+    while time.monotonic() < end:
+        try:
+            with urllib.request.urlopen(url, timeout=3) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
+
+def _nonfixed_keyenv_hint():
+    """If the (restored) config.yaml routes reference a vendor key_env OUTSIDE the base -e set,
+    a plain `docker restart` won't inject it (start-litellm.sh does that only on a recreate).
+    Return a one-line operator hint naming those keys, or '' if none."""
+    if not (CONFIG and os.path.isfile(CONFIG)):
+        return ""
+    ml = yq_json(".model_list // []", CONFIG) or []
+    nonfixed = set()
+    for entry in ml:
+        if not isinstance(entry, dict):
+            continue
+        ak = (entry.get("litellm_params") or {}).get("api_key", "")
+        if isinstance(ak, str) and ak.startswith("os.environ/"):
+            ke = ak.split("/", 1)[1]
+            if ke and ke not in FIXED_KEY_ENVS:
+                nonfixed.add(ke)
+    if not nonfixed:
+        return ""
+    return ("restored config references vendor key(s) %s outside the base set; if a route 401s, "
+            "recreate LiteLLM: bash bin/start-litellm.sh" % ", ".join(sorted(nonfixed)))
 
 
 def _list_backups():

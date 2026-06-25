@@ -1848,14 +1848,27 @@ function renderBackups(backups, readOnly) {
     }
     row.appendChild(chips);
 
+    // Guard: models-only restore point (no config.yaml snapshot) — disable to avoid mismatched pair
+    const noConfig = !b.config;
+
     // Restore button
     const restoreBtn = document.createElement('button');
     restoreBtn.className = 'btn btn-sm btn-danger ml-auto';
     restoreBtn.textContent = 'Restore';
     restoreBtn.setAttribute('aria-label', `Restore to backup from ${fmtBackupTs(b.ts)}`);
-    restoreBtn.disabled = !!readOnly;
-    restoreBtn.addEventListener('click', () => doRestore(b.ts, restoreBtn));
+    restoreBtn.disabled = !!readOnly || noConfig;
+    if (!noConfig) {
+      restoreBtn.addEventListener('click', () => doRestore(b.ts, restoreBtn));
+    }
     row.appendChild(restoreBtn);
+
+    if (noConfig) {
+      const note = mkEl('span', {className:'backup-chip-env'}, 'models.yml only — no config snapshot; restore disabled');
+      note.setAttribute('title', 'This restore point has no config.yaml snapshot. Restoring it would pair the old models.yml with the current config.yaml, which could cause a mismatch.');
+      note.style.marginLeft = 'auto';
+      // Insert before the button so reading order is: ts | chips | note | btn
+      row.insertBefore(note, restoreBtn);
+    }
 
     backupsList.appendChild(row);
   }
@@ -1950,16 +1963,31 @@ async function handleRestoreResponse(res, ts, btn, origText) {
     return;
   }
 
-  // Success
+  // Success — surface restart/ready status honestly
   const restored = (data.restored || []).join(', ') || 'files';
-  let msg = `Rolled back to ${fmtBackupTs(ts)} — restored ${restored}.`;
+  const humanTs = fmtBackupTs(ts);
+  let msg, toastType, toastDuration;
+
   if (data.restart_ok === false) {
-    msg += ' Files restored but LiteLLM restart reported an error — check the stack.';
-    toast(msg, 'err', 9000);
+    msg = `Rolled back to ${humanTs} — files restored, but the LiteLLM restart reported an error; check the stack.`;
+    toastType = 'err';
+    toastDuration = 9000;
+  } else if (data.ready === false) {
+    msg = `Rolled back to ${humanTs} — restored; LiteLLM restarted but isn't confirmed ready yet (give it a moment / Refresh).`;
+    toastType = 'info';
+    toastDuration = 9000;
   } else {
-    msg += ' LiteLLM restarted. (Your pre-restore state was backed up.)';
-    toast(msg, 'ok', 8000);
+    msg = `Rolled back to ${humanTs} — restored ${restored}. LiteLLM restarted. (Your pre-restore state was backed up.)`;
+    toastType = 'ok';
+    toastDuration = 8000;
   }
+  toast(msg, toastType, toastDuration);
+
+  // Surface recreate_hint if present (vendor key(s) need container recreate)
+  if (data.recreate_hint) {
+    toast(String(data.recreate_hint), 'info', 12000);
+  }
+
   announce(msg);
 
   // Full state refresh
