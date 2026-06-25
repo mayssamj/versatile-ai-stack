@@ -27,6 +27,7 @@ LITELLM="$(get_env LITELLM_BASE_URL 'http://litellm:4000')"
 # is what 06_documents.sh / the ingester read) — do NOT "fix" QDRANT_URL into QDRANT_BASE_URL.
 HONCHO_URL="$(get_env HONCHO_BASE_URL 'http://honcho:8000')"
 QDRANT_URL="$(get_env QDRANT_URL 'http://qdrant:6333')"
+PHOENIX_URL="$(get_env PHOENIX_BASE_URL 'http://phoenix:6006')"   # WT-E: read-only /api/traces widget (Phoenix auth is OFF on the loopback build)
 CONFIG="$AI_STACK/litellm/config.yaml"
 # Demo allowlist = EVERY chat model wired into LiteLLM (local + LM Studio +
 # Claude-subscription + cloud), minus embedding models. Listing or calling these
@@ -174,5 +175,5 @@ fi
 # Pass the key by FILE PATH (TUT_KEY_FILE -> the 0600 $STATE file), not as an env
 # var, so the secret never shows up in `ps`/process environment to other local users.
 # TUT_LAUNCH gates POST /api/launch server-side (the proxy 404s the route when != "1").
-TUT_PORT="$PORT" TUT_LITELLM="$LITELLM" TUT_KEY_FILE="$STATE" TUT_HTML="$HTML" TUT_ROOT="$AI_STACK" TUT_MODELS="$DEMO_MODELS_DISPLAY" TUT_LAUNCH="$LAUNCH_ENABLED" TUT_EMBED="$EMBED_MODEL" TUT_HONCHO="$HONCHO_URL" TUT_QDRANT="$QDRANT_URL" \
+TUT_PORT="$PORT" TUT_LITELLM="$LITELLM" TUT_KEY_FILE="$STATE" TUT_HTML="$HTML" TUT_ROOT="$AI_STACK" TUT_MODELS="$DEMO_MODELS_DISPLAY" TUT_LAUNCH="$LAUNCH_ENABLED" TUT_EMBED="$EMBED_MODEL" TUT_HONCHO="$HONCHO_URL" TUT_QDRANT="$QDRANT_URL" TUT_PHOENIX="$PHOENIX_URL" \
   python3 "$AI_STACK/installer/lib/tutorial_proxy.py"

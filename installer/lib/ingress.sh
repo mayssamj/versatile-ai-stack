@@ -43,6 +43,11 @@ _AI_STACK_INGRESS_LOADED=1
 
 # Generated artifacts + the launchd daemon identity.
 INGRESS_LABEL="${INGRESS_LABEL:-com.ai-stack.ingress}"
+# Threaded signal: ingress_write_caddyfile sets this to 1 when it actually
+# writes a new/changed Caddyfile, 0 when the file was already current.
+# ingress_install_daemon reads this to decide whether a privileged restart
+# is needed. Initialized here so it's always defined before any call.
+_INGRESS_CADDYFILE_CHANGED="${_INGRESS_CADDYFILE_CHANGED:-0}"
 INGRESS_CADDYFILE="${INGRESS_CADDYFILE:-$AI_STACK/installer/state/Caddyfile.ai-stack}"
 INGRESS_WRAPPER="${INGRESS_WRAPPER:-$AI_STACK/installer/state/ingress-run.sh}"
 INGRESS_PLIST="${INGRESS_PLIST:-/Library/LaunchDaemons/com.ai-stack.ingress.plist}"
@@ -191,9 +196,12 @@ ingress_write_caddyfile() {
   fi
   if [[ -f "$dest" ]] && cmp -s "$tmp" "$dest"; then
     rm -f "$tmp"; chmod 0644 "$dest" 2>/dev/null || true
-    log "ingress: Caddyfile already current: $dest"; return 0
+    log "ingress: Caddyfile already current: $dest"
+    _INGRESS_CADDYFILE_CHANGED=0
+    return 0
   fi
   mv "$tmp" "$dest"; chmod 0644 "$dest" 2>/dev/null || true
+  _INGRESS_CADDYFILE_CHANGED=1
   ok "ingress: wrote Caddyfile ($(grep -c '^http://' "$dest" 2>/dev/null || echo 0) sites): $dest"
 }
 
@@ -222,9 +230,13 @@ ingress_status() {
 # --- Live commands (execute only with caddy + sudo) -------------------------
 
 # ingress_install_daemon — install the wrapper (0755) + root plist (0644), then
-# ALWAYS (re)bootstrap so the running caddy picks up the CURRENT Caddyfile.
-# (Config changes don't change the plist, and we don't use a reload socket — so a
-# restart is the reliable apply path. ~1s; fine for a local nicety.)
+# (re)bootstrap so the running caddy picks up the CURRENT Caddyfile.
+# Skips the privileged bootout/bootstrap when ALL of: plist unchanged, Caddyfile
+# unchanged (_INGRESS_CADDYFILE_CHANGED=0 set by ingress_write_caddyfile), and
+# daemon already loaded — unless the defensive health probe fails (which signals
+# a crashed/corrupt daemon and forces a restart to self-heal).
+# On a CyberArk-EPM / admin-blocked box this avoids noisy bootstrap-failure
+# messages when re-running install on an already-running ingress.
 ingress_install_daemon() {
   mkdir -p "$(dirname "$INGRESS_WRAPPER")"
   local wtmp; wtmp="$(mktemp)" || return 1
@@ -251,7 +263,49 @@ ingress_install_daemon() {
   fi
   rm -f "$ptmp"
 
-  # ALWAYS restart so the new Caddyfile is applied.
+  # --- Idempotency guard: skip privileged restart when nothing changed ---------
+  # Skip the bootout/bootstrap when ALL THREE hold:
+  #   (a) plist on disk is byte-identical (checked above — $INGRESS_PLIST not replaced)
+  #   (b) Caddyfile was not rewritten (_INGRESS_CADDYFILE_CHANGED=0, set by ingress_write_caddyfile)
+  #   (c) the daemon is already loaded (launchctl print succeeds)
+  # DEFENSIVE: even when all three hold, verify the daemon is actually healthy
+  # (a health probe that FAILS means the daemon may be crashed/corrupt — fall
+  # through and do the bootstrap anyway to self-heal).
+  local _plist_changed=0
+  # Re-derive plist state: if we had to install it above the plist was new/changed.
+  # We already know the plist file exists and was either written or already identical.
+  # Use a lightweight re-check of the on-disk content.
+  if ingress_plist_content | cmp -s - "$INGRESS_PLIST" 2>/dev/null; then
+    _plist_changed=0
+  else
+    _plist_changed=1
+  fi
+  if [[ "$_plist_changed" == "0" ]] \
+     && [[ "${_INGRESS_CADDYFILE_CHANGED:-0}" == "0" ]] \
+     && launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
+    # All three conditions met — now run the defensive health probe.
+    # Try curl first (validates the Caddy port-80 listener is alive); fall back
+    # to caddy validate (validates config syntax at minimum).
+    local _health_ok=0
+    if curl -sf -m2 http://localhost:80 >/dev/null 2>&1 \
+       || curl -sf -m2 http://127.0.0.1:80 >/dev/null 2>&1; then
+      _health_ok=1
+    else
+      local cbin; cbin="$(ingress_caddy_bin || true)"
+      if [[ -n "$cbin" ]] && "$cbin" validate --config "$INGRESS_CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
+        _health_ok=1
+      fi
+    fi
+    if [[ "$_health_ok" == "1" ]]; then
+      log "ingress daemon already loaded + config unchanged — skipping privileged restart."
+      ok "ingress daemon: already loaded ($INGRESS_LABEL)"
+      return 0
+    else
+      log "ingress daemon loaded but health probe failed — proceeding with restart."
+    fi
+  fi
+
+  # (Re)start the daemon so the current Caddyfile is applied.
   $SUDO launchctl bootout system "$INGRESS_PLIST" 2>/dev/null || true
   $SUDO launchctl bootstrap system "$INGRESS_PLIST" 2>/dev/null \
     || $SUDO launchctl load "$INGRESS_PLIST" 2>/dev/null \

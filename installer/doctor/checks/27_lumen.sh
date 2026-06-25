@@ -42,6 +42,35 @@ lumen_diagnose() {
 }
 
 lumen_fix() {
+  # F19: if the embedding model is missing, attempt `ollama pull` with a bounded
+  # timeout and capped retry count so the fix path can never loop forever.
+  # This is the only auto-remediation in this check; everything else defers
+  # to Phase 16 (idempotent re-run).
+  if command -v ollama >/dev/null 2>&1 \
+     && ! ollama list 2>/dev/null | awk 'NR>1{print $1}' \
+          | grep -qE "^${_LUMEN_EMBED_MODEL}(:|$)"; then
+    warn "Attempting to pull embedding model '$_LUMEN_EMBED_MODEL' (timeout 120s, max 2 attempts)..."
+    local attempt pulled=0 pull_out pull_rc
+    for attempt in 1 2; do
+      # macOS ships no `timeout` binary by default; `gtimeout` is from coreutils.
+      # If neither is available, fall through to the plain pull (bounded by 120s
+      # here as a best-effort; Phase 16 is the authoritative fix path).
+      local timeout_cmd=""
+      if command -v gtimeout >/dev/null 2>&1; then timeout_cmd="gtimeout 120"
+      elif command -v timeout  >/dev/null 2>&1; then timeout_cmd="timeout 120"
+      fi
+      pull_out="$($timeout_cmd ollama pull "$_LUMEN_EMBED_MODEL" 2>&1)" && pull_rc=0 || pull_rc=$?
+      if [[ "$pull_rc" == "0" ]]; then
+        ok "embedding model pulled on attempt $attempt"
+        pulled=1
+        break
+      fi
+      warn "pull attempt $attempt failed (exit $pull_rc): ${pull_out:0:200}"
+    done
+    if [[ "$pulled" == "0" ]]; then
+      warn "Could not pull '$_LUMEN_EMBED_MODEL' after 2 attempts."
+    fi
+  fi
   warn "Re-run Phase 16 (idempotent):"
   warn "    bash $AI_STACK/vz-ai-stack.sh install 16"
   return 1

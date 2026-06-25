@@ -67,34 +67,15 @@ PY
 }
 
 phoenix_project_fix() {
-  # Auto-fix: send one inference call so OTLP creates the project. Requires
-  # LiteLLM up and Ollama reachable (Phase 00 sets OLLAMA_ORIGINS=*).
-  if ! container_running litellm; then
-    warn "LiteLLM not running. Start it first:  bash bin/start-litellm.sh"
-    return 1
-  fi
-  local KEY; KEY="$(get_env LITELLM_MASTER_KEY "")"
-  if [[ -z "$KEY" ]]; then
-    warn "LITELLM_MASTER_KEY missing in .env."
-    return 1
-  fi
-  log "Sending one inference call through LiteLLM to materialize the project..."
-  local resp
-  resp="$(litellm_master_curl -s --max-time 30 -X POST http://litellm:4000/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -d '{"model":"local","messages":[{"role":"user","content":"phoenix probe"}],"max_tokens":5}')"
-  if ! echo "$resp" | grep -q '"choices"'; then
-    warn "Inference call failed:"
-    echo "$resp" | head -c 300 >&2
-    return 1
-  fi
-  log "Inference OK — waiting 12s for the OTel batch flush..."
-  sleep 12
-  local body; body="$(curl -s --max-time 3 http://phoenix:6006/v1/projects)"
-  if echo "$body" | jq -r '.data[]?.name' 2>/dev/null | grep -qxF 'ai-stack'; then
-    ok "ai-stack project now visible in Phoenix"
-    return 0
-  fi
-  warn "Project still not visible. Check:  docker logs --since 1m litellm | grep -iE 'otlp|export batch'"
+  # Do NOT auto-run inference to materialise the project — a fix path must
+  # not cold-start a model (directive: doctor must not cold-start; a fix path
+  # that calls chat/completions loads a model, costs tokens, and can take
+  # 20-150 s on a cold local runner). Instead, advise the operator to run the
+  # dedicated smoke test which is the correct, scoped, operator-controlled path.
+  warn "The 'ai-stack' Phoenix project is created by the first real inference call."
+  warn "Run the stack smoke test to materialise it (no side-effects beyond one trace):"
+  warn "    bash $AI_STACK/vz-ai-stack.sh smoke 01"
+  warn "The smoke test sends exactly one call through LiteLLM and waits for the OTLP"
+  warn "batch to flush. Re-run doctor after it completes."
   return 1
 }

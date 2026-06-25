@@ -71,10 +71,21 @@ _mb_hermes_ready() {
 }
 
 # Effective (availability-gated) model for an agent, computed the same way
-# lib/models.sh does: lmstudio slug only when :1234 up AND served, else default.
+# lib/models.sh resolve_effective does (lines ~313-367). Every runtime that has
+# an availability gate in resolve_effective MUST have the identical gate here;
+# otherwise _mb_effective returns `declared` while the rendered env holds `default`,
+# which trips a false DRIFT/RED in the drift check below.
+#
+# CONFIRMATION (verified 2026-06-24 against lib/models.sh resolve_effective):
+#   meridian:      gates on meridian_up() AND config_has_slug             → mirrored
+#   openai:        gates on OPENAI_API_KEY present AND config_has_slug    → mirrored (was missing)
+#   codex-bridge:  gates on codex_bridge_up() AND config_has_slug         → mirrored (was missing)
+#   openai-compat: gates on key_env present AND config_has_slug           → mirrored
+#   lmstudio:      gates on lms up AND config_has_slug AND litellm_serves → mirrored
+#   ollama / *:    no gate (echoes declared)                              → mirrored
 _mb_effective() {
   local agent="$1" yml; yml="$(_mb_yml)"
-  local declared default rt served
+  local declared default rt
   declared="$(yq -r ".assignments.\"$agent\"" "$yml" 2>/dev/null)"
   default="$(yq -r '.default' "$yml" 2>/dev/null)"
   # PARKED agents render the default sentinel ON PURPOSE (mirrors lib/models.sh
@@ -83,6 +94,7 @@ _mb_effective() {
     echo "$default"; return
   fi
   rt="$(yq -r ".models.\"$declared\".runtime" "$yml" 2>/dev/null)"
+
   # meridian: availability-gate on the Meridian daemon (mirrors lib/models.sh).
   if [[ "$rt" == "meridian" ]]; then
     if _mb_meridian_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
@@ -90,13 +102,31 @@ _mb_effective() {
     fi
     echo "$default"; return
   fi
-  # openai-compat: availability-gate on its .env key (mirrors lib/models.sh
-  # resolve_effective) — render the declared slug only when key_env is present, else
-  # the default. Without this, a keyless box renders `default` (gated) while this
-  # function returns `declared`, tripping a false DRIFT/RED in the check below.
-  # NOTE: the metered `openai` (OPENAI_API_KEY) + `codex-bridge` (daemon) runtimes
-  # similarly under-gate here (fall through to `declared`) — harmless today since none
-  # is a rendered default; fix likewise if one ever becomes one.
+
+  # openai: metered API key — gate on OPENAI_API_KEY presence (mirrors resolve_effective).
+  # A keyless box renders `default`, so without this gate _mb_effective returns
+  # `declared` → false DRIFT between the rendered env and this function's output.
+  if [[ "$rt" == "openai" ]]; then
+    if [[ -n "$(get_env OPENAI_API_KEY '')" ]] \
+       && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
+      echo "$declared"; return
+    fi
+    echo "$default"; return
+  fi
+
+  # codex-bridge: ChatGPT subscription via daemon — gate on bridge liveness
+  # (mirrors resolve_effective). LiteLLM lists the model even when the bridge is
+  # down, so we probe the bridge directly (same as meridian).
+  if [[ "$rt" == "codex-bridge" ]]; then
+    if _mb_codex_bridge_up \
+       && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
+      echo "$declared"; return
+    fi
+    echo "$default"; return
+  fi
+
+  # openai-compat: generic cloud route — gate on its key_env presence
+  # (mirrors resolve_effective).
   if [[ "$rt" == "openai-compat" ]]; then
     local kenv; kenv="$(yq -r ".models.\"$declared\".key_env" "$yml" 2>/dev/null)"
     if [[ -n "$kenv" && "$kenv" != "null" && -n "$(get_env "$kenv" '')" ]] \
@@ -105,20 +135,24 @@ _mb_effective() {
     fi
     echo "$default"; return
   fi
-  if [[ "$rt" != "lmstudio" ]]; then echo "$declared"; return; fi
-  served="$(yq -r ".models.\"$declared\".served" "$yml" 2>/dev/null)"
-  if _mb_lms_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
-    # confirm LiteLLM serves it under the master key
-    local key; key="$(get_env LITELLM_MASTER_KEY '')"
-    if [[ -n "$key" ]] && litellm_master_curl -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null \
-         | python3 -c 'import sys,json; w=sys.argv[1]
+
+  # lmstudio: gate on server up + served + LiteLLM lists it.
+  if [[ "$rt" == "lmstudio" ]]; then
+    if _mb_lms_up && yq -e ".model_list[] | select(.model_name == \"$declared\")" "$(_mb_cfg)" >/dev/null 2>&1; then
+      local key; key="$(get_env LITELLM_MASTER_KEY '')"
+      if [[ -n "$key" ]] && litellm_master_curl -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null \
+           | python3 -c 'import sys,json; w=sys.argv[1]
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(1)
 sys.exit(0 if any(m.get("id")==w for m in d.get("data",[])) else 1)' "$declared"; then
-      echo "$declared"; return
+        echo "$declared"; return
+      fi
     fi
+    echo "$default"; return
   fi
-  echo "$default"
+
+  # ollama and any other runtime: no availability gate (always servable).
+  echo "$declared"
 }
 
 # key covers model? (never prints the key). $key is a CALLER-SUPPLIED token ($1), not
