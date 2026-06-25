@@ -181,7 +181,7 @@ ok "patched $HONCHO_DIR/.env to use LiteLLM"
 # --- Compose up ---
 if ! container_running honcho-api 2>/dev/null && ! container_running honcho 2>/dev/null; then
   log "Bringing Honcho up via docker compose..."
-  (cd "$HONCHO_DIR" && docker compose up -d 2>&1 | tail -10)
+  (cd "$HONCHO_DIR" && docker compose up -d) || true
 fi
 HONCHO_SMOKE="${HONCHO_BASE_URL:-$(get_env HONCHO_BASE_URL http://honcho:8000)}"
 wait_http "${HONCHO_SMOKE}/health" 120 \

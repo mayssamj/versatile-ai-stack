@@ -85,15 +85,25 @@ else
 fi
 
 # --- 2. Wait for SG to serve HTTP (amd64/Rosetta first boot is SLOW: up to ~300s) ---
-log "waiting for Sourcegraph to serve HTTP (up to 300s; first amd64 boot is slow)…"
+# Break ONLY on a 2xx/3xx response; a 502/503 (nginx up but backend still booting)
+# is treated as still-starting and we keep waiting until the deadline.
+log "waiting for Sourcegraph to serve HTTP 2xx/3xx (up to 300s; first amd64 boot is slow)…"
 deadline=$(( SECONDS + 300 )); code=000
 while (( SECONDS < deadline )); do
   code="$(_sg_http_code "$SG_URL/")"
-  [[ "$code" != "000" ]] && break
+  if [[ "$code" != "000" ]]; then
+    # 2xx or 3xx → genuinely ready; 5xx → still booting, keep waiting
+    [[ "$code" =~ ^[23] ]] && break
+    log "Sourcegraph returned HTTP $code (still booting) — waiting…"
+  fi
   sleep 5
 done
 if [[ "$code" == "000" ]]; then
   err "Sourcegraph did not serve HTTP within 300s. Check: docker logs $NAME --tail 50"
+  exit 1
+fi
+if [[ ! "$code" =~ ^[23] ]]; then
+  err "Sourcegraph returned HTTP $code after 300s (expected 2xx/3xx). Check: docker logs $NAME --tail 50"
   exit 1
 fi
 ok "Sourcegraph responding (HTTP $code)"

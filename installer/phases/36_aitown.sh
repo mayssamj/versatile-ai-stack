@@ -509,11 +509,27 @@ GI
 #     we set (so the town will route — not a silent default). A bare frontend-200 is NOT
 #     proof; this is.
 log "Smoke: scoped key → LiteLLM chat completion (the town's character path)…"
-_sc="$(litellm_scoped_curl "$AT_KEY" -s -o /dev/null -w '%{http_code}' --max-time 30 \
-  -H 'Content-Type: application/json' \
-  -X POST "$AT_LLM_BASE/v1/chat/completions" \
-  -d "{\"model\":\"$AT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || echo 000)"
-[[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $AT_MODEL via LiteLLM) — not stamping"; exit 1; }
+# Retry up to 3 times with growing timeouts (30s→45s→60s) to tolerate a cold
+# gemma model on a RAM-saturated box. curl -w '%{http_code}' already prints 000
+# on connection failure — do NOT || echo 000 (that appends a second 000 → 000000).
+_sc="000"
+_smoke_ok=0
+_smoke_timeouts=(30 45 60)
+for _attempt in 1 2 3; do
+  _t="${_smoke_timeouts[$(( _attempt - 1 ))]}"
+  log "Retry $_attempt/3: smoke (timeout ${_t}s)…"
+  _sc="$(litellm_scoped_curl "$AT_KEY" -s -o /dev/null -w '%{http_code}' --max-time "$_t" \
+    -H 'Content-Type: application/json' \
+    -X POST "$AT_LLM_BASE/v1/chat/completions" \
+    -d "{\"model\":\"$AT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}" 2>/dev/null || true)"
+  if [[ "$_sc" == "200" ]]; then
+    _smoke_ok=1
+    break
+  fi
+  log "attempt $_attempt returned HTTP $_sc — waiting 10s before retry…"
+  (( _attempt < 3 )) && sleep 10
+done
+(( _smoke_ok )) || { err "scoped key chat completion returned HTTP $_sc after 3 attempts (model $AT_MODEL via LiteLLM) — not stamping"; exit 1; }
 ok "scoped key reaches $AT_MODEL through LiteLLM (HTTP 200)"
 
 log "Smoke: the backend container carries LLM_API_URL (the town is actually wired)…"

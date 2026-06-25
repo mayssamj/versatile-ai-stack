@@ -105,10 +105,9 @@ check "guardrails.handler loaded without ImportError" '
 
 # 4. A known-bad prompt is denied with HTTP 400
 check "guardrails denies obvious-bad prompts" '
-  KEY="$(grep ^LITELLM_MASTER_KEY= "$AI_STACK/.env" | cut -d= -f2-)"
   # Pass the master key via curl --config (STDIN) so it never lands in argv/ps; the probe
   # model must actually EXIST in the live config (local-gemma4, not the long-dead local).
-  status=$(printf "header = \"Authorization: Bearer %s\"\n" "$KEY" \
+  status=$(printf "header = \"Authorization: Bearer %s\"\n" "$(grep ^LITELLM_MASTER_KEY= "$AI_STACK/.env" | cut -d= -f2-)" \
     | curl --config - -s -o /dev/null -w "%{http_code}" --max-time 10 \
       http://litellm:4000/v1/chat/completions \
       -H "Content-Type: application/json" \
