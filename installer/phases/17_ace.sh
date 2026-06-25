@@ -144,8 +144,10 @@ fi
 
 # --- 4. Render ACE's .env to route through LiteLLM ---
 ACE_KEY_NOW="$(get_env ACE_LITELLM_KEY '')"
-# ACE's bound model from installer/models.yml (availability-gated). ACE's
-# assignment defaults to local-gemma4 (an Ollama model, always servable). If
+# ACE's bound model from installer/models.yml (availability-gated). ACE is now
+# assigned claude-opus-sub-xhigh; the bare "local" below is ONLY the degraded
+# fallback when models.yml is unreadable (the always-servable keyless net), and
+# the gate drops to `.default` (local-gemma4) only for a down lmstudio assignment. If
 # ACE upstream IGNORES OPENAI_MODEL/ACE_DEFAULT_MODEL, the binding is
 # allowlist-only — `vz-ai-stack.sh model list` flags ACE as "(allowlist-only)" so it
 # never falsely reads as model-bound.

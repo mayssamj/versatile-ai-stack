@@ -98,8 +98,10 @@ fi
 RLM_KEY_NOW="$(get_env RLM_LITELLM_KEY '')"
 
 # --- 3. Render rlm/.env (routes through LiteLLM) ---
-# RLM's bound model from installer/models.yml (availability-gated). RLM defaults
-# to local-gemma4 (Ollama, always servable). run_rlm.py reads $RLM_MODEL.
+# RLM's bound model from installer/models.yml (availability-gated). RLM is now
+# assigned claude-opus-sub-xhigh; the bare "local" below is ONLY the degraded
+# fallback when models.yml is unreadable (the always-servable keyless net), and the
+# gate drops to `.default` (local-gemma4) only for a down lmstudio assignment. run_rlm.py reads $RLM_MODEL.
 RLM_MODEL_VAL="local"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _rm="$(yq -r '.assignments.rlm // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"

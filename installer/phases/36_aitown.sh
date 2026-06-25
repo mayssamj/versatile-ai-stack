@@ -61,7 +61,7 @@ AT_FE_CTR_PORT="5173"
 AT_BE_PORT="3210"
 AT_DASH_PORT="6791"
 AT_IP="${ALIAS_IP[aitown]:-127.0.10.19}"
-AT_MODEL_DEFAULT="local-gemma4"
+AT_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: AITOWN_MODEL=local-gemma4 (heavy multi-agent town — see note)
 AT_EMBED_MODEL="embed-local"
 # Host-shell route always resolves (127.0.0.1); the container alias litellm:4000 only
 # resolves after core Phase 00n writes /etc/hosts, so probe litellm first then fall back.
@@ -561,7 +561,7 @@ ok "Phase 36 — AI Town — complete"
 note "Watch the town: open http://aitown:$AT_FE_HOST_PORT/   (or http://$AT_IP:$AT_FE_HOST_PORT/)"
 note "Convex dashboard (admin): http://$AT_IP:$AT_DASH_PORT/   (loopback-only)"
 note "Trace every character's LLM call: Phoenix → http://phoenix:6006 (project ai-stack)"
-note "Bigger/livelier town (metered): (cd $AT_DIR && npx convex env set LLM_MODEL claude-opus-sub-xhigh) then restart"
+note "Model: default is claude-opus-sub-xhigh. Cheap on-box: (cd $AT_DIR && npx convex env set LLM_MODEL local-gemma4) then restart"
 note "Manage:    vz-ai-stack.sh start aitown | stop aitown | status | doctor aitown | test 36"
 note "Data:      the town world is SQLite at $AT_DATA/convex (bind-mount; survives 'down')"
 note "Teardown:  bash $AI_STACK/bin/start-aitown.sh uninstall          # 'down' — PRESERVES the world"

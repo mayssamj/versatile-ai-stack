@@ -670,10 +670,10 @@ render_pi() {
 }
 
 # render_deerflow <effective_reasoning_model> — rewrite the two-tier models: block
-# in deer-flow/config.yaml between the markers. Platform policy (2026-06-20):
-# basic->primary (claude-opus-sub-max), reasoning-><effective>. LiteLLM
-# falls back to local-qwen3 if Meridian is down. Restart deerflow only if the
-# block changed.
+# in deer-flow/config.yaml between the markers. Platform policy (2026-06-25):
+# basic->primary (claude-opus-sub-xhigh), reasoning-><effective>. NO silent local
+# fallback — the LiteLLM cloud->local-qwen3 chain was removed, so a Meridian outage
+# surfaces a 503. Restart deerflow only if the block changed.
 render_deerflow() {
   local reasoning="$1" basic
   basic="$(primary_model)"

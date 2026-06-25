@@ -32,7 +32,7 @@ OA_VENV="$OA_DIR/.venv"
 OA_PY="$OA_VENV/bin/python"
 OA_WRAPPER="$AI_STACK/bin/oasis"
 OA_SIMS="$OA_DIR/sims"
-OA_MODEL_DEFAULT="local-gemma4"
+OA_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: OA_MODEL=local-gemma4
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell);
 # the container DNS name litellm:4000 also works once core Phase 00n writes the
 # /etc/hosts alias, so install-time probes try litellm first then fall back.
@@ -190,7 +190,7 @@ except Exception as e:  # import/API drift — NOT an auth problem
 
 BASE  = os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:4000/v1")
 KEY   = os.environ.get("OPENAI_API_KEY", "")
-MODEL = os.environ.get("OASIS_MODEL", "local-gemma4")
+MODEL = os.environ.get("OASIS_MODEL", "claude-opus-sub-xhigh")
 
 try:
     model = ModelFactory.create(

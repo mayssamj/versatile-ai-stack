@@ -51,7 +51,7 @@ FE_IP="${ALIAS_IP[chatdev]:-127.0.10.18}"
 FE_HOST_PORT="${ALIAS_HOST_PORT[chatdev]:-5274}"
 FE_CTR_PORT="${ALIAS_CONTAINER_PORT[chatdev]:-5173}"
 BE_PORT="${CHATDEV_BACKEND_PORT:-6400}"
-CD_MODEL_DEFAULT="local-gemma4"
+CD_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: CHATDEV_MODEL=local-gemma4
 # Container DNS name for the LiteLLM mint/probe (install runs after core 00n writes
 # /etc/hosts); fall back to host loopback if the alias isn't resolvable yet.
 CD_LLM_HOST="http://litellm:4000"
@@ -326,6 +326,6 @@ note "Open the web app:  open http://chatdev:$FE_HOST_PORT     (or http://$FE_IP
 note "Backend API:       http://$FE_IP:$BE_PORT/docs"
 note "Prove the swarm:   vz-ai-stack.sh test 35   # headless 1-agent workflow → LiteLLM"
 note "Watch it:          Phoenix → http://phoenix:6006 (project ai-stack)"
-note "Bigger swarm:      edit a workflow YAML node's name: to claude-opus-sub-xhigh (metered)"
+note "Model:             default is claude-opus-sub-xhigh. Cheap on-box: set a workflow YAML node's name: to local-gemma4"
 note "Manage:            vz-ai-stack.sh start chatdev | stop chatdev | help chatdev | doctor chatdev"
 note "Reversible:        bash $AI_STACK/bin/start-chatdev.sh uninstall; docker rmi $IMAGE; rm -rf $CD_DIR; rm -f $AI_STACK/installer/state/phase_${PHASE}.done"

@@ -33,8 +33,9 @@ MG_BIN="$MG_VENV/bin/metagpt"
 MG_WRAPPER="$AI_STACK/bin/metagpt"
 MG_WORKSPACE="$MG_DIR/workspace"
 # Default LLM (entity work routes through LiteLLM). Overridable via models.yml
-# .assignments.metagpt; otherwise local-gemma4 (cheapest, on-box).
-MG_MODEL_DEFAULT="local-gemma4"
+# .assignments.metagpt or MG_MODEL env; otherwise the platform default
+# claude-opus-sub-xhigh. For cheap on-box runs: MG_MODEL=local-gemma4 (key-scoped).
+MG_MODEL_DEFAULT="claude-opus-sub-xhigh"
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell);
 # the container DNS name litellm:4000 also works once core Phase 00n writes the
 # /etc/hosts alias, so install-time probes try litellm first then fall back.
@@ -210,5 +211,5 @@ ok "Phase 32 — MetaGPT — complete"
 note "Prove the wrapper: vz-ai-stack.sh test 32     # runs bin/metagpt end-to-end"
 note "Run a swarm:   bin/metagpt \"create a CLI 2048 game in python\"   # output → metagpt/workspace/"
 note "Watch it:      Phoenix → http://phoenix:6006 (project ai-stack) traces every agent's LLM call"
-note "Model:         METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt \"…\"   # bigger swarm (metered)"
+note "Model:         default is claude-opus-sub-xhigh. Cheap on-box: METAGPT_MODEL=local-gemma4 bin/metagpt \"…\""
 note "Reversible:    rm -rf $MG_VENV && rm -f $AI_STACK/installer/state/phase_32.done"

@@ -41,7 +41,7 @@ AS_VENV="$AS_DIR/.venv"
 AS_PY="$AS_VENV/bin/python"
 AS_WRAPPER="$AI_STACK/bin/agentscope"
 AS_SIMS="$AS_DIR/sims"
-AS_MODEL_DEFAULT="local-gemma4"
+AS_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: AS_MODEL=local-gemma4
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell);
 # the container DNS name litellm:4000 also works once core Phase 00n writes the
 # /etc/hosts alias, so install-time probes try litellm first then fall back.
@@ -311,7 +311,7 @@ _TRACE_MW = _setup_tracing()
 
 BASE  = os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:4000/v1")
 KEY   = os.environ.get("OPENAI_API_KEY", "")
-MODEL = os.environ.get("AGENTSCOPE_MODEL", "local-gemma4")
+MODEL = os.environ.get("AGENTSCOPE_MODEL", "claude-opus-sub-xhigh")
 
 
 def _make_model():
