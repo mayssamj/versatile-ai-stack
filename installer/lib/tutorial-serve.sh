@@ -100,13 +100,18 @@ if (( FORCE )) && (( 10#$PORT < 1024 )); then
 fi
 
 MASTER="$(get_env LITELLM_MASTER_KEY '')"
+DEMO_ALIAS="tutorial-demo"   # fixed key_alias minted below; LiteLLM enforces it unique
 
 revoke_key() {
-  local k; k="$(cat "$STATE" 2>/dev/null || true)"
-  [[ -n "$k" && -n "$MASTER" ]] || { rm -f "$STATE"; return 0; }
-  litellm_master_curl -s --max-time 10 -H 'Content-Type: application/json' \
-    -X POST "$LITELLM/key/delete" -d "{\"keys\":[\"$k\"]}" >/dev/null 2>&1 || true
   rm -f "$STATE"
+  [[ -n "$MASTER" ]] || return 0
+  # Self-heal by ALIAS, not by a stored token: a crashed/SIGKILLed run skips the
+  # EXIT trap (or loses $STATE) and orphans the key, and LiteLLM's unique-alias
+  # rule then makes the next mint fail hard ("Key with alias 'tutorial-demo'
+  # already exists"). Deleting every key carrying our alias clears that orphan
+  # regardless of whether we still hold its token.
+  litellm_master_curl -s --max-time 10 -H 'Content-Type: application/json' \
+    -X POST "$LITELLM/key/delete" -d "{\"key_aliases\":[\"$DEMO_ALIAS\"]}" >/dev/null 2>&1 || true
   ok "revoked tutorial demo key"
 }
 
@@ -174,7 +179,7 @@ revoke_key
 log "Minting an ephemeral, budget-capped tutorial key allowlisted to your wired models (ttl=$TTL)..."
 RESP="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
   -X POST "$LITELLM/key/generate" \
-  -d "{\"models\":${DEMO_MODELS},\"duration\":\"${TTL}\",\"max_budget\":0.5,\"budget_duration\":\"1d\",\"key_alias\":\"tutorial-demo\",\"metadata\":{\"owner\":\"tutorial-serve\"}}")"
+  -d "{\"models\":${DEMO_MODELS},\"duration\":\"${TTL}\",\"max_budget\":0.5,\"budget_duration\":\"1d\",\"key_alias\":\"${DEMO_ALIAS}\",\"metadata\":{\"owner\":\"tutorial-serve\"}}")"
 KEY="$(printf '%s' "$RESP" | python3 -c 'import sys,json
 try: print(json.load(sys.stdin).get("key",""))
 except Exception: print("")')"

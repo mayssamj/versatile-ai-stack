@@ -52,6 +52,31 @@ openwork_diagnose() {
     echo "LiteLLM not reachable — start it ('vz-ai-stack.sh start litellm'), then re-check"
     return 1
   fi
+
+  # Cross-check: every model in opencode.json must be a ROUTABLE model_name in LiteLLM's
+  # config. A version-less naming cutover ('model sync') renames the routable model_names
+  # but does NOT re-seed this write-once opencode.json / scoped key, so stale names 400 at
+  # completion while the daemon + key still look healthy (this check used to miss that).
+  # Parse-only, no inference. NB: validate against config.yaml's model_list (the routable
+  # set) — NOT the scoped key's /v1/models, which can still list stale aliases that 400.
+  local cfg="$AI_STACK/litellm/config.yaml"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$cfg" ]]; then
+    local routable stale=() m
+    local -a cfg_models=()
+    routable="$(yq -r -oy '.model_list[].model_name' "$cfg" 2>/dev/null)"
+    # mapfile (not unquoted word-split): a model name with a space/glob char would
+    # otherwise split into multiple tokens or vanish under doctor.sh's nullglob.
+    mapfile -t cfg_models < <(yq -r -oy '.provider.litellm.models | keys | .[]' "$oc_json" 2>/dev/null)
+    if [[ -n "$routable" && ${#cfg_models[@]} -gt 0 ]]; then
+      for m in "${cfg_models[@]}"; do
+        printf '%s\n' "$routable" | grep -qx "$m" || stale+=("$m")
+      done
+      if (( ${#stale[@]} > 0 )); then
+        echo "opencode.json model(s) not routable in LiteLLM config: ${stale[*]} — names drifted (version-less rename). Re-seed: rm '$oc_json' + 'rm $AI_STACK/installer/state/phase_29*.done' + 'vz-ai-stack.sh install 29'"
+        return 1
+      fi
+    fi
+  fi
   return 0
 }
 

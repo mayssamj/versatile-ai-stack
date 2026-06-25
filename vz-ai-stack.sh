@@ -231,6 +231,9 @@ ai-stack-installer — usage:
                                         [--force]. Refuses code-tuned (lumen) / on-device (mempalace).
                                         (assignments live in models.yml .embeddings/.embedding_assignments;
                                         re-run the owning service phase to apply.)
+    vz-ai-stack.sh hermes <role> ["prompt"] [-m <model>]  run ONE Hermes agent (manager techlead frontend backend ml qa
+                                        reviewing sre incident) — interactive TUI, or one-shot with a "prompt".
+                                        e.g. vz-ai-stack.sh hermes techlead   |   hermes backend "design POST /tokens"
     vz-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
     vz-ai-stack.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
     vz-ai-stack.sh fleet remove <name>      remove a fleet profile (reverses add)
@@ -776,6 +779,7 @@ cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_embedding() { bash "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
+cmd_hermes()  { bash "$AI_STACK/installer/lib/fleet.sh" run "$@"; }   # run ONE agent: vz-ai-stack.sh hermes <role> ["prompt"]
 cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
 cmd_ingress() { bash "$AI_STACK/installer/lib/ingress.sh" "$@"; }
 cmd_help() {
@@ -1280,6 +1284,7 @@ main() {
     model)             cmd_model "$@" ;;
     embedding|embeddings) cmd_embedding "$@" ;;
     fleet)             cmd_fleet "$@" ;;
+    hermes)            cmd_hermes "$@" ;;
     docker-engine)     cmd_docker_engine "$@" ;;
     ingress)           cmd_ingress "$@" ;;
     doctor)            cmd_doctor "${1:-}" ;;
