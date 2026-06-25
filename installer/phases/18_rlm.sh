@@ -61,7 +61,11 @@ command -v uv >/dev/null 2>&1 || { err "uv not on PATH — run 'bash $AI_STACK/v
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing from .env — Phase 01 must run first."; exit 1; }
-if ! litellm_master_curl -sf --max-time 3 http://litellm:4000/v1/models >/dev/null 2>&1; then
+# Liveness gate via the UNAUTH /health/readiness (NOT an authed /v1/models): a bad/expired
+# master key 401s /v1/models, which would mis-report "LiteLLM not reachable" here instead of
+# surfacing as a clear key error at the mint step below. /health/readiness is the canonical
+# readiness signal (cf. doctor checks 26/40/41/55) and answers 200 without a credential.
+if ! curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'stack start litellm'."; exit 1
 fi
 docker info >/dev/null 2>&1 || warn "Docker not reachable — the 'docker' REPL sandbox won't work until OrbStack is up."

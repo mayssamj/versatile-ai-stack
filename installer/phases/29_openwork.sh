@@ -80,8 +80,11 @@ command -v npm >/dev/null 2>&1 || { err "npm/node required (host dep) — see do
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
-if ! curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 \
-   && ! litellm_master_curl -sf --max-time 3 http://litellm:4000/v1/models >/dev/null 2>&1; then
+# Liveness gate via the UNAUTH /health/readiness (the canonical readiness signal — cf. doctor
+# checks 26/40/41/55; answers 200 without a credential). Replaces the old /health + authed
+# /v1/models fallback so a bad/expired master key reads as a key error at the mint step below,
+# not a misleading "LiteLLM not reachable" here.
+if ! curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; then
   err "LiteLLM not reachable at http://litellm:4000 — run 'vz-ai-stack.sh start litellm'."
   exit 1
 fi
