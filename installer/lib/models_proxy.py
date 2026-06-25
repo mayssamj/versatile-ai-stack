@@ -412,8 +412,11 @@ class H(BaseHTTPRequestHandler):
             return self._json(500, {"ok": False, "error": "models.yml/config.yaml not found server-side"})
         if not _stage_sem.acquire(blocking=False):   # cap concurrent stage fan-out (DoS backstop)
             return self._json(429, {"ok": False, "error": "too many concurrent stage requests — retry shortly"})
-        sb = tempfile.mkdtemp(prefix="mc-stage-")
+        # mkdtemp() goes INSIDE the try so the finally (and thus _stage_sem.release()) always
+        # runs once we hold the slot — otherwise a mkdtemp failure (disk full) would leak the slot.
+        sb = None
         try:
+            sb = tempfile.mkdtemp(prefix="mc-stage-")
             sm, sc = os.path.join(sb, "models.yml"), os.path.join(sb, "config.yaml")
             shutil.copy2(MODELS_YML, sm); shutil.copy2(CONFIG, sc)
             om, oc = sm + ".orig", sc + ".orig"
@@ -444,7 +447,8 @@ class H(BaseHTTPRequestHandler):
                 "cli_output": out.strip()[-1200:],
             })
         finally:
-            shutil.rmtree(sb, ignore_errors=True)
+            if sb is not None:
+                shutil.rmtree(sb, ignore_errors=True)
             _stage_sem.release()
 
     # ----------------------------------------------------------------- apply
@@ -622,7 +626,9 @@ def _backup_sources():
         except OSError as e:
             print(f"models_proxy: WARNING backup of {src} failed: {e}", file=sys.stderr)
             continue
-        # prune: keep the most-recent BACKUP_KEEP for THIS source basename.
+        # prune: keep the most-recent BACKUP_KEEP for THIS source basename. Safe because the
+        # three sources (models.yml, config.yaml, .env) have DISTINCT basenames, so the
+        # startswith(base+".") filter never matches another source's backups.
         try:
             old = sorted(g for g in os.listdir(BACKUP_DIR) if g.startswith(base + "."))
             for g in old[:-BACKUP_KEEP]:
