@@ -1170,6 +1170,152 @@ for m in (d if isinstance(d,list) else []):
 }
 
 # ---------------------------------------------------------------------------
+# 6c. edit — in-place edit of SAFE model fields only
+# ---------------------------------------------------------------------------
+# `model edit <name> <field> <value>` edits a declared model's NON-IDENTITY
+# fields. Safe (re-renderable by a normal sync, no re-mint/recreate): rpm, tpm,
+# ttl, big, effort, note. Identity/endpoint fields (runtime/served/api_base/
+# key_env) are REFUSED — changing them is a remove + re-add (they move the route
+# and, for key_env, need a LiteLLM --recreate). Effort is validated against the
+# runtime exactly like validate() does.
+cmd_edit() {
+  local name="" field="" value="" set_val=0 dry=0 nosync=0 a
+  for a in "$@"; do
+    case "$a" in
+      --dry-run) dry=1 ;;
+      --no-sync) nosync=1 ;;
+      -*) err "edit: unknown flag '$a'"; exit 2 ;;
+      *) if [[ -z "$name" ]]; then name="$a"
+         elif [[ -z "$field" ]]; then field="$a"
+         elif (( ! set_val )); then value="$a"; set_val=1
+         fi ;;
+    esac
+  done
+  validate || exit $?
+  if [[ -z "$name" || -z "$field" || $set_val -eq 0 ]]; then
+    err "usage: vz-ai-stack.sh model edit <name> <field> <value> [--dry-run] [--no-sync]"
+    err "  editable fields: rpm | tpm | ttl | big | effort | note"
+    exit 2
+  fi
+  if ! model_exists "$name"; then
+    err "unknown model '$name'. Valid models:"; my_q '.models | keys | .[]' | sed 's/^/    /' >&2; exit 2
+  fi
+  local rt; rt="$(model_runtime "$name")"
+  local yq_set
+  case "$field" in
+    rpm|tpm|ttl)
+      [[ "$value" =~ ^[0-9]+$ ]] || { err "edit: $field must be a positive integer (got '$value')"; exit 2; }
+      yq_set=".models[strenv(NM)].$field = (strenv(VAL)|tonumber)" ;;
+    big)
+      case "$value" in true|false) : ;; *) err "edit: big must be true|false (got '$value')"; exit 2 ;; esac
+      yq_set=".models[strenv(NM)].big = (strenv(VAL) == \"true\")" ;;
+    effort)
+      case "$rt" in
+        meridian)
+          case "$value" in low|medium|high|xhigh|max|ultracode) : ;; *) err "edit: meridian effort want low|medium|high|xhigh|max|ultracode (got '$value')"; exit 2 ;; esac ;;
+        openai|codex-bridge)
+          case "$value" in none|low|medium|high|xhigh) : ;; *) err "edit: $rt effort want none|low|medium|high|xhigh (got '$value')"; exit 2 ;; esac ;;
+        *) err "edit: effort does not apply to runtime '$rt' (only meridian|openai|codex-bridge)"; exit 2 ;;
+      esac
+      yq_set=".models[strenv(NM)].effort = strenv(VAL)" ;;
+    note)
+      yq_set=".models[strenv(NM)].note = strenv(VAL)" ;;
+    runtime|served|api_base|key_env)
+      err "edit: '$field' changes the model's identity/endpoint — use remove + re-add instead:"
+      err "  vz-ai-stack.sh model remove $name   &&   vz-ai-stack.sh model add ..."
+      exit 2 ;;
+    *)
+      err "edit: unknown/unsafe field '$field' (editable: rpm|tpm|ttl|big|effort|note)"; exit 2 ;;
+  esac
+  local before; before="$(my_q ".models.\"$name\".$field")"
+  if (( dry )); then
+    note "[dry-run] would set models.$name.$field: ${before} -> ${value} (no write)"; exit 0
+  fi
+  NM="$name" VAL="$value" yq -i "$yq_set" "$MODELS_YML" || { err "yq -i edit failed"; exit 1; }
+  ok "models.$name.$field: ${before} -> ${value}"
+  if (( nosync )); then
+    note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync' to apply."; exit 0
+  fi
+  cmd_sync
+}
+
+# ---------------------------------------------------------------------------
+# 6d. remove — delete a declared model from models.yml AND config.yaml
+# ---------------------------------------------------------------------------
+# `model remove <name>` is the inverse of `add`. register_model_list is ADD-ONLY
+# (it never deletes), so removal must yq-del the entry from BOTH models.yml and
+# litellm/config.yaml's model_list, then restart LiteLLM to drop the live route.
+# Full guard set (refuse if the model is still referenced anywhere):
+#   - it is .default (the always-on fallback) or .primary
+#   - any agent is still assigned to it (active OR parked — the assignment value
+#     still names it; reassign first)
+#   - it is a key OR a target in config.yaml litellm_settings.fallbacks (the
+#     hand-curated failover policy — a dangling target silently breaks failover)
+cmd_remove() {
+  local name="" dry=0 nosync=0 a
+  for a in "$@"; do
+    case "$a" in
+      --dry-run) dry=1 ;;
+      --no-sync) nosync=1 ;;
+      -*) err "remove: unknown flag '$a'"; exit 2 ;;
+      *) [[ -z "$name" ]] && name="$a" ;;
+    esac
+  done
+  validate || exit $?
+  [[ -n "$name" ]] || { err "usage: vz-ai-stack.sh model remove <name> [--dry-run] [--no-sync]"; exit 2; }
+  if ! model_exists "$name"; then
+    err "unknown model '$name' (nothing to remove)"; exit 2
+  fi
+
+  # GUARD 1 — not the default / primary.
+  [[ "$name" != "$(default_model)" ]] || { err "refuse: '$name' is .default (the always-on fallback) — repoint .default in models.yml first"; exit 2; }
+  local prim; prim="$(my_q '.primary')"
+  [[ "$name" != "$prim" ]] || { err "refuse: '$name' is .primary (model for unassigned agents) — repoint .primary first"; exit 2; }
+
+  # GUARD 2 — no agent (active OR parked) still assigned.
+  local users; users="$(MN="$name" yq -r '.assignments | to_entries | map(select(.value == strenv(MN))) | .[].key' "$MODELS_YML" 2>/dev/null || true)"
+  if [[ -n "$users" ]]; then
+    err "refuse: '$name' is still assigned to: $(echo "$users" | tr '\n' ' ')"
+    err "  reassign those agents first: vz-ai-stack.sh model assign <agent> <other-model>"
+    exit 2
+  fi
+
+  # GUARD 3 — not referenced in config.yaml fallbacks (as a primary key OR a target).
+  if [[ -f "$CONFIG" ]]; then
+    local fbrefs; fbrefs="$(yq -r '.litellm_settings.fallbacks // [] | .[] | (keys[], .[][])' "$CONFIG" 2>/dev/null | LC_ALL=C sort -u || true)"
+    if [[ -n "$fbrefs" ]] && echo "$fbrefs" | grep -qxF "$name"; then
+      err "refuse: '$name' is referenced in litellm/config.yaml litellm_settings.fallbacks (a failover key or target)"
+      err "  edit the fallback chain first — it is hand-curated policy (metered -> local; never a silent bill)"
+      exit 2
+    fi
+  fi
+
+  local rt sv; rt="$(model_runtime "$name")"; sv="$(model_served "$name")"
+  if (( dry )); then
+    note "[dry-run] would remove models.$name (runtime=$rt served=$sv) from models.yml AND config.yaml model_list (no write)"; exit 0
+  fi
+
+  # WRITE — back up models.yml, delete from models.yml, then from config.yaml.
+  cp -p "$MODELS_YML" "$MODELS_YML.bak" 2>/dev/null || true
+  NM="$name" yq -i 'del(.models[strenv(NM)])' "$MODELS_YML" || { err "yq -i remove from models.yml failed (restore: cp $MODELS_YML.bak $MODELS_YML)"; exit 1; }
+  ok "removed models.$name from models.yml (backup: $(basename "$MODELS_YML").bak)"
+  if [[ -f "$CONFIG" ]]; then
+    NM="$name" yq -i 'del(.model_list[] | select(.model_name == strenv(NM)))' "$CONFIG" \
+      && ok "removed '$name' from config.yaml model_list" \
+      || warn "could not delete '$name' from config.yaml model_list — check by hand"
+  fi
+  if (( nosync )); then
+    note "--no-sync: restart LiteLLM to drop the live route — bash bin/start-litellm.sh (or 'docker restart litellm')."; exit 0
+  fi
+  # A pure deletion does not set _CONFIG_CHANGED (register_model_list is add-only),
+  # so restart LiteLLM directly to drop the now-removed route from the live router.
+  log "restarting LiteLLM to drop the removed route..."
+  docker restart litellm >/dev/null 2>&1 || warn "docker restart litellm failed — restart manually (bash bin/start-litellm.sh)"
+  litellm_wait_ready 60 || warn "LiteLLM did not report ready within 60s"
+  ok "model remove complete ($name)"
+}
+
+# ---------------------------------------------------------------------------
 # 7. sync — the crash-safe 6-phase reconcile (constraint 4)
 # ---------------------------------------------------------------------------
 cmd_sync() {
@@ -1352,6 +1498,8 @@ main() {
     assign)   cmd_assign "$@" ;;
     discover) cmd_discover "$@" ;;
     add)      cmd_add "$@" ;;
+    edit)     cmd_edit "$@" ;;
+    remove)   cmd_remove "$@" ;;
     sync)     cmd_sync "$@" ;;
     superset) cmd_superset "$@" ;;
     -h|--help|help)
@@ -1362,11 +1510,13 @@ vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml
   model assign all <model> [--dry-run] [--no-sync]        re-point EVERY agent (blanket)
   model discover                   READ-ONLY LM Studio library (LLMs + embeddings); loads nothing
   model add <lms-slug> [as <name>] [--dry-run] [--no-sync]   declare a library LLM (no load)
+  model edit <name> <field> <value> [--dry-run] [--no-sync]  edit a safe field: rpm|tpm|ttl|big|effort|note
+  model remove <name> [--dry-run] [--no-sync]                delete a model (guarded) from models.yml + config.yaml
   model sync [<agent>] [--dry-run] [--no-restart]
   model superset [--json]          print the canonical scoped-key allowlist
 EOF
       ;;
-    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|sync|superset)"; exit 2 ;;
+    *) err "model: unknown subcommand '$sub' (want list|assign|discover|add|edit|remove|sync|superset)"; exit 2 ;;
   esac
 }
 
