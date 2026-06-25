@@ -420,8 +420,9 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     # Real binding is the alias openwebui:8080 (host_port/container_port below).
     # The old v1 `port: 3001` + `health: …:3001/health` were vestigial — nothing
-    # ever listened on :3001 — so they are removed. Open WebUI exposes no /health
-    # endpoint; liveness is covered by the alias-routability checks (doctor 17/20).
+    # ever listened on :3001 — so they are removed. Open WebUI DOES expose a
+    # /health endpoint (returns {"status":true}); the alias-routability checks
+    # (doctor 17/20) probe it at openwebui:8080/health.
     bind: 127.0.0.1
     phase: "05"
     open_url: http://openwebui:8080

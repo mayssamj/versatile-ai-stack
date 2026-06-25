@@ -482,11 +482,9 @@ sequenceDiagram
   </div>
 </div>
 <p>What the assignments look like (from <code>models.yml</code>, see <a href="models.md">models.md</a>):</p>
-<ul><li><strong>claude-opus-sub-xhigh</strong> (subscription via Meridian) — <code>hermes_manager</code>,</li></ul>
-<p><code>hermes_qa_test_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>ace</code>, <code>rlm</code>.</p>
-<ul><li><strong>claude-opus-sub-max</strong> (subscription via Meridian) — <code>hermes_techlead</code>,</li></ul>
-<p><code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>pi</code>, <code>deerflow</code>.</p>
-<ul><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
+<ul><li><strong>claude-opus-sub-max</strong> (subscription via Meridian; the platform default and</li></ul>
+<p><code>primary</code>) — every assigned role: <code>hermes_manager</code>, <code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>pi</code>, <code>deerflow</code>, <code>ace</code>, <code>rlm</code>.</p>
+<ul><li><strong>sakana-fugu</strong> — <code>hermes_techlead</code> (the single exception to the default).</li><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
 <p>LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime is down. An UNASSIGNED agent renders the <code>primary</code> (<code>claude-opus-sub-max</code>) and gates to this. (<code>default:</code> in models.yml names this fallback; it must be an Ollama model.)</p>
 <p>Notes:</p>
 <ul><li>The Hermes fleet now routes to a Claude subscription via the Meridian host</li></ul>
@@ -656,7 +654,7 @@ sequenceDiagram
   </div>
 </div>
 <h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)</h3>
-<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default <code>claude-opus-sub-xhigh</code> (Claude subscription via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down), overridable via <code>HONCHO_MODEL</code>.</p>
+<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use <code>claude-opus-sub-xhigh</code> — Honcho's own default (<code>HONCHO_MODEL</code>, set in Phase 03), not the stack-wide <code>primary</code> which is <code>claude-opus-sub-max</code> (Claude subscription via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down).</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-10" data-action="out" title="Zoom out">−</button>
@@ -713,7 +711,7 @@ sequenceDiagram
   participant DC as Docling
   participant LI as LlamaIndex
   participant L as litellm :4000
-  participant E as embed-openai-small
+  participant E as embed-local (ollama/nomic-embed-text)
   participant Q as qdrant :6333
   participant DONE as ingestor/processed/
 
@@ -726,7 +724,7 @@ sequenceDiagram
     ING->>LI: build Document, store via VectorStoreIndex
     LI->>L: POST /v1/embeddings (per chunk)
     L->>E: forward
-    E-->>L: 1536-dim vector
+    E-->>L: 768-dim vector
     L-->>LI: vector
     LI->>Q: upsert points
     Q-->>LI: ok

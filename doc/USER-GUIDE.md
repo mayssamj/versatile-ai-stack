@@ -599,19 +599,21 @@ default model is declared in `installer/models.yml` under `assignments:` and
 rendered into the soul file by `vz-ai-stack.sh model sync`. All nine
 authenticate to LiteLLM with the shared `HERMES_LITELLM_KEY` virtual key
 (allowlisted to the canonical model superset) and route to a **Claude
-subscription via Meridian**. The bindings as shipped:
+subscription via Meridian** (the one exception is `hermes_techlead`, assigned
+`sakana-fugu`). The bindings as shipped (platform policy 2026-06-23 — every
+role is `claude-opus-sub-max` except techlead):
 
 | Profile                     | Bound model                  | When you'd dispatch one                                          |
 |-----------------------------|------------------------------|------------------------------------------------------------------|
-| `hermes_manager`            | `claude-opus-sub-xhigh`  | Frame a goal into a spec, decompose, delegate, orchestrate gates; executes directly when fastest |
-| `hermes_techlead`           | `claude-opus-sub-max`    | Architecture decisions, ADRs, interface contracts, design review |
+| `hermes_manager`            | `claude-opus-sub-max`    | Frame a goal into a spec, decompose, delegate, orchestrate gates; executes directly when fastest |
+| `hermes_techlead`           | `sakana-fugu`            | Architecture decisions, ADRs, interface contracts, design review |
 | `hermes_frontend_engineer`  | `claude-opus-sub-max`    | Accessible, performant UI against the design contract            |
 | `hermes_backend_engineer`   | `claude-opus-sub-max`    | APIs, services, data access, security basics against the contract|
 | `hermes_ml_engineer`        | `claude-opus-sub-max`    | Model selection, evals, data pipelines, finetuning, RAG          |
-| `hermes_qa_test_engineer`   | `claude-opus-sub-xhigh`  | Test strategy + automation; the green-bar quality gate           |
+| `hermes_qa_test_engineer`   | `claude-opus-sub-max`    | Test strategy + automation; the green-bar quality gate           |
 | `hermes_reviewing_engineer` | `claude-opus-sub-max`    | Adversarial code review + the security pass (read-only)          |
-| `hermes_sre_engineer`       | `claude-opus-sub-xhigh`  | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
-| `hermes_incident_manager`   | `claude-opus-sub-xhigh`  | Incident command + blameless postmortems (read-only)            |
+| `hermes_sre_engineer`       | `claude-opus-sub-max`    | Reliability, IaC, observability, CI/CD, safe deploys (prod-cred) |
+| `hermes_incident_manager`   | `claude-opus-sub-max`    | Incident command + blameless postmortems (read-only)            |
 
 **Same team, three platforms.** This identical 9-role team is also realized as
 **Pi personas** (`bin/pi-as <role>`) and **Claude Code agents** (the
@@ -1066,7 +1068,7 @@ The historical failure mode (still useful to know): `deer-flow/config.yaml` ship
 
 **What Phase 10 patches:**
 
-- `deer-flow/config.yaml`: rendered by `vz-ai-stack.sh model sync` from `models.yml` (DeerFlow is assigned `local-qwen3.6`, availability-gated back to `local-gemma4` when LM Studio is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
+- `deer-flow/config.yaml`: rendered by `vz-ai-stack.sh model sync` from `models.yml` (DeerFlow is assigned `claude-opus-sub-max`, availability-gated back to `local-gemma4` when Meridian is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
 - `deer-flow/docker/docker-compose.yaml`: adds `- LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` to the gateway's `environment:` block so the substitution resolves inside the container.
 - `deer-flow/.env`: mirrors `LITELLM_MASTER_KEY` from `~/ai-stack/.env` (mode 0600) so `scripts/deploy.sh`'s `env_file:` lookup picks it up.
 
