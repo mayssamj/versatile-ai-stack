@@ -1,0 +1,1740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model &amp; Agent Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%9A%99%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+/* ─── Design tokens ─────────────────────────────────────────────────── */
+:root {
+  --canvas:#0c0e12; --card:#14171d; --raised:#1b1f2a; --border:#222732;
+  --text:#e6e9ef; --muted:#8b93a2; --mono:#aeb6c7;
+  --accent:#5b9dff; --accent-dim:rgba(91,157,255,.15);
+  --ok:#3fb950; --ok-dim:rgba(63,185,80,.15);
+  --warn:#d29922; --warn-dim:rgba(210,153,34,.18);
+  --danger:#f87171; --danger-dim:rgba(248,113,113,.15);
+  --info:#22d3ee; --info-dim:rgba(34,211,238,.12);
+  --neutral:#6e7681;
+  --radius:10px; --radius-sm:6px; --radius-xs:4px;
+  --shadow:0 4px 20px rgba(0,0,0,.4);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.3);
+  --mono-font:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --ui-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --t1:1.25rem; --t2:1rem; --t3:.875rem; --t4:.8125rem; --t5:.75rem;
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
+}
+@media (prefers-color-scheme:light) {
+  :root {
+    --canvas:#f4f6fa; --card:#ffffff; --raised:#eef1f6; --border:#d4dae4;
+    --text:#1a1f29; --muted:#5a6472; --mono:#3a4453;
+    --shadow:0 4px 20px rgba(0,0,0,.12); --shadow-sm:0 2px 8px rgba(0,0,0,.08);
+    --accent-dim:rgba(59,130,246,.1); --ok-dim:rgba(34,197,94,.1);
+    --warn-dim:rgba(234,179,8,.12); --danger-dim:rgba(239,68,68,.1);
+    --info-dim:rgba(6,182,212,.1);
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
+}
+
+/* ─── Reset & base ───────────────────────────────────────────────────── */
+*,*::before,*::after { box-sizing:border-box; }
+html,body { margin:0; padding:0; height:100%; }
+body {
+  background:var(--canvas); color:var(--text);
+  font-family:var(--ui-font); font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  display:flex; flex-direction:column;
+}
+a { color:var(--accent); }
+code,.mono { font-family:var(--mono-font); }
+h1,h2,h3 { margin:0; font-weight:600; line-height:1.3; }
+p { margin:0; }
+button { font-family:var(--ui-font); }
+
+/* ─── Layout shell ───────────────────────────────────────────────────── */
+#app { display:flex; flex-direction:column; min-height:100vh; }
+#main-area { display:flex; flex:1; overflow:hidden; }
+#content { flex:1; overflow-y:auto; padding:var(--sp4) var(--sp4) 80px; }
+#drawer {
+  width:400px; min-width:320px; max-width:42vw;
+  background:var(--card); border-left:1px solid var(--border);
+  display:flex; flex-direction:column;
+  transition:width .2s ease, opacity .2s ease;
+  overflow:hidden;
+}
+#drawer.collapsed { width:0; min-width:0; opacity:0; pointer-events:none; }
+@media (max-width:900px) {
+  #main-area { flex-direction:column; }
+  #drawer { width:100%; max-width:100%; border-left:none; border-top:1px solid var(--border); }
+  #drawer.collapsed { width:100%; height:0; opacity:0; }
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────── */
+#header {
+  background:var(--canvas); border-bottom:1px solid var(--border);
+  position:sticky; top:0; z-index:100;
+  box-shadow:0 8px 18px -12px rgba(0,0,0,.6);
+  backdrop-filter:saturate(1.2) blur(8px);
+}
+.header-inner {
+  max-width:1600px; margin:0 auto; padding:10px var(--sp4);
+  display:flex; align-items:center; gap:var(--sp3); flex-wrap:wrap;
+}
+.wordmark { font-size:var(--t2); font-weight:700; letter-spacing:.2px; }
+.wordmark span { color:var(--accent); }
+.header-status { display:flex; align-items:center; gap:var(--sp2); flex-wrap:wrap; flex:1; }
+.header-actions { display:flex; align-items:center; gap:var(--sp2); }
+
+/* ─── Badges ─────────────────────────────────────────────────────────── */
+.badge {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:var(--t5); font-weight:600; letter-spacing:.3px; text-transform:uppercase;
+  padding:2px 7px; border-radius:999px; white-space:nowrap;
+}
+.badge-ok   { background:var(--ok-dim);     color:var(--ok);     border:1px solid var(--ok); }
+.badge-warn { background:var(--warn-dim);   color:var(--warn);   border:1px solid var(--warn); }
+.badge-err  { background:var(--danger-dim); color:var(--danger); border:1px solid var(--danger); }
+.badge-info { background:var(--info-dim);   color:var(--info);   border:1px solid var(--info); }
+.badge-muted{ background:var(--raised);     color:var(--muted);  border:1px solid var(--border); }
+.badge-accent{background:var(--accent-dim); color:var(--accent); border:1px solid var(--accent); }
+
+/* dot status */
+.dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
+.dot-ok   { background:var(--ok); }
+.dot-err  { background:var(--danger); }
+.dot-warn { background:var(--warn); }
+.dot-dim  { background:var(--neutral); }
+
+/* ─── Read-only banner ───────────────────────────────────────────────── */
+#readonly-banner {
+  background:var(--warn-dim); border-bottom:1px solid var(--warn);
+  padding:8px var(--sp4); text-align:center;
+  font-size:var(--t4); color:var(--warn); font-weight:600;
+  display:none;
+}
+#readonly-banner.visible { display:block; }
+
+/* ─── Buttons ─────────────────────────────────────────────────────────── */
+.btn {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:var(--t4); font-weight:500; cursor:pointer; white-space:nowrap;
+  background:var(--raised); color:var(--text); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:6px 10px;
+  transition:border-color .12s, background .12s, color .12s;
+}
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.btn:disabled { opacity:.45; cursor:not-allowed; pointer-events:none; }
+.btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+.btn-primary:hover { background:#4a8de0; border-color:#4a8de0; color:#fff; }
+.btn-danger  { color:var(--danger); border-color:var(--danger); }
+.btn-danger:hover  { background:var(--danger-dim); }
+.btn-sm { font-size:var(--t5); padding:4px 8px; }
+.btn-icon { padding:5px; border-radius:var(--radius-sm); }
+
+/* ─── Sections ───────────────────────────────────────────────────────── */
+.section { margin-bottom:var(--sp5); }
+.section-header {
+  display:flex; align-items:center; gap:var(--sp2); margin-bottom:var(--sp3);
+  padding-bottom:var(--sp2); border-bottom:1px solid var(--border);
+}
+.section-title { font-size:var(--t2); font-weight:600; }
+.section-meta  { color:var(--muted); font-size:var(--t4); }
+.section-actions { margin-left:auto; display:flex; gap:var(--sp2); align-items:center; }
+
+/* ─── Runtime group ──────────────────────────────────────────────────── */
+.runtime-group { margin-bottom:var(--sp4); }
+.runtime-label {
+  font-size:var(--t5); font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+  color:var(--muted); margin-bottom:var(--sp2); padding:2px 0;
+  display:flex; align-items:center; gap:6px;
+}
+.runtime-label::after {
+  content:""; flex:1; height:1px; background:var(--border); margin-left:4px;
+}
+
+/* ─── Model cards ────────────────────────────────────────────────────── */
+.model-list { display:flex; flex-direction:column; gap:var(--sp2); }
+.model-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:var(--sp3) var(--sp4);
+  display:flex; align-items:flex-start; gap:var(--sp3);
+  transition:border-color .12s, box-shadow .12s;
+  position:relative;
+}
+.model-card:hover { border-color:var(--accent); box-shadow:var(--shadow-sm); }
+.model-card-accent { width:3px; border-radius:2px; align-self:stretch; flex:none; background:var(--neutral); }
+.model-card-body { flex:1; min-width:0; }
+.model-name { font-weight:600; font-size:var(--t3); }
+.model-served { color:var(--muted); font-size:var(--t5); font-family:var(--mono-font); margin-top:2px; word-break:break-all; }
+.model-meta { display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-top:6px; }
+.model-note { color:var(--muted); font-size:var(--t5); margin-top:5px; font-style:italic; }
+.model-key-row { display:flex; align-items:center; gap:6px; margin-top:5px; font-size:var(--t5); color:var(--muted); }
+.model-actions { display:flex; gap:5px; align-items:flex-start; flex-wrap:wrap; margin-left:auto; flex:none; }
+
+/* runtime accent colors */
+.model-card[data-runtime="ollama"]        .model-card-accent { background:#22d3ee; }
+.model-card[data-runtime="lmstudio"]      .model-card-accent { background:#a78bfa; }
+.model-card[data-runtime="meridian"]      .model-card-accent { background:#818cf8; }
+.model-card[data-runtime="openai"]        .model-card-accent { background:var(--ok); }
+.model-card[data-runtime="codex-bridge"]  .model-card-accent { background:var(--warn); }
+.model-card[data-runtime="openai-compat"] .model-card-accent { background:var(--accent); }
+.model-card[data-runtime="openrouter"]    .model-card-accent { background:#f472b6; }
+
+/* ─── Skeleton loader ────────────────────────────────────────────────── */
+.skeleton { background:var(--raised); border-radius:4px; position:relative; overflow:hidden; }
+.skeleton::after {
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.04) 50%,transparent 100%);
+  animation:shimmer 1.4s infinite;
+}
+@keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+.skel-line { height:14px; margin-bottom:6px; border-radius:3px; }
+
+/* ─── Agent table ────────────────────────────────────────────────────── */
+.agent-table { width:100%; border-collapse:collapse; font-size:var(--t4); }
+.agent-table th {
+  text-align:left; padding:6px var(--sp3); color:var(--muted);
+  border-bottom:1px solid var(--border); font-weight:600; font-size:var(--t5);
+  letter-spacing:.4px; text-transform:uppercase; white-space:nowrap;
+}
+.agent-table td { padding:8px var(--sp3); border-bottom:1px solid var(--border); vertical-align:middle; }
+.agent-table tr:last-child td { border-bottom:none; }
+.agent-table tr:hover td { background:var(--raised); }
+.agent-name { font-weight:600; font-family:var(--mono-font); font-size:var(--t4); }
+.agent-profile { color:var(--muted); font-size:var(--t5); }
+.agent-kind { font-size:var(--t5); }
+select.model-select {
+  background:var(--raised); color:var(--text); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:5px 8px; font-family:var(--mono-font);
+  font-size:var(--t5); cursor:pointer; max-width:200px; width:100%;
+}
+select.model-select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+select.model-select:disabled { opacity:.45; cursor:not-allowed; }
+
+/* ─── Fallbacks ──────────────────────────────────────────────────────── */
+.fallback-list { display:flex; flex-direction:column; gap:var(--sp2); }
+.fallback-item {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:var(--sp2) var(--sp3);
+  display:flex; align-items:center; gap:var(--sp2); flex-wrap:wrap;
+}
+.fallback-primary { font-weight:600; font-family:var(--mono-font); font-size:var(--t4); }
+.fallback-arrow { color:var(--muted); font-size:var(--t4); }
+.fallback-chip {
+  background:var(--raised); border:1px solid var(--border);
+  border-radius:999px; padding:2px 9px; font-size:var(--t5);
+  font-family:var(--mono-font); color:var(--mono);
+}
+
+/* ─── Embeddings ─────────────────────────────────────────────────────── */
+.embed-table { width:100%; border-collapse:collapse; font-size:var(--t4); }
+.embed-table th,
+.embed-table td { padding:6px var(--sp3); border-bottom:1px solid var(--border); text-align:left; }
+.embed-table th { color:var(--muted); font-size:var(--t5); text-transform:uppercase; font-weight:600; }
+.embed-table tr:last-child td { border-bottom:none; }
+
+/* ─── Staged drawer ──────────────────────────────────────────────────── */
+#drawer-inner { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.drawer-header {
+  padding:var(--sp3) var(--sp4); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:var(--sp2); flex:none;
+}
+.drawer-title { font-size:var(--t3); font-weight:600; flex:1; }
+.drawer-body { flex:1; overflow-y:auto; padding:var(--sp3) var(--sp4); display:flex; flex-direction:column; gap:var(--sp3); }
+.drawer-footer { padding:var(--sp3) var(--sp4); border-top:1px solid var(--border); display:flex; gap:var(--sp2); flex:none; }
+
+.diff-block {
+  background:var(--raised); border:1px solid var(--border);
+  border-radius:var(--radius-sm); overflow:hidden;
+}
+.diff-label {
+  padding:4px var(--sp3); font-size:var(--t5); font-weight:700;
+  letter-spacing:.4px; text-transform:uppercase; color:var(--muted);
+  background:var(--card); border-bottom:1px solid var(--border);
+}
+.diff-pre {
+  margin:0; padding:var(--sp3); font-family:var(--mono-font); font-size:12px;
+  line-height:1.55; overflow-x:auto; white-space:pre; max-height:260px; overflow-y:auto;
+}
+.diff-add { color:var(--ok); }
+.diff-del { color:var(--danger); }
+.diff-hunk { color:var(--info); }
+.diff-ctx { color:var(--muted); }
+
+.recreate-warn {
+  background:var(--warn-dim); border:1px solid var(--warn);
+  border-radius:var(--radius-sm); padding:var(--sp2) var(--sp3);
+  font-size:var(--t4); color:var(--warn);
+  display:flex; gap:var(--sp2); align-items:flex-start;
+}
+.recreate-warn-icon { flex:none; font-size:16px; }
+
+/* ─── Modal ──────────────────────────────────────────────────────────── */
+#modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200;
+  display:flex; align-items:center; justify-content:center;
+  padding:var(--sp4);
+  opacity:0; pointer-events:none; transition:opacity .15s;
+}
+#modal-overlay.open { opacity:1; pointer-events:all; }
+#modal {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:var(--sp5); max-width:480px; width:100%;
+  box-shadow:var(--shadow);
+  transform:scale(.96); transition:transform .15s;
+}
+#modal-overlay.open #modal { transform:scale(1); }
+#modal h2 { margin-bottom:var(--sp3); font-size:var(--t2); }
+#modal .modal-body { font-size:var(--t3); color:var(--muted); margin-bottom:var(--sp4); }
+#modal .modal-footer { display:flex; gap:var(--sp2); justify-content:flex-end; }
+
+/* ─── Form pane ──────────────────────────────────────────────────────── */
+#form-pane {
+  position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200;
+  display:flex; align-items:center; justify-content:center; padding:var(--sp4);
+  opacity:0; pointer-events:none; transition:opacity .15s;
+}
+#form-pane.open { opacity:1; pointer-events:all; }
+#form-box {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); max-width:520px; width:100%;
+  max-height:90vh; overflow-y:auto;
+  box-shadow:var(--shadow);
+  transform:scale(.96); transition:transform .15s;
+}
+#form-pane.open #form-box { transform:scale(1); }
+.form-header {
+  padding:var(--sp4) var(--sp4) var(--sp3);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center;
+}
+.form-header h2 { flex:1; font-size:var(--t2); }
+.form-body { padding:var(--sp4); display:flex; flex-direction:column; gap:var(--sp3); }
+.form-footer { padding:var(--sp3) var(--sp4) var(--sp4); border-top:1px solid var(--border); display:flex; gap:var(--sp2); justify-content:flex-end; }
+
+/* form controls */
+.field { display:flex; flex-direction:column; gap:5px; }
+.field label { font-size:var(--t4); font-weight:600; color:var(--text); }
+.field input, .field select, .field textarea {
+  background:var(--raised); color:var(--text); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:8px var(--sp3); font-family:var(--ui-font);
+  font-size:var(--t3); width:100%;
+}
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
+  outline:2px solid var(--accent); outline-offset:1px;
+}
+.field .hint { font-size:var(--t5); color:var(--muted); }
+.field-row { display:flex; gap:var(--sp3); }
+.field-row .field { flex:1; }
+input[type="checkbox"].check { width:auto; cursor:pointer; }
+
+/* runtime tabs for Add form */
+.runtime-tabs { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:var(--sp2); }
+.rtab {
+  font-size:var(--t5); font-weight:600; padding:4px 10px;
+  border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:var(--raised); color:var(--muted); cursor:pointer; white-space:nowrap;
+}
+.rtab:hover { border-color:var(--accent); color:var(--accent); }
+.rtab.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+.rtab:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+/* ─── Toast ──────────────────────────────────────────────────────────── */
+#toast-root {
+  position:fixed; bottom:var(--sp4); right:var(--sp4); z-index:300;
+  display:flex; flex-direction:column; gap:var(--sp2); align-items:flex-end;
+  max-width:400px; pointer-events:none;
+}
+.toast {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:10px var(--sp3);
+  box-shadow:var(--shadow); font-size:var(--t4);
+  pointer-events:all; opacity:1; transition:opacity .3s, transform .3s;
+  display:flex; align-items:flex-start; gap:var(--sp2);
+}
+.toast.out { opacity:0; transform:translateY(8px); }
+.toast-ok   { border-left:3px solid var(--ok); }
+.toast-err  { border-left:3px solid var(--danger); }
+.toast-info { border-left:3px solid var(--accent); }
+
+/* ─── Live region ─────────────────────────────────────────────────────── */
+#live-region { position:absolute; left:-9999px; width:1px; overflow:hidden; }
+
+/* ─── Inline error ───────────────────────────────────────────────────── */
+.inline-error {
+  background:var(--danger-dim); border:1px solid var(--danger);
+  border-radius:var(--radius-sm); padding:var(--sp2) var(--sp3);
+  font-size:var(--t4); color:var(--danger);
+}
+.inline-info {
+  background:var(--info-dim); border:1px solid var(--info);
+  border-radius:var(--radius-sm); padding:var(--sp2) var(--sp3);
+  font-size:var(--t4); color:var(--info);
+}
+
+/* ─── Test result ─────────────────────────────────────────────────────── */
+.test-result {
+  font-size:var(--t5); font-family:var(--mono-font);
+  padding:2px 7px; border-radius:var(--radius-xs);
+  display:inline-block; margin-left:4px;
+}
+.test-ok  { background:var(--ok-dim); color:var(--ok); }
+.test-err { background:var(--danger-dim); color:var(--danger); }
+
+/* ─── Utils ───────────────────────────────────────────────────────────── */
+.hidden { display:none!important; }
+.flex { display:flex; }
+.items-center { align-items:center; }
+.gap-2 { gap:var(--sp2); }
+.ml-auto { margin-left:auto; }
+.text-muted { color:var(--muted); }
+.text-mono  { font-family:var(--mono-font); }
+.text-sm    { font-size:var(--t4); }
+.text-xs    { font-size:var(--t5); }
+.mt-2 { margin-top:var(--sp2); }
+.mt-3 { margin-top:var(--sp3); }
+.w-full { width:100%; }
+.word-break { word-break:break-all; }
+
+/* drawer toggle btn (mobile) */
+#drawer-toggle-wrap {
+  padding:var(--sp2) var(--sp4);
+  border-top:1px solid var(--border);
+  background:var(--canvas);
+  display:none;
+}
+@media (max-width:900px) { #drawer-toggle-wrap { display:block; } }
+
+/* no-content placeholder */
+.empty-state {
+  text-align:center; padding:var(--sp5) var(--sp4);
+  color:var(--muted); font-size:var(--t4);
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- aria live region -->
+  <div id="live-region" aria-live="polite" aria-atomic="true" role="status"></div>
+
+  <!-- Header -->
+  <header id="header" role="banner">
+    <div class="header-inner">
+      <h1 class="wordmark">Model <span>&amp;</span> Agent Console</h1>
+      <div class="header-status" role="status" aria-label="Stack status">
+        <span id="litellm-badge" class="badge badge-muted">LiteLLM …</span>
+        <span id="readonly-badge" class="badge badge-warn hidden">Read-Only</span>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-sm" id="refresh-btn" aria-label="Refresh state" title="Refresh">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.21-3.67L9.5 6.5H15V1L13.65 2.35z" fill="currentColor"/>
+          </svg>
+          Refresh
+        </button>
+        <button class="btn btn-sm" id="drawer-toggle-btn" aria-label="Toggle staged changes drawer" aria-expanded="true" aria-controls="drawer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="9" y="2" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M2 5h5M2 8h5M2 11h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          Staged
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Read-only banner -->
+  <div id="readonly-banner" role="alert" aria-live="assertive">
+    Read-only mode — staging/diff allowed, applying is disabled.
+  </div>
+
+  <div id="main-area">
+    <!-- Main content -->
+    <main id="content" aria-label="Console content">
+      <!-- Loading skeleton -->
+      <div id="loading-state" aria-busy="true" aria-label="Loading…">
+        <div class="section">
+          <div class="section-header">
+            <div class="skeleton skel-line" style="width:120px"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="skeleton skel-line" style="width:100%;height:60px;border-radius:8px"></div>
+            <div class="skeleton skel-line" style="width:100%;height:60px;border-radius:8px"></div>
+            <div class="skeleton skel-line" style="width:100%;height:60px;border-radius:8px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-state" class="hidden">
+        <div class="inline-error" style="margin-bottom:var(--sp3)">
+          <strong>Failed to load state.</strong>
+          <span id="error-msg"></span>
+        </div>
+        <button class="btn" id="error-retry-btn">Retry</button>
+      </div>
+
+      <!-- Loaded content -->
+      <div id="loaded-content" class="hidden">
+        <!-- Models section -->
+        <section class="section" aria-labelledby="models-section-title">
+          <div class="section-header">
+            <h2 id="models-section-title" class="section-title">Models</h2>
+            <span id="models-count" class="badge badge-muted section-meta"></span>
+            <div class="section-actions">
+              <button class="btn btn-sm" id="add-model-btn" aria-label="Add a new model">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                Add Model
+              </button>
+            </div>
+          </div>
+          <div id="models-list" role="list" aria-label="Model catalog"></div>
+        </section>
+
+        <!-- Fallbacks section -->
+        <section class="section" aria-labelledby="fallbacks-section-title">
+          <div class="section-header">
+            <h2 id="fallbacks-section-title" class="section-title">Fallback Chains</h2>
+          </div>
+          <p class="text-xs text-muted" style="margin-bottom:var(--sp3)">
+            Fallback chains are hand-curated policy in config.yaml. They are view-only here.
+          </p>
+          <div id="fallbacks-list"></div>
+        </section>
+
+        <!-- Agents section -->
+        <section class="section" aria-labelledby="agents-section-title">
+          <div class="section-header">
+            <h2 id="agents-section-title" class="section-title">Agents</h2>
+            <span id="agents-count" class="badge badge-muted section-meta"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="agent-table" aria-label="Agent assignments">
+              <thead>
+                <tr>
+                  <th scope="col">Agent</th>
+                  <th scope="col">Kind / Profile</th>
+                  <th scope="col">Assigned Model</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="agents-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Embeddings section (conditional) -->
+        <section class="section hidden" id="embeddings-section" aria-labelledby="embeddings-section-title">
+          <div class="section-header">
+            <h2 id="embeddings-section-title" class="section-title">Embeddings</h2>
+            <span class="badge badge-muted section-meta">read-only</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="embed-table" aria-label="Embedding models">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Assigned To</th>
+                  <th scope="col">Details</th>
+                </tr>
+              </thead>
+              <tbody id="embeddings-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Staged changes drawer -->
+    <aside id="drawer" aria-label="Staged changes" aria-expanded="true">
+      <div id="drawer-inner">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Staged Changes</h2>
+          <button class="btn btn-sm btn-icon" id="drawer-close-btn" aria-label="Collapse staged changes drawer">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="drawer-body" id="drawer-body">
+          <div class="empty-state" id="drawer-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="margin-bottom:8px;opacity:.4" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <p>No staged change.<br>Edit a model, assignment, or park state to stage a diff.</p>
+          </div>
+          <div id="drawer-content" class="hidden">
+            <div id="stage-op-label" class="badge badge-accent" style="margin-bottom:var(--sp2)"></div>
+            <div id="stage-error" class="inline-error hidden"></div>
+            <div id="recreate-warn" class="recreate-warn hidden">
+              <span class="recreate-warn-icon" aria-hidden="true">&#9888;</span>
+              <div>
+                <strong>Container recreate required.</strong>
+                <div id="recreate-reason" class="text-xs mt-2"></div>
+              </div>
+            </div>
+            <div id="models-diff-block" class="diff-block hidden">
+              <div class="diff-label">models.yml diff (primary)</div>
+              <pre class="diff-pre" id="models-diff-pre" aria-label="models.yml diff"></pre>
+            </div>
+            <div id="config-diff-block" class="diff-block hidden">
+              <div class="diff-label" id="config-diff-label">config.yaml diff</div>
+              <pre class="diff-pre" id="config-diff-pre" aria-label="config.yaml diff"></pre>
+            </div>
+            <div id="no-changes-msg" class="inline-info hidden">No file changes — already current.</div>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn btn-danger btn-sm" id="discard-btn" disabled>Discard</button>
+          <button class="btn btn-primary btn-sm ml-auto" id="apply-btn" disabled>Apply</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Recreate confirm modal -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
+  <div id="modal">
+    <h2 id="modal-title">Confirm Container Recreate</h2>
+    <div class="modal-body" id="modal-body">
+      Applying this change will recreate the LiteLLM container, causing brief downtime for the whole fleet.
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="modal-cancel">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Recreate &amp; Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit form pane -->
+<div id="form-pane" role="dialog" aria-modal="true" aria-labelledby="form-title" tabindex="-1">
+  <div id="form-box">
+    <div class="form-header">
+      <h2 id="form-title">Add Model</h2>
+      <button class="btn btn-sm btn-icon ml-auto" id="form-close-btn" aria-label="Close form">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="form-body" id="form-body"></div>
+    <div class="form-footer">
+      <button class="btn" id="form-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="form-submit-btn">Stage Change</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast root -->
+<div id="toast-root" aria-live="assertive" aria-atomic="false"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   Model & Agent Console — vanilla JS, single file, no build step
+   ═══════════════════════════════════════════════════════════════════════ */
+
+'use strict';
+
+// ── XSS helpers ─────────────────────────────────────────────────────────
+function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function setText(el, str) { if (el) el.textContent = String(str ?? ''); }
+// Build element with textContent (safe from XSS)
+function mkEl(tag, attrs, text) {
+  const el = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => { if(k==='className')el.className=v; else el.setAttribute(k,v); });
+  if (text != null) el.textContent = String(text);
+  return el;
+}
+
+// ── State ────────────────────────────────────────────────────────────────
+let STATE = null;            // last /api/state response
+let STAGED = null;           // last /api/stage response + {op,args}
+let STAGED_OP = null;        // {op, args} currently staged
+
+// ── DOM refs ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const loadingState   = $('loading-state');
+const errorState     = $('error-state');
+const loadedContent  = $('loaded-content');
+const errorMsg       = $('error-msg');
+const litellmBadge   = $('litellm-badge');
+const readonlyBadge  = $('readonly-badge');
+const readonlyBanner = $('readonly-banner');
+const modelsList     = $('models-list');
+const fallbacksList  = $('fallbacks-list');
+const agentsTbody    = $('agents-tbody');
+const embeddingsTbody = $('embeddings-tbody');
+const embeddingsSection = $('embeddings-section');
+const drawer         = $('drawer');
+const drawerToggleBtn= $('drawer-toggle-btn');
+const drawerCloseBtn = $('drawer-close-btn');
+const drawerEmpty    = $('drawer-empty');
+const drawerContent  = $('drawer-content');
+const stageOpLabel   = $('stage-op-label');
+const stageError     = $('stage-error');
+const recreateWarn   = $('recreate-warn');
+const recreateReason = $('recreate-reason');
+const modelsDiffBlock= $('models-diff-block');
+const modelsDiffPre  = $('models-diff-pre');
+const configDiffBlock= $('config-diff-block');
+const configDiffLabel= $('config-diff-label');
+const configDiffPre  = $('config-diff-pre');
+const noChangesMsg   = $('no-changes-msg');
+const discardBtn     = $('discard-btn');
+const applyBtn       = $('apply-btn');
+const modalOverlay   = $('modal-overlay');
+const modalBody      = $('modal-body');
+const modalCancel    = $('modal-cancel');
+const modalConfirm   = $('modal-confirm');
+const formPane       = $('form-pane');
+const formTitle      = $('form-title');
+const formBody       = $('form-body');
+const formSubmitBtn  = $('form-submit-btn');
+const liveRegion     = $('live-region');
+const modelsCount    = $('models-count');
+const agentsCount    = $('agents-count');
+
+// ── Live region announce ─────────────────────────────────────────────────
+function announce(msg) {
+  liveRegion.textContent = '';
+  requestAnimationFrame(() => { liveRegion.textContent = msg; });
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────
+function toast(msg, type='info', duration=5000) {
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.setAttribute('role','status');
+  const icon = type==='ok'?'✓':type==='err'?'✕':'ℹ';
+  const iconEl = mkEl('span', {}, icon);
+  iconEl.setAttribute('aria-hidden','true');
+  const msgEl = mkEl('span', {}, msg);
+  t.appendChild(iconEl); t.appendChild(msgEl);
+  $('toast-root').appendChild(t);
+  announce(msg);
+  setTimeout(() => {
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 350);
+  }, duration);
+}
+
+// ── Fetch helpers ────────────────────────────────────────────────────────
+async function apiFetch(path, opts={}) {
+  const res = await fetch(path, {
+    headers:{'Content-Type':'application/json'},
+    ...opts
+  });
+  return res;
+}
+
+// ── Load state ───────────────────────────────────────────────────────────
+async function loadState() {
+  loadingState.classList.remove('hidden');
+  loadingState.setAttribute('aria-busy','true');
+  errorState.classList.add('hidden');
+  loadedContent.classList.add('hidden');
+
+  try {
+    const res = await apiFetch('/api/state');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    STATE = await res.json();
+    renderAll();
+    loadingState.classList.add('hidden');
+    loadedContent.classList.remove('hidden');
+  } catch(e) {
+    loadingState.classList.add('hidden');
+    errorState.classList.remove('hidden');
+    setText(errorMsg, ` ${e.message}`);
+    announce(`Error loading state: ${e.message}`);
+  }
+}
+
+// ── Render all ───────────────────────────────────────────────────────────
+function renderAll() {
+  if (!STATE) return;
+  renderHeader();
+  renderModels();
+  renderFallbacks();
+  renderAgents();
+  renderEmbeddings();
+}
+
+// ── Header ───────────────────────────────────────────────────────────────
+function renderHeader() {
+  if (STATE.litellm_up) {
+    litellmBadge.className = 'badge badge-ok';
+    setText(litellmBadge, '● LiteLLM up');
+  } else {
+    litellmBadge.className = 'badge badge-err';
+    setText(litellmBadge, '● LiteLLM down');
+  }
+  if (STATE.read_only) {
+    readonlyBadge.classList.remove('hidden');
+    readonlyBanner.classList.add('visible');
+  } else {
+    readonlyBadge.classList.add('hidden');
+    readonlyBanner.classList.remove('visible');
+  }
+}
+
+// ── Models ───────────────────────────────────────────────────────────────
+const RUNTIME_ORDER = ['ollama','lmstudio','meridian','openai','codex-bridge','openai-compat','openrouter'];
+const RUNTIME_LABELS = {
+  ollama:'Ollama (local)', lmstudio:'LM Studio (local)', meridian:'Meridian / Claude-sub',
+  openai:'OpenAI', 'codex-bridge':'Codex Bridge', 'openai-compat':'OpenAI-compat',
+  openrouter:'OpenRouter (config-only, not agent-assignable)'
+};
+
+function renderModels() {
+  modelsList.innerHTML = '';
+  const models = STATE.models || {};
+  const orRoutes = STATE.openrouter_routes || [];
+  const def = STATE.default;
+  const pri = STATE.primary;
+  const keyPresent = STATE.key_env_present || {};
+
+  // Group by runtime
+  const groups = {};
+  for (const [name, m] of Object.entries(models)) {
+    const rt = m.runtime || 'unknown';
+    if (!groups[rt]) groups[rt] = [];
+    groups[rt].push({name, ...m});
+  }
+
+  // Sort runtimes
+  const orderedRuntimes = [
+    ...RUNTIME_ORDER.filter(r => groups[r] && r !== 'openrouter'),
+    ...Object.keys(groups).filter(r => !RUNTIME_ORDER.includes(r))
+  ];
+
+  let totalModels = Object.keys(models).length;
+  setText(modelsCount, totalModels);
+
+  for (const rt of orderedRuntimes) {
+    const group = groups[rt];
+    if (!group || group.length === 0) continue;
+    const section = renderRuntimeGroup(rt, group, def, pri, keyPresent, false);
+    modelsList.appendChild(section);
+  }
+
+  // OpenRouter routes
+  if (orRoutes.length > 0) {
+    const orGroup = orRoutes.map(r => ({
+      name: r.name,
+      served: r.served,
+      runtime: 'openrouter'
+    }));
+    const section = renderRuntimeGroup('openrouter', orGroup, def, pri, keyPresent, true);
+    modelsList.appendChild(section);
+  }
+}
+
+function renderRuntimeGroup(rt, models, def, pri, keyPresent, isConfigOnly) {
+  const wrap = document.createElement('div');
+  wrap.className = 'runtime-group';
+
+  const label = document.createElement('div');
+  label.className = 'runtime-label';
+  setText(label, RUNTIME_LABELS[rt] || rt);
+  wrap.appendChild(label);
+
+  const list = document.createElement('div');
+  list.className = 'model-list';
+  list.setAttribute('role','list');
+  for (const m of models) {
+    list.appendChild(renderModelCard(m, def, pri, keyPresent, isConfigOnly));
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+function renderModelCard(m, def, pri, keyPresent, isConfigOnly) {
+  const card = document.createElement('div');
+  card.className = 'model-card';
+  card.setAttribute('data-runtime', m.runtime || '');
+  card.setAttribute('role','listitem');
+
+  // Accent stripe
+  const stripe = document.createElement('div');
+  stripe.className = 'model-card-accent';
+  stripe.setAttribute('aria-hidden','true');
+  card.appendChild(stripe);
+
+  const body = document.createElement('div');
+  body.className = 'model-card-body';
+
+  // Name row
+  const nameRow = document.createElement('div');
+  nameRow.className = 'flex items-center gap-2';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'model-name text-mono';
+  nameEl.textContent = m.name;
+  nameRow.appendChild(nameEl);
+  if (m.name === def) nameRow.appendChild(mkBadge('DEFAULT','badge-accent'));
+  if (m.name === pri) nameRow.appendChild(mkBadge('PRIMARY','badge-info'));
+  if (m.big) nameRow.appendChild(mkBadge('big','badge-muted'));
+  body.appendChild(nameRow);
+
+  // Served id
+  if (m.served) {
+    const served = document.createElement('div');
+    served.className = 'model-served';
+    served.textContent = m.served;
+    body.appendChild(served);
+  }
+
+  // Meta chips
+  const meta = document.createElement('div');
+  meta.className = 'model-meta';
+  if (m.rpm) meta.appendChild(mkChip(`rpm: ${m.rpm}`));
+  if (m.tpm) meta.appendChild(mkChip(`tpm: ${m.tpm}`));
+  if (m.ttl) meta.appendChild(mkChip(`ttl: ${m.ttl}`));
+  if (m.effort) meta.appendChild(mkChip(`effort: ${m.effort}`));
+  body.appendChild(meta);
+
+  // Key env row for openai-compat
+  if (m.runtime === 'openai-compat' && m.key_env) {
+    const keyRow = document.createElement('div');
+    keyRow.className = 'model-key-row';
+    const dot = document.createElement('span');
+    const present = keyPresent[m.key_env];
+    dot.className = `dot ${present ? 'dot-ok' : 'dot-err'}`;
+    dot.setAttribute('aria-hidden','true');
+    const keyLabel = document.createElement('span');
+    keyLabel.className = 'text-mono text-xs';
+    keyLabel.textContent = m.key_env;
+    const keyStatus = document.createElement('span');
+    keyStatus.className = 'text-xs';
+    keyStatus.textContent = present ? '(key set)' : '(key missing in .env)';
+    keyRow.appendChild(dot);
+    keyRow.appendChild(keyLabel);
+    keyRow.appendChild(keyStatus);
+    body.appendChild(keyRow);
+    if (m.api_base) {
+      const apiRow = document.createElement('div');
+      apiRow.className = 'model-key-row';
+      const apiLabel = document.createElement('span');
+      apiLabel.className = 'text-xs text-muted';
+      apiLabel.textContent = 'api_base: ';
+      const apiVal = document.createElement('span');
+      apiVal.className = 'text-xs text-mono word-break';
+      apiVal.textContent = m.api_base;
+      apiRow.appendChild(apiLabel);
+      apiRow.appendChild(apiVal);
+      body.appendChild(apiRow);
+    }
+  }
+
+  // Note
+  if (m.note) {
+    const note = document.createElement('div');
+    note.className = 'model-note';
+    note.textContent = m.note;
+    body.appendChild(note);
+  }
+
+  card.appendChild(body);
+
+  // Actions
+  if (!isConfigOnly) {
+    const actions = document.createElement('div');
+    actions.className = 'model-actions';
+
+    // Test button
+    if (STATE.test_enabled) {
+      const testBtn = document.createElement('button');
+      testBtn.className = 'btn btn-sm';
+      testBtn.textContent = 'Test';
+      testBtn.setAttribute('aria-label', `Test model ${m.name}`);
+      testBtn.addEventListener('click', () => testModel(m.name, testBtn));
+      actions.appendChild(testBtn);
+    }
+
+    // Edit button (6 editable fields only)
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-sm';
+    editBtn.textContent = 'Edit';
+    editBtn.setAttribute('aria-label', `Edit model ${m.name}`);
+    editBtn.addEventListener('click', () => openEditForm(m));
+    actions.appendChild(editBtn);
+
+    // Remove button
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn btn-sm btn-danger';
+    removeBtn.textContent = 'Remove';
+    removeBtn.setAttribute('aria-label', `Remove model ${m.name}`);
+    removeBtn.addEventListener('click', () => stageOp('remove', {name: m.name}));
+    actions.appendChild(removeBtn);
+
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+function mkBadge(text, cls) {
+  const b = document.createElement('span');
+  b.className = `badge ${cls}`;
+  b.textContent = text;
+  return b;
+}
+function mkChip(text) {
+  const c = document.createElement('span');
+  c.className = 'fallback-chip';
+  c.textContent = text;
+  return c;
+}
+
+// ── Test model ───────────────────────────────────────────────────────────
+async function testModel(name, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  setText(btn, 'Testing…');
+  announce(`Testing model ${name}…`);
+
+  // Remove previous result
+  const prev = btn.parentNode.querySelector('.test-result');
+  if (prev) prev.remove();
+
+  try {
+    const res = await apiFetch('/api/test', {
+      method:'POST',
+      body: JSON.stringify({model: name})
+    });
+    const data = await res.json();
+    const result = document.createElement('span');
+    result.className = `test-result ${data.ok ? 'test-ok' : 'test-err'}`;
+    if (data.ok) {
+      result.textContent = `OK ${data.latency_ms}ms`;
+      announce(`Model ${name} test passed in ${data.latency_ms}ms`);
+    } else {
+      result.textContent = `${data.status || ''} ${data.error || 'error'}`.trim();
+      announce(`Model ${name} test failed: ${data.error}`);
+    }
+    btn.parentNode.insertBefore(result, btn.nextSibling);
+  } catch(e) {
+    const result = document.createElement('span');
+    result.className = 'test-result test-err';
+    result.textContent = 'fetch error';
+    btn.parentNode.insertBefore(result, btn.nextSibling);
+    announce(`Test fetch error for ${name}`);
+  } finally {
+    btn.disabled = false;
+    setText(btn, orig);
+  }
+}
+
+// ── Fallbacks ────────────────────────────────────────────────────────────
+function renderFallbacks() {
+  fallbacksList.innerHTML = '';
+  const fallbacks = STATE.fallbacks || [];
+  if (fallbacks.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'text-muted text-sm';
+    empty.textContent = 'No fallback chains configured.';
+    fallbacksList.appendChild(empty);
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'fallback-list';
+  for (const entry of fallbacks) {
+    const [primary, targets] = Object.entries(entry)[0];
+    const item = document.createElement('div');
+    item.className = 'fallback-item';
+    const pEl = document.createElement('span');
+    pEl.className = 'fallback-primary';
+    pEl.textContent = primary;
+    item.appendChild(pEl);
+    const arrow = document.createElement('span');
+    arrow.className = 'fallback-arrow';
+    arrow.setAttribute('aria-label','falls back to');
+    arrow.textContent = '→';
+    item.appendChild(arrow);
+    const targetArr = Array.isArray(targets) ? targets : [targets];
+    targetArr.forEach((t, i) => {
+      const chip = mkChip(t);
+      item.appendChild(chip);
+      if (i < targetArr.length - 1) {
+        const sep = document.createElement('span');
+        sep.className = 'fallback-arrow';
+        sep.setAttribute('aria-hidden','true');
+        sep.textContent = '›';
+        item.appendChild(sep);
+      }
+    });
+    list.appendChild(item);
+  }
+  fallbacksList.appendChild(list);
+}
+
+// ── Agents ───────────────────────────────────────────────────────────────
+function renderAgents() {
+  agentsTbody.innerHTML = '';
+  const assignments = STATE.assignments || {};
+  const parked      = STATE.parked || {};
+  const kinds       = STATE.kinds || {};
+  const models      = STATE.models || {};
+  const modelNames  = Object.keys(models);
+
+  const agentNames = Object.keys({...assignments, ...kinds});
+  setText(agentsCount, agentNames.length);
+
+  for (const agent of agentNames) {
+    const assignedModel = assignments[agent];
+    const isParked = !!parked[agent];
+    const kind = kinds[agent] || {};
+
+    const tr = document.createElement('tr');
+
+    // Agent name
+    const tdName = document.createElement('td');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'agent-name';
+    nameSpan.textContent = agent;
+    tdName.appendChild(nameSpan);
+    tr.appendChild(tdName);
+
+    // Kind / profile
+    const tdKind = document.createElement('td');
+    tdKind.className = 'agent-kind text-xs text-muted';
+    const parts = [];
+    if (kind.kind) parts.push(kind.kind);
+    if (kind.profile) parts.push(kind.profile);
+    tdKind.textContent = parts.join(' / ') || '—';
+    tr.appendChild(tdKind);
+
+    // Model select
+    const tdModel = document.createElement('td');
+    const sel = document.createElement('select');
+    sel.className = 'model-select';
+    sel.setAttribute('aria-label', `Model for ${agent}`);
+    // Only show agent-assignable models (not openrouter config-only)
+    const orRouteNames = new Set((STATE.openrouter_routes||[]).map(r=>r.name));
+    const assignableModels = modelNames.filter(n => !orRouteNames.has(n));
+    assignableModels.forEach(mn => {
+      const opt = document.createElement('option');
+      opt.value = mn;
+      opt.textContent = mn;
+      if (mn === assignedModel) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (!assignedModel) {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '(default)';
+      empty.selected = true;
+      sel.prepend(empty);
+    }
+    sel.disabled = STATE.read_only;
+    sel.addEventListener('change', () => {
+      stageOp('assign', {agent, model: sel.value});
+    });
+    tdModel.appendChild(sel);
+    tr.appendChild(tdModel);
+
+    // State badge
+    const tdState = document.createElement('td');
+    let stateBadge;
+    if (isParked) {
+      stateBadge = mkBadge('PARKED','badge-warn');
+    } else if (assignedModel) {
+      stateBadge = mkBadge('ASSIGNED','badge-ok');
+    } else {
+      stateBadge = mkBadge('DEFAULT','badge-muted');
+    }
+    tdState.appendChild(stateBadge);
+    tr.appendChild(tdState);
+
+    // Actions
+    const tdActions = document.createElement('td');
+    const parkBtn = document.createElement('button');
+    parkBtn.className = `btn btn-sm ${isParked ? '' : 'btn-danger'}`;
+    parkBtn.textContent = isParked ? 'Unpark' : 'Park';
+    parkBtn.setAttribute('aria-label', `${isParked ? 'Unpark' : 'Park'} agent ${agent}`);
+    parkBtn.disabled = STATE.read_only;
+    parkBtn.addEventListener('click', () => {
+      stageOp(isParked ? 'unpark' : 'park', {agent});
+    });
+    tdActions.appendChild(parkBtn);
+    tr.appendChild(tdActions);
+
+    agentsTbody.appendChild(tr);
+  }
+}
+
+// ── Embeddings ───────────────────────────────────────────────────────────
+function renderEmbeddings() {
+  const embeddings = STATE.embeddings || {};
+  const embAssign  = STATE.embedding_assignments || {};
+  const names = Object.keys(embeddings);
+  if (names.length === 0) {
+    embeddingsSection.classList.add('hidden');
+    return;
+  }
+  embeddingsSection.classList.remove('hidden');
+  embeddingsTbody.innerHTML = '';
+  for (const name of names) {
+    const m = embeddings[name];
+    const assignedTo = Object.entries(embAssign)
+      .filter(([,v]) => v === name).map(([k]) => k);
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td');
+    tdName.className = 'text-mono text-sm';
+    tdName.textContent = name;
+    tr.appendChild(tdName);
+    const tdAssign = document.createElement('td');
+    tdAssign.textContent = assignedTo.length ? assignedTo.join(', ') : '—';
+    tdAssign.className = 'text-xs';
+    tr.appendChild(tdAssign);
+    const tdDetail = document.createElement('td');
+    tdDetail.className = 'text-xs text-muted';
+    const parts = [];
+    if (m.runtime) parts.push(`runtime: ${m.runtime}`);
+    if (m.served) parts.push(`served: ${m.served}`);
+    if (m.api_base) parts.push(`api_base: ${m.api_base}`);
+    tdDetail.textContent = parts.join(' · ') || '—';
+    tr.appendChild(tdDetail);
+    embeddingsTbody.appendChild(tr);
+  }
+}
+
+// ── Stage op ─────────────────────────────────────────────────────────────
+async function stageOp(op, args) {
+  announce(`Staging ${op}…`);
+  stageError.classList.add('hidden');
+  try {
+    const res = await apiFetch('/api/stage', {
+      method:'POST',
+      body: JSON.stringify({op, args})
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      showStageError(data.error || `HTTP ${res.status}`);
+      return;
+    }
+    STAGED = data;
+    STAGED_OP = {op, args};
+    renderDrawer(data, op, args);
+    openDrawer();
+    announce(`Staged ${op} — review diff in the drawer.`);
+  } catch(e) {
+    showStageError(`Network error: ${e.message}`);
+  }
+}
+
+function showStageError(msg) {
+  stageError.textContent = msg;
+  stageError.classList.remove('hidden');
+  drawerEmpty.classList.add('hidden');
+  drawerContent.classList.remove('hidden');
+  openDrawer();
+  announce(`Stage error: ${msg}`);
+}
+
+// ── Render drawer ────────────────────────────────────────────────────────
+function renderDrawer(data, op, args) {
+  drawerEmpty.classList.add('hidden');
+  drawerContent.classList.remove('hidden');
+  stageError.classList.add('hidden');
+
+  // Op label
+  const opLabels = {
+    assign:'Assign', park:'Park', unpark:'Unpark',
+    edit:'Edit', remove:'Remove', add:'Add'
+  };
+  setText(stageOpLabel, `${opLabels[op] || op}: ${args.name || args.agent || ''}`);
+
+  // Recreate warning
+  if (data.needs_recreate) {
+    recreateWarn.classList.remove('hidden');
+    setText(recreateReason, data.recreate_reason || '');
+  } else {
+    recreateWarn.classList.add('hidden');
+  }
+
+  const hasMdiff  = data.models_diff  && data.models_diff.trim();
+  const hasCdiff  = data.config_diff  && data.config_diff.trim();
+
+  if (!hasMdiff && !hasCdiff) {
+    noChangesMsg.classList.remove('hidden');
+    modelsDiffBlock.classList.add('hidden');
+    configDiffBlock.classList.add('hidden');
+  } else {
+    noChangesMsg.classList.add('hidden');
+    // models diff
+    if (hasMdiff) {
+      modelsDiffBlock.classList.remove('hidden');
+      renderDiff(modelsDiffPre, data.models_diff);
+    } else {
+      modelsDiffBlock.classList.add('hidden');
+    }
+    // config diff
+    if (hasCdiff) {
+      configDiffBlock.classList.remove('hidden');
+      if (data.config_is_render_plan) {
+        setText(configDiffLabel, 'config.yaml will be re-rendered by sync to register:');
+      } else {
+        setText(configDiffLabel, 'config.yaml diff (secondary)');
+      }
+      renderDiff(configDiffPre, data.config_diff);
+    } else {
+      configDiffBlock.classList.add('hidden');
+    }
+  }
+
+  // CLI output
+  if (data.cli_output) {
+    // Show as a collapsible item if non-empty
+    let cliBlock = $('cli-output-block');
+    if (!cliBlock) {
+      cliBlock = document.createElement('details');
+      cliBlock.id = 'cli-output-block';
+      cliBlock.className = 'diff-block';
+      const summary = document.createElement('summary');
+      summary.className = 'diff-label';
+      summary.style.cursor = 'pointer';
+      summary.textContent = 'CLI output';
+      cliBlock.appendChild(summary);
+      const pre = document.createElement('pre');
+      pre.className = 'diff-pre';
+      pre.id = 'cli-output-pre';
+      cliBlock.appendChild(pre);
+      drawerContent.appendChild(cliBlock);
+    }
+    setText($('cli-output-pre'), data.cli_output);
+  } else {
+    const cliBlock = $('cli-output-block');
+    if (cliBlock) cliBlock.remove();
+  }
+
+  // Enable apply/discard
+  discardBtn.disabled = false;
+  applyBtn.disabled = STATE.read_only;
+}
+
+// ── Diff colorizer ───────────────────────────────────────────────────────
+function renderDiff(pre, diffText) {
+  pre.innerHTML = '';
+  if (!diffText) return;
+  const lines = diffText.split('\n');
+  lines.forEach((line, i) => {
+    const span = document.createElement('span');
+    span.textContent = line + (i < lines.length - 1 ? '\n' : '');
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      span.className = 'diff-add';
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      span.className = 'diff-del';
+    } else if (line.startsWith('@@')) {
+      span.className = 'diff-hunk';
+    } else if (line.startsWith('---') || line.startsWith('+++')) {
+      span.className = 'diff-hunk';
+    } else {
+      span.className = 'diff-ctx';
+    }
+    pre.appendChild(span);
+  });
+}
+
+// ── Apply op ─────────────────────────────────────────────────────────────
+async function applyOp(confirmRecreate=false) {
+  if (!STAGED_OP) return;
+  applyBtn.disabled = true;
+  setText(applyBtn, 'Applying…');
+  announce('Applying…');
+  try {
+    const res = await apiFetch('/api/apply', {
+      method:'POST',
+      body: JSON.stringify({...STAGED_OP, confirm_recreate: confirmRecreate})
+    });
+    const data = await res.json();
+    if (res.status === 409 && data.needs_confirm) {
+      // Show recreate modal
+      setText(modalBody, `This will recreate the LiteLLM container (brief downtime for the whole fleet).\n\n${data.reason || ''}`);
+      openModal(() => applyOp(true));
+      applyBtn.disabled = false;
+      setText(applyBtn, 'Apply');
+      return;
+    }
+    if (res.status === 403) {
+      toast('Read-only mode — apply not permitted.', 'err');
+      applyBtn.disabled = false;
+      setText(applyBtn, 'Apply');
+      return;
+    }
+    if (!res.ok || !data.ok) {
+      toast(`Apply failed: ${data.error || res.status}`, 'err');
+      applyBtn.disabled = false;
+      setText(applyBtn, 'Apply');
+      return;
+    }
+    // Success
+    let msg = 'Applied successfully.';
+    if (data.backups && data.backups.length) {
+      msg += ` Backups: ${data.backups.join(', ')}`;
+    }
+    toast(msg, 'ok', 7000);
+    announce(msg);
+    clearDrawer();
+    await loadState();
+  } catch(e) {
+    toast(`Apply error: ${e.message}`, 'err');
+    applyBtn.disabled = false;
+    setText(applyBtn, 'Apply');
+  }
+}
+
+// ── Drawer management ────────────────────────────────────────────────────
+function openDrawer() {
+  drawer.classList.remove('collapsed');
+  drawerToggleBtn.setAttribute('aria-expanded','true');
+}
+function closeDrawer() {
+  drawer.classList.add('collapsed');
+  drawerToggleBtn.setAttribute('aria-expanded','false');
+}
+function clearDrawer() {
+  STAGED = null;
+  STAGED_OP = null;
+  drawerEmpty.classList.remove('hidden');
+  drawerContent.classList.add('hidden');
+  discardBtn.disabled = true;
+  applyBtn.disabled = true;
+  setText(applyBtn, 'Apply');
+  const cliBlock = $('cli-output-block');
+  if (cliBlock) cliBlock.remove();
+}
+
+drawerToggleBtn.addEventListener('click', () => {
+  if (drawer.classList.contains('collapsed')) openDrawer();
+  else closeDrawer();
+});
+drawerCloseBtn.addEventListener('click', closeDrawer);
+discardBtn.addEventListener('click', () => { clearDrawer(); announce('Staged change discarded.'); });
+applyBtn.addEventListener('click', () => applyOp(false));
+
+// ── Modal ────────────────────────────────────────────────────────────────
+let modalConfirmCb = null;
+function openModal(onConfirm) {
+  modalConfirmCb = onConfirm;
+  modalOverlay.classList.add('open');
+  modalOverlay.removeAttribute('aria-hidden');
+  modalConfirm.focus();
+}
+function closeModal() {
+  modalOverlay.classList.remove('open');
+  modalOverlay.setAttribute('aria-hidden','true');
+  modalConfirmCb = null;
+}
+modalCancel.addEventListener('click', closeModal);
+modalConfirm.addEventListener('click', () => {
+  closeModal();
+  if (modalConfirmCb) modalConfirmCb();
+});
+modalOverlay.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Form (Add / Edit) ────────────────────────────────────────────────────
+let formMode = null;   // 'add' | 'edit'
+let formModel = null;  // model object for edit
+
+function openAddForm() {
+  formMode = 'add';
+  formModel = null;
+  setText(formTitle, 'Add Model');
+  renderAddForm();
+  openFormPane();
+}
+
+function openEditForm(m) {
+  formMode = 'edit';
+  formModel = m;
+  setText(formTitle, `Edit: ${m.name}`);
+  renderEditForm(m);
+  openFormPane();
+}
+
+function openFormPane() {
+  formPane.classList.add('open');
+  formPane.removeAttribute('aria-hidden');
+  const first = formBody.querySelector('input,select,button');
+  if (first) first.focus();
+}
+
+function closeFormPane() {
+  formPane.classList.remove('open');
+  formPane.setAttribute('aria-hidden','true');
+}
+
+$('add-model-btn').addEventListener('click', openAddForm);
+$('form-close-btn').addEventListener('click', closeFormPane);
+$('form-cancel-btn').addEventListener('click', closeFormPane);
+formPane.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeFormPane();
+});
+
+$('form-submit-btn').addEventListener('click', async () => {
+  if (formMode === 'add') await submitAddForm();
+  else if (formMode === 'edit') await submitEditForm();
+});
+
+// ── Add form ─────────────────────────────────────────────────────────────
+const ADD_RUNTIMES = ['ollama','lmstudio','openai-compat','openrouter'];
+let addRuntime = 'ollama';
+
+function renderAddForm() {
+  formBody.innerHTML = '';
+
+  // Runtime tabs
+  const tabRow = document.createElement('div');
+  tabRow.className = 'runtime-tabs';
+  tabRow.setAttribute('role','tablist');
+  tabRow.setAttribute('aria-label','Runtime');
+  ADD_RUNTIMES.forEach(rt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `rtab${rt === addRuntime ? ' active' : ''}`;
+    btn.textContent = rt;
+    btn.setAttribute('role','tab');
+    btn.setAttribute('aria-selected', rt === addRuntime ? 'true' : 'false');
+    btn.setAttribute('aria-controls','add-form-fields');
+    btn.addEventListener('click', () => {
+      addRuntime = rt;
+      tabRow.querySelectorAll('.rtab').forEach(b => {
+        b.classList.toggle('active', b.textContent === rt);
+        b.setAttribute('aria-selected', b.textContent === rt ? 'true' : 'false');
+      });
+      renderAddFields();
+    });
+    tabRow.appendChild(btn);
+  });
+  formBody.appendChild(tabRow);
+
+  const fieldsWrap = document.createElement('div');
+  fieldsWrap.id = 'add-form-fields';
+  fieldsWrap.setAttribute('role','tabpanel');
+  formBody.appendChild(fieldsWrap);
+
+  renderAddFields();
+}
+
+function renderAddFields() {
+  const wrap = $('add-form-fields');
+  wrap.innerHTML = '';
+
+  // All runtimes: name
+  if (addRuntime !== 'ollama' || true) { // always show name
+    const nameField = buildField('name', 'Alias / Name', 'text', '', 'e.g. local-qwen3 (leave empty to auto-derive)');
+    wrap.appendChild(nameField);
+  }
+
+  if (addRuntime === 'ollama') {
+    wrap.appendChild(buildField('served', 'Ollama model id *', 'text', '', 'e.g. qwen3:8b'));
+    wrap.appendChild(buildBoolField('big', 'big (heavy model flag)'));
+  } else if (addRuntime === 'lmstudio') {
+    wrap.appendChild(buildField('slug', 'LM Studio slug *', 'text', '', 'e.g. some-lms-slug'));
+  } else if (addRuntime === 'openai-compat') {
+    wrap.appendChild(buildField('served', 'Model id *', 'text', '', 'e.g. provider-model-id'));
+    wrap.appendChild(buildField('api_base', 'API base *', 'text', '', 'e.g. https://api.example.com/v1'));
+    wrap.appendChild(buildField('key_env', 'Key env var *', 'text', '', 'e.g. FOO_API_KEY'));
+    const rpmTpm = document.createElement('div');
+    rpmTpm.className = 'field-row';
+    rpmTpm.appendChild(buildField('rpm', 'rpm', 'number', '', 'optional'));
+    rpmTpm.appendChild(buildField('tpm', 'tpm', 'number', '', 'optional'));
+    wrap.appendChild(rpmTpm);
+  } else if (addRuntime === 'openrouter') {
+    wrap.appendChild(buildField('served', 'OpenRouter model path *', 'text', '', 'e.g. anthropic/claude-opus-4'));
+  }
+}
+
+async function submitAddForm() {
+  const wrap = $('add-form-fields');
+  const args = {runtime: addRuntime};
+
+  const nameVal = getFieldVal(wrap, 'name');
+  if (nameVal) args.name = nameVal;
+
+  if (addRuntime === 'ollama') {
+    const served = getFieldVal(wrap, 'served');
+    if (!served) { toast('served field is required', 'err'); return; }
+    args.served = served;
+    args.big = !!wrap.querySelector('#field-big')?.checked;
+  } else if (addRuntime === 'lmstudio') {
+    const slug = getFieldVal(wrap, 'slug');
+    if (!slug) { toast('slug field is required', 'err'); return; }
+    args.slug = slug;
+  } else if (addRuntime === 'openai-compat') {
+    const served  = getFieldVal(wrap, 'served');
+    const apiBase = getFieldVal(wrap, 'api_base');
+    const keyEnv  = getFieldVal(wrap, 'key_env');
+    if (!served||!apiBase||!keyEnv) { toast('served, api_base, and key_env are required', 'err'); return; }
+    args.served   = served;
+    args.api_base = apiBase;
+    args.key_env  = keyEnv;
+    const rpm = getFieldVal(wrap, 'rpm');
+    const tpm = getFieldVal(wrap, 'tpm');
+    if (rpm) args.rpm = Number(rpm);
+    if (tpm) args.tpm = Number(tpm);
+  } else if (addRuntime === 'openrouter') {
+    const served = getFieldVal(wrap, 'served');
+    if (!served) { toast('served field is required', 'err'); return; }
+    args.served = served;
+  }
+
+  closeFormPane();
+  await stageOp('add', args);
+}
+
+// ── Edit form ─────────────────────────────────────────────────────────────
+const EDITABLE_FIELDS = ['rpm','tpm','ttl','big','effort','note'];
+
+function renderEditForm(m) {
+  formBody.innerHTML = '';
+
+  const info = mkEl('p', {className:'text-xs text-muted'}, `Only these 6 fields are editable: ${EDITABLE_FIELDS.join(', ')}.`);
+  formBody.appendChild(info);
+
+  // show field select + value input
+  const fieldSelect = document.createElement('div');
+  fieldSelect.className = 'field';
+  const fieldLabel = mkEl('label', {}, 'Field to edit');
+  fieldLabel.setAttribute('for','edit-field-select');
+  const sel = document.createElement('select');
+  sel.id = 'edit-field-select';
+  sel.className = 'text-sm';
+  EDITABLE_FIELDS.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.textContent = f;
+    sel.appendChild(opt);
+  });
+  fieldSelect.appendChild(fieldLabel);
+  fieldSelect.appendChild(sel);
+  formBody.appendChild(fieldSelect);
+
+  const valWrap = document.createElement('div');
+  valWrap.id = 'edit-val-wrap';
+  formBody.appendChild(valWrap);
+
+  function renderValInput() {
+    valWrap.innerHTML = '';
+    const f = sel.value;
+    if (f === 'big') {
+      valWrap.appendChild(buildBoolField('edit-value', 'big', m.big));
+    } else {
+      const curVal = m[f] != null ? String(m[f]) : '';
+      const type = (f === 'rpm' || f === 'tpm') ? 'number' : 'text';
+      valWrap.appendChild(buildField('edit-value', `Value (current: ${curVal || 'unset'})`, type, curVal));
+    }
+  }
+  renderValInput();
+  sel.addEventListener('change', renderValInput);
+}
+
+async function submitEditForm() {
+  if (!formModel) return;
+  const sel = $('edit-field-select');
+  const field = sel.value;
+  let value;
+  if (field === 'big') {
+    value = !!$('field-edit-value')?.checked;
+  } else {
+    value = getFieldVal(formBody, 'edit-value');
+  }
+  closeFormPane();
+  await stageOp('edit', {name: formModel.name, field, value: String(value)});
+}
+
+// ── Form helpers ──────────────────────────────────────────────────────────
+function buildField(name, label, type='text', value='', hint='') {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  const lbl = document.createElement('label');
+  lbl.setAttribute('for', `field-${name}`);
+  lbl.textContent = label;
+  wrap.appendChild(lbl);
+  const inp = document.createElement('input');
+  inp.type = type;
+  inp.id = `field-${name}`;
+  inp.name = name;
+  if (value) inp.value = value;
+  if (type === 'number') inp.min = '0';
+  wrap.appendChild(inp);
+  if (hint) {
+    const h = document.createElement('span');
+    h.className = 'hint';
+    h.textContent = hint;
+    wrap.appendChild(h);
+  }
+  return wrap;
+}
+
+function buildBoolField(name, label, checked=false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  wrap.style.flexDirection = 'row';
+  wrap.style.alignItems = 'center';
+  const inp = document.createElement('input');
+  inp.type = 'checkbox';
+  inp.className = 'check';
+  inp.id = `field-${name}`;
+  inp.name = name;
+  inp.checked = !!checked;
+  const lbl = document.createElement('label');
+  lbl.setAttribute('for', `field-${name}`);
+  lbl.textContent = label;
+  lbl.style.marginLeft = '6px';
+  wrap.appendChild(inp);
+  wrap.appendChild(lbl);
+  return wrap;
+}
+
+function getFieldVal(wrap, name) {
+  const el = wrap.querySelector(`#field-${name}`) || wrap.querySelector(`[name="${name}"]`);
+  return el ? el.value.trim() : '';
+}
+
+// ── Keyboard: trap focus in modals ───────────────────────────────────────
+function trapFocus(el, e) {
+  const focusable = el.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])');
+  const first = focusable[0];
+  const last  = focusable[focusable.length - 1];
+  if (e.key !== 'Tab') return;
+  if (e.shiftKey) {
+    if (document.activeElement === first) { last.focus(); e.preventDefault(); }
+  } else {
+    if (document.activeElement === last) { first.focus(); e.preventDefault(); }
+  }
+}
+modalOverlay.addEventListener('keydown', e => trapFocus(modalOverlay, e));
+formPane.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeFormPane(); return; }
+  trapFocus(formPane, e);
+});
+
+// ── Refresh ───────────────────────────────────────────────────────────────
+$('refresh-btn').addEventListener('click', async () => {
+  announce('Refreshing…');
+  await loadState();
+  toast('State refreshed.', 'info', 3000);
+});
+$('error-retry-btn').addEventListener('click', loadState);
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadState();
+</script>
+</body>
+</html>
