@@ -200,6 +200,10 @@ ai-stack-installer — usage:
                                           vz-ai-stack.sh install docs_ingestor    (a 'status' service name → its phase)
     vz-ai-stack.sh install [all] --dry-run  preview ONLY: host-deps status + the ordered
                                           phases (done vs would-run). Changes nothing. (alias --plan)
+    vz-ai-stack.sh install all --include-optionals
+                                          ALSO install every opt-in phase (all phases minus core)
+                                          after the core run — best-effort: a failing optional
+                                          warns + continues. (alias --with-optionals)
     vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
     vz-ai-stack.sh test <phase|service>     run smoke tests for one phase (id, name, or a
                                           service name → its owning phase's smoke)
@@ -287,7 +291,7 @@ ai-stack-installer — usage:
 
 Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 26
-  opt-in extras (not in `install all`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork · 30 understand · 32 metagpt · 33 agentscope · 34 oasis · 35 chatdev · 36 aitown
+  opt-in extras (not in `install all` — add them all with `install all --include-optionals`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork · 30 understand · 31 ingress · 32 metagpt · 33 agentscope · 34 oasis · 35 chatdev · 36 aitown
 
 Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
   e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model   ·   vz-ai-stack.sh help embedding
@@ -462,22 +466,50 @@ install_all_phase_order() {
   echo "00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h 26"
 }
 
+# install_all_optional_phase_order — the OPT-IN phases, computed dynamically as
+# (every phase file) MINUS (install_all_phase_order). Drift-proof: a new phase file
+# is automatically opt-in until it's added to the core order above, and this never
+# goes stale the way a hardcoded list does (the old enumerations even disagreed —
+# one listed `23 skillspector` but dropped `31 ingress`). Emitted in phase-id order
+# (the *.sh glob is already lexically sorted, which equals numeric order for the
+# 21-36 opt-in range). Run only by `install all --include-optionals`. This function is the
+# runtime SOURCE OF TRUTH; the at-a-glance opt-in id list in cmd_help's usage heredoc is a
+# hand-maintained convenience copy — keep it in sync when adding a phase (or rely on the
+# dynamic `vz-ai-stack.sh phases`).
+install_all_optional_phase_order() {
+  local core=" $(install_all_phase_order) " out="" f id
+  for f in "$AI_STACK"/installer/phases/*.sh; do
+    id="$(basename "$f" .sh)"; id="${id%%_*}"
+    [[ "$core" == *" $id "* ]] || out+="$id "
+  done
+  echo "${out% }"
+}
+
 cmd_install() {
-  local dry=0 target="" a
+  local dry=0 opt=0 target="" a
   for a in "$@"; do
     case "$a" in
       --dry-run|--plan|-n) dry=1 ;;
+      --include-optionals|--with-optionals) opt=1 ;;
       --) ;;
-      -*) err "unknown install flag: $a (try --dry-run)"; exit 2 ;;
+      -*) err "unknown install flag: $a (try --dry-run / --include-optionals)"; exit 2 ;;
       *) if [[ -z "$target" ]]; then target="$a"; else err "unexpected extra argument: $a"; exit 2; fi ;;
     esac
   done
   target="${target:-all}"
 
+  # --include-optionals only EXTENDS `install all` (it appends the opt-in phases after
+  # the core run). On a single-phase target it's meaningless — reject it with a clear
+  # pointer rather than silently ignoring the flag.
+  if (( opt )) && [[ "$target" != "all" ]]; then
+    err "--include-optionals only EXTENDS 'install all' (it appends every opt-in phase after the core run) — it has no meaning with a single target ('$target'). To install just this opt-in phase:  bash $0 install $target .  To run the core stack + all opt-ins:  bash $0 install all --include-optionals"
+    exit 2
+  fi
+
   # --dry-run / --plan: preview ONLY — makes no changes, installs nothing, never
   # calls preflight (which would bootstrap deps) or takes the lock.
   if (( dry )); then
-    install_plan "$target"
+    install_plan "$target" "$opt"
     return $?
   fi
 
@@ -535,6 +567,33 @@ cmd_install() {
         exit 1
       }
     done
+    # --include-optionals: after EVERY core phase succeeds, install the opt-in extras
+    # too. BEST-EFFORT — a failing optional (a missing host dep like the LM Studio app,
+    # a heavy sim build, etc.) WARNs and continues instead of aborting, so one optional
+    # can't undo a green core install or block the others. Runs BEFORE bootstrap_run_all
+    # so the final doctor covers them. Each opt-in is idempotent (run_phase re-checks its
+    # stamp). NOT gated on NO_PROMPT — the opt-ins are part of the requested install.
+    if (( opt )); then
+      local -a optphases=() optfail=()
+      local optp
+      optphases=( $(install_all_optional_phase_order) )
+      hdr "Opt-in extras (--include-optionals) — best-effort"
+      # Set expectations BEFORE the loop: this is many phases and some are heavy. Not a Y/n
+      # gate — the user explicitly asked for it ("force") — just a clear signal + a Ctrl-C
+      # window + the --dry-run pointer, so an --include-optionals run is never a surprise.
+      warn "Installing ${#optphases[@]} OPT-IN phase(s) after the core stack — some are HEAVY (the 5 agent-sims 32-36 build venvs/containers; 36 aitown is a Convex/Node image build of ~GBs + minutes; 27 sourcegraph is a large Docker pull)."
+      warn "Host-dep caveats: 25 lmstudio needs the LM Studio app; 31 ingress needs 'sudo $0 prepare-sudo' (lo0 alias). A failing optional just warns + continues — the core install is already complete."
+      warn "Ctrl-C now to abort, or preview first:  $0 install all --include-optionals --dry-run"
+      note "Opt-in phases: ${optphases[*]}"
+      for optp in "${optphases[@]}"; do
+        run_phase "$optp" || { warn "opt-in phase $optp did not complete — continuing (retry alone: bash $0 install $optp)"; optfail+=("$optp"); }
+      done
+      if (( ${#optfail[@]} )); then
+        warn "opt-in phases that did NOT complete: ${optfail[*]} (the core install is unaffected; install each directly once its host deps are ready)"
+      else
+        ok "all ${#optphases[@]} opt-in phase(s) installed"
+      fi
+    fi
     # Interactive remediation: adopt foreign containers, recreate honcho on the
     # new network if drifted, prompt for Phoenix API key, drain restart queue,
     # run final doctor. Each step prompts Y/n; conservative-mode contract is
@@ -559,34 +618,49 @@ phase_name_for() {
 # status + each phase's done/pending state (from its stamp file). Changes NOTHING,
 # installs nothing, starts nothing. This is the `--dry-run` / `--plan` path.
 install_plan() {
-  local target="$1"
-  hdr "install $target — DRY RUN (preview only; nothing is installed, started, or changed)"
+  local target="$1" opt="${2:-0}" lbl
+  lbl="$target"; (( opt )) && lbl="$target --include-optionals"
+  hdr "install $lbl — DRY RUN (preview only; nothing is installed, started, or changed)"
 
   note "Host dependencies (read-only check):"
   deps_report --check || true   # informational; a missing dep does NOT abort a plan
   echo
 
-  local -a phases
+  local -a phases optphases=()
+  local optids=""
   if [[ "$target" == "all" ]]; then
     phases=( $(install_all_phase_order) )
+    optids="$(install_all_optional_phase_order)"   # computed ONCE; reused by the preview + the footer note
+    (( opt )) && optphases=( $optids )
   else
     local script b
     script="$(resolve_phase_script "$target")" || { err "no phase matches '$target'"; return 2; }
     b="$(basename "$script" .sh)"; phases=( "${b%%_*}" )
   fi
 
-  note "Phases that 'install $target' would run, in order (✓ already complete · • would run):"
+  note "Phases that 'install $lbl' would run, in order (✓ already complete · • would run):"
+  # __install_plan_row prints one ✓/• row and bumps the caller's done/todo (bash dynamic scope).
   local p done=0 todo=0
-  for p in "${phases[@]}"; do
-    if stamp_check "$p" 2>/dev/null; then
-      printf '  ✓ %-4s %s\n' "$p" "$(phase_name_for "$p")"; done=$((done+1))
+  __install_plan_row() {
+    if stamp_check "$1" 2>/dev/null; then
+      printf '  ✓ %-4s %s\n' "$1" "$(phase_name_for "$1")"; done=$((done+1))
     else
-      printf '  • %-4s %s\n' "$p" "$(phase_name_for "$p")"; todo=$((todo+1))
+      printf '  • %-4s %s\n' "$1" "$(phase_name_for "$1")"; todo=$((todo+1))
     fi
-  done
+  }
+  for p in "${phases[@]}"; do __install_plan_row "$p"; done
+  if (( ${#optphases[@]} )); then
+    note "  — then opt-in extras (--include-optionals; best-effort, a failure warns + continues) —"
+    for p in "${optphases[@]}"; do __install_plan_row "$p"; done
+  fi
+  unset -f __install_plan_row
   echo
-  [[ "$target" == "all" ]] && note "(Opt-in extras 21–25 · 27 · 28 · 29 · 30 · 32 · 33 · 34 · 35 · 36 — portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · agentscope · oasis · chatdev · aitown — are NOT in 'install all'; install them by name.)"
-  ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
+  if (( opt )); then
+    ok "plan: ${todo} phase(s) would run (core + opt-in), ${done} already complete — no changes made"
+  else
+    [[ "$target" == "all" ]] && note "(Opt-in extras are NOT in 'install all': ${optids}. Run '$0 phases' for their names. Add them all with 'install all --include-optionals', or install one by name.)"
+    ok "plan: ${todo} phase(s) would run, ${done} already complete — no changes made"
+  fi
   return 0
 }
 

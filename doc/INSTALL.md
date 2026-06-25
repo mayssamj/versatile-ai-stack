@@ -108,6 +108,12 @@ bash vz-ai-stack.sh verify
 # every phase ✓already-complete vs •would-run and changes nothing.
 bash vz-ai-stack.sh install all
 
+# Optional — ALSO install every opt-in extra (the 5 agent-sims, sourcegraph, aionui,
+# openwork, understand, ingress, lmstudio, …) in one shot. Best-effort + heavy (some
+# need host deps / large builds); a failing optional warns + continues. Preview with
+# `install all --include-optionals --dry-run` first:
+#   bash vz-ai-stack.sh install all --include-optionals   # alias: --with-optionals
+
 # Step 6 — verify everything is healthy. Expect 65/65.
 bash vz-ai-stack.sh doctor
 ```
