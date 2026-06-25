@@ -56,6 +56,7 @@ __pycache__/
 /metagpt/
 /agentscope/
 /oasis/
+/concordia/
 # ChatDev (Phase 35, opt-in) — install-generated clone + repo/.env + the Dockerfile
 # (Phase 35 re-writes chatdev/Dockerfile via heredoc each install — generated, not a
 # tracked seed; tracking it dirtied the file on every install).
@@ -68,6 +69,7 @@ __pycache__/
 /bin/metagpt
 /bin/agentscope
 /bin/oasis
+/bin/concordia
 /sourcegraph-local.bak-*.tgz
 /traces/
 /installer/state/
