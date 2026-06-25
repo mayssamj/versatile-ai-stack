@@ -22,6 +22,10 @@ Env:
                   web-UI service so the page can open it). Any other value / unset
                   disables it AND the route is not handled at all (transport-layer
                   404). Set only by `tutorial-serve --launch-enabled` (default OFF).
+  TUT_PHOENIX     phoenix UI base URL (e.g. http://phoenix:6006). Empty -> the
+                  read-only GET /api/traces demo degrades to {available:false}.
+  TUT_PHOENIX_KEY optional Phoenix API key (auth is OFF in this build; passed
+                  server-side only if set — the browser never sees it).
 """
 import json, os, posixpath, socket, subprocess, sys, threading
 import urllib.parse, urllib.request, urllib.error
@@ -50,6 +54,10 @@ EMBED    = os.environ.get("TUT_EMBED", "")   # embedding model id for the /api/e
 # workspace / collection / host, so neither is an SSRF or namespace-traversal sink.
 HONCHO   = os.environ.get("TUT_HONCHO", "").rstrip("/")   # honcho-api base for the memory demo
 QDRANT   = os.environ.get("TUT_QDRANT", "").rstrip("/")   # qdrant base for the docs-search demo
+PHOENIX  = os.environ.get("TUT_PHOENIX", "").rstrip("/")  # phoenix UI base for the read-only traces demo
+# Phoenix auth is OFF in this build (loopback-only, PHOENIX_ENABLE_AUTH=false). If a key IS set we
+# pass it through server-side so an auth-on box still works; the browser never sees it.
+PHOENIX_KEY = os.environ.get("TUT_PHOENIX_KEY", "")
 
 # The page's canonical served path = its location under the repo root, so the
 # relative links inside it (EXPLORE.html, ../README.md, …) resolve correctly.
@@ -92,6 +100,47 @@ HONCHO_WS, HONCHO_SID, HONCHO_PEER = "tutorial", "session-1", "mayssam"
 # qdrant body is never surfaced, which would leak internal schema/shard topology).
 DOCS_COLL, DOCS_TOP_K = "ai-stack-docs", 5
 DOCS_INGEST_CMD = "vz-ai-stack.sh install docs_ingestor"
+
+# --- read-only Phoenix traces demo (FIXED server-side literals) -----------------
+# The traces demo GETs Phoenix's documented read-only spans API at a FIXED path:
+#   GET {PHOENIX}/v1/spans?project=<PHOENIX_PROJECT>&start=<now-1h ISO8601>
+# (services.yml documents exactly this query.) The browser supplies NOTHING — project,
+# window, and limit are all server-side literals, so there is no SSRF / filter-injection
+# sink. Phoenix shapes vary across versions, so the handler tries the documented path and
+# degrades to {available:false} on any non-200 / unreachable / unparseable response —
+# never a 500 and never a raw upstream body (which could leak span/schema internals).
+PHOENIX_PROJECT, PHOENIX_WINDOW_S, PHOENIX_TOP_N = "ai-stack", 3600, 12
+
+# --- soft, in-process rate limits (per-process sliding window) -------------------
+# Loopback-bound + ephemeral-key already bound the blast radius; these add a cheap
+# anti-runaway-loop guard for the budget-consuming / backend-reaching POST routes.
+# Per-route deque of recent request monotonic timestamps; on exceed -> HTTP 429.
+import collections, time as _time
+RATE_LIMITS = {            # route path -> (max requests, window seconds)
+    "/api/embed":        (10, 60),
+    "/api/honcho/demo":  (2, 60),
+    "/api/docs/search":  (3, 60),
+}
+_rate_hits = {p: collections.deque() for p in RATE_LIMITS}
+_rate_lock = threading.Lock()
+
+
+def _rate_ok(path):
+    """True if a request to `path` is within its sliding-window budget (and records it).
+    Routes without a configured limit are always allowed. Per-process, best-effort."""
+    lim = RATE_LIMITS.get(path)
+    if not lim:
+        return True
+    maxn, window = lim
+    now = _time.monotonic()
+    with _rate_lock:
+        dq = _rate_hits[path]
+        while dq and dq[0] <= now - window:
+            dq.popleft()
+        if len(dq) >= maxn:
+            return False
+        dq.append(now)
+        return True
 
 # --- /api/launch (opt-in, hardened) -------------------------------------------
 # The ONLY route that runs a subprocess: a browser button that idempotently starts
@@ -178,6 +227,11 @@ class H(BaseHTTPRequestHandler):
         b = json.dumps(obj).encode()
         self.send_response(code); _cors(self)
         self.send_header("Content-Type", "application/json")
+        # Defensive response headers: API responses are never cached and never
+        # content-sniffed/framed (the page is same-origin loopback, but cheap to harden).
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Length", str(len(b)))
         self.end_headers(); self.wfile.write(b)
 
@@ -191,6 +245,8 @@ class H(BaseHTTPRequestHandler):
                                     "honcho": bool(HONCHO), "docs_search": bool(QDRANT and EMBED)})
         if path == "/api/status":
             return self._status()
+        if path == "/api/traces":
+            return self._traces()
         if ("GET", path) in ROUTES:
             return self._proxy("GET", ROUTES[("GET", path)], None)
         # Root + aliases -> redirect to the page's canonical path so its relative
@@ -211,6 +267,9 @@ class H(BaseHTTPRequestHandler):
         # for the budget-consuming + backend-reaching routes (GET /api/status is host-pinned too).
         if not self._host_ok():
             return self._json(403, {"error": "forbidden host"})
+        # Soft per-process rate limit on the budget-consuming / backend-reaching routes.
+        if not _rate_ok(path):
+            return self._json(429, {"error": "rate limit exceeded — slow down and retry shortly"})
         if path == "/api/launch":
             return self._launch()
         if path == "/api/honcho/demo":
@@ -298,6 +357,67 @@ class H(BaseHTTPRequestHandler):
                     for n, meta in LAUNCH_SERVICES.items()]
         self._json(200, {"launch_enabled": LAUNCH_ENABLED, "services": services})
 
+    def _traces(self):
+        """READ-ONLY view of the most recent Phoenix spans for project ai-stack (Act II —
+        observability). GETs Phoenix's documented spans API at a FIXED path with server-side
+        literals only (project + last ~1h window + cap); the browser supplies NOTHING, so there
+        is no SSRF / filter-injection surface. Returns ONLY {name, model, latency_ms, status} per
+        span — never a raw upstream body (which could leak span attributes / internal schema).
+        Degrades to {available:false} on any non-200 / unreachable / unparseable response — the
+        handler NEVER 500s, so a missing/older Phoenix just disables the demo gracefully."""
+        # (Host is pinned to loopback by do_POST for POSTs; this GET reaches a backend, so pin here too.)
+        if not self._host_ok():
+            return self._json(403, {"error": "forbidden host"})
+        if not PHOENIX:
+            return self._json(200, {"available": False,
+                                    "hint": "Phoenix isn't wired into this tutorial-serve session"})
+        import datetime
+        start = (datetime.datetime.now(datetime.timezone.utc)
+                 - datetime.timedelta(seconds=PHOENIX_WINDOW_S)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # FIXED query — every value is a server-side literal (no caller input reaches the URL).
+        url = "%s/v1/spans?project=%s&start=%s" % (
+            PHOENIX, urllib.parse.quote(PHOENIX_PROJECT), urllib.parse.quote(start))
+        hdrs = {"Accept": "application/json"}
+        if PHOENIX_KEY:
+            hdrs["Authorization"] = "Bearer %s" % PHOENIX_KEY
+        req = urllib.request.Request(url, method="GET", headers=hdrs)
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                if r.status != 200:
+                    return self._json(200, {"available": False,
+                                            "hint": "Phoenix returned no spans for this window"})
+                raw = r.read()
+            body = json.loads(raw) if raw else None
+        except Exception:
+            # Unreachable / non-200 / unparseable — degrade, never 500, never leak a raw body.
+            return self._json(200, {"available": False,
+                                    "hint": "Phoenix is unreachable or returned no spans right now"})
+        # Phoenix span shapes vary by version: the documented /v1/spans returns a JSON ARRAY, but
+        # some builds wrap it as {"data": [...]}. Accept either; treat anything else as empty.
+        if isinstance(body, dict):
+            spans = body.get("data") or body.get("spans") or []
+        elif isinstance(body, list):
+            spans = body
+        else:
+            spans = []
+        out = []
+        for s in spans[:PHOENIX_TOP_N]:
+            if not isinstance(s, dict):
+                continue
+            attrs = s.get("attributes") if isinstance(s.get("attributes"), dict) else {}
+            name = s.get("name") or s.get("span_name") or "?"
+            model = (attrs.get("llm.model_name") or attrs.get("model")
+                     or s.get("model") or "")
+            status = s.get("status_code") or s.get("status") or ""
+            lat = s.get("latency_ms")
+            if lat is None and s.get("start_time") and s.get("end_time"):
+                lat = ""   # don't attempt clock math across versions; leave blank
+            out.append({"name": str(name)[:120], "model": str(model)[:80],
+                        "status": str(status)[:24],
+                        "latency_ms": (round(float(lat), 1) if isinstance(lat, (int, float)) else "")})
+        return self._json(200, {"available": True, "project": PHOENIX_PROJECT,
+                                "window_s": PHOENIX_WINDOW_S, "spans": out})
+
     def _launch(self):
         """Start ONE allowlisted web-UI service (opt-in, hardened — see LAUNCH_* above).
         Not handled at all unless LAUNCH_ENABLED (computed once at startup)."""
@@ -340,17 +460,20 @@ class H(BaseHTTPRequestHandler):
         except subprocess.TimeoutExpired:
             return self._json(504, {"ok": False, "svc": svc,
                                     "error": f"start timed out after {LAUNCH_TIMEOUT}s"})
-        except Exception as e:
-            return self._json(500, {"ok": False, "svc": svc, "error": str(e)})
+        except Exception:
+            # Never surface the raw exception text — it can carry absolute paths / URLs.
+            return self._json(500, {"ok": False, "svc": svc, "error": "could not start the service"})
         finally:
             _launch_lock.release()                       # released right after the subprocess returns
         up = _probe(*meta["probe"], timeout=3.0)         # confirm it actually came up
         if up or proc.returncode == 0:
             return self._json(200, {"ok": True, "svc": svc, "url": meta["url"],
                                     "already_running": False, "running": up})
-        log = ((proc.stderr or b"") or (proc.stdout or b""))[-1000:].decode("utf-8", "replace")
-        return self._json(502, {"ok": False, "svc": svc,
-                                "error": "start ran but the service is not responding", "log": log})
+        # Do NOT echo raw subprocess stderr/stdout — it can leak host paths / internal URLs.
+        # Surface only a generic message + the safe exit status (an int, not text).
+        return self._json(502, {"ok": False, "svc": svc, "returncode": proc.returncode,
+                                "error": "start ran but the service is not responding — "
+                                         "check the server logs on the host"})
 
     def _honcho_demo(self):
         """READ-ONLY view of ONE fixed, non-sensitive honcho demo session (Act III — memory).
