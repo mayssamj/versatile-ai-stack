@@ -440,7 +440,7 @@ services:
         - "docker ps --filter name=openwebui --format '{{.Names}}\t{{.Status}}'"
         - curl -s http://openwebui:8080/health
         - curl -s http://litellm:4000/v1/models
-      "config_notes": Reach it at http://openwebui:8080, NOT :3001. services.yml carries a legacy port:3001 field but the live alias/container mapping is 127.0.10.9:8080:8080 (aliases.tsv) - the container's native port is 8080. If it shows 'model not found', check LiteLLM with `curl http://litellm:4000/v1/models` and restart the container.
+      "config_notes": Reach it at http://openwebui:8080, NOT :3001 (the old v1 :3001 was vestigial and has been removed). The live alias/container mapping is 127.0.10.9:8080:8080 (aliases.tsv) - the container's native port is 8080. If it shows 'model not found', check LiteLLM with `curl http://litellm:4000/v1/models` and restart the container.
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
