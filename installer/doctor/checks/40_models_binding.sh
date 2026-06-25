@@ -27,7 +27,12 @@ _mb_cfg() { echo "$AI_STACK/litellm/config.yaml"; }
 
 _mb_litellm_up() { curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; }
 _mb_lms_up()     { curl -s -o /dev/null --max-time 3 http://127.0.0.1:1234/v1/models 2>/dev/null; }
-_mb_meridian_up() { curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" -H "Authorization: Bearer x" >/dev/null 2>&1; }
+# _mb_meridian_up delegates to the shared _probe_meridian_up (common.sh) which is
+# PROCESS-SCOPED memoized + retried — same probe the models.sh availability gate
+# uses, so check40 and the live `model sync` always agree on daemon liveness.
+_mb_meridian_up() { _probe_meridian_up; }
+# _mb_codex_bridge_up mirrors _mb_meridian_up for the codex-bridge daemon.
+_mb_codex_bridge_up() { _probe_codex_bridge_up; }
 
 # One master-key chat_ping. Echoes the HTTP code (or "000" on connect/timeout).
 # $1=model  $2=master-key  $3=max-time(s, default 30). max_tokens is 16 (NOT 1):

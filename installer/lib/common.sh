@@ -247,6 +247,63 @@ print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models"
   return 0
 }
 
+# --- _probe_meridian_up / _probe_codex_bridge_up: shared, memoized, retried ---
+#
+# PROCESS-SCOPED memoization: the result is cached in a bash variable for the
+# lifetime of the current process ONLY. It does NOT persist to any file under
+# installer/state and is NOT shared across separate `model sync` invocations.
+# This eliminates the cold-start race where the first agent's probe times out
+# (daemon just starting) while all subsequent agents see a warm, cached result.
+#
+# Retry policy: first attempt uses a 5-second timeout; on failure two more
+# retries at 3 seconds each. Total max budget: ~11 seconds per process, once.
+#
+# Callers (models.sh meridian_up / codex_bridge_up, check40 _mb_meridian_up)
+# MUST call the shared helpers rather than raw curl so all surfaces are
+# consistent and the memoization cache is shared within each invocation.
+_PROBE_MERIDIAN_CACHE=""      # "up" | "down" | "" (uncached)
+_PROBE_CODEX_BRIDGE_CACHE=""  # "up" | "down" | "" (uncached)
+
+_probe_meridian_up() {
+  # Return cached result if already probed this process.
+  if [[ "$_PROBE_MERIDIAN_CACHE" == "up" ]]; then return 0; fi
+  if [[ "$_PROBE_MERIDIAN_CACHE" == "down" ]]; then return 1; fi
+  # First attempt: 5-second budget (cold daemon may need a moment).
+  if curl -sf --max-time 5 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" \
+       -H "Authorization: Bearer x" >/dev/null 2>&1; then
+    _PROBE_MERIDIAN_CACHE="up"; return 0
+  fi
+  # Retry 1 and 2 at 3 seconds each.
+  local i
+  for i in 1 2; do
+    if curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" \
+         -H "Authorization: Bearer x" >/dev/null 2>&1; then
+      _PROBE_MERIDIAN_CACHE="up"; return 0
+    fi
+  done
+  _PROBE_MERIDIAN_CACHE="down"; return 1
+}
+
+_probe_codex_bridge_up() {
+  # Return cached result if already probed this process.
+  if [[ "$_PROBE_CODEX_BRIDGE_CACHE" == "up" ]]; then return 0; fi
+  if [[ "$_PROBE_CODEX_BRIDGE_CACHE" == "down" ]]; then return 1; fi
+  # First attempt: 5-second budget (cold daemon may need a moment).
+  if curl -sf --max-time 5 "http://127.0.0.1:${CODEX_BRIDGE_PORT:-3457}/v1/models" \
+       -H "Authorization: Bearer x" >/dev/null 2>&1; then
+    _PROBE_CODEX_BRIDGE_CACHE="up"; return 0
+  fi
+  # Retry 1 and 2 at 3 seconds each.
+  local i
+  for i in 1 2; do
+    if curl -sf --max-time 3 "http://127.0.0.1:${CODEX_BRIDGE_PORT:-3457}/v1/models" \
+         -H "Authorization: Bearer x" >/dev/null 2>&1; then
+      _PROBE_CODEX_BRIDGE_CACHE="up"; return 0
+    fi
+  done
+  _PROBE_CODEX_BRIDGE_CACHE="down"; return 1
+}
+
 # --- litellm_reconcile_key: self-heal a scoped key's model allow-list --------
 # Usage: litellm_reconcile_key <KEY_ENV> <model...>           (positional names)
 #        litellm_reconcile_key <KEY_ENV> '["m1","m2",...]'    (one JSON array)

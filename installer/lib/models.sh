@@ -277,21 +277,19 @@ litellm_reachable() {
   curl -sf --max-time 3 "${LITELLM_BASE_URL:-http://litellm:4000}/health/readiness" >/dev/null 2>&1
 }
 
-# meridian_up — is the Claude-subscription host daemon answering? Loopback only
-# (host-side; lib runs on the host). LiteLLM lists meridian models even when the
-# daemon is down (model_list is static config), so we MUST probe Meridian itself
-# to availability-gate — litellm_serves_slug can't detect a down upstream here.
+# meridian_up — is the Claude-subscription host daemon answering? Delegates to
+# _probe_meridian_up (common.sh) which is PROCESS-SCOPED memoized + retried (5s
+# first attempt, 2 retries at 3s). All surfaces (models.sh + check40) call the
+# same helper so the cold-start race is eliminated within a `model sync` run.
 meridian_up() {
-  curl -sf --max-time 3 "http://127.0.0.1:${MERIDIAN_PORT:-3456}/v1/models" \
-    -H "Authorization: Bearer x" >/dev/null 2>&1
+  _probe_meridian_up
 }
 
-# codex_bridge_up — is the ChatGPT-subscription bridge daemon answering? Loopback
-# only. LiteLLM lists codex-bridge models even when the daemon is down (static
-# config), so we probe the bridge itself to availability-gate. Mirrors meridian_up.
+# codex_bridge_up — is the ChatGPT-subscription bridge daemon answering? Delegates
+# to _probe_codex_bridge_up (common.sh) — same memoize+retry discipline as
+# meridian_up. Mirrors the meridian availability-gate pattern.
 codex_bridge_up() {
-  curl -sf --max-time 3 "http://127.0.0.1:${CODEX_BRIDGE_PORT:-3457}/v1/models" \
-    -H "Authorization: Bearer x" >/dev/null 2>&1
+  _probe_codex_bridge_up
 }
 
 # litellm_serves_slug <model_name> — does the master-key /v1/models list it?
