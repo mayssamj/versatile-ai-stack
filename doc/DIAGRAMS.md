@@ -352,12 +352,12 @@ flowchart TB
 
 What the assignments look like (from `models.yml`, see
 [models.md](models.md)):
-- **claude-opus-sub-xhigh** (subscription via Meridian) — `hermes_manager`,
-  `hermes_qa_test_engineer`, `hermes_sre_engineer`, `hermes_incident_manager`,
-  `ace`, `rlm`.
-- **claude-opus-sub-max** (subscription via Meridian) — `hermes_techlead`,
-  `hermes_ml_engineer`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
-  `hermes_reviewing_engineer`, `pi`, `deerflow`.
+- **claude-opus-sub-max** (subscription via Meridian; the platform default and
+  `primary`) — every assigned role: `hermes_manager`, `hermes_ml_engineer`,
+  `hermes_frontend_engineer`, `hermes_backend_engineer`,
+  `hermes_qa_test_engineer`, `hermes_reviewing_engineer`, `hermes_sre_engineer`,
+  `hermes_incident_manager`, `pi`, `deerflow`, `ace`, `rlm`.
+- **sakana-fugu** — `hermes_techlead` (the single exception to the default).
 - **local-gemma4** (the always-on Ollama fallback) — what every subscription- or
   LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime
   is down. An UNASSIGNED agent renders the `primary` (`claude-opus-sub-max`) and
@@ -534,9 +534,10 @@ flowchart TB
 ## 5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)
 
 Not to be confused with [§11 Memory profiles](#11-memory-profiles--what-runs-in-each-ram-mode)
-(RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use the
-platform default `claude-opus-sub-xhigh` (Claude subscription via Meridian;
-LiteLLM falls back to `local-gemma4` if Meridian is down), overridable via `HONCHO_MODEL`.
+(RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use
+`claude-opus-sub-xhigh` — Honcho's own default (`HONCHO_MODEL`, set in Phase 03),
+not the stack-wide `primary` which is `claude-opus-sub-max` (Claude subscription
+via Meridian; LiteLLM falls back to `local-gemma4` if Meridian is down).
 
 ```mermaid
 sequenceDiagram
