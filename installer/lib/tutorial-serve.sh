@@ -92,6 +92,12 @@ done
 # Validate before either value reaches a JSON payload (TTL) or a socket bind (PORT).
 [[ "$PORT" =~ ^[0-9]{2,5}$ ]] || { err "invalid --port '$PORT' (expected a number)"; exit 2; }
 [[ "$TTL"  =~ ^[0-9]+[smhd]$ ]] || { err "invalid --ttl '$TTL' (expected e.g. 30m, 2h, 1d)"; exit 2; }
+# Refuse --force on a privileged port (<1024) — a loopback dev serve never belongs there,
+# and --force would SIGKILL whatever holds it (sshd/nginx/...). 10# forces base-10 so a
+# zero-padded port can't be misread as octal. (A non-root bind to <1024 fails anyway.)
+if (( FORCE )) && (( 10#$PORT < 1024 )); then
+  err "--force on a privileged port ($PORT, <1024) is refused — pick --port <N> ≥ 1024"; exit 2
+fi
 
 MASTER="$(get_env LITELLM_MASTER_KEY '')"
 
@@ -142,10 +148,12 @@ ensure_port_free() {
     lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
     sleep 0.5
   done
-  # Last resort under --force: SIGKILL any lingering holder, then re-check once.
+  # Last resort under --force: SIGKILL the ORIGINAL holder set captured at entry, then
+  # re-check once. Reusing $holders (NOT a fresh lsof) avoids a PID-reuse race where the
+  # port's PID was recycled to an unrelated process between the TERM batch and now.
   if (( FORCE )); then
-    warn "Port $port still busy — --force: sending SIGKILL to the remaining holder(s)."
-    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    warn "Port $port still busy — --force: sending SIGKILL to the original holder(s)."
+    for pid in $holders; do kill -9 "$pid" 2>/dev/null || true; done
     sleep 0.5
     lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 || { ok "freed port $port"; return 0; }
   fi
