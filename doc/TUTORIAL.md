@@ -933,6 +933,58 @@ bash ~/ai-stack/bin/sample-rlm-usage.sh
 
 ---
 
+### L18½ · RLM hands-on — reason over an input too big for one call · 🟡 · ~20 min
+
+**Why.** Some inputs don't fit one model call — a 500-page log, a whole repo, a giant transcript — and the usual fixes each lose something: truncation drops detail, RAG-chunking loses cross-chunk reasoning. **RLM** (Recursive Language Models, `rlms` by alexzhang13 — the researcher who originated the paradigm) keeps the *whole* input as a variable in a Python REPL and lets the model write code to peek at it, slice it, and **recursively call itself** on the pieces, folding the answers back up. Context becomes *data the model queries with code*, not tokens crammed into the window — which is how it sidesteps "context rot." You already have it: Phase 18 wired `bin/rlm` through LiteLLM, with the model-generated REPL code sandboxed in Docker. It's the same engine HALO drives in L19.
+
+**Prereqs.** Phase 18 installed (`bash vz-ai-stack.sh install 18` — RLM needs only Phase 18; L18 also pulled Phase 17 for ACE, but that isn't required here); LiteLLM up; the selected Docker engine up — the REPL runs in a throwaway `python:3.11-slim` container, *not* on your host. Confirm with `bin/rlm --help`.
+
+**Steps.**
+```bash
+# SAFETY: the model writes and EXECUTES real Python. --env docker (the default)
+# runs it in a throwaway container; --env local would run it on your HOST. Stay on docker.
+
+# 0. See the knobs (model, recursion depth, REPL backend, iterations).
+bin/rlm --help
+
+# 1. A REPL compute task — the model writes Python, runs it in the Docker
+#    sandbox, and returns the result. Routes via LiteLLM to whatever model is
+#    bound to `rlm` (re-point with: vz-ai-stack.sh model assign rlm <model>).
+bin/rlm "Use the REPL to compute the 20th Fibonacci number. Reply with just the number."
+# → 6765
+
+# 2. Reason over a large computed dataset — too big to eyeball, trivial for the
+#    REPL. The model generates the sieve, runs it in-sandbox, reports the answer.
+bin/rlm "In the REPL, compute how many primes there are between 1 and 100000, and the largest one. Reply with exactly: count=<n>, largest=<p>."
+# → count=9592, largest=99991
+
+# --- Optional, go further (run any of these; outputs will vary) ------------
+# 3. Push recursion deeper on a self-contained task — no paste needed:
+bin/rlm "In the REPL, generate the numbers 1..1000, split them into 10 buckets of 100, sum each bucket, and return the 10 bucket totals." --max-depth 2
+
+# 4. Point it at YOUR data — a file path or pasted text in the prompt:
+bin/rlm "Summarize this into 5 bullets, then list any ERROR lines: <a file path, or paste text here>"
+
+# 5. Watch the trajectory — every peek, slice, and recursive sub-call:
+bin/rlm "Use the REPL to compute the 20th Fibonacci number." --verbose
+
+# 6. Use a heavier LOCAL model for big inputs (opt-in LM Studio MLX — start it
+#    first; ~22 GB, watch RAM on a 24 GB box), then add -m to any prompt above:
+#    vz-ai-stack.sh start lmstudio
+bin/rlm "..." -m local-heavy --max-depth 2
+
+# The same starter examples, ready to run (view them first with cat):
+cat ~/ai-stack/bin/sample-rlm-usage.sh && bash ~/ai-stack/bin/sample-rlm-usage.sh
+```
+
+**Expected.** Step 1 prints `6765`; step 2 prints `count=9592, largest=99991` — each after running generated Python inside a throwaway Docker container (~40 s on this box, where `rlm` is bound to `claude-opus-sub-max`; a keyless machine defaults to `local-gemma4` — slower, but it works and stays on-box). Open Phoenix (callback to Act II) and you'll see the shape of it: a *parent* call plus the *recursive sub-calls* it spawned — a tree of small prompts, not one oversized one. RLM fires many calls, so a one-off `APIConnectionError` is just a transient blip — re-run it.
+
+**Lesson.** RLM trades one impossible prompt for a tree of possible ones. Two dials matter most: `--max-depth` (default `1` = one level of recursion; raise it for bigger inputs) and `--env` — keep it on `docker` (the default sandbox), because the model writes and *executes* real code; `--env local` would run that code on your host. It runs fully local (the keyless default is `local-gemma4`); recursive fan-out just multiplies calls, so a deep run is *faster* on a subscription/cloud tier — which is why the `rlm` binding here defaults to `claude-opus-sub-max`. Re-point it anytime with `vz-ai-stack.sh model assign rlm <model>`.
+
+**Go deeper.** This is exactly the engine L19's HALO stands on — recursive reasoning is what lets HALO chew through a large trace. The difference is who drives: here *you* prompt `bin/rlm`; HALO drives RLM over your traces automatically. Try the same task at `--max-depth 1` vs `--max-depth 2` and compare the sub-call tree in Phoenix.
+
+---
+
 ### L19 · Self-healing — HALO reads a trace and fixes it · 🔴 · ~20 min
 
 **Why.** You've been generating traces since Act II. HALO (`halo-engine`, exposes a `halo` CLI) closes the loop: it reads a JSONL trace, reasons over it with an agent loop, finds the failure pattern, and proposes a fix. Observability data goes in; a reasoned diagnosis comes out. HALO is built on RLM (L18) — recursive reasoning is what lets it chew through a large trace.

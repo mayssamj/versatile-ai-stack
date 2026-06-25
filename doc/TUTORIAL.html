@@ -1017,6 +1017,47 @@ bash ~/ai-stack/bin/sample-rlm-usage.sh</code></pre>
 <p><strong>Expected.</strong> ACE writes playbook/result files under <code>ace/results/</code>. RLM's Fibonacci task prints the answer after running generated Python inside a throwaway Docker container. Open Phoenix (callback to Act II) — you'll see ACE's batch of calls and, for RLM, a <em>parent</em> call plus the <em>recursive sub-calls</em> it spawned, all on local models.</p>
 <p><strong>Lesson.</strong> Self-improvement doesn't require fine-tuning. ACE manufactures the context other agents consume; RLM trades a single oversized prompt for a tree of small ones. Both are batch/CLI tools (no daemon, no port) wired to LiteLLM the same way as the fleet — minted virtual key, <code>OPENAI_BASE_URL=http://litellm:4000/v1</code>.</p>
 <p><strong>Go deeper.</strong> <code>bin/ace appworld</code> executes model-generated tool calls <em>on the host</em> — it warns and prompts; run real AppWorld evals inside the Pi/OpenShell sandbox instead. RLM's <code>--env local</code> would run generated code on the host too — keep it on <code>docker</code>. RLM is the substrate HALO is built on, which is exactly L19.</p>
+<h3 id="l18--rlm-hands-on--reason-over-an-input-too-big-for-one-call----20-min">L18½ · RLM hands-on — reason over an input too big for one call · 🟡 · ~20 min <span class="tier inter">intermediate</span></h3>
+<p><strong>Why.</strong> Some inputs don't fit one model call — a 500-page log, a whole repo, a giant transcript — and the usual fixes each lose something: truncation drops detail, RAG-chunking loses cross-chunk reasoning. <strong>RLM</strong> (Recursive Language Models, <code>rlms</code> by alexzhang13 — the researcher who originated the paradigm) keeps the <em>whole</em> input as a variable in a Python REPL and lets the model write code to peek at it, slice it, and <strong>recursively call itself</strong> on the pieces, folding the answers back up. Context becomes <em>data the model queries with code</em>, not tokens crammed into the window — which is how it sidesteps "context rot." You already have it: Phase 18 wired <code>bin/rlm</code> through LiteLLM, with the model-generated REPL code sandboxed in Docker. It's the same engine HALO drives in L19.</p>
+<p><strong>Prereqs.</strong> Phase 18 installed (<code>bash vz-ai-stack.sh install 18</code> — RLM needs only Phase 18; L18 also pulled Phase 17 for ACE, but that isn't required here); LiteLLM up; the selected Docker engine up — the REPL runs in a throwaway <code>python:3.11-slim</code> container, <em>not</em> on your host. Confirm with <code>bin/rlm --help</code>.</p>
+<p><strong>Steps.</strong></p>
+<pre><button class="copy-btn" data-copy>copy</button><code># SAFETY: the model writes and EXECUTES real Python. --env docker (the default)
+# runs it in a throwaway container; --env local would run it on your HOST. Stay on docker.
+
+# 0. See the knobs (model, recursion depth, REPL backend, iterations).
+bin/rlm --help
+
+# 1. A REPL compute task — the model writes Python, runs it in the Docker
+#    sandbox, and returns the result. Routes via LiteLLM to whatever model is
+#    bound to `rlm` (re-point with: vz-ai-stack.sh model assign rlm &lt;model&gt;).
+bin/rlm "Use the REPL to compute the 20th Fibonacci number. Reply with just the number."
+# → 6765
+
+# 2. Reason over a large computed dataset — too big to eyeball, trivial for the
+#    REPL. The model generates the sieve, runs it in-sandbox, reports the answer.
+bin/rlm "In the REPL, compute how many primes there are between 1 and 100000, and the largest one. Reply with exactly: count=&lt;n&gt;, largest=&lt;p&gt;."
+# → count=9592, largest=99991
+
+# --- Optional, go further (run any of these; outputs will vary) ------------
+# 3. Push recursion deeper on a self-contained task — no paste needed:
+bin/rlm "In the REPL, generate the numbers 1..1000, split them into 10 buckets of 100, sum each bucket, and return the 10 bucket totals." --max-depth 2
+
+# 4. Point it at YOUR data — a file path or pasted text in the prompt:
+bin/rlm "Summarize this into 5 bullets, then list any ERROR lines: &lt;a file path, or paste text here&gt;"
+
+# 5. Watch the trajectory — every peek, slice, and recursive sub-call:
+bin/rlm "Use the REPL to compute the 20th Fibonacci number." --verbose
+
+# 6. Use a heavier LOCAL model for big inputs (opt-in LM Studio MLX — start it
+#    first; ~22 GB, watch RAM on a 24 GB box), then add -m to any prompt above:
+#    vz-ai-stack.sh start lmstudio
+bin/rlm "..." -m local-heavy --max-depth 2
+
+# The same starter examples, ready to run (view them first with cat):
+cat ~/ai-stack/bin/sample-rlm-usage.sh &amp;&amp; bash ~/ai-stack/bin/sample-rlm-usage.sh</code></pre>
+<p><strong>Expected.</strong> Step 1 prints <code>6765</code>; step 2 prints <code>count=9592, largest=99991</code> — each after running generated Python inside a throwaway Docker container (~40 s on this box, where <code>rlm</code> is bound to <code>claude-opus-sub-max</code>; a keyless machine defaults to <code>local-gemma4</code> — slower, but it works and stays on-box). Open Phoenix (callback to Act II) and you'll see the shape of it: a <em>parent</em> call plus the <em>recursive sub-calls</em> it spawned — a tree of small prompts, not one oversized one. RLM fires many calls, so a one-off <code>APIConnectionError</code> is just a transient blip — re-run it.</p>
+<p><strong>Lesson.</strong> RLM trades one impossible prompt for a tree of possible ones. Two dials matter most: <code>--max-depth</code> (default <code>1</code> = one level of recursion; raise it for bigger inputs) and <code>--env</code> — keep it on <code>docker</code> (the default sandbox), because the model writes and <em>executes</em> real code; <code>--env local</code> would run that code on your host. It runs fully local (the keyless default is <code>local-gemma4</code>); recursive fan-out just multiplies calls, so a deep run is <em>faster</em> on a subscription/cloud tier — which is why the <code>rlm</code> binding here defaults to <code>claude-opus-sub-max</code>. Re-point it anytime with <code>vz-ai-stack.sh model assign rlm &lt;model&gt;</code>.</p>
+<p><strong>Go deeper.</strong> This is exactly the engine L19's HALO stands on — recursive reasoning is what lets HALO chew through a large trace. The difference is who drives: here <em>you</em> prompt <code>bin/rlm</code>; HALO drives RLM over your traces automatically. Try the same task at <code>--max-depth 1</code> vs <code>--max-depth 2</code> and compare the sub-call tree in Phoenix.</p>
 <h3 id="l19">L19 · Self-healing — HALO reads a trace and fixes it · 🔴 · ~20 min <span class="tier adv">advanced</span></h3>
 <p><strong>Why.</strong> You've been generating traces since Act II. HALO (<code>halo-engine</code>, exposes a <code>halo</code> CLI) closes the loop: it reads a JSONL trace, reasons over it with an agent loop, finds the failure pattern, and proposes a fix. Observability data goes in; a reasoned diagnosis comes out. HALO is built on RLM (L18) — recursive reasoning is what lets it chew through a large trace.</p>
 <p><strong>Prereqs.</strong> Phase 11 installed (<code>bash vz-ai-stack.sh install 11</code> — fail-soft, so confirm <code>bin/halo --help</code> works); LiteLLM up; a trace file at <code>~/ai-stack/traces/litellm.jsonl</code>.</p>
