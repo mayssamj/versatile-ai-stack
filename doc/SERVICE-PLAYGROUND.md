@@ -128,7 +128,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `vz-ai-stack.sh start claw3d` then open `http://localhost:4310`.
 
-**Notes:** The UI talks to its bridge (`claw3d_bridge`); start that too. Reachable via the tutorial **Launch a service** panel.
+**Notes:** The UI talks to its bridge (`claw3d_bridge`); start that too. Reachable via the tutorial **Launch a service** panel. See doc/HERMES-HANDSON.md for the full hands-on.
 
 ## claw3d_bridge · Tier 3 · Phase 19
 
@@ -218,7 +218,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `vz-ai-stack.sh model list` to see each role's bound model, then dispatch work to a role.
 
-**Notes:** Each role holds a *scoped* LiteLLM key (never the master key). The team-protocol skill is the keystone.
+**Notes:** Each role holds a *scoped* LiteLLM key (never the master key). The team-protocol skill is the keystone. See doc/HERMES-HANDSON.md for the full hands-on.
 
 ## hermes_telegram · Tier 3 · Phase 20
 
@@ -228,7 +228,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `bash ~/ai-stack/bin/start-hermes-telegram.sh` (stop via `hermes gateway stop` in the sandbox).
 
-**Notes:** Needs a Telegram bot token. `Phase=Ready` ≠ relay-live — confirm the gateway is actually up.
+**Notes:** Needs a Telegram bot token. `Phase=Ready` ≠ relay-live — confirm the gateway is actually up. See doc/HERMES-HANDSON.md for the full hands-on.
 
 ## hermes_workspace · Tier 2 · Phase 05
 
@@ -238,7 +238,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** open `http://workspace:3000`.
 
-**Notes:** The dashboard must bind `0.0.0.0` to be reachable cross-container (`HERMES_DASHBOARD_HOST=0.0.0.0`).
+**Notes:** The dashboard must bind `0.0.0.0` to be reachable cross-container (`HERMES_DASHBOARD_HOST=0.0.0.0`). See doc/HERMES-HANDSON.md for the full hands-on.
 
 ## honcho · Tier 1 · Phase 03
 
