@@ -23,10 +23,17 @@ arize_phoenix_callback_diagnose() {
     # We compute uptime in Python because macOS `date -j -f` parses RFC3339
     # without the Z suffix as LOCAL time, which produces a TZ-shifted epoch
     # and breaks the > 120s check.
-    local raw_started uptime_sec
+    #
+    # F20: if the Python calc fails (python3 unavailable, docker inspect
+    # returns malformed data, etc.) we must NOT silently stay green — the
+    # 120s guard would be disabled and any OTLP error in the logs would go
+    # undetected. We distinguish "calc failed" (uptime_sec=FAIL sentinel) from
+    # "container just started" (uptime_sec=0 from Python itself), so we can
+    # WARN on the former and skip on the latter without conflating them.
+    local raw_started uptime_sec _uptime_calc_ok=1
     raw_started="$(docker inspect litellm --format '{{.State.StartedAt}}' 2>/dev/null || echo "")"
     uptime_sec="$(
-      python3 - <<PY 2>/dev/null || echo 0
+      python3 - <<PY 2>/dev/null
 import datetime, sys
 raw = "${raw_started}"
 if not raw:
@@ -40,9 +47,14 @@ dt = datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S").replace(
 now = datetime.datetime.now(tz=datetime.timezone.utc)
 print(int((now - dt).total_seconds()))
 PY
-    )"
+    )" || { _uptime_calc_ok=0; uptime_sec=0; }
+    # Guard: if the calc failed the uptime is unknown — emit an advisory WARN
+    # rather than silently skipping the OTLP error check (false GREEN risk).
+    if [[ "$_uptime_calc_ok" == "0" ]]; then
+      echo "  (advisory) could not compute litellm container uptime — OTLP error log check skipped (verify manually: docker logs litellm | grep -i 'failed to export')"
+    fi
     : "${uptime_sec:=0}"
-    if (( uptime_sec > 120 )); then
+    if [[ "$_uptime_calc_ok" == "1" ]] && (( uptime_sec > 120 )); then
       # A healthy, quiet exporter logs NOTHING on success — so the absence of a
       # success line proves nothing. Only hard-fail on an EXPLICIT OTLP error
       # line (export failure / refused connection / auth reject). Quiet success
