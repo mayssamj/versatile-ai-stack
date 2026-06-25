@@ -12,6 +12,12 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 - **`--force` to free a held port on `tutorial-serve` + `models-serve`** (`feat/serve-port-force`): both launchers already auto-reap a stale OWN instance holding the default port (a dangling serve from a closed terminal — just re-run it), but a FOREIGN holder was reported and left alone with no override. `--force` now kills WHATEVER holds the port (graceful TERM, then SIGKILL as a last resort) and rebinds, printing the offending command first. Without `--force` the behavior is unchanged (refuse with a clear message that now points at `--force`). `--port N`/`--port=N` was already supported on both; a manual `lsof -ti tcp:PORT | xargs kill` hint is documented in `--help`. Verified end-to-end: a foreign listener is refused without the flag and killed+rebound with it.
 
+### Fixed
+
+- **`upgrade`: `python-bg`/`node-bg` services no longer "skipped (unknown type)"** (`fix-upgrade-type-handlers`): 8 host-daemon services (`docs_mcp`, `paperclip`, `claw3d_bridge`, `claw3d`, `unsloth`, `aionui`, `openwork`, `understand`) had no arm in `upgrade_one()`'s type dispatch and fell to the `*)` "unknown type" warning on every `upgrade all`. Now routed to `up_manual_note` (prints "re-run install `<phase>` to re-assert config + restart the daemon"), consistent with the other non-pullable types. Note-only by design — `upgrade` does not silently restart host daemons.
+- **`upgrade`: `hermes_workspace` no longer errors "pull access denied"** (`fix-upgrade-type-handlers`): its compose override declares a locally-built `image: hermes-workspace:aistack-hardened` (no registry), so `docker compose pull` hard-errored. The shared compose `*)` branch now uses `docker compose pull --ignore-buildable`, which skips build-section images. No-op for honcho (its buildable services are build-only); `autofyn` keeps its own plain-pull branch (its buildable images have real ghcr tags that must pull). Known follow-on: `up -d` won't rebuild the hardened image if it already exists locally (pre-existing staleness gap, but strictly better than the prior hard error).
+- **`upgrade` help now documents `--check` / `--outdated` / `--check --all` / `--check --json`** (`fix-upgrade-type-handlers`): these flags were parsed but only documented in the one-line `usage()` entry, so they were invisible in `--help`, `help upgrade`, and `upgrade --help`. Expanded the single-source `usage()` block (all three surfaces read from it via `usage_for()`).
+
 ## 2026-06-24
 
 ### Added

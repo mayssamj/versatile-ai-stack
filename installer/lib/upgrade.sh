@@ -210,7 +210,8 @@ print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else
       ;;
     *)
       # openshell, sandbox-daemon, cli-only, npm-global, pip-package, litellm-*,
-      # agent-pattern, paperclip-plugin, clone-only — no cheap version oracle.
+      # agent-pattern, paperclip-plugin, clone-only, python-bg, node-bg — no cheap
+      # version oracle; reported as 'manual'.
       CHECK_STATUS="manual"
       ;;
   esac
@@ -408,16 +409,24 @@ up_compose() {
       ;;
     *)
       # honcho, hermes_workspace: plain compose pull && up -d in svc_path.
+      # --ignore-buildable: skip images that have a `build:` section but a local-only
+      # tag (e.g. hermes-workspace:aistack-hardened). Without it `compose pull` errors
+      # "pull access denied" on that tag — it exists locally, not in any registry.
+      # No-op for stacks whose buildable services are build-only (honcho api/deriver).
+      # CAUTION: only safe here because honcho/hermes_workspace's buildable images have
+      # NO registry counterpart. A dual-mode service (build: AND a pullable registry
+      # image:, like autofyn) MUST get its own branch — --ignore-buildable would skip
+      # its real registry pull. autofyn has exactly that and its own branch above.
       if [[ -z "$dir" || "$dir" == "-" ]]; then
-        note "$svc: no path declared; run manually: docker compose pull && docker compose up -d"
+        note "$svc: no path declared; run manually: docker compose pull --ignore-buildable && docker compose up -d"
         RESULT="manual"; return 0
       fi
       if (( DRY )); then
-        note "PLAN $svc compose: would: (cd $dir && docker compose pull && docker compose up -d)"
+        note "PLAN $svc compose: would: (cd $dir && docker compose pull --ignore-buildable && docker compose up -d)"
         RESULT="planned"; return 0
       fi
       if (( DOCKER_OK == 0 )); then RESULT="skipped (docker unavailable)"; return 0; fi
-      if ( cd "$dir" && docker compose pull && docker compose up -d ); then RESULT="upgraded"; else RESULT=FAILED; fi
+      if ( cd "$dir" && docker compose pull --ignore-buildable && docker compose up -d ); then RESULT="upgraded"; else RESULT=FAILED; fi
       ;;
   esac
 }
@@ -525,6 +534,11 @@ upgrade_one() {
     sandbox-daemon)                          up_openshell "$svc" ;;
     cli-only|clone-only|npm-global|pip-package|litellm-feature|agent-pattern|paperclip-plugin|litellm-virtual-key)
                                              up_manual_note "$svc" ;;
+    # python-bg / node-bg are host background daemons (docs_mcp, paperclip, claw3d,
+    # unsloth, aionui, openwork, understand). They have no pullable artifact and no
+    # compose stack; "upgrade" = re-run their install phase to re-assert config +
+    # restart the daemon. Treat like the other manual types (note, don't auto-mutate).
+    python-bg|node-bg)                       up_manual_note "$svc" ;;
     *)
       STRATEGY="$type"
       RESULT="skipped (unknown type)"

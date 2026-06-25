@@ -267,6 +267,13 @@ ai-stack-installer — usage:
     vz-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
     vz-ai-stack.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
                                         (or all enabled), type-dispatched
+    vz-ai-stack.sh upgrade --check [service|all]   READ-ONLY: which services have an update
+                                        (compares registry digest / brew outdated; downloads nothing)
+    vz-ai-stack.sh upgrade --outdated [--dry-run]   upgrade ONLY the services --check finds outdated
+    vz-ai-stack.sh upgrade --check --all    include non-checkable (manual: sandbox/CLI/npm/pip) rows too
+    vz-ai-stack.sh upgrade --check --json   machine-readable availability report
+                                        (--dry-run prints the plan and changes nothing;
+                                         AI_STACK_ASSUME_YES=1 auto-accepts the pinned-tag re-pull prompt)
     vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]   serve doc/TUTORIAL.html
                                         + safe 'Try it live' proxy (ephemeral local-only key)
     vz-ai-stack.sh models-serve [--port N] [--read-only] [--revoke]   serve doc/MODELS.html
