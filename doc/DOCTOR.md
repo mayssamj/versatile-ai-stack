@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 65 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 66 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 65
+stack doctor                    # all 66
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -817,6 +817,12 @@ The routine-doctor version of `bin/audit.sh` check 1: asserts no running contain
 ## 64 · services.yml hostname open_urls have aliases.tsv rows (core)
 
 Asserts every `services.yml` service whose `open_url` is a bare hostname (e.g. `http://deerflow:2026`) has a matching `installer/lib/aliases.tsv` row — the row that drives `/etc/hosts`, the `lo0` alias, and the Caddy ingress. `localhost`/IP `open_url`s are exempt (they need no alias). Guards the deerflow-class gap where a service gains a hostname `open_url` but no alias row, so the URL never resolves. Fails when a bare-hostname `open_url` has no corresponding `aliases.tsv` row. Fix: add the missing row to `installer/lib/aliases.tsv` (then `sudo vz-ai-stack.sh prepare-sudo` to activate the `/etc/hosts` + `lo0` alias), or point the service's `open_url` at `localhost`/an IP if it intentionally has no hostname.
+
+---
+
+## 65 · Model & Agent Console (models-serve) present + wired (core)
+
+Asserts the `models-serve` web console (the Model & Agent Console) is present and wired so `vz-ai-stack.sh models-serve` will actually boot: `installer/lib/models-serve.sh` + `installer/lib/models_proxy.py` + `doc/MODELS.html` all exist, the proxy compiles as valid Python, `models-serve` is wired into `vz-ai-stack.sh` dispatch (lib present but unreachable verb is the regression this guards), and `installer/models.yml` parses (fail-closed — the console reads the catalog through the `model` CLI). Pure file/parse — NO cold-start, network, or container calls; deep model↔agent binding and allowlist correctness stay owned by check 40 (`models_binding`), not duplicated here. ADVISORY (WARN, never red): every `models.yml` model declaring a `key_env` should have that env var set in `.env` — a missing vendor key is surfaced as a red dot in the console and means that route 401s at call time, worth flagging but not a stack fault (a keyless local-only box is legitimate). Fails when a console file is missing, the proxy has a syntax error, `models-serve` isn't dispatched, or `models.yml` doesn't parse. Fix: restore the missing piece on branch `feat/model-console` (or `main` once merged), then serve it with `vz-ai-stack.sh models-serve` from the MAIN checkout.
 
 ---
 

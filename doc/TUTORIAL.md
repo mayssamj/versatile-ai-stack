@@ -201,7 +201,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (65 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
+- `doctor` targets **all green (66 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -306,7 +306,7 @@ bash ~/ai-stack/vz-ai-stack.sh model sync
 
 > **GPT-5.x is assignable the same way.** `vz-ai-stack.sh model assign all openai-gpt-5.5` puts the whole fleet on metered GPT-5.5 at max reasoning; `model assign … openai-gpt-5.5-sub` uses your **ChatGPT subscription** via the codex bridge — enable it once with `bash ~/ai-stack/bin/start-codex-bridge.sh enable`. Either route gates to `local-gemma4` when it's unavailable. Full how-to: [GPT5.md](GPT5.md).
 
-**Try it live.** Read-only in the HTML page — there is no browser button that mutates `models.yml`. Treat the panel as a viewer for the binding matrix; run `assign`/`sync` from a terminal.
+**Try it live.** Read-only in *this* tutorial page — there is no button here that mutates `models.yml`. Treat the panel as a viewer for the binding matrix; run `assign`/`sync` from a terminal. Prefer a UI? `vz-ai-stack.sh models-serve` opens the **Model & Agent Console** to do all of this (add/edit/remove models, re-assign or park agents) with a staged `models.yml` + `config.yaml` diff shown before anything is written.
 
 **Lesson.** **Availability-gating** is the load-bearing safety net: an agent assigned an `lmstudio` model whose server is down (or a `meridian` model with Meridian down) renders to the Ollama default (`local-gemma4`) and records a *pending* line — the stack never emits a route LiteLLM can't actually serve. The default is required to be an Ollama model precisely so it's always servable on a fresh box. That's why the nine Hermes profiles "just work" even before you've started Meridian — they quietly answer on local Gemma until the subscription back end is up, then `model sync` promotes them.
 
@@ -1617,7 +1617,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (65 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (66 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 

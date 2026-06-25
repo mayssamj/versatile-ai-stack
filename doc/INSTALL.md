@@ -114,7 +114,7 @@ bash vz-ai-stack.sh install all
 # `install all --include-optionals --dry-run` first:
 #   bash vz-ai-stack.sh install all --include-optionals   # alias: --with-optionals
 
-# Step 6 — verify everything is healthy. Expect 65/65.
+# Step 6 — verify everything is healthy. Expect 66/66.
 bash vz-ai-stack.sh doctor
 ```
 
@@ -446,7 +446,7 @@ Then run the full doctor:
 bash vz-ai-stack.sh doctor
 ```
 
-Expected: 65/65 checks pass after the post-install steps above and a
+Expected: 66/66 checks pass after the post-install steps above and a
 successful `sudo bash vz-ai-stack.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more

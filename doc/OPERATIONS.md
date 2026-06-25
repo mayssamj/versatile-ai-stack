@@ -34,7 +34,7 @@ stack <cmd> --help  /  stack help <cmd> # focused per-command usage (bare `help`
 stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
 stack fleet list|add|remove|new|destroy # Hermes 9-role fleet manager (see models.md / STACK-GUIDE)
-stack doctor                            # 65 health checks + auto-fix offers
+stack doctor                            # 66 health checks + auto-fix offers
 stack doctor <filter>                   # only checks whose name contains <filter>
 stack test <phase>                      # smoke test for one phase (name or number)
 stack adopt <svc>                       # take ownership of a foreign container

@@ -30,7 +30,7 @@ a Claude session asked to operate the stack.
 ## §0. Pre-flight
 
 ```bash
-# 1. Confirm the stack is healthy. Target: 65/65 ✓
+# 1. Confirm the stack is healthy. Target: 66/66 ✓
 bash ~/ai-stack/vz-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
@@ -2051,7 +2051,7 @@ Per-repo indexing keeps signal high — Lumen ranks results by cosine similarity
 
 Profiles are intent-aware presets: one command (would-be — see ⚠ below) flips multiple services so the stack matches the workload.
 
-**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | deps | setup (keys) | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | upgrade | tutorial-serve | reset | start (enable) | stop (disable) | prepare-sudo`. Any verb takes per-command help via `<command> --help` or `help <command>`; bare `help` / `--help` prints the full list. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
+**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | deps | setup (keys) | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | upgrade | tutorial-serve | models-serve | reset | start (enable) | stop (disable) | prepare-sudo`. Any verb takes per-command help via `<command> --help` or `help <command>`; bare `help` / `--help` prints the full list. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
 
 ### `fleet` — multi-agent everyday
 
@@ -2099,7 +2099,7 @@ Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shor
 
 ```bash
 # Health + state
-bash ~/ai-stack/vz-ai-stack.sh doctor                 # 65 health checks + auto-fix offers
+bash ~/ai-stack/vz-ai-stack.sh doctor                 # 66 health checks + auto-fix offers
 bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
 bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
 
@@ -2115,6 +2115,17 @@ bash ~/ai-stack/vz-ai-stack.sh model assign <agent> <model>   # re-point one age
 bash ~/ai-stack/vz-ai-stack.sh model assign all <model>       # blanket-assign EVERY agent (before→after + .bak), then sync
 bash ~/ai-stack/vz-ai-stack.sh model sync             # reconcile everything from models.yml (opt-in)
 bash ~/ai-stack/vz-ai-stack.sh model superset         # canonical scoped-key allowlist superset
+
+# Model & Agent Console (the web UI over the `model` CLI — run from the MAIN checkout)
+bash ~/ai-stack/vz-ai-stack.sh models-serve           # serve doc/MODELS.html: view the model catalog
+                                                      #   + agent→model bindings, and add/edit/remove models,
+                                                      #   re-assign or park/disable agents, and add OpenRouter
+                                                      #   routes — each change is staged, shown as a models.yml
+                                                      #   + config.yaml diff, then applied (timestamped backups).
+                                                      #   Apply may restart the live LiteLLM.
+bash ~/ai-stack/vz-ai-stack.sh models-serve --port N  # bind a specific port
+bash ~/ai-stack/vz-ai-stack.sh models-serve --read-only  # view + diff only — no apply
+bash ~/ai-stack/vz-ai-stack.sh models-serve --revoke  # tear down the ephemeral proxy key and exit
 
 # Slow-mode doctor (includes 9 negative network probes for pi-v1)
 OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor
@@ -2276,7 +2287,7 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 - **Performance-critical day:** Recipe 4 (Phoenix evals) so you can A/B model changes before committing them.
 - **You've collected ≥ 5K traces:** Recipe 7 (fine-tune from traces). Until then, don't bother.
 
-Doctor stays at 65/65 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
+Doctor stays at 66/66 across every profile flip as long as the underlying services are healthy. If doctor drops, fix it before you do anything else.
 
 ---
 
