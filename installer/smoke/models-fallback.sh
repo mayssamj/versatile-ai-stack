@@ -115,6 +115,13 @@ YAML
 CONFIG="$bare" LOCK_FORCE=1 bash "$MS" fallback set local-gemma4 local-qwen3 >/dev/null 2>&1
 [[ "$(tgt local-gemma4 "$bare")" == "local-qwen3" ]] && yes_ "C16 bare-empty fallbacks: -> first entry created" || no_ "C16 bare-empty create failed"
 
+# C17 write into a read-only location fails SAFE: non-zero exit + CONFIG byte-identical (no partial write)
+mkdir -p "$tmp/ro"; roc="$tmp/ro/config.yaml"; cp "$ORIG" "$roc"; ro_sha="$(shasum "$roc"|awk '{print $1}')"; chmod 555 "$tmp/ro"
+rc=0; CONFIG="$roc" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-qwen3 >/dev/null 2>&1 || rc=$?
+chmod 755 "$tmp/ro"
+{ [[ "$rc" != "0" ]] && [[ "$ro_sha" == "$(shasum "$roc"|awk '{print $1}')" ]]; } \
+  && yes_ "C17 write to read-only dir fails safe (non-zero exit, config byte-identical)" || no_ "C17 unsafe on write failure (rc=$rc)"
+
 echo "── proxy tier (stub docker, MC_RESTART_WAIT=0) ──"
 if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   echo "python3/curl unavailable — proxy tier [skip]"
@@ -127,10 +134,10 @@ else
   PORT=8893; H='-H Host:127.0.0.1'; PROXY_PID=""
   boot(){  # $1 = readonly(0/1)
     MODELS_YML="$tmp/models.yml" CONFIG="$SB" LOCK_FORCE=1 \
-    MC_PORT="$PORT" MC_LITELLM="http://127.0.0.1:1" MC_KEY_FILE="" MC_HTML="$AI_STACK/doc/MODELS.html" \
+    MC_PORT="$PORT" MC_LITELLM="${BOOT_LITELLM:-http://127.0.0.1:1}" MC_KEY_FILE="" MC_HTML="$AI_STACK/doc/MODELS.html" \
       MC_ROOT="$SBROOT" MC_MODELS_SH="$MS" MC_EMBED_SH="$AI_STACK/installer/lib/embeddings.sh" \
       MC_START_LITELLM="$AI_STACK/bin/start-litellm.sh" MC_MODELS_YML="$tmp/models.yml" MC_CONFIG="$SB" \
-      MC_ENV_FILE="$tmp/.env" MC_READONLY="$1" MC_DOCKER="$stubdir/docker" MC_RESTART_WAIT=0 \
+      MC_ENV_FILE="$tmp/.env" MC_READONLY="$1" MC_DOCKER="$stubdir/docker" MC_RESTART_WAIT="${BOOT_WAIT:-0}" \
       python3 "$PROXY" >"$tmp/proxy.log" 2>&1 &
     PROXY_PID=$!
     for _ in $(seq 1 25); do curl -s $H -o /dev/null "http://127.0.0.1:$PORT/api/health" 2>/dev/null && return 0; sleep 0.2; done
@@ -181,6 +188,29 @@ d=json.load(sys.stdin); assert d.get("ok") is True, d' 2>/dev/null \
   code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"openai-gpt","targets":["local-qwen3"],"confirm_restart":true}' || true)"
   [[ "$code" == "403" ]] && yes_ "P8 read-only mode -> 403" || no_ "P8 expected 403, got $code"
   stop
+
+  # P9 chain_verified=true coverage: a stub /health/readiness (200) + MC_RESTART_WAIT>0 so
+  # _litellm_ready returns True and the proxy re-reads config to confirm the edit is live.
+  HPORT=8897
+  python3 - "$HPORT" <<'PY' &
+import sys, http.server
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b"{}")
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+  HEALTH_PID=$!
+  for _ in $(seq 1 20); do curl -s -o /dev/null "http://127.0.0.1:$HPORT/health/readiness" 2>/dev/null && break; sleep 0.2; done
+  cp "$ORIG" "$SB"
+  BOOT_WAIT=3 BOOT_LITELLM="http://127.0.0.1:$HPORT" boot 0 && : || no_ "P9 proxy (with wait) did not boot"
+  curl -s $H -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"openai-gpt","targets":["local-gemma4"],"confirm_restart":true}' | python3 -c 'import sys,json
+d=json.load(sys.stdin)
+assert d.get("ok") is True, d
+assert d.get("ready") is True, ("ready should be True", d)
+assert d.get("chain_verified") is True, ("chain_verified should be True", d)' \
+    2>/dev/null && yes_ "P9 chain_verified=true after a ready restart (stub /health)" || no_ "P9 chain_verified path failed: $(tail -2 "$tmp/proxy.log")"
+  stop
+  kill "$HEALTH_PID" 2>/dev/null || true
 fi
 
 echo

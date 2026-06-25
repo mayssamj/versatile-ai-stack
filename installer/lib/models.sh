@@ -1887,7 +1887,9 @@ _fb_commit() {
   fi
   if ! yq -e '.' "$staging" >/dev/null 2>&1; then err "fallback: edited config.yaml failed to parse — aborting (no changes written)."; rm -f "$staging" "$errf"; exit 1; fi
   after="$(CONFIG="$staging" _fb_count)"
-  distinct="$(yq -r '.litellm_settings.fallbacks // [] | .[] | keys[0]' "$staging" 2>/dev/null | LC_ALL=C sort | uniq | grep -c . || true)"
+  # distinct first-key count via PURE yq (no `grep -c . || true` — grep -c prints "0" AND
+  # exits 1 on empty input, which is brittle under set -o pipefail / refactor).
+  distinct="$(yq -r '.litellm_settings.fallbacks // [] | map(keys[0]) | unique | length' "$staging" 2>/dev/null || echo -1)"
   [[ "$after" == "$distinct" ]] || { err "fallback: post-edit validation found duplicate keys ($after entries, $distinct distinct) — aborting."; rm -f "$staging" "$errf"; exit 1; }
   case "$op:$mode" in
     set:replace)   (( after == before ))     || { err "fallback: count delta invalid (replace $before->$after) — aborting."; rm -f "$staging" "$errf"; exit 1; } ;;

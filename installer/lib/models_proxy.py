@@ -711,17 +711,22 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 restart_log = str(e)[:300]
             ready = _litellm_ready(RESTART_WAIT) if (restart_ok and RESTART_WAIT > 0) else None
-            reverted = False
+            reverted = False; revert_skipped_no_backup = False
             # AUTO-REVERT: if the router did NOT come ready, roll config.yaml back to the pre-edit
             # snapshot and restart again — never leave the fleet on a chain that won't load.
-            if ready is False and pre_config and os.path.isfile(pre_config):
-                try:
-                    shutil.copy2(pre_config, CONFIG)
-                    env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
-                    subprocess.run([DOCKER, "restart", "litellm"], env=env, capture_output=True, text=True, timeout=120)
-                    reverted = True
-                except Exception:
-                    pass
+            if ready is False:
+                if pre_config and os.path.isfile(pre_config):
+                    try:
+                        shutil.copy2(pre_config, CONFIG)
+                        env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
+                        subprocess.run([DOCKER, "restart", "litellm"], env=env, capture_output=True, text=True, timeout=120)
+                        reverted = True
+                    except Exception:
+                        pass
+                else:
+                    # no pre-edit snapshot to revert FROM -> can't auto-revert; surface it distinctly
+                    # (a silent reverted:false is indistinguishable from a successful revert).
+                    revert_skipped_no_backup = True
             # CHAIN_VERIFY: re-read config.yaml and confirm the edit is actually live (restart_ok +
             # ready alone can be a false positive in the bind-mount cache window). None if we didn't wait.
             chain_verified = None
@@ -731,8 +736,8 @@ class H(BaseHTTPRequestHandler):
                 chain_verified = present if fb_op == "set" else (not present)
             return self._json(200, {"ok": True, "op": fb_op, "model": model,
                 "output": out.strip()[-2000:], "restart_ok": restart_ok, "ready": ready,
-                "reverted": reverted, "chain_verified": chain_verified, "restart_log": restart_log,
-                "backups": pre})
+                "reverted": reverted, "revert_skipped_no_backup": revert_skipped_no_backup,
+                "chain_verified": chain_verified, "restart_log": restart_log, "backups": pre})
         finally:
             _apply_lock.release()
 

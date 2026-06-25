@@ -63,6 +63,12 @@ models_console_diagnose() {
       || { echo "litellm/config.yaml does not parse for .litellm_settings.fallbacks — fallback editor + failover policy unreadable."; return 1; }
     [[ "$fbtype" == "!!seq" ]] \
       || { echo "litellm/config.yaml .litellm_settings.fallbacks is not a list (got '$fbtype') — fallback policy is malformed."; return 1; }
+    # Empty list is legal but WARN-worthy on a metered platform (no model degrades to local
+    # on an outage). Advisory only — stays green (WARN, not ERR).
+    local fbn; fbn="$(yq -r '.litellm_settings.fallbacks // [] | length' "$cfg" 2>/dev/null || echo 0)"
+    if [[ "$fbn" == "0" ]]; then
+      echo "ADVISORY: litellm/config.yaml .litellm_settings.fallbacks is EMPTY — metered/subscription models won't degrade to the local tier on an outage. Add chains via the console's Fallback editor."
+    fi
   fi
 
   # ADVISORY: declared key_env present in .env? (WARN-only — keyless box is legitimate.)
