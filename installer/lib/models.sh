@@ -35,8 +35,13 @@ source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/litellm.sh"
 source "$AI_STACK/installer/lib/lmstudio.sh"
 
-MODELS_YML="$AI_STACK/installer/models.yml"
-CONFIG="$AI_STACK/litellm/config.yaml"
+# Path to the canonical sources. Both are env-overridable so a caller (e.g. the
+# models-serve console's stage step) can point the CLI at an ISOLATED sandbox copy
+# of {models.yml, config.yaml} and run a real `model <op> --no-sync` to produce a
+# true both-file diff WITHOUT touching the live files. Normal CLI use leaves them
+# unset, so the canonical repo paths are used.
+MODELS_YML="${MODELS_YML:-$AI_STACK/installer/models.yml}"
+CONFIG="${CONFIG:-$AI_STACK/litellm/config.yaml}"
 PENDING_FILE="$STATE_DIR/models-pending.txt"
 PENDING_HERMES="$STATE_DIR/models-pending-hermes.txt"
 HERMES_SANDBOX="hermes-fleet-v1"
@@ -791,8 +796,12 @@ def yq(expr):
     except Exception:
         return ""
 doc = json.loads(subprocess.run(["yq","-o=json",".",yml],capture_output=True,text=True).stdout)
-out = {"default": doc.get("default"), "models": doc.get("models",{}),
-       "assignments": doc.get("assignments",{}), "litellm_up": litellm_up}
+out = {"default": doc.get("default"), "primary": doc.get("primary") or doc.get("default"),
+       "models": doc.get("models",{}),
+       "assignments": doc.get("assignments",{}),
+       "parked": doc.get("parked",{}) or {},
+       "kinds": doc.get("kinds",{}) or {},
+       "litellm_up": litellm_up}
 print(json.dumps(out, indent=2))
 PYEOF
     return 0

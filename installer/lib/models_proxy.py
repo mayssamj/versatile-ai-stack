@@ -1,0 +1,580 @@
+#!/usr/bin/env python3
+"""models_proxy.py — backend for the Model & Agent Console (doc/MODELS.html).
+
+Serves the console page AND a tiny, ROUTE-ALLOWLISTED API that WRAPS the `model`
+CLI (installer/lib/models.sh) to view / stage / apply changes to models.yml +
+litellm/config.yaml. It NEVER reimplements model logic in Python — every mutation
+is the real CLI, so the single source of truth and all its invariants are preserved.
+
+Design (council-locked, see project_model_console memory):
+  * GET  /api/state  — `model list --json` + `embedding list --json` + parsed
+                       config.yaml fallbacks/openrouter routes + key_env PRESENCE
+                       (names only) + pending. Read-only.
+  * POST /api/stage  — copy {models.yml, config.yaml} to an isolated SANDBOX, run the
+                       real `model <op> --no-sync` against the copies (MODELS_YML/CONFIG
+                       env override), and return a TRUE unified diff of both files plus
+                       the sync registration plan + a needs_recreate verdict. Touches
+                       no live file, no docker, no network mutation. CLI exit 2
+                       (validation/usage) -> 400 JSON; the proxy never crashes.
+  * POST /api/apply  — run the real op (with sync), after timestamped backups of
+                       models.yml/config.yaml/.env, under a single-flight lock. A
+                       container RECREATE (new vendor key) is gated behind an explicit
+                       confirm_recreate flag + a downtime warning.
+  * POST /api/test   — optional: one budget-capped smoke call to a model via the
+                       server-side ephemeral key (catches "added but 404s at call time").
+
+Security mirrors tutorial_proxy.py: loopback bind, Host-pin every POST, narrow static
+allowlist (no .js/.json/.env/.sh/.yml/dotfiles), key only from a 0600 file injected
+server-side, subprocess via argv-list (never shell) with a scrubbed env + timeouts.
+Vendor API keys NEVER cross the HTTP layer — only key VAR NAMES + presence booleans.
+"""
+import json, os, posixpath, shutil, subprocess, sys, tempfile, threading, time
+import urllib.parse, urllib.request, urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+PORT       = int(os.environ.get("MC_PORT", "8898"))
+LITELLM    = os.environ.get("MC_LITELLM", "http://127.0.0.1:4000").rstrip("/")
+HTML       = os.environ.get("MC_HTML", "")
+ROOT       = os.path.realpath(os.environ.get("MC_ROOT", "")) if os.environ.get("MC_ROOT") else ""
+MODELS_SH  = os.environ.get("MC_MODELS_SH", "")
+EMBED_SH   = os.environ.get("MC_EMBED_SH", "")
+START_LL   = os.environ.get("MC_START_LITELLM", "")
+MODELS_YML = os.environ.get("MC_MODELS_YML", "")
+CONFIG     = os.environ.get("MC_CONFIG", "")
+ENV_FILE   = os.environ.get("MC_ENV_FILE", "")
+READONLY   = os.environ.get("MC_READONLY", "0") == "1"
+
+# Ephemeral test key (best-effort; absent -> POST /api/test degrades to 503).
+KEY = ""
+_KEY_FILE = os.environ.get("MC_KEY_FILE", "")
+if _KEY_FILE and os.path.isfile(_KEY_FILE):
+    try:
+        with open(_KEY_FILE, "r", encoding="utf-8") as _kf:
+            KEY = _kf.read().strip()
+    except OSError:
+        pass
+
+# Keys passed into the LiteLLM container by bin/start-litellm.sh's FIXED -e set
+# (mirror of _mc_fixed there). A NEW openai-compat key_env outside this set needs a
+# container RECREATE (start-litellm.sh re-injects declared key_env on recreate, not on
+# a plain `docker restart`); one already in the set just needs the normal restart that
+# `model sync` already performs.
+FIXED_KEY_ENVS = {
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_API_KEY",
+    "SAKANA_API_KEY", "LITELLM_MASTER_KEY", "PHOENIX_API_KEY",
+}
+
+PAGE_ROUTE = "/"
+if ROOT and HTML:
+    _rel = os.path.relpath(os.path.realpath(HTML), ROOT)
+    if not _rel.startswith(".."):
+        PAGE_ROUTE = "/" + _rel.replace(os.sep, "/")
+
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8",
+    ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".ico": "image/x-icon", ".webp": "image/webp",
+}
+
+MAX_BODY = 64 * 1024
+SUBPROC_TIMEOUT = 360          # sync/apply can take a few minutes (key widening, restart)
+STAGE_TIMEOUT   = 90
+_apply_lock = threading.Lock()  # single-flight: serialize writes OUTER to models.sh's own lock
+
+# --- op -> CLI argv allowlist --------------------------------------------------
+# Every op maps the validated request to a FIXED argv built from literals + checked
+# fields. The raw request string is NEVER passed to a shell; subprocess uses argv lists.
+EDIT_FIELDS = {"rpm", "tpm", "ttl", "big", "effort", "note"}
+ADD_RUNTIMES = {"ollama", "lmstudio", "openai-compat", "openrouter"}
+ENVNAME_OK = lambda s: isinstance(s, str) and s.isascii() and bool(s) and (s[0].isalpha() or s[0] == "_") and all(c.isalnum() or c == "_" for c in s) and s.upper() == s
+
+
+def _str(d, k):
+    v = d.get(k)
+    return v if isinstance(v, str) and v.strip() else None
+
+
+class StageError(Exception):
+    """Raised with a clean message when an op's request is malformed (-> 400)."""
+
+
+def build_argv(op, args, *, sync):
+    """Return the `model` subcommand argv for (op, args). Appends --no-sync when
+    sync is False (staging). Raises StageError on malformed input (-> 400, never 500)."""
+    if not isinstance(args, dict):
+        raise StageError("args must be an object")
+    tail = [] if sync else ["--no-sync"]
+    if op == "assign":
+        a, m = _str(args, "agent"), _str(args, "model")
+        if not a or not m:
+            raise StageError("assign requires 'agent' and 'model'")
+        return ["assign", a, m] + tail
+    if op in ("park", "unpark"):
+        a = _str(args, "agent")
+        if not a:
+            raise StageError(f"{op} requires 'agent'")
+        return [op, a] + tail
+    if op == "edit":
+        name, field, value = _str(args, "name"), _str(args, "field"), args.get("value")
+        if not name or field not in EDIT_FIELDS:
+            raise StageError(f"edit requires 'name' and 'field' in {sorted(EDIT_FIELDS)}")
+        if not isinstance(value, str) or value == "":
+            value = "" if value is None else str(value)
+        if value == "":
+            raise StageError("edit requires a non-empty 'value'")
+        return ["edit", name, field, value] + tail
+    if op == "remove":
+        name = _str(args, "name")
+        if not name:
+            raise StageError("remove requires 'name'")
+        return ["remove", name] + tail
+    if op == "add":
+        rt = _str(args, "runtime")
+        if rt not in ADD_RUNTIMES:
+            raise StageError(f"add requires 'runtime' in {sorted(ADD_RUNTIMES)}")
+        if rt == "lmstudio":
+            slug = _str(args, "slug")
+            if not slug:
+                raise StageError("lmstudio add requires 'slug'")
+            argv = ["add", slug]
+            name = _str(args, "name")
+            if name:
+                argv += ["as", name]
+            return argv + tail
+        argv = ["add", "--runtime", rt]
+        served = _str(args, "served")
+        if not served:
+            raise StageError(f"{rt} add requires 'served'")
+        argv += ["--served", served]
+        if rt == "ollama":
+            big = args.get("big")
+            argv += ["--big", "true" if big in (True, "true") else "false"]
+        if rt == "openai-compat":
+            ab, ke = _str(args, "api_base"), _str(args, "key_env")
+            if not ab or not ke:
+                raise StageError("openai-compat add requires 'api_base' and 'key_env'")
+            if not ENVNAME_OK(ke):
+                raise StageError("'key_env' must be an ENV-style name (UPPER_SNAKE)")
+            argv += ["--api-base", ab, "--key-env", ke]
+            for opt in ("rpm", "tpm"):
+                v = args.get(opt)
+                if v not in (None, ""):
+                    if not str(v).isdigit():
+                        raise StageError(f"'{opt}' must be a positive integer")
+                    argv += [f"--{opt}", str(v)]
+        name = _str(args, "name")
+        if name:
+            argv += ["as", name]
+        elif rt in ("openai-compat",):
+            raise StageError("openai-compat add requires an alias 'name'")
+        return argv + tail
+    raise StageError(f"unknown op '{op}'")
+
+
+def needs_recreate(op, args):
+    """(needs_recreate: bool, reason: str). True only when activating the change needs
+    a LiteLLM container RECREATE (a NEW vendor key_env that start-litellm.sh must inject)
+    — everything else is handled by the restart `model sync`/`remove`/openrouter-add
+    already perform internally."""
+    if op == "add" and isinstance(args, dict) and _str(args, "runtime") == "openai-compat":
+        ke = _str(args, "key_env")
+        if ke and ke not in FIXED_KEY_ENVS:
+            return True, (f"adds a new vendor key '{ke}' — the LiteLLM container must be "
+                          f"RECREATED (bin/start-litellm.sh) so the key is passed through; "
+                          f"this briefly drops the endpoint the whole fleet routes through.")
+    return False, ""
+
+
+def run_model(argv, *, env_override=None, timeout=SUBPROC_TIMEOUT, cwd=None):
+    """Run `bash models.sh <argv...>` with a scrubbed env. Returns (rc, stdout, stderr).
+    env_override points MODELS_YML/CONFIG at a sandbox for staging. Never shell=True."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
+    if env_override:
+        env.update(env_override)
+    try:
+        p = subprocess.run(["bash", MODELS_SH] + argv, env=env, cwd=(cwd or ROOT),
+                           capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", f"timed out after {timeout}s"
+
+
+def yq_json(expr, path):
+    try:
+        p = subprocess.run(["yq", "-o=json", expr, path], capture_output=True, text=True, timeout=15)
+        if p.returncode == 0 and p.stdout.strip():
+            return json.loads(p.stdout)
+    except Exception:
+        pass
+    return None
+
+
+def env_key_presence():
+    """Names of env vars set to a NON-EMPTY value in .env. Returns a {name: True} map —
+    only NAMES + booleans ever leave the server, never the secret VALUES."""
+    present = {}
+    if not ENV_FILE or not os.path.isfile(ENV_FILE):
+        return present
+    try:
+        with open(ENV_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k = k.strip()
+                if k and v.strip().strip('"').strip("'"):
+                    present[k] = True
+    except OSError:
+        pass
+    return present
+
+
+def _diff(a, b, label):
+    """Unified diff of two files via the system `diff -u`. Empty string if identical."""
+    try:
+        p = subprocess.run(["diff", "-u", a, b], capture_output=True, text=True, timeout=20)
+        return p.stdout if p.returncode != 0 else ""
+    except Exception:
+        return f"(could not diff {label})"
+
+
+def _cors(h):
+    h.send_header("Access-Control-Allow-Origin", "*")  # loopback-bound; localhost only
+    h.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    h.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+
+class H(BaseHTTPRequestHandler):
+    server_version = "models-console/1.0"
+
+    def log_message(self, *a):
+        pass
+
+    def _json(self, code, obj):
+        b = json.dumps(obj).encode()
+        self.send_response(code); _cors(self)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers(); self.wfile.write(b)
+
+    def _host_ok(self):
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+        return host in ("127.0.0.1", "localhost", "::1")
+
+    def _read_body(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (ValueError, TypeError):
+            return None, (400, "invalid Content-Length")
+        if n < 0 or n > MAX_BODY:
+            return None, (413, "request too large")
+        raw = self.rfile.read(n) if n else b"{}"
+        try:
+            return json.loads(raw or b"{}"), None
+        except (ValueError, TypeError):
+            return None, (400, "invalid JSON body")
+
+    def do_OPTIONS(self):
+        self.send_response(204); _cors(self); self.end_headers()
+
+    # ----------------------------------------------------------------- GET
+    def do_GET(self):
+        path = urllib.parse.unquote(self.path.split("?", 1)[0])
+        if path == "/api/health":
+            return self._json(200, {"ok": True, "read_only": READONLY, "test_enabled": bool(KEY)})
+        if path == "/api/state":
+            if not self._host_ok():
+                return self._json(403, {"error": "forbidden host"})
+            return self._state()
+        if path in ("/", "/index.html", "/models", "/MODELS.html"):
+            if PAGE_ROUTE != "/":
+                return self._redirect(PAGE_ROUTE)
+            return self._serve_html()
+        if self._serve_static(path):
+            return
+        self._json(404, {"error": "not found (console serves the page, doc/image/css, and the /api allowlist)"})
+
+    # ----------------------------------------------------------------- POST
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        if not self._host_ok():
+            return self._json(403, {"error": "forbidden host"})
+        if path == "/api/stage":
+            return self._stage()
+        if path == "/api/apply":
+            return self._apply()
+        if path == "/api/test":
+            return self._test()
+        self._json(404, {"error": f"route not allowed: POST {path}"})
+
+    # ----------------------------------------------------------------- state
+    def _state(self):
+        rc, out, errs = run_model(["list", "--json"], timeout=30)
+        if rc != 0:
+            return self._json(500, {"error": "model list --json failed", "detail": errs[-800:]})
+        try:
+            state = json.loads(out)
+        except ValueError:
+            return self._json(500, {"error": "could not parse model list --json"})
+        # Embeddings registry (best-effort; absent -> {}).
+        emb = {}
+        if EMBED_SH and os.path.isfile(EMBED_SH):
+            try:
+                p = subprocess.run(["bash", EMBED_SH, "list", "--json"], capture_output=True, text=True, timeout=20,
+                                   env={k: v for k, v in os.environ.items() if not k.startswith("MC_")})
+                if p.returncode == 0 and p.stdout.strip():
+                    emb = json.loads(p.stdout)
+            except Exception:
+                emb = {}
+        # config.yaml: hand-curated fallbacks + openrouter routes (config-only, not in models.yml).
+        fallbacks = yq_json(".litellm_settings.fallbacks // []", CONFIG) or [] if CONFIG and os.path.isfile(CONFIG) else []
+        openrouter = []
+        ml = yq_json(".model_list // []", CONFIG) or [] if CONFIG and os.path.isfile(CONFIG) else []
+        declared = set(state.get("models", {}).keys())
+        for entry in ml:
+            if not isinstance(entry, dict):
+                continue
+            nm = entry.get("model_name")
+            mdl = (entry.get("litellm_params") or {}).get("model", "")
+            if isinstance(mdl, str) and mdl.startswith("openrouter/") and nm not in declared:
+                openrouter.append({"name": nm, "served": mdl})
+        # key_env presence (names only) for every declared key_env + the fixed vendor set.
+        presence = env_key_presence()
+        wanted = set(FIXED_KEY_ENVS)
+        for m in state.get("models", {}).values():
+            ke = (m or {}).get("key_env")
+            if isinstance(ke, str) and ke:
+                wanted.add(ke)
+        key_env_present = {k: bool(presence.get(k)) for k in sorted(wanted)}
+        state.update({
+            "fallbacks": fallbacks, "openrouter_routes": openrouter,
+            "embeddings": emb.get("embeddings", {}) if isinstance(emb, dict) else {},
+            "embedding_assignments": emb.get("embedding_assignments", {}) if isinstance(emb, dict) else {},
+            "key_env_present": key_env_present, "read_only": READONLY, "test_enabled": bool(KEY),
+            "fixed_key_envs": sorted(FIXED_KEY_ENVS),
+        })
+        self._json(200, state)
+
+    # ----------------------------------------------------------------- stage
+    def _stage(self):
+        body, err = self._read_body()
+        if err:
+            return self._json(err[0], {"error": err[1]})
+        op = body.get("op") if isinstance(body, dict) else None
+        args = body.get("args") if isinstance(body, dict) else {}
+        try:
+            argv = build_argv(op, args or {}, sync=False)
+        except StageError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        if not (MODELS_YML and CONFIG and os.path.isfile(MODELS_YML) and os.path.isfile(CONFIG)):
+            return self._json(500, {"ok": False, "error": "models.yml/config.yaml not found server-side"})
+        sb = tempfile.mkdtemp(prefix="mc-stage-")
+        try:
+            sm, sc = os.path.join(sb, "models.yml"), os.path.join(sb, "config.yaml")
+            shutil.copy2(MODELS_YML, sm); shutil.copy2(CONFIG, sc)
+            om, oc = sm + ".orig", sc + ".orig"
+            shutil.copy2(sm, om); shutil.copy2(sc, oc)
+            env_override = {"MODELS_YML": sm, "CONFIG": sc}
+            rc, out, errs = run_model(argv, env_override=env_override, timeout=STAGE_TIMEOUT)
+            if rc == 2:    # validation/usage refusal -> a clean 400 (NOT a crash)
+                msg = (errs.strip() or out.strip() or "the change was refused").splitlines()
+                return self._json(400, {"ok": False, "error": "\n".join(msg[-6:])})
+            if rc != 0:
+                return self._json(500, {"ok": False, "error": (errs or out)[-800:]})
+            models_diff = _diff(om, sm, "models.yml")
+            # config.yaml effect: direct edits (remove/openrouter) show via file diff;
+            # add/edit register on sync, so capture sync --dry-run's registration plan.
+            config_diff = _diff(oc, sc, "config.yaml")
+            sync_plan = ""
+            if not config_diff:
+                drc, dout, _ = run_model(["sync", "--dry-run"], env_override=env_override, timeout=STAGE_TIMEOUT)
+                if drc == 0:
+                    sync_plan = _extract_plan(dout)
+            nr, reason = needs_recreate(op, args or {})
+            self._json(200, {
+                "ok": True, "op": op,
+                "models_diff": models_diff,
+                "config_diff": config_diff or sync_plan,
+                "config_is_render_plan": bool(not config_diff and sync_plan),
+                "needs_recreate": nr, "recreate_reason": reason,
+                "cli_output": out.strip()[-1200:],
+            })
+        finally:
+            shutil.rmtree(sb, ignore_errors=True)
+
+    # ----------------------------------------------------------------- apply
+    def _apply(self):
+        if READONLY:
+            return self._json(403, {"ok": False, "error": "read-only mode: applies are disabled (restart without --read-only)"})
+        body, err = self._read_body()
+        if err:
+            return self._json(err[0], {"error": err[1]})
+        op = body.get("op") if isinstance(body, dict) else None
+        args = body.get("args") if isinstance(body, dict) else {}
+        confirm_recreate = bool(body.get("confirm_recreate")) if isinstance(body, dict) else False
+        try:
+            argv = build_argv(op, args or {}, sync=True)
+        except StageError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        nr, reason = needs_recreate(op, args or {})
+        if nr and not confirm_recreate:
+            return self._json(409, {"ok": False, "needs_confirm": True, "needs_recreate": True,
+                                    "reason": reason})
+        if not _apply_lock.acquire(blocking=False):
+            return self._json(409, {"ok": False, "error": "another apply is in progress — try again in a moment"})
+        try:
+            backups = _backup_sources()
+            rc, out, errs = run_model(argv, timeout=SUBPROC_TIMEOUT)
+            if rc == 2:
+                return self._json(400, {"ok": False, "error": (errs or out)[-800:], "backups": backups})
+            if rc != 0:
+                return self._json(500, {"ok": False, "error": (errs or out)[-1200:], "backups": backups})
+            recreate_done = False
+            recreate_log = ""
+            if nr and confirm_recreate and START_LL and os.path.isfile(START_LL):
+                try:
+                    env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
+                    p = subprocess.run(["bash", START_LL], env=env, cwd=ROOT,
+                                       capture_output=True, text=True, timeout=SUBPROC_TIMEOUT)
+                    recreate_done = (p.returncode == 0)
+                    recreate_log = ((p.stderr or "") + (p.stdout or ""))[-800:]
+                except subprocess.TimeoutExpired:
+                    recreate_log = "start-litellm.sh timed out"
+            return self._json(200, {"ok": True, "op": op, "output": out.strip()[-2000:],
+                                    "recreate_done": recreate_done, "recreate_log": recreate_log,
+                                    "backups": backups})
+        finally:
+            _apply_lock.release()
+
+    # ----------------------------------------------------------------- test
+    def _test(self):
+        if not KEY:
+            return self._json(503, {"ok": False, "error": "no test key (LiteLLM was down at launch) — restart models-serve with LiteLLM up"})
+        body, err = self._read_body()
+        if err:
+            return self._json(err[0], {"error": err[1]})
+        model = _str(body, "model") if isinstance(body, dict) else None
+        if not model:
+            return self._json(400, {"ok": False, "error": "test requires 'model'"})
+        prompt = (_str(body, "prompt") if isinstance(body, dict) else None) or "Reply with the single word: ok"
+        payload = {"model": model, "messages": [{"role": "user", "content": prompt[:500]}], "max_tokens": 16}
+        req = urllib.request.Request(LITELLM + "/v1/chat/completions",
+                                     data=json.dumps(payload).encode(), method="POST",
+                                     headers={"Authorization": "Bearer %s" % KEY, "Content-Type": "application/json"})
+        t0 = time.monotonic()
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read()
+            dt = round((time.monotonic() - t0) * 1000)
+            data = json.loads(raw) if raw else {}
+            text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+            return self._json(200, {"ok": True, "model": model, "latency_ms": dt, "reply": str(text)[:300]})
+        except urllib.error.HTTPError as e:
+            detail = (e.read() or b"")[:300].decode("utf-8", "replace")
+            return self._json(200, {"ok": False, "model": model, "status": e.code,
+                                    "error": f"upstream {e.code}", "detail": detail})
+        except Exception as e:
+            return self._json(200, {"ok": False, "model": model, "error": str(e)[:300]})
+
+    # ----------------------------------------------------------------- static / html
+    def _serve_html(self):
+        if not HTML or not os.path.isfile(HTML):
+            return self._json(503, {"error": "MODELS.html not found; build it first"})
+        with open(HTML, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers(); self.wfile.write(data)
+
+    def _redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _serve_static(self, path):
+        if not ROOT or "\x00" in path:
+            return False
+        rel = posixpath.normpath(path.lstrip("/"))
+        if not rel or rel == "." or rel.startswith("..") or os.path.isabs(rel):
+            return False
+        parts = rel.split("/")
+        if any(p.startswith(".") for p in parts):
+            return False
+        ext = os.path.splitext(rel)[1].lower()
+        ctype = STATIC_TYPES.get(ext)
+        if not ctype:
+            return False
+        full = os.path.realpath(os.path.join(ROOT, rel))
+        if os.path.commonpath([ROOT, full]) != ROOT or not os.path.isfile(full):
+            return False
+        try:
+            with open(full, "rb") as f:
+                data = f.read()
+        except OSError:
+            return False
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers(); self.wfile.write(data)
+        return True
+
+
+def _extract_plan(dry_out):
+    """Pull the indented config.yaml registration diff block from `model sync --dry-run`
+    stdout (the lines between 'registration plan' and the next 'P3'/'P4' marker)."""
+    lines = dry_out.splitlines()
+    out, capturing = [], False
+    for ln in lines:
+        if "registration plan" in ln:
+            capturing = True
+            continue
+        if capturing:
+            if ln.lstrip().startswith(("P3", "P4", "·")) and ("widening plan" in ln or "render plan" in ln):
+                break
+            if "(config.yaml already current" in ln:
+                return ""
+            out.append(ln)
+    return "\n".join(l for l in out if l.strip()).strip()
+
+
+def _backup_sources():
+    """Timestamped copies of models.yml/config.yaml/.env beside the originals.
+    Returns the list of backup paths so apply is reversible (council change 7)."""
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    made = []
+    for src in (MODELS_YML, CONFIG, ENV_FILE):
+        if src and os.path.isfile(src):
+            dst = f"{src}.console-bak-{ts}"
+            try:
+                shutil.copy2(src, dst); made.append(dst)
+            except OSError:
+                pass
+    return made
+
+
+def main():
+    for need, label in ((MODELS_SH, "MC_MODELS_SH"), (ROOT, "MC_ROOT")):
+        if not need:
+            print(f"models_proxy: {label} not set (the launcher sets it)", file=sys.stderr); sys.exit(2)
+    srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
+    mode = "READ-ONLY (no applies)" if READONLY else "read/write"
+    print(f"models-serve: http://127.0.0.1:{PORT}  ({mode}; Ctrl-C to stop)")
+    print(f"  wraps the `model` CLI — stage shows a both-file diff, apply backs up + is recreate-gated")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        srv.server_close()
+
+
+if __name__ == "__main__":
+    main()

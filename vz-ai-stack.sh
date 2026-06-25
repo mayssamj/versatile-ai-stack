@@ -269,6 +269,9 @@ ai-stack-installer — usage:
                                         (or all enabled), type-dispatched
     vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]   serve doc/TUTORIAL.html
                                         + safe 'Try it live' proxy (ephemeral local-only key)
+    vz-ai-stack.sh models-serve [--port N] [--read-only] [--revoke]   serve doc/MODELS.html
+                                        (Model & Agent Console) — view/stage/apply model +
+                                        agent-binding changes via UI; wraps the `model` CLI
     vz-ai-stack.sh fleet-studio [--port N] [--no-open]   review+edit agent-profiles/ in a
                                         browser (live read+write via File System Access API)
     vz-ai-stack.sh understand-dashboard [path] [--no-open] [--port N]   interactive
@@ -323,7 +326,7 @@ is_subcommand() {
   case "$1" in
     install|prepare-sudo|test|phases|steps|list|status|model|fleet|doctor|deps|\
     setup|keys|verify|adopt|apply-restarts|logs|history|gc|cleanup|migrate-v2|upgrade|\
-    tutorial-serve|fleet-studio|understand-dashboard|reset|start|run|enable|stop|disable|docker-engine|ingress|help) return 0 ;;
+    tutorial-serve|models-serve|fleet-studio|understand-dashboard|reset|start|run|enable|stop|disable|docker-engine|ingress|help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -788,6 +791,10 @@ cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 cmd_upgrade() { worktree_guard upgrade; bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree
 # Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
 cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
+# Serves doc/MODELS.html (the Model & Agent Console) + a loopback proxy that wraps the
+# `model` CLI to view/stage/apply model + agent-binding changes. Apply may restart the
+# live LiteLLM — run from MAIN (warns if a worktree); --read-only is safe anywhere.
+cmd_models_serve() { bash "$AI_STACK/installer/lib/models-serve.sh" "$@"; }
 # Serves doc/FLEET.html on loopback to review+edit agent-profiles/ in a browser.
 cmd_fleet_studio() { bash "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
 # Serves the Understand-Anything knowledge-graph dashboard (Phase 30) for a repo.
@@ -1281,6 +1288,7 @@ main() {
     migrate-v2)        cmd_migrate_v2 ;;
     upgrade)           cmd_upgrade "$@" ;;
     tutorial-serve)    cmd_tutorial_serve "$@" ;;
+    models-serve)      cmd_models_serve "$@" ;;
     fleet-studio)      cmd_fleet_studio "$@" ;;
     understand-dashboard) cmd_understand_dashboard "$@" ;;
     reset)             cmd_reset "$@" ;;
