@@ -565,6 +565,12 @@ class H(BaseHTTPRequestHandler):
         # BACKUP_DIR (e.g. config.yaml.<valid-ts> -> /etc/...) would otherwise be followed by
         # shutil.copy2 and overwrite the live file — so reject symlinks + re-check containment.
         rbd = os.path.realpath(BACKUP_DIR)
+        # Checked unconditionally for BOTH sources even when config is absent (a models-only
+        # restore point) — islink on a missing path is False and realpath stays inside BACKUP_DIR,
+        # so it's a harmless no-op there; the absent-config case is gated later by os.path.isfile.
+        # NOTE: islink-then-copy is not atomic (a residual local-only TOCTOU); accepted because
+        # writing to BACKUP_DIR already requires owning this account, and shutil.copy2 has no
+        # O_NOFOLLOW. Revisit if BACKUP_DIR ever becomes writable by a broader set of users.
         for src_check in (src_models, src_config):
             if os.path.islink(src_check):
                 return self._json(400, {"ok": False, "error": "invalid backup (symlink not allowed)"})
