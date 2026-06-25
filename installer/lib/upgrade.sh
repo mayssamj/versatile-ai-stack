@@ -407,16 +407,70 @@ up_compose() {
       if (( DOCKER_OK == 0 )); then RESULT="skipped (docker unavailable)"; return 0; fi
       if ( cd "$dir" && docker compose pull && docker compose up -d ); then RESULT="upgraded"; else RESULT=FAILED; fi
       ;;
+    hermes_workspace)
+      # The override (written by phase 05) declares a locally-BUILT image
+      # `hermes-workspace:aistack-hardened` (no registry). Two needs:
+      #   1. `compose pull` must SKIP it (else "pull access denied") → --ignore-buildable.
+      #   2. plain `up -d` reuses the EXISTING local image, so it would NOT refresh a
+      #      bumped base. Mirror phase 05: rebuild the hardened image first, reading the
+      #      (resolved) build config STRAIGHT FROM the override — phase 05's persisted
+      #      source of truth, so no duplicated digest pins and no drift.
+      # (See the `*)` branch's CAUTION note below on why --ignore-buildable is only
+      # safe for build-only / no-registry-counterpart images.)
+      if [[ -z "$dir" || "$dir" == "-" ]]; then
+        note "$svc: no path declared; run manually in its dir: docker build the hardened image, then docker compose pull --ignore-buildable && docker compose up -d"
+        RESULT="manual"; return 0
+      fi
+      local ovr="$dir/docker-compose.override.yml" ws_img="" ws_ctx="" ws_df="Dockerfile" ws_base="" can_build=0
+      if [[ -f "$ovr" ]] && command -v yq >/dev/null 2>&1; then
+        ws_img="$(yq -r '.services.hermes-workspace.image // ""' "$ovr" 2>/dev/null)"
+        ws_ctx="$(yq -r '.services.hermes-workspace.build.context // ""' "$ovr" 2>/dev/null)"
+        ws_df="$(yq -r '.services.hermes-workspace.build.dockerfile // "Dockerfile"' "$ovr" 2>/dev/null)"
+        ws_base="$(yq -r '.services.hermes-workspace.build.args.WS_BASE // ""' "$ovr" 2>/dev/null)"
+      fi
+      # Buildable only if the override carries a RESOLVED build config: image, context,
+      # dockerfile AND WS_BASE all present, and WS_BASE a concrete ref (not a still-
+      # unexpanded ${VAR}, which would pass an empty build-arg). ws_df is checked too —
+      # `// "Dockerfile"` only defaults on null/missing, NOT a present-but-empty key.
+      [[ -n "$ws_img" && -n "$ws_ctx" && -n "$ws_df" && -n "$ws_base" && "$ws_base" != *'${'* ]] && can_build=1
+      if (( DRY )); then
+        if (( can_build )); then
+          note "PLAN $svc compose: would: (cd $dir && docker build -t $ws_img --build-arg WS_BASE=$ws_base -f $ws_ctx/$ws_df $ws_ctx) then docker compose pull --ignore-buildable && docker compose up -d"
+        else
+          note "PLAN $svc compose: override has no resolved hardened-image build config — would SKIP rebuild (run 'vz-ai-stack.sh install 05'), then (cd $dir && docker compose pull --ignore-buildable && docker compose up -d)"
+        fi
+        RESULT="planned"; return 0
+      fi
+      if (( DOCKER_OK == 0 )); then RESULT="skipped (docker unavailable)"; return 0; fi
+      if (( can_build )); then
+        if ! ( cd "$dir" && docker build -t "$ws_img" --build-arg "WS_BASE=$ws_base" -f "$ws_ctx/$ws_df" "$ws_ctx" ); then
+          # Degrade gracefully (phase 05 posture): keep the existing local image and
+          # still bring the stack up, but flag the failed refresh so the summary is honest.
+          # NOTE: by design upgrade does NOT mutate the override here — `install 05` owns
+          # the self-healing build-config revert; we just route the user to it.
+          warn "$svc: hardened image rebuild FAILED — running the existing local image; re-run 'vz-ai-stack.sh install 05' to repair"
+          # Surface a degrade-time `up -d` failure (e.g. image never built locally) —
+          # do NOT swallow it; RESULT stays FAILED either way.
+          ( cd "$dir" && docker compose pull --ignore-buildable && docker compose up -d ) \
+            || warn "$svc: degrade 'up -d' also failed — containers may be DOWN; re-run 'vz-ai-stack.sh install 05'"
+          RESULT=FAILED; return 0
+        fi
+      else
+        warn "$svc: override lacks a resolved hardened-image build config — skipping rebuild (re-run 'vz-ai-stack.sh install 05'); pulling peers + up -d only. If the hardened image was never built or was GC'd, 'up -d' will fail until install 05 rebuilds it."
+      fi
+      if ( cd "$dir" && docker compose pull --ignore-buildable && docker compose up -d ); then RESULT="upgraded"; else RESULT=FAILED; fi
+      ;;
     *)
-      # honcho, hermes_workspace: plain compose pull && up -d in svc_path.
+      # honcho: plain compose pull && up -d in svc_path. (hermes_workspace has its
+      # own branch above; autofyn has its own branch above too.)
       # --ignore-buildable: skip images that have a `build:` section but a local-only
-      # tag (e.g. hermes-workspace:aistack-hardened). Without it `compose pull` errors
-      # "pull access denied" on that tag — it exists locally, not in any registry.
-      # No-op for stacks whose buildable services are build-only (honcho api/deriver).
-      # CAUTION: only safe here because honcho/hermes_workspace's buildable images have
-      # NO registry counterpart. A dual-mode service (build: AND a pullable registry
-      # image:, like autofyn) MUST get its own branch — --ignore-buildable would skip
-      # its real registry pull. autofyn has exactly that and its own branch above.
+      # tag. Without it `compose pull` errors "pull access denied" on such a tag — it
+      # exists locally, not in any registry. No-op for honcho (its buildable services
+      # api/deriver are build-only, no image: tag to pull).
+      # CAUTION: only safe for stacks whose buildable images have NO registry
+      # counterpart. A dual-mode service (build: AND a pullable registry image:, like
+      # autofyn) MUST get its own branch — --ignore-buildable would skip its real
+      # registry pull. Do not route such a service here.
       if [[ -z "$dir" || "$dir" == "-" ]]; then
         note "$svc: no path declared; run manually: docker compose pull --ignore-buildable && docker compose up -d"
         RESULT="manual"; return 0
