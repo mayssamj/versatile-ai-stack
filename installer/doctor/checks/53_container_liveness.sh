@@ -41,14 +41,28 @@ CHECK_TITLE[container_liveness]="Every stack container that EXISTS is running & 
 
 # Derive the stack compose-project set: services.yml (single source of truth) ∪
 # the hardcoded floor. Union means a bad/empty derivation never drops a known stack.
+#
+# F16: when the yq derivation fails or returns nothing, emit a diagnostic WARN
+# (to stderr, so it surfaces in the check output) rather than silently falling
+# back to the hardcoded floor. The floor is still the safety net (the check
+# never hard-fails due to a missing yq), but the operator learns the derivation
+# is broken so they can fix it — previously this was silent.
 _53_stack_projects() {
-  local derived=""
+  local derived="" _yq_ok=1
   if command -v yq >/dev/null 2>&1 && [[ -f "${AI_STACK:-}/services.yml" ]]; then
     derived="$(yq -r '
       .services | to_entries[]
       | select(.value.type == "compose" or .value.type == "docker-compose")
       | (.value.project // (.value.path | split("/") | .[-1]))
-    ' "$AI_STACK/services.yml" 2>/dev/null | tr "\n" " " || true)"
+    ' "$AI_STACK/services.yml" 2>/dev/null | tr "\n" " ")" || _yq_ok=0
+    if [[ "$_yq_ok" == "0" || -z "${derived// }" ]]; then
+      # Emit to stderr so it appears in the check's diagnose output block.
+      echo "  (advisory) check 53: could not derive compose-project set from services.yml (yq error or empty result) — census uses hardcoded fallback floor only; add new compose stacks to _53_STACK_PROJECTS_FALLBACK if they are not in services.yml" >&2
+    fi
+  elif ! command -v yq >/dev/null 2>&1; then
+    echo "  (advisory) check 53: yq not on PATH — compose-project census uses hardcoded fallback floor only" >&2
+  elif [[ ! -f "${AI_STACK:-}/services.yml" ]]; then
+    echo "  (advisory) check 53: services.yml not found at $AI_STACK/services.yml — compose-project census uses hardcoded fallback floor only" >&2
   fi
   # Dedup the union into a single space-separated list.
   printf '%s\n' $_53_STACK_PROJECTS_FALLBACK $derived | awk 'NF && !seen[$0]++' | tr "\n" " "
