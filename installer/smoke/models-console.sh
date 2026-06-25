@@ -99,6 +99,41 @@ a_config="$(shasum "$tmp/config.yaml" | awk '{print $1}')"
 { [[ "$b_models" == "$a_models" && "$b_config" == "$a_config" ]]; } \
   && yes_ "source models.yml + config.yaml byte-identical after state+stage" || no_ "source files mutated by a read-only session!"
 
+# 7. cross-origin POST -> 403 (CSRF guard: Origin host not loopback). Complements no-CORS.
+code="$(curl -s $H -H 'Origin: http://evil.example.com' -o /dev/null -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$PORT/api/stage" -d '{"op":"edit","args":{"name":"local-gemma4","field":"note","value":"x"}}')"
+[[ "$code" == "403" ]] && yes_ "cross-origin POST (foreign Origin) -> 403 (CSRF guard)" || no_ "cross-origin POST expected 403, got $code"
+
+# 8. argv leading-dash smuggling -> clean 400 (a value/name starting with '-' is rejected).
+code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/stage" \
+  -d '{"op":"assign","args":{"agent":"--dry-run","model":"local-gemma4"}}')"
+[[ "$code" == "400" ]] && yes_ "leading-dash arg ('--dry-run') -> clean 400 (argv-smuggling guard)" || no_ "dash-arg expected 400, got $code"
+
+# 9. add op (ollama) stages a true diff in the sandbox (or 400 if already declared — both OK).
+stg="$(curl -s $H -X POST "http://127.0.0.1:$PORT/api/stage" \
+  -d '{"op":"add","args":{"runtime":"ollama","served":"smoke-test:tag","name":"local-smoke-test","big":false}}')"
+echo "$stg" | python3 -c 'import sys,json
+d=json.load(sys.stdin)
+assert d.get("ok") is True and "local-smoke-test" in d.get("models_diff",""), d
+assert d.get("needs_recreate") is False, "ollama add should not need recreate"
+' 2>/dev/null && yes_ "/api/stage add(ollama) -> true diff, needs_recreate=false" || no_ "add(ollama) stage failed: $stg"
+
+# 10. add op (openai-compat, NEW key_env) -> needs_recreate=true (the highest-risk gate).
+stg="$(curl -s $H -X POST "http://127.0.0.1:$PORT/api/stage" \
+  -d '{"op":"add","args":{"runtime":"openai-compat","served":"x","api_base":"https://api.example/v1","key_env":"SMOKE_NEW_KEY","name":"smoke-oc"}}')"
+echo "$stg" | python3 -c 'import sys,json
+d=json.load(sys.stdin)
+assert d.get("ok") is True, d
+assert d.get("needs_recreate") is True, "new vendor key_env must flag needs_recreate"
+# MEDIUM-1 regression: the config render-plan must NOT over-capture P3/P4 sections.
+cd=d.get("config_diff","")
+assert "widening plan" not in cd and "render plan" not in cd, "config_diff over-captured sync P3/P4 output"
+' 2>/dev/null && yes_ "/api/stage add(openai-compat new key) -> needs_recreate=true + clean render-plan (no P3/P4 bleed)" || no_ "add(openai-compat) stage failed: $stg"
+
+# 11. /api/test -> 503 when no key minted (LiteLLM best-effort degraded).
+code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/test" -d '{"model":"local-gemma4"}')"
+[[ "$code" == "503" ]] && yes_ "/api/test -> 503 when no test key (best-effort degrade)" || no_ "no-key test expected 503, got $code"
+
 echo
 if (( fail==0 )); then printf '✓ models-console: %d checks passed\n' "$pass"; exit 0
 else printf '✗ models-console: %d passed, %d FAILED\n' "$pass" "$fail"; exit 1; fi

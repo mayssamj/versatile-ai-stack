@@ -1428,9 +1428,14 @@ cmd_remove() {
   NM="$name" yq -i 'del(.models[strenv(NM)])' "$MODELS_YML" || { err "yq -i remove from models.yml failed (restore: cp $MODELS_YML.bak $MODELS_YML)"; exit 1; }
   ok "removed models.$name from models.yml (backup: $(basename "$MODELS_YML").bak)"
   if [[ -f "$CONFIG" ]]; then
+    # HARD-FAIL, not warn: models.yml is already deleted above, so a failed config.yaml
+    # delete leaves an ORPHAN route (a model_name with no models.yml backing) that NEITHER
+    # doctor check 40 (models.yml->config coverage) NOR check 65 detects. Fail loudly with
+    # a restore path instead of silently leaving the two files inconsistent.
     NM="$name" yq -i 'del(.model_list[] | select(.model_name == strenv(NM)))' "$CONFIG" \
       && ok "removed '$name' from config.yaml model_list" \
-      || warn "could not delete '$name' from config.yaml model_list — check by hand"
+      || { err "FAILED to delete '$name' from config.yaml — it is now an ORPHAN route (no models.yml backing)."; \
+           err "  restore models.yml: cp '$MODELS_YML.bak' '$MODELS_YML'  then remove '$name' from '$CONFIG' by hand."; exit 1; }
   fi
   if (( nosync )); then
     note "--no-sync: restart LiteLLM to drop the live route — bash bin/start-litellm.sh (or 'docker restart litellm')."; exit 0

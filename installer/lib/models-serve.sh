@@ -119,10 +119,19 @@ ensure_port_free() {
 
 ensure_port_free "$PORT"
 
-# Warn early (not fatal) if we're in a worktree — apply restarts the live LiteLLM.
+# If we're in a git worktree, FORCE read-only. Apply restarts/recreates the live LiteLLM
+# container, which bind-mounts the workspace path — doing that from a worktree breaks the
+# live stack (feedback_worktree_breaks_live_stack). Read + stage (sandbox diff) are safe
+# from anywhere, so we keep those working and only disable writes. A warn alone is too
+# easy to miss once the server starts and all reads succeed.
 if [[ "$(git -C "$AI_STACK" rev-parse --git-dir 2>/dev/null)" != "$(git -C "$AI_STACK" rev-parse --git-common-dir 2>/dev/null)" ]]; then
-  warn "this looks like a git worktree — 'apply' restarts the live LiteLLM, which can break the stack."
-  warn "  run models-serve from the MAIN checkout. (--read-only is safe from anywhere.)"
+  if (( ! READ_ONLY )); then
+    warn "git worktree detected — FORCING --read-only (apply would restart the live LiteLLM and can break the stack)."
+    warn "  to apply changes, run models-serve from the MAIN checkout."
+    READ_ONLY=1
+  else
+    note "git worktree detected — already --read-only; read + stage are safe here."
+  fi
 fi
 
 # BEST-EFFORT mint: the console runs fine without a key (config editing is offline).

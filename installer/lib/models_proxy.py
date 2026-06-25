@@ -13,8 +13,10 @@ Design (council-locked, see project_model_console memory):
   * POST /api/stage  — copy {models.yml, config.yaml} to an isolated SANDBOX, run the
                        real `model <op> --no-sync` against the copies (MODELS_YML/CONFIG
                        env override), and return a TRUE unified diff of both files plus
-                       the sync registration plan + a needs_recreate verdict. Touches
-                       no live file, no docker, no network mutation. CLI exit 2
+                       the sync registration plan + a needs_recreate verdict. Touches no
+                       live file and makes no docker call or network MUTATION (a
+                       read-only LM Studio liveness probe may occur via sync --dry-run).
+                       CLI exit 2
                        (validation/usage) -> 400 JSON; the proxy never crashes.
   * POST /api/apply  — run the real op (with sync), after timestamped backups of
                        models.yml/config.yaml/.env, under a single-flight lock. A
@@ -82,6 +84,7 @@ MAX_BODY = 64 * 1024
 SUBPROC_TIMEOUT = 360          # sync/apply can take a few minutes (key widening, restart)
 STAGE_TIMEOUT   = 90
 _apply_lock = threading.Lock()  # single-flight: serialize writes OUTER to models.sh's own lock
+_stage_sem = threading.BoundedSemaphore(4)  # cap concurrent stage subprocess fan-out (each stage forks bash+yq)
 
 # --- op -> CLI argv allowlist --------------------------------------------------
 # Every op maps the validated request to a FIXED argv built from literals + checked
@@ -96,6 +99,17 @@ def _str(d, k):
     return v if isinstance(v, str) and v.strip() else None
 
 
+def _posarg(d, k):
+    """A positional string arg destined for the CLI argv: non-empty AND not a leading-dash
+    flag. Rejecting leading '-' closes argv-smuggling — a name/agent/value like '--dry-run'
+    would otherwise be parsed by the CLI as a FLAG, not a positional (the proxy uses argv
+    lists so there is no shell injection, but flag-smuggling can still flip CLI behavior)."""
+    v = _str(d, k)
+    if v is not None and v.lstrip().startswith("-"):
+        raise StageError(f"'{k}' must not start with '-'")
+    return v
+
+
 class StageError(Exception):
     """Raised with a clean message when an op's request is malformed (-> 400)."""
 
@@ -107,26 +121,28 @@ def build_argv(op, args, *, sync):
         raise StageError("args must be an object")
     tail = [] if sync else ["--no-sync"]
     if op == "assign":
-        a, m = _str(args, "agent"), _str(args, "model")
+        a, m = _posarg(args, "agent"), _posarg(args, "model")
         if not a or not m:
             raise StageError("assign requires 'agent' and 'model'")
         return ["assign", a, m] + tail
     if op in ("park", "unpark"):
-        a = _str(args, "agent")
+        a = _posarg(args, "agent")
         if not a:
             raise StageError(f"{op} requires 'agent'")
         return [op, a] + tail
     if op == "edit":
-        name, field, value = _str(args, "name"), _str(args, "field"), args.get("value")
+        name, field, value = _posarg(args, "name"), _str(args, "field"), args.get("value")
         if not name or field not in EDIT_FIELDS:
             raise StageError(f"edit requires 'name' and 'field' in {sorted(EDIT_FIELDS)}")
         if not isinstance(value, str) or value == "":
             value = "" if value is None else str(value)
         if value == "":
             raise StageError("edit requires a non-empty 'value'")
+        if value.lstrip().startswith("-"):   # else the CLI parses the value as a flag
+            raise StageError("edit 'value' must not start with '-'")
         return ["edit", name, field, value] + tail
     if op == "remove":
-        name = _str(args, "name")
+        name = _posarg(args, "name")
         if not name:
             raise StageError("remove requires 'name'")
         return ["remove", name] + tail
@@ -135,16 +151,16 @@ def build_argv(op, args, *, sync):
         if rt not in ADD_RUNTIMES:
             raise StageError(f"add requires 'runtime' in {sorted(ADD_RUNTIMES)}")
         if rt == "lmstudio":
-            slug = _str(args, "slug")
+            slug = _posarg(args, "slug")
             if not slug:
                 raise StageError("lmstudio add requires 'slug'")
             argv = ["add", slug]
-            name = _str(args, "name")
+            name = _posarg(args, "name")
             if name:
                 argv += ["as", name]
             return argv + tail
         argv = ["add", "--runtime", rt]
-        served = _str(args, "served")
+        served = _posarg(args, "served")
         if not served:
             raise StageError(f"{rt} add requires 'served'")
         argv += ["--served", served]
@@ -164,7 +180,7 @@ def build_argv(op, args, *, sync):
                     if not str(v).isdigit():
                         raise StageError(f"'{opt}' must be a positive integer")
                     argv += [f"--{opt}", str(v)]
-        name = _str(args, "name")
+        name = _posarg(args, "name")
         if name:
             argv += ["as", name]
         elif rt in ("openai-compat",):
@@ -225,7 +241,9 @@ def env_key_presence():
                     continue
                 k, _, v = line.partition("=")
                 k = k.strip()
-                if k and v.strip().strip('"').strip("'"):
+                # strip surrounding quotes (either kind) THEN whitespace, so a value like
+                # '' / "" / ' ' counts as ABSENT (not a spuriously-"present" empty key).
+                if k and v.strip().strip('"').strip("'").strip():
                     present[k] = True
     except OSError:
         pass
@@ -241,10 +259,25 @@ def _diff(a, b, label):
         return f"(could not diff {label})"
 
 
-def _cors(h):
-    h.send_header("Access-Control-Allow-Origin", "*")  # loopback-bound; localhost only
-    h.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    h.send_header("Access-Control-Allow-Headers", "Content-Type")
+def _loopback_origin_ok(headers):
+    """False for a browser CROSS-SITE / cross-origin request. We emit NO CORS headers
+    (the console page and /api are SAME-ORIGIN, so same-origin fetches need none), which
+    means a cross-origin page's JSON POST — a CORS-preflighted request — is already
+    BLOCKED by the browser; this is the server-side belt-and-suspenders that ALSO rejects
+    the request if it somehow arrives. Closes the localhost CSRF vector against the
+    state-changing routes (/api/apply, /api/stage). Same-origin and non-browser callers
+    (curl, no Origin / no Sec-Fetch-Site) pass."""
+    if (headers.get("Sec-Fetch-Site") or "").lower() in ("cross-site", "cross-origin"):
+        return False
+    origin = headers.get("Origin")
+    if origin:
+        try:
+            host = urllib.parse.urlparse(origin).hostname
+        except Exception:
+            return False
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            return False
+    return True
 
 
 class H(BaseHTTPRequestHandler):
@@ -255,7 +288,7 @@ class H(BaseHTTPRequestHandler):
 
     def _json(self, code, obj):
         b = json.dumps(obj).encode()
-        self.send_response(code); _cors(self)
+        self.send_response(code)   # NO CORS headers: same-origin needs none; omitting them blocks cross-origin POSTs
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(b)))
         self.end_headers(); self.wfile.write(b)
@@ -278,7 +311,9 @@ class H(BaseHTTPRequestHandler):
             return None, (400, "invalid JSON body")
 
     def do_OPTIONS(self):
-        self.send_response(204); _cors(self); self.end_headers()
+        # Reply with NO Access-Control-Allow-* headers -> a cross-origin preflight fails
+        # closed in the browser, so the cross-origin POST that would follow never fires.
+        self.send_response(204); self.end_headers()
 
     # ----------------------------------------------------------------- GET
     def do_GET(self):
@@ -288,6 +323,8 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/state":
             if not self._host_ok():
                 return self._json(403, {"error": "forbidden host"})
+            if not _loopback_origin_ok(self.headers):
+                return self._json(403, {"error": "forbidden origin (cross-site request blocked)"})
             return self._state()
         if path in ("/", "/index.html", "/models", "/MODELS.html"):
             if PAGE_ROUTE != "/":
@@ -302,6 +339,8 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if not self._host_ok():
             return self._json(403, {"error": "forbidden host"})
+        if not _loopback_origin_ok(self.headers):
+            return self._json(403, {"error": "forbidden origin (cross-site request blocked)"})
         if path == "/api/stage":
             return self._stage()
         if path == "/api/apply":
@@ -371,6 +410,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": str(e)})
         if not (MODELS_YML and CONFIG and os.path.isfile(MODELS_YML) and os.path.isfile(CONFIG)):
             return self._json(500, {"ok": False, "error": "models.yml/config.yaml not found server-side"})
+        if not _stage_sem.acquire(blocking=False):   # cap concurrent stage fan-out (DoS backstop)
+            return self._json(429, {"ok": False, "error": "too many concurrent stage requests — retry shortly"})
         sb = tempfile.mkdtemp(prefix="mc-stage-")
         try:
             sm, sc = os.path.join(sb, "models.yml"), os.path.join(sb, "config.yaml")
@@ -404,6 +445,7 @@ class H(BaseHTTPRequestHandler):
             })
         finally:
             shutil.rmtree(sb, ignore_errors=True)
+            _stage_sem.release()
 
     # ----------------------------------------------------------------- apply
     def _apply(self):
@@ -434,6 +476,11 @@ class H(BaseHTTPRequestHandler):
                 return self._json(500, {"ok": False, "error": (errs or out)[-1200:], "backups": backups})
             recreate_done = False
             recreate_log = ""
+            # NOTE (accepted v1 tradeoff): for a new-vendor-key openai-compat add, the op
+            # above ran `model add` -> `model sync` which docker-restarts LiteLLM to load
+            # the registered route; that restart does NOT re-inject the new -e key, so this
+            # start-litellm.sh recreate is the one that actually activates it. Net = two
+            # restarts for this rare op. Optimizing to a single recreate is a follow-up.
             if nr and confirm_recreate and START_LL and os.path.isfile(START_LL):
                 try:
                     env = {k: v for k, v in os.environ.items() if not k.startswith("MC_")}
@@ -545,18 +592,43 @@ def _extract_plan(dry_out):
     return "\n".join(l for l in out if l.strip()).strip()
 
 
+BACKUP_DIR = os.path.join(ROOT, "installer", "state", "model-console-backups") if ROOT else ""
+BACKUP_KEEP = 10   # retain the last N timestamped copies per source (prune the rest)
+
+
 def _backup_sources():
-    """Timestamped copies of models.yml/config.yaml/.env beside the originals.
-    Returns the list of backup paths so apply is reversible (council change 7)."""
+    """Timestamped copies of models.yml/config.yaml/.env so apply is reversible (council
+    change 7). Written to installer/state/model-console-backups/ (a gitignored state dir)
+    — NOT beside the originals (which are git-tracked, so backups there became `git status`
+    noise + unbounded growth). Pruned to the last BACKUP_KEEP per source. A failed copy is
+    surfaced (stderr), never silently swallowed, so a missing backup can't masquerade as a
+    successful one. Returns the list of backup paths."""
+    if not BACKUP_DIR:
+        return []
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+    except OSError as e:
+        print(f"models_proxy: WARNING could not create backup dir {BACKUP_DIR}: {e}", file=sys.stderr)
+        return []
     ts = time.strftime("%Y%m%d-%H%M%S")
     made = []
     for src in (MODELS_YML, CONFIG, ENV_FILE):
-        if src and os.path.isfile(src):
-            dst = f"{src}.console-bak-{ts}"
-            try:
-                shutil.copy2(src, dst); made.append(dst)
-            except OSError:
-                pass
+        if not (src and os.path.isfile(src)):
+            continue
+        base = os.path.basename(src)
+        dst = os.path.join(BACKUP_DIR, f"{base}.{ts}")
+        try:
+            shutil.copy2(src, dst); made.append(dst)
+        except OSError as e:
+            print(f"models_proxy: WARNING backup of {src} failed: {e}", file=sys.stderr)
+            continue
+        # prune: keep the most-recent BACKUP_KEEP for THIS source basename.
+        try:
+            old = sorted(g for g in os.listdir(BACKUP_DIR) if g.startswith(base + "."))
+            for g in old[:-BACKUP_KEEP]:
+                os.remove(os.path.join(BACKUP_DIR, g))
+        except OSError:
+            pass
     return made
 
 
