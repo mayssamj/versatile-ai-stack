@@ -51,7 +51,7 @@ diff, a blocked attack.
 
 This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 49 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
-> The 7-act journey below is narrative — it teaches the platform as a story. If instead you want a quick, self-contained hands-on for *one specific service*, every service has a ~2-minute entry in the **[Service Playground appendix](SERVICE-PLAYGROUND.md)** (`doc/SERVICE-PLAYGROUND.md`): what it is, how to health-check it, one thing to try, and its caveats.
+> The 7-act journey below is narrative — it teaches the platform as a story. If instead you want a quick, self-contained hands-on for *one specific service*, every service has a ~2-minute entry in the **[Service Playground appendix](SERVICE-PLAYGROUND.md)** (`doc/SERVICE-PLAYGROUND.md`): what it is, how to health-check it, one thing to try, and its caveats. For the fleet specifically (Act IV), there's a full day-to-day hands-on in **[doc/HERMES-HANDSON.md](HERMES-HANDSON.md)**.
 
 ---
 
@@ -634,6 +634,8 @@ bin/mempalace wake-up
 
 This is the headline act: a **9-role software-engineering team** — manager, tech lead, frontend, backend, ML, QA, reviewer, SRE, incident manager — that you talk to like colleagues. The same nine roles are realized three ways (Hermes profiles, Pi personas, Claude Code subagents), all sharing one operating contract, so you can hand a one-line task to a single specialist or ask the manager to ship a whole feature through a review-gated pipeline.
 
+> **Want the deep, day-to-day hands-on?** See the companion guide **[doc/HERMES-HANDSON.md](HERMES-HANDSON.md)** — the Workspace UI, the full CLI, per-role model assignment, Slack + Telegram, and the claw3d office, end to end.
+
 ---
 
 ### L11 · Meet the 9-role engineering team · 🟡
@@ -696,6 +698,8 @@ Five more shared skills back the protocol: `tdd`, `hypothesis-debugging`, `verif
 > ```bash
 > vz-ai-stack.sh fleet list
 > ```
+
+For a point-and-click view, the **Hermes Workspace** web UI at `http://workspace:3000` (Dashboard / Chat / Conductor / Memory / Sessions / Profiles) shows the same roster, their load, and per-profile souls — see the companion [§1](HERMES-HANDSON.md#1-the-hermes-workspace-web-command-center--).
 
 ---
 
@@ -817,6 +821,8 @@ vz-ai-stack.sh install 20
 ```
 
 **The security model is the headline.** The gateway is **secure-by-default**: with *no allowlist and no allow-all*, it connects but **denies every user** — the bot stays silent. It can drive all nine profiles, so it must never be open by accident. To use it, set `HERMES_TELEGRAM_ALLOWED_USERS=<your numeric Telegram id>` in `.env` and re-run the phase. `HERMES_TELEGRAM_ALLOW_ALL=true` exists but is explicitly *not recommended*.
+
+**Slack** is also supported natively by hermes-agent but is **not pre-wired** by ai-stack — it's a documented self-setup that needs a `slack.com` egress add to the sandbox policy plus a bot token; see the companion [§5](HERMES-HANDSON.md#5-reach-hermes-from-chat-apps--telegram--slack--).
 
 **claw3d — the 3D agent office.** claw3d is a Next.js "virtual office" that visualizes the agents, fronted by the **stack-agents bridge** (`claw3d-bridge/bridge.py`) — the same one-endpoint API you used in L12. `install all` (or `install claw3d`) provisions it (clone + npm); `start claw3d` runs it:
 
