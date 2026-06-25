@@ -180,6 +180,73 @@ litellm_scoped_curl() {
   return $_rc
 }
 
+# --- _doctor_assert_key_allowlist: shared agent-sim allow-list drift check ----
+# Usage: _doctor_assert_key_allowlist <scoped_key> <KEY_ENV_NAME> <yq_assignment_key> \
+#                                     <model_descr> <phase_num>
+#
+# DRY extraction of the allow-list assertion duplicated across doctor checks 57-61
+# (MetaGPT/AgentScope/OASIS/ChatDev/AI Town). After the per-check /v1/models probe has
+# already proved the scoped key lists SOME model, this verifies the key actually ALLOWS
+# the specific model the sim is bound to: a key still scoped to an OLD alias after a model
+# rename/re-assign passes /v1/models yet SILENT-403s the model the sim calls. Resolves the
+# bound model the way the phase does (models.yml `.assignments.<key>`, else local-gemma4)
+# and self-looks-up the scoped key's allow-list via /key/info (Bearer = the scoped key via
+# litellm_scoped_curl, no ?key= in the URL; metadata read only — never cold-starts).
+#
+# Probe order is LOOPBACK-FIRST (127.0.0.1:4000 then litellm:4000), standardized from the
+# old per-check split (61 was already loopback-first; 57-60 were litellm-first): doctor runs
+# in the host shell, where the litellm:4000 alias only resolves if Phase 00n wrote /etc/hosts
+# — trying it first burns a guaranteed ~5s timeout on boxes without that entry. Loopback is
+# always reachable from the host, so it is strictly >= the old order (no regression). The
+# SIBLING /v1/models probe in checks 57-60 is still litellm-first (out of this E+F refactor's
+# scope — it is not the duplicated block; 61's /v1/models is already loopback-first); aligning
+# it loopback-first is a tracked follow-up.
+#
+# Returns 1 + an echoed diagnostic ONLY when the allow-list is parseable, non-wildcard, and
+# genuinely MISSING the bound model (the real drift) — the caller propagates with `|| return
+# 1`, and doctor re-runs the diagnose to surface the message. Returns 0 (non-fatal) on every
+# soft case so a transient blip never red-bars a working stack: wildcard/unrestricted key,
+# empty/unparseable /key/info, or LiteLLM unreachable. When yq is ABSENT it cannot resolve
+# the bound model, so it WARNs (no longer a fully-silent skip — visible in any FAIL detail /
+# direct diagnose run; on a clean PASS doctor shows nothing by design) and returns 0.
+_doctor_assert_key_allowlist() {
+  # Suppress xtrace for the in-function key-handling: under `set -x` the `local key=$1`
+  # assignment below would otherwise trace `+ local key=sk-...` to stderr. Mirrors the
+  # xtrace discipline of litellm_master_curl / litellm_scoped_curl (which this calls — it
+  # self-suppresses its own internals too). NOTE: this does NOT close the caller-side trace
+  # of the invocation line itself (`+ _doctor_assert_key_allowlist sk-...`), which bash emits
+  # with args expanded BEFORE the body runs — a pre-existing whole-codebase property of
+  # passing "$key" to ANY function under set -x (the old inline `litellm_scoped_curl "$key"`
+  # leaked identically), and no installer code runs under `set -x`. Restored before the
+  # parse/echo (which never reference the key) and in the yq-absent early return.
+  local _xt=''; case $- in *x*) _xt=1; set +x;; esac
+  local key="$1" key_env="$2" yq_key="$3" model_descr="$4" phase="$5"
+  if ! command -v yq >/dev/null 2>&1; then
+    [[ -n "$_xt" ]] && set -x
+    warn "$key_env allow-list assertion skipped (yq not installed) — cannot resolve the bound model to verify the scoped key allows it; install yq to enable this drift check"
+    return 0
+  fi
+  local want
+  want="$(yq -r ".assignments.${yq_key} // \"\"" "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
+  [[ -n "$want" && "$want" != "null" ]] || want="local-gemma4"
+  local allow
+  allow="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/key/info 2>/dev/null || litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null || true)"
+  [[ -n "$_xt" ]] && set -x
+  allow="$(printf '%s' "$allow" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+info=d.get("info")
+if not isinstance(info,dict): sys.exit(0)
+m=info.get("models") or []
+print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
+  if [[ -n "$allow" ]] && ! printf '%s\n' "$allow" | grep -qxF '__wildcard__' \
+     && ! printf '%s\n' "$allow" | grep -qxF "$want"; then
+    echo "$key_env allow-list missing '$want' ($model_descr) — stale key after a model rename/re-assign; re-run 'vz-ai-stack.sh install $phase' to self-heal"
+    return 1
+  fi
+  return 0
+}
+
 # --- litellm_reconcile_key: self-heal a scoped key's model allow-list --------
 # Usage: litellm_reconcile_key <KEY_ENV> <model...>           (positional names)
 #        litellm_reconcile_key <KEY_ENV> '["m1","m2",...]'    (one JSON array)

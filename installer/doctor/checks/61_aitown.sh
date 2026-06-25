@@ -75,33 +75,14 @@ aitown_diagnose() {
     return 1
   fi
 
-  # Allow-list assertion: /v1/models passing only proves the key lists SOME model — a key
-  # still scoped to an OLD alias after a model rename/re-assign passes the probe yet
-  # SILENT-403s the model the sim calls. Resolve the bound model the way phase 36 does
-  # (models.yml assignment, else local-gemma4) and verify the key ALLOWS it. Self-lookup
-  # (Bearer = scoped key, no ?key= in URL); metadata read only — never cold-starts. Skips
-  # on yq-absent / wildcard / empty / unparseable / down.
-  if command -v yq >/dev/null 2>&1; then
-    local want
-    want="$(yq -r '.assignments.aitown // ""' "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
-    [[ -n "$want" && "$want" != "null" ]] || want="local-gemma4"
-    local allow
-    # Probe 127.0.0.1 FIRST (parity with this check's /v1/models probe + comment above):
-    # the litellm:4000 alias only resolves with /etc/hosts, so trying it first burns ~5s.
-    allow="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/key/info 2>/dev/null || litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null || true)"
-    allow="$(printf '%s' "$allow" | python3 -c 'import sys,json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-info=d.get("info")
-if not isinstance(info,dict): sys.exit(0)
-m=info.get("models") or []
-print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
-    if [[ -n "$allow" ]] && ! printf '%s\n' "$allow" | grep -qxF '__wildcard__' \
-       && ! printf '%s\n' "$allow" | grep -qxF "$want"; then
-      echo "AITOWN_LITELLM_KEY allow-list missing '$want' (the chat model AI Town calls) — stale key after a model rename/re-assign; re-run 'vz-ai-stack.sh install 36' to self-heal"
-      return 1
-    fi
-  fi
+  # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
+  # common.sh): the /v1/models probe above only proves the key lists SOME model; this
+  # verifies it ALLOWS the chat model AI Town is bound to (models.yml .assignments.aitown,
+  # else local-gemma4). The helper probes /key/info LOOPBACK-FIRST (parity with this check's
+  # loopback-first /v1/models probe — the litellm:4000 alias only resolves with /etc/hosts).
+  # Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-down; FAILs (with its
+  # own message) only on a genuine stale-key miss.
+  _doctor_assert_key_allowlist "$key" AITOWN_LITELLM_KEY aitown "the chat model AI Town calls" 36 || return 1
   echo "AI Town ready (3/3 containers up + frontend 200 + scoped key lists models); watch it: http://aitown:$fe_port/ — prove the wiring: vz-ai-stack.sh test 36"
   return 0
 }

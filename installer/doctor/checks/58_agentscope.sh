@@ -40,31 +40,13 @@ agentscope_diagnose() {
     echo "AGENTSCOPE_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'vz-ai-stack.sh install 33'"
     return 1
   fi
-  # Allow-list assertion (before either success path): /v1/models passing only proves the
-  # key lists SOME model — a key still scoped to an OLD alias after a model rename/re-assign
-  # passes the probe yet SILENT-403s the model the sim calls. Resolve the bound model the
-  # way phase 33 does (models.yml assignment, else local-gemma4) and verify the key ALLOWS
-  # it. Self-lookup (Bearer = the scoped key, no ?key= in URL); metadata read only — never
-  # cold-starts. Skips on yq-absent / wildcard / empty / unparseable / down.
-  if command -v yq >/dev/null 2>&1; then
-    local want
-    want="$(yq -r '.assignments.agentscope // ""' "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
-    [[ -n "$want" && "$want" != "null" ]] || want="local-gemma4"
-    local allow
-    allow="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null || litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/key/info 2>/dev/null || true)"
-    allow="$(printf '%s' "$allow" | python3 -c 'import sys,json
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(0)
-info=d.get("info")
-if not isinstance(info,dict): sys.exit(0)
-m=info.get("models") or []
-print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
-    if [[ -n "$allow" ]] && ! printf '%s\n' "$allow" | grep -qxF '__wildcard__' \
-       && ! printf '%s\n' "$allow" | grep -qxF "$want"; then
-      echo "AGENTSCOPE_LITELLM_KEY allow-list missing '$want' (the model AgentScope calls) — stale key after a model rename/re-assign; re-run 'vz-ai-stack.sh install 33' to self-heal"
-      return 1
-    fi
-  fi
+  # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
+  # common.sh): the /v1/models probe above only proves the key lists SOME model; this
+  # verifies it ALLOWS the model AgentScope is bound to (models.yml .assignments.agentscope,
+  # else local-gemma4). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-
+  # down; FAILs (with its own message) only on a genuine stale-key miss. Runs before either
+  # success path (lib-only or Studio).
+  _doctor_assert_key_allowlist "$key" AGENTSCOPE_LITELLM_KEY agentscope "the model AgentScope calls" 33 || return 1
   # --- OPT-IN Studio GUI probe (only when Studio is enabled in this stack) ---
   # Marker: the launchd plist is the SOLE authoritative signal — it is written by
   # Phase 33 ONLY when AGENTSCOPE_STUDIO=1 AND the daemon installed, and removed by
