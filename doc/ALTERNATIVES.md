@@ -307,14 +307,14 @@ summarizer model before any action model sees it.
 
 ## Agent-swarm simulation
 
-### OASIS · MetaGPT · AgentScope (opt-in Phases 34 · 32 · 33)
+### OASIS · MetaGPT · AgentScope · Concordia (opt-in Phases 34 · 32 · 33 · 37)
 **Slot:** "Agents living in a world" — spin up many agents in a shared simulation and watch emergent behavior, every LLM call routed through LiteLLM (scoped keys) → traced in Phoenix. Three complementary, opt-in, fully-reversible **host-venv** tools, none in `install all`: **OASIS** (large-scale social swarms, ≤1M agents upstream — dozens on-box), **MetaGPT** (a fixed, goal-directed "software company": PM→architect→engineer→QA), and **AgentScope** (a framework to *build your own* multi-agent sims). The watchable container web-app siblings — **AI Town** (Phase 36) and **ChatDev** (Phase 35) — are now **shipped** + live-verified as separate opt-in phases (and AgentScope ships an optional Studio web GUI to watch swarms run). Reality on an M4/24GB: local inference serializes, so keep swarms to dozens on `local-gemma4` or route a scoped key to a cloud/sub model (metered).
 
 | Alternative | Differentiator |
 |---|---|
 | **AI Town** (a16z-infra) | The most *watchable* — characters live, move, and chat in a 2D town; self-hosted Convex compose stack. **Shipped** + live-verified as an opt-in container web app (Phase 36). |
 | **ChatDev** (OpenBMB) | Fixed ~5-role software-company role-play; goal-directed, not really a large *swarm*. **Shipped** + live-verified as an opt-in container web app (Phase 35). |
-| **Concordia** (DeepMind) | Generative-agent social-science framework; library-only, no GUI. |
+| **Concordia** (DeepMind) | Generative-agent social-science framework (GABM) with a Game Master that grounds/validates agent actions — for controlled experiments (negotiation, governance, elections), not just emergent swarms; library-only, no GUI. **Shipped** + live-verified as an opt-in host-venv sim (Phase 37); default model `claude-sonnet-sub-high` (Concordia's concurrent per-step calls time out on a single local model). |
 | **TinyTroupe** (Microsoft) | Persona-driven simulation for product/marketing insight rather than open-world swarms. |
 | **Generative Agents** (Stanford "Smallville") | The original agents-in-a-town research; not packaged for turnkey self-host. |
 | **Mesa** | Classic (non-LLM) agent-based modeling in Python — no model calls. |

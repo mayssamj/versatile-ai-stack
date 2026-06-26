@@ -49,7 +49,7 @@ diff, a blocked attack.
 ---
 ## Act I — Arrival
 
-This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 49 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
+This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 50 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
 > The 7-act journey below is narrative — it teaches the platform as a story. If instead you want a quick, self-contained hands-on for *one specific service*, every service has a ~2-minute entry in the **[Service Playground appendix](SERVICE-PLAYGROUND.md)** (`doc/SERVICE-PLAYGROUND.md`): what it is, how to health-check it, one thing to try, and its caveats. For the fleet specifically (Act IV), there's a full day-to-day hands-on in **[doc/HERMES-HANDSON.md](HERMES-HANDSON.md)**.
 
@@ -65,7 +65,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 
 1. The one thing to internalize: every AI request funnels through **LiteLLM at `http://litellm:4000/v1`**. Point any app, agent, or `curl` at that one endpoint and you get model routing, scoped keys, and call-by-call tracing for free.
 2. Everything is **local-first**: models, memory, traces, and documents all stay on your machine. It works fully offline; cloud is opt-in only when you hand it your own keys.
-3. The ~49 services sort into layers:
+3. The ~50 services sort into layers:
    - **Inference plane** — LiteLLM (the hub), Ollama (local models), Phoenix (tracing).
    - **Storage + memory** — Honcho (conversation memory + Postgres), Qdrant (vectors), FalkorDB (graph).
    - **Agents + fleets** — the Hermes fleet, Pi, OpenShell sandbox, DeerFlow, ACE, RLM, HALO.
@@ -164,7 +164,7 @@ bash vz-ai-stack.sh install 01h         # by id
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
 
-The **opt-in extras (Phases 21–25 · 27–30 · 32 · 33 · 34 · 35 · 36: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · metagpt · agentscope · oasis · chatdev · aitown)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
+The **opt-in extras (Phases 21–25 · 27–31 · 32 · 33 · 34 · 35 · 36 · 37: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
 
 > **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
 
@@ -203,7 +203,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (66 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
+- `doctor` targets **all green (67 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -344,7 +344,7 @@ bash ~/ai-stack/vz-ai-stack.sh install 26      # MemPalace; same for a sim phase
 
 **Expected.** `model list` shows the version-less aliases (the provider version is absent from every name). `doctor mempalace` passes its scoped-key allow-list assertion — it verifies the key's `models` list actually **covers** the model MemPalace is bound to, not merely that the key can list *some* model. Re-running `install 26` is a near no-op on a healthy install, but if you had renamed/re-assigned MemPalace's model it prints a `Reconciling … allow-list` line and widens the key in place so the app stops getting 403'd.
 
-> **Advanced (optional) — watch a drifted key heal.** *Skip this unless you want to see the mechanism.* If you `model assign` MemPalace to a freshly-renamed alias, its scoped key can lag behind and 403 the new model. You don't fix that by re-minting — you just **re-run the phase**: `vz-ai-stack.sh install 26` runs `litellm_reconcile_key`, which widens the existing key's allow-list (the UNION of what it had and what the app needs) without changing the key string. `doctor mempalace` then goes green. The same self-heal is wired into all eight scoped-key consumers (mempalace · aionui · openwork · metagpt · agentscope · oasis · chatdev · aitown).
+> **Advanced (optional) — watch a drifted key heal.** *Skip this unless you want to see the mechanism.* If you `model assign` MemPalace to a freshly-renamed alias, its scoped key can lag behind and 403 the new model. You don't fix that by re-minting — you just **re-run the phase**: `vz-ai-stack.sh install 26` runs `litellm_reconcile_key`, which widens the existing key's allow-list (the UNION of what it had and what the app needs) without changing the key string. `doctor mempalace` then goes green. The same self-heal is wired into all nine scoped-key consumers (mempalace · aionui · openwork · metagpt · agentscope · oasis · chatdev · aitown · concordia).
 
 **Try it live.** Read-only in the HTML page — the alias catalog and the binding matrix are viewers; `assign`/`sync`/`install` are terminal operations, never browser buttons.
 
@@ -1093,6 +1093,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 | **OASIS** (34) | **Large social swarms** — agents post/follow/react in a shared world (≤1M upstream) | `install oasis` | `bin/oasis oasis/sims/smoke_sim.py` |
 | **ChatDev** (35) | A **watchable** multi-agent *software company* ("DevAll") — drive a build from a Vue web app | `install chatdev` | open http://chatdev:5274/ |
 | **AI Town** (36) | A **watchable** virtual town — AI characters live and chat in real time | `install aitown` | open http://aitown:5273/ |
+| **Concordia** (37) | Controlled **social-science experiments** — agents with beliefs/memory + a **Game Master** that enforces world rules (negotiation, governance, elections) | `install concordia` | `bin/concordia concordia/sims/smoke_sim.py` |
 
 **Reality check (M4 / 24 GB).** A "large swarm" on-box means *dozens* of agents on a small fast model (`local-gemma4`) with queuing — local inference throughput, not the orchestrator, is the ceiling. For hundreds–thousands, point the scoped key at a metered cloud model. And `local-gemma4` is a **reasoning** model: sims need `max_tokens ≥ 512` or agents spend the whole budget "thinking" and return empty content.
 
@@ -1636,7 +1637,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (66 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (67 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
@@ -1714,7 +1715,7 @@ vz-ai-stack.sh install chatdev        # 35 — watchable software-company web ap
 vz-ai-stack.sh install aitown         # 36 — watchable virtual town of AI characters      (hands-on: L20½)
 ```
 
-**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand, and the agent-swarm-sims **57** metagpt, **58** agentscope, **59** oasis, **60** chatdev, **61** aitown) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.) The five agent-swarm simulators (metagpt/agentscope/oasis/chatdev/aitown) get a full hands-on in **L20½**.
+**Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand, and the agent-swarm-sims **57** metagpt, **58** agentscope, **59** oasis, **60** chatdev, **61** aitown, **66** concordia) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.) The six agent-swarm simulators (metagpt/agentscope/oasis/chatdev/aitown/concordia) get a full hands-on in **L20½**.
 
 **Lesson — what each is, and the gotchas.**
 

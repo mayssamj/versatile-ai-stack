@@ -347,7 +347,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
 │   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
 │   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
-│   │   ├── 21–25, 27–36   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand, ingress, metagpt, agentscope, oasis, chatdev, aitown
+│   │   ├── 21–25, 27–36   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand, ingress, metagpt, agentscope, oasis, chatdev, aitown, concordia
 │   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
@@ -375,7 +375,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │       ├── 20_container_alias_routable.sh
 │   │       ├── 21_container_dns_in_network.sh
 │   │       ├── 22_etc_hosts_ownership.sh
-│   │       └── 23_… 56_bare_hostname_ingress.sh  — full list in doc/DOCTOR.md (66 checks total)
+│   │       └── 23_… 56_bare_hostname_ingress.sh  — full list in doc/DOCTOR.md (67 checks total)
 │   │
 │   ├── smoke/                       — per-phase end-to-end smoke
 │   │   ├── 01.sh                    — /v1/models + chat + trace + per-model ping
