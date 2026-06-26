@@ -1232,6 +1232,26 @@ services:
         "at": "2026-06-23T00:00:00Z"
         "source": phase-34-oasis
         "reviewed": true
+  concordia:
+    enabled: true # Phase 37 (opt-in) — generative agent-based modeling (GABM) social-science sims
+    type: cli-only
+    desc: "Concordia — DeepMind generative agent-based modeling (GABM) with a Game Master, run via bin/concordia"
+    phase: "37"
+    network: none
+    consumes_env:
+      - CONCORDIA_LITELLM_KEY
+    help:
+      "what": "Concordia (google-deepmind/concordia, Apache-2.0) is DeepMind's library for Generative Agent-Based Modeling (GABM): LLM-driven agents act in a shared world mediated by a GAME MASTER entity (tabletop-RPG-inspired) that validates and resolves every action against world-state + conservation rules (money, votes, property). Installed as a host uv venv (Python 3.12, gdm-concordia 2.4.0 + sentence-transformers); run sim scripts via bin/concordia concordia/sims/<file>.py."
+      "why": "The RESEARCH-EXPERIMENT member of the agent-sim set — controlled social-science scenarios (negotiation, governance, elections, economic dilemmas) with structured agent beliefs/memory/plans and Game-Master rule-grounding. Distinct from OASIS (emergent social-media swarm), MetaGPT/ChatDev (fixed software team), AgentScope (DIY framework), AI Town (persistent world): Concordia is where you DEFINE and validate the interaction rules, not just watch emergence. Agents' LLM calls route through LiteLLM (scoped key) → traced in Phoenix."
+      "usage":
+        - bin/concordia concordia/sims/smoke_sim.py    # tiny bundled demo (2 entities + a Game Master, 1 step)
+        - "# write your own sim in concordia/sims/ then: bin/concordia concordia/sims/my_sim.py"
+        - vz-ai-stack.sh test 37        # smoke: a real 1-step GABM sim via LiteLLM
+      "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at concordia/.venv (Python 3.12 — the FIRST 3.12 host-venv sim; the others pin 3.11) — regenerable; concordia/sims is DATA (your sim scripts + output). bin/concordia exports CONCORDIA_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://127.0.0.1:4000/v1; sims build a Concordia GptLanguageModel (OpenAI-compatible, api_base→LiteLLM) + a sentence-transformers embedder (all-MiniLM-L6-v2, 384-dim). DEFAULT MODEL = claude-opus-sub-xhigh — the platform default (models.yml), same as the other sims ('no silent local models'). The install gate's heavy seeded sim runs the faster claude-sonnet-sub-high: Concordia fires MULTIPLE component LLM calls CONCURRENTLY per step (entity_agent._parallel_call_) — ~26 for a 1-step sim — and a single local Ollama model SERIALIZES them, so local-gemma4 TIMES OUT and even opus xhigh-effort would blow the gate timeout (verified 2026-06-25); the user-facing default stays the capable opus-xhigh while the gate uses sonnet-sub-high. local-gemma4 is selectable (CONCORDIA_MODEL=local-gemma4) but will time out. SCALE REALITY: GABM is LLM-call-heavy (Game Master + every entity + every component, concurrently per step) — a 2-entity/2-step sim is ~6 min on a cloud-sub model; keep sims to a handful of entities for a few steps. Override model/embedder per run: CONCORDIA_MODEL=… CONCORDIA_EMBEDDER=… bin/concordia <sim>. Rollback: rm -rf concordia/.venv + installer/state/phase_37.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md + arXiv:2312.03664."
+      "_gen":
+        "at": "2026-06-25T00:00:00Z"
+        "source": phase-37-concordia
+        "reviewed": true
   agentscope:
     enabled: true # Phase 33 (opt-in) — multi-agent simulation framework (build your own swarms)
     type: cli-only

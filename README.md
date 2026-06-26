@@ -1,10 +1,10 @@
 # vz-ai-stack
 
-**Your own private AI cloud — 49 services, one Mac, zero bytes leaving the building.**
+**Your own private AI cloud — 50 services, one Mac, zero bytes leaving the building.**
 
-![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 49](https://img.shields.io/badge/services-49-blue) ![doctor: 66 checks](https://img.shields.io/badge/doctor-66%2F66-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
+![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 50](https://img.shields.io/badge/services-50-blue) ![doctor: 67 checks](https://img.shields.io/badge/doctor-67%2F67-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
 
-ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: local models, a fleet of agents, memory, RAG, and full call-by-call observability — all wired behind a single local endpoint. One installer brings up all 49 services, validates them end-to-end, and heals itself. Nothing phones home; cloud is opt-in only when you add your own keys.
+ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: local models, a fleet of agents, memory, RAG, and full call-by-call observability — all wired behind a single local endpoint. One installer brings up all 50 services, validates them end-to-end, and heals itself. Nothing phones home; cloud is opt-in only when you add your own keys.
 
 ---
 
@@ -15,7 +15,7 @@ ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: l
 - **A whole team in a box** — the Hermes 9-role engineering fleet (manager, techlead, frontend/backend/ML engineers, QA, reviewer, SRE, incident manager), a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
 - **Truly local-first** — models, memory, traces, and documents all stay on your machine; it works fully offline and only touches the cloud if you hand it keys.
 - **Three local models, sensible defaults** — `gemma4` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
-- **One installer, self-healing and reversible** — brings up all 49 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 66/66 doctor checks.
+- **One installer, self-healing and reversible** — brings up all 50 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 67/67 doctor checks.
 - **See it before you run it** — [`doc/EXPLORE.html`](doc/EXPLORE.html) is a single self-contained page (just double-click, works offline) with a searchable card and copy-paste demo for every service.
 
 ---
@@ -26,7 +26,7 @@ The fastest way to grasp what this stack can do: open **[`doc/EXPLORE.html`](doc
 in any browser. It's a **single self-contained file** — no server, no build, no internet —
 so you can just double-click it; it even works offline straight from `file://`.
 
-> **AI-Stack Explorer** — *“All 49 installed services · 59 cards across 7 tiers · self-contained — works offline from file://”*
+> **AI-Stack Explorer** — *“All 50 installed services · 60 cards across 7 tiers · self-contained — works offline from file://”*
 
 It renders an interactive, searchable card for **every** service — what it is, why you'd
 reach for it, and a copy-paste demo — grouped into seven color-coded tiers:
@@ -206,7 +206,7 @@ sudo bash vz-ai-stack.sh prepare-sudo
 #    Preview first with `install all --dry-run` (alias --plan) — read-only, changes nothing.
 bash vz-ai-stack.sh install all
 
-# 5. Verify everything is healthy. Expect 66/66.
+# 5. Verify everything is healthy. Expect 67/67.
 bash vz-ai-stack.sh doctor
 ```
 
@@ -515,7 +515,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
 ### Reference
 
 - **[COMPONENTS.md](doc/COMPONENTS.md)** — brief catalog of everything in the stack:
-  all 49 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
+  all 50 services + CLI tools, grouped by layer (inference, memory, agents, UIs,
   tools, platform), one line + access point each. The "what's in the box" index.
 - **[ATTRIBUTION.md](doc/ATTRIBUTION.md)** — source link + license + ToS for every
   third-party tech piece (software *and* model weights), leading with the
@@ -539,7 +539,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 65
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 67
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
   for less common issues (incl. the OpenShell CPU-storm watchdog and the OrbStack CPU cap).
 
@@ -588,7 +588,7 @@ the guard rails.
 ```
 ~/ai-stack/
 ├── vz-ai-stack.sh              # entry point — bash-5+ gate + subcommand dispatcher
-├── services.yml            # single source of truth (49 services, 4 profiles)
+├── services.yml            # single source of truth (50 services, 4 profiles)
 ├── .env                    # secrets + config (0600)
 ├── README.md ← you are here
 ├── CHANGELOG.md            # what was decided + done
@@ -598,7 +598,7 @@ the guard rails.
 ├── installer/
 │   ├── lib/                # common, env, docker, validate, prompt, litellm, status, adopt, gc, history, reset, openshell
 │   ├── phases/             # one file per phase (00 .. 30)
-│   ├── doctor/checks/      # one file per failure mode (66 checks)
+│   ├── doctor/checks/      # one file per failure mode (67 checks)
 │   ├── smoke/              # per-phase end-to-end smoke tests
 │   └── state/              # stamp files, restart queue, lock dir
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -618,7 +618,7 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
-- **29 core install phases (+15 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown) · 49 services · 66 doctor checks.**
+- **29 core install phases (+16 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia) · 50 services · 67 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);

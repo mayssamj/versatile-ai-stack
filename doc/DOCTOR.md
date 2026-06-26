@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 66 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 67 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 66
+stack doctor                    # all 67
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -823,6 +823,12 @@ Asserts every `services.yml` service whose `open_url` is a bare hostname (e.g. `
 ## 65 · Model & Agent Console (models-serve) present + wired (core)
 
 Asserts the `models-serve` web console (the Model & Agent Console) is present and wired so `vz-ai-stack.sh models-serve` will actually boot: `installer/lib/models-serve.sh` + `installer/lib/models_proxy.py` + `doc/MODELS.html` all exist, the proxy compiles as valid Python, `models-serve` is wired into `vz-ai-stack.sh` dispatch (lib present but unreachable verb is the regression this guards), and `installer/models.yml` parses (fail-closed — the console reads the catalog through the `model` CLI). Pure file/parse — NO cold-start, network, or container calls; deep model↔agent binding and allowlist correctness stay owned by check 40 (`models_binding`), not duplicated here. ADVISORY (WARN, never red): every `models.yml` model declaring a `key_env` should have that env var set in `.env` — a missing vendor key is surfaced as a red dot in the console and means that route 401s at call time, worth flagging but not a stack fault (a keyless local-only box is legitimate). Fails when a console file is missing, the proxy has a syntax error, `models-serve` isn't dispatched, or `models.yml` doesn't parse. Fix: restore the missing piece on branch `feat/model-console` (or `main` once merged), then serve it with `vz-ai-stack.sh models-serve` from the MAIN checkout.
+
+---
+
+## 66 · Concordia venv + scoped LiteLLM key (opt-in, Phase 37)
+
+Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `installer/state/phase_37*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv generative-agent-based-modeling (GABM) sim. When installed it requires: the venv (`concordia/.venv/bin/python`), both `import concordia` and `import sentence_transformers` succeeding in that venv (the latter is Concordia's mandatory associative-memory embedder), the `bin/concordia` wrapper, and the scoped `CONCORDIA_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`), plus an allow-list assertion that the key permits the model Concordia is bound to (`models.yml` `.assignments.concordia`, else the default `claude-sonnet-sub-high`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `vz-ai-stack.sh install 37` (rebuild venv + re-mint scoped key + refresh `bin/concordia`); prove the sim with `vz-ai-stack.sh test 37`.
 
 ---
 
