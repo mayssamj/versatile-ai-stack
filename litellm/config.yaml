@@ -394,23 +394,10 @@ litellm_settings:
     # Meridian AND Ollama are down the caller still gets a LiteLLM 503 (no fallback
     # left); local-qwen3 is lower-capability — watch traces/litellm.jsonl if
     # answer quality drops during a Meridian outage.
-    - claude-opus-sub-high: ["local-qwen3"]
-    - claude-opus-sub-xhigh: ["local-qwen3"]
-    - claude-opus-sub-max: ["local-qwen3"]
-    - claude-opus-sub-ultracode: ["local-qwen3"]
-    - claude-sonnet-sub-high: ["local-qwen3"]
-    - claude-sonnet-sub-max: ["local-qwen3"]
-    - claude-sonnet-sub-ultracode: ["local-qwen3"]
     # Codex bridge (ChatGPT subscription). Fail over to local-gemma4 ONLY —
     # never to the metered openai-gpt-5.* (no surprise card billing). If both
     # the bridge AND Ollama are down the caller gets a 503 (same as Meridian).
-    - openai-gpt: ["local-qwen3"]
-    - openai-gpt-pro: ["local-qwen3"]
-    - openai-gpt-sub: ["local-qwen3"]
-    - openai-gpt-pro-sub: ["local-qwen3"]
     # Sakana Fugu (metered) — fail over to local, never a silent bill.
-    - sakana-fugu: ["local-qwen3"]
-    - sakana-fugu-ultra: ["local-qwen3"]
       # Cross-model cloud chains (commented, for reference). The openrouter-* /
       # openai-gpt* targets need provider API keys, so those hops dangle until a
       # key is set. local / local-heavy / claude-opus-4.7 are no longer in the
