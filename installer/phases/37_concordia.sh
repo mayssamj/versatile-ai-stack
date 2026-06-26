@@ -61,6 +61,7 @@ precheck() {
   [[ -x "$CC_PY" ]] || return 1
   [[ -x "$CC_WRAPPER" ]] || return 1
   "$CC_PY" -c "import concordia" >/dev/null 2>&1 || return 1
+  "$CC_PY" -c "import openai" >/dev/null 2>&1 || return 1
   "$CC_PY" -c "import sentence_transformers" >/dev/null 2>&1 || return 1
   local key; key="$(get_env CONCORDIA_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
@@ -103,12 +104,16 @@ if [[ ! -x "$CC_PY" ]]; then
 fi
 # Pin gdm-concordia to the version this phase's seeded sim + smoke were verified against
 # (the v1->v2 restructure churned the API; an unpinned upgrade could break the prefab keys).
-# sentence-transformers is NOT a gdm-concordia dependency but Concordia's associative memory
-# REQUIRES a sentence_embedder — install it explicitly (pulls torch; verified clean arm64).
-log "Installing gdm-concordia==2.4.0 + sentence-transformers into the venv (a few minutes; pulls torch)…"
-uv pip install --python "$CC_PY" "gdm-concordia==2.4.0" "sentence-transformers>=2.0.0" 2>&1 | tail -8 \
-  || { err "uv pip install gdm-concordia/sentence-transformers failed"; exit 1; }
+# NEITHER openai NOR sentence-transformers is a HARD gdm-concordia dependency, but both are
+# REQUIRED at runtime: the contrib OpenAI-compatible wrapper (GptLanguageModel) imports
+# `openai`, and Concordia's associative memory needs a sentence_embedder. Install both
+# explicitly (sentence-transformers pulls torch; verified clean arm64). The missing `openai`
+# is the bug the from-main live-verify caught — a fresh venv has no openai → smoke IMPORT_FAIL.
+log "Installing gdm-concordia==2.4.0 + openai + sentence-transformers into the venv (a few minutes; pulls torch)…"
+uv pip install --python "$CC_PY" "gdm-concordia==2.4.0" "openai>=1.3.0" "sentence-transformers>=2.0.0" 2>&1 | tail -8 \
+  || { err "uv pip install gdm-concordia/openai/sentence-transformers failed"; exit 1; }
 "$CC_PY" -c "import concordia" 2>/dev/null || { err "import concordia failed (dependency/arch problem) — see install log above"; exit 1; }
+"$CC_PY" -c "import openai" 2>/dev/null || { err "import openai failed — the contrib GptLanguageModel wrapper needs it (not a hard gdm-concordia dep)"; exit 1; }
 "$CC_PY" -c "import sentence_transformers" 2>/dev/null || { err "import sentence_transformers failed — embedder unavailable"; exit 1; }
 # arm64 sanity — a silent amd64/Rosetta venv is slow + may break; assert native arm64 BEFORE
 # stamping (hard fail, mirrors OASIS §1.8).
