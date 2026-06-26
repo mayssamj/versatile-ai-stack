@@ -31,7 +31,7 @@ source "$AI_STACK/installer/lib/network.sh"
 SERVICES_YML="$AI_STACK/services.yml"
 EXPLORE_HTML="$AI_STACK/doc/EXPLORE.html"
 LITELLM="${LITELLM_BASE_URL:-http://litellm:4000}"
-HELP_MODEL_DEFAULT="${HELP_REGEN_MODEL:-claude-opus-sub-xhigh}"
+HELP_MODEL_DEFAULT="${HELP_REGEN_MODEL:-claude-opus-sub-max}"
 
 my_q() { yq -r "$1" "$SERVICES_YML" 2>/dev/null; }
 

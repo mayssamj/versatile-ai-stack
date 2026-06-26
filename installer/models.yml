@@ -83,8 +83,8 @@ models:
   # isn't capped). Availability-gates to `default` (local-gemma4) when SAKANA_API_KEY is
   # absent; litellm/config.yaml ALSO fails it over to local-qwen3 — never a silent bill.
   # Key must be in .env (console.sakana.ai) AND start-litellm.sh's -e allowlist (--recreate).
-  sakana-fugu: {runtime: openai-compat, served: fugu, api_base: https://api.sakana.ai/v1, key_env: SAKANA_API_KEY, rpm: 10, big: false, note: "Sakana Fugu — balanced latency. METERED (sub or Ultra PAYG)."}
-  sakana-fugu-ultra: {runtime: openai-compat, served: fugu-ultra, api_base: https://api.sakana.ai/v1, key_env: SAKANA_API_KEY, rpm: 6, big: false, note: "Sakana Fugu Ultra — max accuracy (more agents, slower, ~1M ctx). METERED."}
+  sakana-fugu: {runtime: openai-compat, served: fugu, api_base: 'https://api.sakana.ai/v1', key_env: SAKANA_API_KEY, rpm: 10, big: false, note: "Sakana Fugu — balanced latency. METERED (sub or Ultra PAYG)."}
+  sakana-fugu-ultra: {runtime: openai-compat, served: fugu-ultra, api_base: 'https://api.sakana.ai/v1', key_env: SAKANA_API_KEY, rpm: 6, big: false, note: "Sakana Fugu Ultra — max accuracy (more agents, slower, ~1M ctx). METERED."}
 # EMBEDDING models (separate plane from the chat `models:` above — different
 # registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
 # vector size the model emits; `kind` is text|code (a code-tuned embedder degrades
@@ -124,27 +124,27 @@ default: local-gemma4
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) ONLY when its
 # runtime is fully down — the keyless/offline safety net, NOT a routine path.
-primary: claude-opus-sub-xhigh
+primary: claude-opus-sub-max
 assignments:
-  # AI software-engineering team + agents. Platform policy (2026-06-25): the
-  # single platform default is claude-opus-sub-xhigh. No model SILENTLY uses a
+  # AI software-engineering team + agents. Platform policy (operator pref 2026-06-26):
+  # the single platform default is claude-opus-sub-max. No model SILENTLY uses a
   # local one — the LiteLLM cloud→local-qwen3 fallback was removed, so a Meridian
   # outage surfaces a visible 503 rather than a quiet local degrade. local-gemma4
   # is used ONLY when explicitly chosen (an assignment / a sim's `-m local-gemma4`)
   # or as the last-resort keyless availability-gate when a runtime is fully down.
-  hermes_manager: claude-opus-sub-xhigh
-  hermes_techlead: sakana-fugu          # deliberate non-default (Fugu multi-agent orchestrator) — kept
-  hermes_ml_engineer: claude-opus-sub-xhigh
-  hermes_frontend_engineer: claude-opus-sub-xhigh
-  hermes_backend_engineer: claude-opus-sub-xhigh
-  hermes_qa_test_engineer: claude-opus-sub-xhigh
-  hermes_reviewing_engineer: claude-opus-sub-xhigh
-  hermes_sre_engineer: claude-opus-sub-xhigh
-  hermes_incident_manager: claude-opus-sub-xhigh
-  pi: claude-opus-sub-xhigh
-  deerflow: claude-opus-sub-xhigh
-  ace: claude-opus-sub-xhigh
-  rlm: claude-opus-sub-xhigh
+  hermes_manager: claude-opus-sub-max
+  hermes_techlead: claude-opus-sub-max   # operator set to platform default (was sakana-fugu) — flagging
+  hermes_ml_engineer: claude-opus-sub-max
+  hermes_frontend_engineer: claude-opus-sub-max
+  hermes_backend_engineer: claude-opus-sub-max
+  hermes_qa_test_engineer: claude-opus-sub-max
+  hermes_reviewing_engineer: claude-opus-sub-max
+  hermes_sre_engineer: claude-opus-sub-max
+  hermes_incident_manager: claude-opus-sub-max
+  pi: claude-opus-sub-max
+  deerflow: claude-opus-sub-max
+  ace: claude-opus-sub-max
+  rlm: claude-opus-sub-max
 kinds:
   hermes_manager: {kind: hermes-profile, profile: hermes_manager, key_env: HERMES_LITELLM_KEY, desc: "engineering manager + product intake — specs acceptance criteria, decomposes, delegates, orchestrates the gate order; executes directly when fastest, else delegates"}
   hermes_techlead: {kind: hermes-profile, profile: hermes_techlead, key_env: HERMES_LITELLM_KEY, desc: "tech lead / architect — ADRs, interface contracts, design review, standards; co-designs ML work"}
