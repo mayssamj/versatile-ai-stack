@@ -314,7 +314,7 @@ summarizer model before any action model sees it.
 |---|---|
 | **AI Town** (a16z-infra) | The most *watchable* — characters live, move, and chat in a 2D town; self-hosted Convex compose stack. **Shipped** + live-verified as an opt-in container web app (Phase 36). |
 | **ChatDev** (OpenBMB) | Fixed ~5-role software-company role-play; goal-directed, not really a large *swarm*. **Shipped** + live-verified as an opt-in container web app (Phase 35). |
-| **Concordia** (DeepMind) | Generative-agent social-science framework (GABM) with a Game Master that grounds/validates agent actions — for controlled experiments (negotiation, governance, elections), not just emergent swarms; library-only, no GUI. **Shipped** + live-verified as an opt-in host-venv sim (Phase 37); default model `claude-sonnet-sub-high` (Concordia's concurrent per-step calls time out on a single local model). |
+| **Concordia** (DeepMind) | Generative-agent social-science framework (GABM) with a Game Master that grounds/validates agent actions — for controlled experiments (negotiation, governance, elections), not just emergent swarms; library-only, no GUI. **Shipped** + live-verified as an opt-in host-venv sim (Phase 37); default model `claude-opus-sub-xhigh` (the platform default; the install gate runs the faster `claude-sonnet-sub-high` because Concordia's ~26 concurrent calls/step would time out at opus xhigh-effort or on any single local model). |
 | **TinyTroupe** (Microsoft) | Persona-driven simulation for product/marketing insight rather than open-world swarms. |
 | **Generative Agents** (Stanford "Smallville") | The original agents-in-a-town research; not packaged for turnkey self-host. |
 | **Mesa** | Classic (non-LLM) agent-based modeling in Python — no model calls. |

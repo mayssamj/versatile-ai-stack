@@ -30,13 +30,17 @@ KEY="$(get_env CONCORDIA_LITELLM_KEY '')"
 printf '%s' "$(litellm_scoped_curl "$KEY" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
   && ok "scoped key lists models via LiteLLM" || { err "CONCORDIA_LITELLM_KEY lists no models (stale/rejected)"; exit 1; }
 
-log "Running the seeded Concordia GABM sim via bin/concordia (real 1-step sim; ~2-4 min on a cloud-sub model; bounded by the sim's alarm)…"
-out="$("$AI_STACK/bin/concordia" "$SIM" 2>&1)" && rc=0 || rc=$?
+log "Running the seeded Concordia GABM sim via bin/concordia (real 1-step sim; ~2-4 min; bounded by the sim's alarm)…"
+# The gate runs the FAST claude-sonnet-sub-high, not the opus-xhigh default: Concordia's
+# ~26 concurrent calls/step would blow the timeout at opus xhigh-effort. This proves the
+# GABM wiring; the user's actual default (opus-sub-xhigh) is validated for reachability by
+# the install-time scoped-key curl. Override here mirrors the install gate (CC_SMOKE_MODEL).
+out="$(CONCORDIA_MODEL=claude-sonnet-sub-high "$AI_STACK/bin/concordia" "$SIM" 2>&1)" && rc=0 || rc=$?
 printf '%s\n' "$out" | grep -vE '^(Loading weights|Warning: You are sending)' | sed 's/^/    /'
 
 case "$rc" in
   0) : ;;  # sim ran + >=1 LLM call — fall through to the sentinel assertion
-  3) err "the Concordia sim made no LLM calls / hit a routing failure (sim exit 3) — placeholder/401 key, empty output, or a single LOCAL model serializing Concordia's concurrent per-step calls until timeout (default is claude-sonnet-sub-high for this reason)"; exit 1 ;;
+  3) err "the Concordia sim made no LLM calls / hit a routing failure (sim exit 3) — placeholder/401 key, empty output, or a single LOCAL model serializing Concordia's concurrent per-step calls until timeout (the gate runs claude-sonnet-sub-high for speed)"; exit 1 ;;
   4) err "concordia import drift (sim exit 4) — gdm-concordia API changed; re-verify concordia/sims/smoke_sim.py against the installed version"; exit 1 ;;
   5) err "Concordia sim-construction API drift (sim exit 5) — the prefab/Config/Simulation signature changed; fix concordia/sims/smoke_sim.py"; exit 1 ;;
   6) err "Concordia sim runtime error (sim exit 6) — see the traceback above"; exit 1 ;;

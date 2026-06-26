@@ -16,14 +16,16 @@
 #     GptLanguageModel (OpenAI-compatible) at LiteLLM,
 #   * NO container/port/hostname. Run sims via: bin/concordia concordia/sims/<file>.py
 #
-# DEFAULT MODEL = claude-sonnet-sub-high (a fast cloud-sub model), NOT local-gemma4.
-# This is a DELIBERATE, evidence-based deviation from the other sims (which default
-# local-gemma4): Concordia fires MULTIPLE component LLM calls CONCURRENTLY per step
-# (entity_agent._parallel_call_ → concurrency.run_tasks). A single local Ollama model
-# SERIALIZES requests, so the concurrent calls queue and exceed the per-call timeout
-# (verified by spike 2026-06-25: a 1-step local-gemma4 sim timed out; the same sim on
-# claude-sonnet-sub-high completed). local-gemma4 remains selectable (override) but will
-# likely time out on this box. Routed via LiteLLM scoped key → traced in Phoenix.
+# DEFAULT MODEL = claude-opus-sub-xhigh — the PLATFORM DEFAULT (models.yml: unassigned
+# agents, the fleet, AND the sims; "no silent local models"), same as the other 5 sims.
+# The install SMOKE/gate, however, runs claude-sonnet-sub-high (CC_SMOKE_MODEL) for the
+# heavy seeded sim: Concordia fires MANY component LLM calls CONCURRENTLY per step
+# (entity_agent._parallel_call_ → concurrency.run_tasks) — a 1-step sim is ~26 calls — so
+# at opus xhigh-effort the gate would exceed its timeout (~8-13 min). sonnet-sub-high
+# proves the wiring fast (~3 min, spike 2026-06-25, llm_calls=26); the user-facing default
+# stays the capable opus-xhigh. (The fast reachability curl still pings the real default.)
+# local-gemma4 is selectable but TIMES OUT (a single local Ollama model serializes the
+# concurrent calls; spike-verified). Routed via LiteLLM scoped key → traced in Phoenix.
 #
 # Constitution honored: OPT-IN (not in install_all_phase_order); scoped key
 # (CONCORDIA_LITELLM_KEY), never master. Reversible: rm -rf concordia/.venv + unstamp;
@@ -46,7 +48,8 @@ CC_VENV="$CC_DIR/.venv"
 CC_PY="$CC_VENV/bin/python"
 CC_WRAPPER="$AI_STACK/bin/concordia"
 CC_SIMS="$CC_DIR/sims"
-CC_MODEL_DEFAULT="claude-sonnet-sub-high"
+CC_MODEL_DEFAULT="claude-opus-sub-xhigh"          # platform default (models.yml) — what bin/concordia uses
+CC_SMOKE_MODEL="claude-sonnet-sub-high"           # FAST model for the install gate's seeded sim only (opus-xhigh × ~26 calls/step would blow the timeout)
 CC_EMBEDDER_DEFAULT="sentence-transformers/all-MiniLM-L6-v2"
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell); the
 # container DNS name litellm:4000 also works once core Phase 00n writes /etc/hosts, so
@@ -146,7 +149,7 @@ else
   ok "CONCORDIA_LITELLM_KEY already present + valid"
 fi
 
-# --- 3. Resolve bound model (default claude-sonnet-sub-high; see header for why not local) ---
+# --- 3. Resolve bound model (default claude-opus-sub-xhigh, the platform default; the heavy smoke runs CC_SMOKE_MODEL — see header) ---
 CC_MODEL="$CC_MODEL_DEFAULT"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _cm="$(yq -r '.assignments.concordia // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -201,9 +204,10 @@ Exit codes: 0=ok (sim ran + >=1 LLM call); 3=routing/auth/timeout fail or 0 call
 CONCURRENT per-step calls until they time out); 4=import drift; 5=model/embedder/sim
 construction drift; 6=sim runtime drift; 7=wall-clock alarm.
 
-DEFAULT MODEL = claude-sonnet-sub-high (cloud-sub), NOT local-gemma4: Concordia fires
-multiple component LLM calls concurrently per step and a single Ollama model serializes
-them → timeouts (verified 2026-06-25). local-gemma4 is an override but will likely time out."""
+DEFAULT MODEL (bin/concordia) = claude-opus-sub-xhigh (platform default); this seeded
+smoke is invoked with the faster claude-sonnet-sub-high because Concordia fires ~26
+concurrent calls/step and opus xhigh-effort would blow the gate timeout. local-gemma4
+serializes the concurrent calls → times out (spike-verified 2026-06-25)."""
 import os, sys, signal
 
 def _alarm(signum, frame):
@@ -229,7 +233,7 @@ except Exception as e:  # import/API drift — NOT an auth problem
 
 BASE  = os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:4000/v1")
 KEY   = os.environ.get("OPENAI_API_KEY", "")
-MODEL = os.environ.get("CONCORDIA_MODEL", "claude-sonnet-sub-high")
+MODEL = os.environ.get("CONCORDIA_MODEL", "claude-opus-sub-xhigh")
 EMB   = os.environ.get("CONCORDIA_EMBEDDER", "sentence-transformers/all-MiniLM-L6-v2")
 
 
@@ -306,8 +310,8 @@ _sc="$(litellm_scoped_curl "$_cc_key" -s -o /dev/null -w '%{http_code}' --max-ti
 [[ "$_sc" == "200" ]] || { err "scoped key chat completion returned HTTP $_sc (model $CC_MODEL via LiteLLM) — not stamping"; exit 1; }
 ok "scoped key reaches $CC_MODEL through LiteLLM (HTTP 200)"
 
-log "Smoke: real Concordia GABM sim via the seeded sim (verifies the wiring before stamping; ~2-4 min on a cloud-sub model)…"
-_simout="$(OPENAI_BASE_URL="$CC_LLM_FALLBACK/v1" OPENAI_API_KEY="$_cc_key" CONCORDIA_MODEL="$CC_MODEL" CONCORDIA_EMBEDDER="$CC_EMBEDDER" "$CC_PY" "$CC_SIMS/smoke_sim.py" 2>&1)" && _simrc=0 || _simrc=$?
+log "Smoke: real Concordia GABM sim via the seeded sim on $CC_SMOKE_MODEL (verifies the wiring before stamping; ~2-4 min — the fast gate model, not the opus-xhigh default)…"
+_simout="$(OPENAI_BASE_URL="$CC_LLM_FALLBACK/v1" OPENAI_API_KEY="$_cc_key" CONCORDIA_MODEL="$CC_SMOKE_MODEL" CONCORDIA_EMBEDDER="$CC_EMBEDDER" "$CC_PY" "$CC_SIMS/smoke_sim.py" 2>&1)" && _simrc=0 || _simrc=$?
 printf '%s\n' "$_simout" | grep -vE '^(Loading weights|Warning: You are sending)' | sed 's/^/    /'
 [[ $_simrc -eq 0 ]] || { err "the seeded Concordia sim did not pass (rc=$_simrc) — GABM wiring unverified, not stamping (3=routing/timeout, 4=import, 5=build, 6=runtime, 7=alarm)"; exit 1; }
 ok "Concordia GABM sim ran through LiteLLM on the scoped key — wiring verified"
@@ -319,5 +323,5 @@ note "Prove the sim:    vz-ai-stack.sh test 37     # a 1-step GABM sim runs via 
 note "Run the demo:     bin/concordia concordia/sims/smoke_sim.py"
 note "Watch it:         Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Write your own:   concordia/sims/<your_sim>.py  then  bin/concordia concordia/sims/<your_sim>.py"
-note "Model note:       default $CC_MODEL — local-gemma4 likely TIMES OUT (Concordia fans out concurrent calls; Ollama serializes)"
+note "Model note:       default $CC_MODEL (platform default); the install gate runs $CC_SMOKE_MODEL (faster). local-gemma4 TIMES OUT — Concordia fans out concurrent calls; Ollama serializes"
 note "Reversible:       rm -rf $CC_VENV && rm -f $AI_STACK/installer/state/phase_37.done"
