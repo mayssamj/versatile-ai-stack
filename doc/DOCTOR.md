@@ -826,6 +826,12 @@ Asserts the `models-serve` web console (the Model & Agent Console) is present an
 
 ---
 
+## 66 · Concordia venv + scoped LiteLLM key (opt-in, Phase 37)
+
+Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `installer/state/phase_37*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv generative-agent-based-modeling (GABM) sim. When installed it requires: the venv (`concordia/.venv/bin/python`), both `import concordia` and `import sentence_transformers` succeeding in that venv (the latter is Concordia's mandatory associative-memory embedder), the `bin/concordia` wrapper, and the scoped `CONCORDIA_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`), plus an allow-list assertion that the key permits the model Concordia is bound to (`models.yml` `.assignments.concordia`, else the default `claude-sonnet-sub-high`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `vz-ai-stack.sh install 37` (rebuild venv + re-mint scoped key + refresh `bin/concordia`); prove the sim with `vz-ai-stack.sh test 37`.
+
+---
+
 ## Exit codes
 
 `bash vz-ai-stack.sh doctor` exit codes:

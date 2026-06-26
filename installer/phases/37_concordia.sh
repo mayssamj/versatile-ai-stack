@@ -122,7 +122,7 @@ fi
 CC_EMBEDDER="$CC_EMBEDDER_DEFAULT"
 [[ -n "${CONCORDIA_EMBEDDER:-}" ]] && CC_EMBEDDER="$CONCORDIA_EMBEDDER"
 log "Pre-fetching the sentence-transformers embedder ($CC_EMBEDDER; ~90MB first time)…"
-"$CC_PY" - "$CC_EMBEDDER" <<'PYWARM' 2>&1 | tail -2 || warn "embedder pre-fetch failed (the smoke will retry the download)"
+"$CC_PY" - "$CC_EMBEDDER" <<'PYWARM' 2>&1 | tail -2 || warn "embedder pre-fetch failed (the smoke will download it on first run)"
 import sys
 from sentence_transformers import SentenceTransformer
 SentenceTransformer(sys.argv[1])
