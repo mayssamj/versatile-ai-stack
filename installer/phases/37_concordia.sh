@@ -16,8 +16,9 @@
 #     GptLanguageModel (OpenAI-compatible) at LiteLLM,
 #   * NO container/port/hostname. Run sims via: bin/concordia concordia/sims/<file>.py
 #
-# DEFAULT MODEL = claude-opus-sub-xhigh — the PLATFORM DEFAULT (models.yml: unassigned
-# agents, the fleet, AND the sims; "no silent local models"), same as the other 5 sims.
+# DEFAULT MODEL = claude-opus-sub-xhigh — the tier all 6 opt-in sims use (NOT the platform
+# default: that is claude-opus-sub-max for unassigned agents + the fleet; "no silent local
+# models"), same as the other 5 sims.
 # The install SMOKE/gate, however, runs claude-sonnet-sub-high (CC_SMOKE_MODEL) for the
 # heavy seeded sim: Concordia fires MANY component LLM calls CONCURRENTLY per step
 # (entity_agent._parallel_call_ → concurrency.run_tasks) — a 1-step sim is ~26 calls — so
