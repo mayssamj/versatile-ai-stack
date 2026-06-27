@@ -331,7 +331,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **67 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **68 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.
@@ -506,7 +506,7 @@ any flagged claim directly before acting on it.
 ```
 ~/ai-stack/
 ├── vz-ai-stack.sh          # THE entry point (bash-5 gate + subcommand dispatch)
-├── services.yml            # 50 services + profiles (source of truth)
+├── services.yml            # 51 services + profiles (source of truth)
 ├── README.md · CHANGELOG.md
 ├── bin/                    # stack, start-/stop-<svc>.sh, pi, lumen, mempalace, ingress, audit.sh …
 ├── installer/

@@ -26,7 +26,7 @@
 |---|---|
 | Stack root / entry | `~/ai-stack` · `bash vz-ai-stack.sh` (alias `bin/stack`) |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x |
-| Scale | **50** services · **67** doctor checks · **45** phases (~30 core / ~15 opt-in) — `doctor`/`phases` are authoritative |
+| Scale | **51** services · **68** doctor checks · **46** phases (29 core / 17 opt-in) — `doctor`/`phases` are authoritative |
 | Platform default model | `claude-opus-sub-max` (fleet + unassigned agents); the opt-in sims + HALO stay on `claude-opus-sub-xhigh` (lighter for many-agent runs); `default: local-gemma4` is the keyless last-resort net. **No model SILENTLY uses a local one** — a cloud/Meridian outage surfaces a visible 503. |
 
 ## Most recent work (newest first — full detail in CHANGELOG.md)
