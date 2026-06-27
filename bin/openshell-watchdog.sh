@@ -51,6 +51,20 @@ CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshol
 #    a host hang requiring a hard reboot is NOT. When warn-only, the overnight storm
 #    pegged the host into a forced reboot. So on a storm we now CAP cpu/mem then stop the
 #    container to kill the CPU burn immediately. Set AI_STACK_WATCHDOG_HALT=0 to revert.
+# STICKY auto-heal mode (regression fix 2026-06-27): a prior `install` persists the
+# operator's chosen modes to installer/state/watchdog.conf. A BARE `install` (Phase 04's
+# call, or the manual heal `install <phase>`) MUST NOT silently reset REMINT/PERSIST to the
+# committed defaults — that reset is exactly what disabled auto-heal and caused the recurring
+# "sandboxes down + stay down". So inherit any sticky mode whose env var is NOT explicitly
+# set (an explicit env var still wins). The `install` subcommand writes the effective modes back.
+CONF="$STATE/watchdog.conf"
+if [[ -f "$CONF" ]]; then
+  _wd_inherit() { local n="$1" v; [[ -n "${!n+x}" ]] && return 0; v="$(grep -E "^$n=" "$CONF" 2>/dev/null | tail -1 | cut -d= -f2-)"; [[ -n "$v" ]] && export "$n=$v"; }
+  _wd_inherit AI_STACK_WATCHDOG_REMINT
+  _wd_inherit AI_STACK_SANDBOX_PERSIST
+  _wd_inherit AI_STACK_WATCHDOG_RECREATE
+  _wd_inherit AI_STACK_WATCHDOG_HALT
+fi
 RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
 HALT="${AI_STACK_WATCHDOG_HALT:-1}"
 FAILMARK="$STATE/openshell-watchdog.alert"            # RED marker → doctor check 43
@@ -157,7 +171,12 @@ PL
     # interval). RunAtLoad covers boot; this covers install-time + shrinks the post-reboot
     # window where an auto-restarted container could briefly storm before the first cycle.
     launchctl kickstart -k "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl start "$LABEL" 2>/dev/null || true
-    echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false))"; exit 0 ;;
+    # Persist the EFFECTIVE modes so a later BARE `install` (Phase 04 / manual heal) inherits
+    # them instead of resetting to the committed defaults (the regression vector). An explicit
+    # env var on a future call still overrides + updates this file.
+    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\n' \
+        "$REMINT" "$PERSIST" "$RECREATE" "$HALT"; } > "$CONF" 2>/dev/null || true
+    echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false); modes persisted -> watchdog.conf)"; exit 0 ;;
   uninstall)
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
     rm -f "$PLIST"; echo "openshell-watchdog launchd job removed"; exit 0 ;;
