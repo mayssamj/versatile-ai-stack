@@ -695,6 +695,7 @@ resolve_phase_script() {
     sandbox)               sel=openshell ;;
     hermes|fleet)          sel=hermes_fleet ;;
     telegram)              sel=hermes_telegram ;;
+    slack)                 sel=hermes_slack ;;
     guardrails)            sel=security ;;
     ui|openwebui)          sel=uis ;;
     docs|rag)              sel=documents ;;
@@ -771,7 +772,7 @@ cmd_phases() {
   echo
   echo "Use either form:  vz-ai-stack.sh install <id>   |   vz-ai-stack.sh install <name>"
   echo "A service name shown in 'status' also works — it resolves to the phase that installs it."
-  echo "Aliases: litellm=inference, telegram=hermes_telegram, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
+  echo "Aliases: litellm=inference, telegram=hermes_telegram, slack=hermes_slack, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
 }
 
 cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; bash "$AI_STACK/installer/smoke/${id}.sh"; }

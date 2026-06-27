@@ -132,6 +132,25 @@ network_policies:
     binaries:
       - { path: "/**" }
 
+  # Slack — hermes-agent's native Slack channel (Phase 38) uses SOCKET MODE: an
+  # OUTBOUND WebSocket, so no inbound webhook/public URL. The gateway calls the
+  # Web API (apps.connections.open on slack.com) for a WSS ticket, then holds a
+  # WebSocket to wss-*.slack.com. Egress only; harmless when Slack isn't
+  # configured (nothing dials these). Like the sourcegraph_mcp stanza this lives
+  # HERE (the heredoc) as the SINGLE SOURCE OF TRUTH — the committed YAML is a
+  # generated mirror. If Socket Mode fails to connect, tail
+  # /sandbox/.hermes-gateway.log for 'policy_denied' + the denied host and add it.
+  slack:
+    name: slack
+    endpoints:
+      - { host: slack.com, port: 443 }
+      - { host: api.slack.com, port: 443 }
+      - { host: wss-primary.slack.com, port: 443 }
+      - { host: wss-backup.slack.com, port: 443 }
+      - { host: files.slack.com, port: 443 }
+    binaries:
+      - { path: "/**" }
+
   # Honcho memory API — reached over Docker bridge via host.docker.internal.
   # Requires Honcho to bind 0.0.0.0:8000 (see Phase 03 compose override).
   honcho_memory:

@@ -295,6 +295,40 @@ services:
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
         "reviewed": true
+  hermes_slack:
+    enabled: true # Phase 38 (opt-in) — native hermes gateway → Slack (Socket Mode)
+    type: sandbox-daemon
+    desc: "Hermes gateway inside the sandbox bridging the fleet to Slack (Socket Mode)"
+    phase: "38"
+    sandbox: hermes-fleet-v1
+    network: openshell
+    # Same in-sandbox gateway as Telegram (ONE process, many channels). Slack uses
+    # SOCKET MODE — an OUTBOUND WebSocket to slack.com (Phase 04 `slack` egress
+    # policy), so no inbound webhook/public URL. Lifecycle = hermes' own
+    # `gateway status/stop`; liveness is doctor check 67. Started by
+    # bin/start-hermes-slack.sh. Secure-by-default: with no allowlist it DENIES all
+    # users until HERMES_SLACK_ALLOWED_USERS is set. OPT-IN (needs a Slack app you
+    # create at api.slack.com). NOTE: pointing a repo/shell-capable fleet at a
+    # CORPORATE workspace is a data-governance decision — prefer a personal one.
+    consumes_env:
+      - HERMES_SLACK_BOT_TOKEN
+      - HERMES_SLACK_APP_TOKEN
+      - HERMES_SLACK_ALLOWED_USERS
+      - HERMES_SLACK_ALLOW_ALL
+      - HERMES_SLACK_HOME_CHANNEL
+    help:
+      "what": A native hermes gateway running INSIDE the hermes-fleet-v1 sandbox that connects to Slack over Socket Mode (outbound WebSocket) and bridges the fleet to a Slack app — DM it or @mention it and a profile answers.
+      "why": Reach for it to drive the Hermes fleet from Slack — desktop-native, team-visible threads and #channel routing, with no inbound port exposed on your machine.
+      "usage":
+        - bash ~/ai-stack/bin/start-hermes-slack.sh
+        - openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway status
+        - openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
+        - openshell sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-gateway.log
+      "config_notes": 'Secure-by-default: with NO allowlist the bot DENIES all users — set HERMES_SLACK_ALLOWED_USERS=<your_member_id> (Slack profile → ⋮ → Copy member ID) and re-run install 38. Needs BOTH HERMES_SLACK_BOT_TOKEN (xoxb-) and HERMES_SLACK_APP_TOKEN (xapp-, with connections:write for Socket Mode). Create the app at https://api.slack.com/apps. If the bot never replies, check the gateway log for policy_denied (a Slack egress host missing from Phase 04) or an auth error (token/scope).'
+      "_gen":
+        "at": "2026-06-27T00:00:00Z"
+        "source": phase-38-slack
+        "reviewed": true
   # --- Security (Phase 04·G) --------------------------------------------
   litellm_guardrails_builtin:
     enabled: true # in-process regex/keyword; near-zero cost
