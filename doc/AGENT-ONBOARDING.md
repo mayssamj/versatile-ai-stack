@@ -60,7 +60,7 @@ Three things to burn in:
 | Chat-model routes | **20** across **6 runtimes** | `bash vz-ai-stack.sh model list` |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash vz-ai-stack.sh status` |
 
-> Why "49" but other docs say different: `services.yml` has 49 keys, but many are not *reachable
+> Why "50" but other docs say different: `services.yml` has 50 keys, but many are not *reachable
 > services* — 2 `litellm-feature` (in-process callbacks), 1 `agent-pattern` (a prompting
 > discipline, not a process), 1 `litellm-virtual-key` (a credential), 15 `cli-only` (no daemon).
 > Counting "things with a URL" gives ~25. **This is the recurring trap: define what you're
@@ -105,9 +105,15 @@ text is in `SOUL.md`; the spine:
 | **Always pull → commit → merge → push after a task.** | Work isn't done while local/uncommitted. It's part of "done," not a follow-up ask. |
 | **`.env` is 0600; never echo secret *values*.** Atomic writes only (§5 / §11). | Secrets in logs / world-readable `.env` are a hard fail. Writes go through `lib/env.sh::set_env` (awk→tmp→`mv`), never `sed -i`/`echo >>`. |
 
-There is a parallel, codebase-specific "C1–C9" list at the top of [`HANDOFF.md`](HANDOFF.md#L97)
-(no cloud embeddings; per-service env injection; guardrails fail-closed; the OrbStack `*:80`
-decision; etc.) — read it once.
+Plus these **codebase-specific** rules (the author's repeated explicit asks — they break the stack
+or leak secrets fastest):
+- **No copy-paste `docker` commands** — `bin/start-<svc>.sh` is the source of truth for running a service.
+- **No cloud embeddings** — all embeddings are local (nomic-embed-text / jina), never a cloud API.
+- **Per-service env injection** for LiteLLM keys (scoped `-e`, never a blanket `--env-file`).
+- **Guardrails fail CLOSED** on internal errors (deny on doubt; never fail-open).
+- **`/etc/hosts` ai-stack block stays `root:wheel` 644** (doctor check 22 enforces).
+- **No zombie background tasks** — foreground anything under ~60s; if you must background it, kill on completion.
+- **OrbStack `*:80` wildcard collision is permanent** — don't chase port-free aliases (`http://litellm/`); stay on `http://litellm:4000` (investigated + reverted 2026-05-28).
 
 ---
 
@@ -325,7 +331,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **66 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **67 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.

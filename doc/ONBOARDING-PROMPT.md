@@ -59,7 +59,7 @@ STEP 3 — Learn the feature-change shape (full recipe in doc/AGENT-ONBOARDING.m
 worktree -> implement against conventions (a phase file + services.yml entry + a doctor check + a
 smoke test + an aliases.tsv row if it needs a hostname) -> smoke + doctor -> §24 council -> merge
 -> verify live from MAIN -> push -> CHANGELOG + doc sweep + memory note. Read one recent phase
-(installer/phases/35_chatdev.sh) and its doctor check before writing your own.
+(installer/phases/37_concordia.sh, a recent host-venv example) and its doctor check before writing your own.
 
 STEP 4 — Prove you're ready (do this BEFORE changing anything). Reply with a short readiness brief:
   1) The system in your own words (LiteLLM as the single hub; where models come from — local
