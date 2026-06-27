@@ -14,7 +14,9 @@ HERMES_SANDBOX="${HERMES_SANDBOX:-hermes-fleet-v1}"
 HERMES_GW_LOG="${HERMES_GW_LOG:-/sandbox/.hermes-gateway.log}"   # in-sandbox path
 
 # Drop NULs (hermes' box-draw banner) + ANSI so downstream grep/awk are robust.
-hermes_strip() { tr -d '\000' | sed $'s/\x1b\\[[0-9;]*m//g'; }
+# LC_ALL=C so tr/sed treat the log as bytes — the banner carries non-UTF8 bytes that
+# make a UTF-8-locale tr abort with "Illegal byte sequence".
+hermes_strip() { LC_ALL=C tr -d '\000' | LC_ALL=C sed $'s/\x1b\\[[0-9;]*m//g'; }
 
 hermes_resolve_openshell() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell

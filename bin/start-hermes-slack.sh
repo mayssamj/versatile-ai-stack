@@ -33,12 +33,20 @@ fi
 sleep 6   # let Socket Mode complete its WSS handshake (can take 3–8s under load)
 gwlog="$(hermes_gateway_log_tail 60 || true)"
 
-# A genuine Slack AUTH failure is fatal — do NOT let the caller (Phase 38) stamp
-# success on it. Filter benign Socket-Mode churn (reconnect/ping/pong/429) first.
+# A genuine TOKEN/AUTH failure is fatal — the bot can't work at all. (A missing OAUTH
+# SCOPE is handled separately below: the token is valid, only a peripheral scope is
+# absent, so the DM path still works — warn, don't fail.) Filter benign Socket-Mode
+# churn (reconnect/ping/pong/429) first.
 if grep -viE 'reconnect|disconnect|rate.?limit|\b429\b|ping|pong' <<<"$gwlog" \
-   | grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|missing_scope|not_allowed_token_type|invalid.?token'; then
-  err "Slack AUTH error in the gateway log — check SLACK_BOT_TOKEN (xoxb-) / SLACK_APP_TOKEN (xapp-) and the app's OAuth scopes (re-install the Slack app after any scope change), then re-run 'vz-ai-stack.sh install 38'."
+   | grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|not_allowed_token_type|invalid.?token'; then
+  err "Slack token/auth error in the gateway log — check SLACK_BOT_TOKEN (xoxb-) / SLACK_APP_TOKEN (xapp-, connections:write) are valid and not revoked, then re-run 'vz-ai-stack.sh install 38'."
   exit 1
+fi
+# Missing OAuth scope — NON-fatal (the token is valid and DMs work). Surface the EXACT
+# scope Slack asked for so the user can add it + Reinstall the app.
+need="$(grep -oiE "needed': '[a-z:,_]+'" <<<"$gwlog" | head -1 | sed -E "s/.*'([a-z:,_]+)'/\1/")"
+if [[ -n "$need" ]]; then
+  warn "Slack wants an extra OAuth scope: '${need}'. The bot works for DMs without it; to clear the warning (and enable private-channel features) add it at api.slack.com → your app → OAuth & Permissions → Bot Token Scopes, then Reinstall to Workspace."
 fi
 
 # Positive proof (hello) vs blocked egress. Socket Mode emits a `hello` event on a
