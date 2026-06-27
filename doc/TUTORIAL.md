@@ -1199,9 +1199,10 @@ open http://phoenix:6006                    # project ai-stack
 #    1-step GABM sim driving LLM calls through LiteLLM.
 vz-ai-stack.sh install concordia            # alias for: install 37
 
-# 2. Run the bundled demo — Alice + Bob meet in a village square; the Game Master
-#    narrates and resolves each turn into an event the other then observes.
-bin/concordia concordia/sims/smoke_sim.py
+# 2. Run the bundled demo on the FAST gate model (the opus-xhigh default is more capable
+#    but slow — a 1-step run can take many minutes and may hit the sim's ~7-min alarm).
+#    Alice + Bob meet in a village square; the Game Master narrates + resolves each turn.
+CONCORDIA_MODEL=claude-sonnet-sub-high bin/concordia concordia/sims/smoke_sim.py
 
 # 3. Prove it end-to-end, then watch every entity + Game-Master call as a trace.
 vz-ai-stack.sh test 37
@@ -1212,7 +1213,7 @@ open http://phoenix:6006                     # project ai-stack
 
 **Model note — Concordia is different.** It fans out **many concurrent LLM calls per step** (the Game Master + every entity + every component), so its default is the capable **`claude-opus-sub-xhigh`** — *not* `local-gemma4`, which serializes on Ollama and times out. The install/`test` gate runs the faster `claude-sonnet-sub-high` to stay under its timeout. Override per run with `CONCORDIA_MODEL=…`, and keep on-box experiments small (a handful of entities, a few steps — even a 2-step run is several minutes).
 
-**Make it yours.** Drop a script in `concordia/sims/` and run it with `bin/concordia concordia/sims/<file>.py` — the wrapper injects the scoped key + `OPENAI_BASE_URL` for you. A minimal GABM experiment is *entities + a Game Master + a premise*, assembled from prefabs:
+**Make it yours.** Drop a script in `concordia/sims/` and run it with `bin/concordia concordia/sims/<file>.py` — the wrapper injects the scoped key + `OPENAI_BASE_URL` (and the `CONCORDIA_MODEL`/`CONCORDIA_EMBEDDER` defaults) for you. A minimal GABM experiment is *entities + a Game Master + a premise*, assembled from prefabs:
 
 ```python
 # concordia/sims/my_experiment.py — a minimal 2-entity GABM run (run: bin/concordia concordia/sims/my_experiment.py)
@@ -1247,7 +1248,7 @@ config = prefab_lib.Config(prefabs=prefabs, instances=instances,
 simulation.Simulation(config=config, model=model, embedder=embedder).play(max_steps=1)   # prints the transcript
 ```
 
-> `local-gemma4` times out here (the concurrent per-step calls serialize on Ollama) — keep the `claude-opus-sub-xhigh` default, or pass `CONCORDIA_MODEL=claude-sonnet-sub-high` for a faster run.
+> Quick run: this example inherits the `claude-opus-sub-xhigh` default (capable but slow) — for a fast pass, `CONCORDIA_MODEL=claude-sonnet-sub-high bin/concordia concordia/sims/my_experiment.py`.
 
 **Watch the ChatDev web app.** The other two sims are **browser** apps, not `bin/<svc>` CLIs — opt-in containers (Phases 35 / 36) that route through LiteLLM. ChatDev 2.0 "DevAll" is a *watchable* multi-agent software company you drive from a Vue web app (frontend container :5173 → host 5274; FastAPI backend on :6400).
 
@@ -1771,6 +1772,7 @@ vz-ai-stack.sh install agentscope     # 33 — multi-agent simulation framework 
 vz-ai-stack.sh install oasis          # 34 — large social-agent swarm sim   (hands-on: L20½)
 vz-ai-stack.sh install chatdev        # 35 — watchable software-company web app (DevAll)  (hands-on: L20½)
 vz-ai-stack.sh install aitown         # 36 — watchable virtual town of AI characters      (hands-on: L20½)
+vz-ai-stack.sh install concordia      # 37 — generative agent-based modeling (GABM) experiments (hands-on: L20½)
 ```
 
 **Expected.** Each phase is idempotent and exits 0 cleanly even when a prerequisite is missing (it warns and *does not stamp*, so a later re-run completes). These extras' doctor checks are **34–38** (plus **49** sourcegraph, **50** aionui, **51** openwork, **52** understand, and the agent-swarm-sims **57** metagpt, **58** agentscope, **59** oasis, **60** chatdev, **61** aitown, **66** concordia) — each runs only once the corresponding extra is installed. (MemPalace is no longer in this list — it's part of `install all`, with its own check 44.) The six agent-swarm simulators (metagpt/agentscope/oasis/chatdev/aitown/concordia) get a full hands-on in **L20½**.
