@@ -4,6 +4,14 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-27
+
+### Changed
+
+- **Handoff/onboarding docs reorganized — one role per file, single-source, rot-resistant** (`worktree-handoff-onboarding-reorg`): so a fresh agent (any system/model) or human can be pointed at the project without the docs misleading them. Four overlapping agent-facing docs were untangled: **`doc/AGENT-ONBOARDING.md`** is THE developer/owner entry point (deep map + constitution + recipes; snapshot counts refreshed to 50 services / 67 doctor checks / 45 phases, leaning on the "derive it live" commands). The copy-paste activation prompt now lives in ONE version-controlled, paste-ready file — **`doc/ONBOARDING-PROMPT.md`** (renamed from the untracked, misspelled `ONBOADING_HANDOFF.md`, de-rotted: hardcoded counts → "verify live", session-specific tail dropped); AGENT-ONBOARDING Appendix A is now a pointer to it, killing the byte-for-byte duplicate that was drifting. **`doc/HANDOFF.md`** slimmed 549→48 lines, from a 3-week-stale "read me first" dump into a short, perishable latest-state + pointer note (recovery → `TROUBLESHOOTING.md`, history → `CHANGELOG.md`, onboarding → `AGENT-ONBOARDING.md`, live truth → `doctor`/`status`). **`doc/ONBOARDING.md`** (end-user) unchanged. Each file now states its own role + audience up top so a new agent never wonders which to read. Docs-only; reversible; §24-reviewed.
+
+---
+
 ## 2026-06-25
 
 ### Added
