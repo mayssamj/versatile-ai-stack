@@ -58,21 +58,21 @@ hermes_slack_diagnose() {
     return 1
   fi
 
-  # Genuine Slack auth errors are hard failures. Filter benign Socket-Mode churn
-  # first (reconnect/ping/pong/rate-limit) so it can't false-match below.
-  local gwlog
+  # Detection is SCOPED to Slack lines — the gateway log is SHARED (Telegram, MCP
+  # tools, cron), so an unrelated 'failed to connect' / policy_denied must not red
+  # this Slack check. Benign Socket-Mode churn is filtered too.
+  local gwlog slacklog
   gwlog="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- bash -c 'tail -120 /sandbox/.hermes-gateway.log 2>/dev/null' 2>&1 | LC_ALL=C sed $'s/\x1b\\[[0-9;]*m//g')"
+  slacklog="$(grep -iE 'slack|socket' <<<"$gwlog" | grep -viE 'reconnect|disconnect|rate.?limit|\b429\b|ping|pong|mcp_tool|sourcegraph')"
   # Fatal = the TOKEN itself is bad. A missing OAuth scope is NOT failed here (the bot
   # still works for DMs); the install/start path surfaces the needed scope as a warning.
-  if grep -viE 'reconnect|disconnect|rate.?limit|\b429\b|ping|pong' <<<"$gwlog" \
-     | grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|not_allowed_token_type'; then
+  if grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|not_allowed_token_type' <<<"$slacklog"; then
     echo "gateway log shows a Slack token/auth error — a token may be revoked or malformed (re-run 'vz-ai-stack.sh install 38')"
     return 1
   fi
-
-  # Blocked egress = Socket Mode can't connect even though the process is up.
-  if grep -qiE 'policy_denied|egress.*deni' <<<"$gwlog"; then
-    echo "gateway log shows BLOCKED egress — a Slack host is missing from the Phase 04 'slack' policy (tail /sandbox/.hermes-gateway.log | grep denied)"
+  # Blocked egress = the landlock denied a SLACK host (scope to slack/wss).
+  if grep -iE 'policy_denied|egress.*deni' <<<"$gwlog" | grep -qiE 'slack|wss'; then
+    echo "gateway log shows BLOCKED Slack egress — a Slack host is missing from the Phase 04 'slack' policy (tail /sandbox/.hermes-gateway.log | grep -i denied)"
     return 1
   fi
 
