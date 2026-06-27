@@ -186,8 +186,8 @@ _osh_find() { local p; for p in "$@"; do [[ -x "$p" ]] && { printf '%s' "$p"; re
 # Returns the cmd's rc, or 124 on timeout. Used to probe a daemon that may HANG under host
 # memory pressure (NEVER `docker stats` — it hangs hardest exactly then).
 _osh_bounded() {
-  local secs="$1"; shift
-  "$@" & local p=$! w=0
+  local secs="$1" p w=0; shift
+  "$@" & p=$!
   while (( w < secs*2 )); do kill -0 "$p" 2>/dev/null || { wait "$p" 2>/dev/null; return $?; }; sleep 0.5; w=$((w+1)); done
   _osh_kill "$p"; return 124
 }
@@ -224,6 +224,13 @@ _osh_revive() {
   mint="$AI_STACK/bin/openshell-jwt-mint.py"
   py="$(command -v python3 2>/dev/null || true)"
   ossl="$(_osh_find /opt/homebrew/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl /usr/bin/openssl)"
+  # OpenSSL 3.x is REQUIRED to sign the gateway's PKCS#8-v2 Ed25519 key; macOS LibreSSL cannot.
+  # If only LibreSSL resolves, re-mint can't work — say so LOUDLY (don't fail silently into a
+  # guaranteed revive failure with a misleading message) and skip the mint.
+  if [[ -n "$ossl" ]] && "$ossl" version 2>/dev/null | grep -qi 'libressl'; then
+    warn "revive '$name': resolved OpenSSL is LibreSSL ('$ossl') — it CANNOT sign the gateway key; token re-mint SKIPPED. Install OpenSSL 3.x:  brew install openssl@3"
+    ossl=""
+  fi
   tok="$(_osh_token_path "$name" 2>/dev/null || true)"
   if [[ -n "$tok" && -f "$mint" && -n "$py" && -n "$ossl" ]]; then
     OPENSSL_BIN="$ossl" "$py" "$mint" --token "$tok" --write >/dev/null 2>&1 \
@@ -238,8 +245,10 @@ _osh_revive() {
   else
     "$docker_bin" start "$cid" >/dev/null 2>&1 || { err "revive '$name': docker start failed"; return 1; }
   fi
+  # Poll for Ready, but BOUND each `sandbox get` — the relay CLI can HANG under memory pressure
+  # (the pathology openshell_sandbox_create_watchdog already guards against).
   for i in 1 2 3 4 5 6 7 8; do
-    [[ "$(openshell_sandbox_phase "$osh" "$name")" == "Ready" ]] && return 0
+    [[ "$(_osh_bounded 12 "$osh" sandbox get "$name" 2>/dev/null | _osh_strip_ansi | awk '/^[[:space:]]*Phase:[[:space:]]*/{print $2; exit}')" == "Ready" ]] && return 0
     sleep 4
   done
   return 1
@@ -327,7 +336,12 @@ openshell_sandbox_ensure() {
   # ---- No sandbox container -> first-time CREATE (the ONLY auto-create path) --
   openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
   [[ $rc -eq 0 ]] && return 0
-  warn "create of '$name' failed (rc=$rc) — retrying once (nothing pre-existing to preserve)"
+  # A failed create can leave a partial gateway REGISTRY RECORD (+ a stopped container) that
+  # makes the retry's `create --name <same>` fail "already exists". Clear OUR OWN failed-create
+  # artifact before retrying — safe: this arm is reached ONLY when no container/record pre-existed
+  # (an existing sandbox went down the non-destructive revive path, never here).
+  warn "create of '$name' failed (rc=$rc) — clearing the failed-create artifact + retrying once"
+  openshell_sandbox_delete "$osh" "$name"
   openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
   [[ $rc -eq 0 ]] && return 0
 
@@ -342,6 +356,7 @@ openshell_sandbox_ensure() {
       warn "escalating: 'brew services restart openshell' then create"
       brew services restart openshell >/dev/null 2>&1 || true
       local i=0; while (( i < 60 )); do port_listening 17670 && break; sleep 1; i=$((i+1)); done
+      openshell_sandbox_delete "$osh" "$name"
       openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
       [[ $rc -eq 0 ]] && return 0
     fi
