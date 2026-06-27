@@ -294,7 +294,7 @@ sequenceDiagram
 ```
 
 Three things this shows:
-- The researcher (assigned **local-qwen3.6**, see [models.md](models.md)) uses a
+- The researcher (assigned **claude-opus-sub-max**, see [models.md](models.md)) uses a
   local model for cheap summarization and **claude-opus** for the high-stakes
   synthesis. Mixed cost discipline.
 - Every external call goes via `inference.local`, the OpenShell L7
@@ -353,11 +353,13 @@ flowchart TB
 What the assignments look like (from `models.yml`, see
 [models.md](models.md)):
 - **claude-opus-sub-max** (subscription via Meridian; the platform default and
-  `primary`) — every assigned role: `hermes_manager`, `hermes_ml_engineer`,
+  `primary`) — every assigned role: `hermes_manager`, `hermes_techlead`, `hermes_ml_engineer`,
   `hermes_frontend_engineer`, `hermes_backend_engineer`,
   `hermes_qa_test_engineer`, `hermes_reviewing_engineer`, `hermes_sre_engineer`,
   `hermes_incident_manager`, `pi`, `deerflow`, `ace`, `rlm`.
-- **sakana-fugu** — `hermes_techlead` (the single exception to the default).
+- **sakana-fugu** — an available LiteLLM route, currently **unassigned** (no
+  agent binds to it by default; `hermes_techlead` dropped it 2026-06-27 and is
+  now on the `claude-opus-sub-max` default like every other role).
 - **local-gemma4** (the always-on Ollama fallback) — what every subscription- or
   LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime
   is down. An UNASSIGNED agent renders the `primary` (`claude-opus-sub-max`) and
@@ -537,7 +539,8 @@ Not to be confused with [§11 Memory profiles](#11-memory-profiles--what-runs-in
 (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use
 `claude-opus-sub-xhigh` — Honcho's own default (`HONCHO_MODEL`, set in Phase 03),
 not the stack-wide `primary` which is `claude-opus-sub-max` (Claude subscription
-via Meridian; LiteLLM falls back to `local-gemma4` if Meridian is down).
+via Meridian; if Meridian is down LiteLLM now surfaces a visible 503 rather than
+silently falling back).
 
 ```mermaid
 sequenceDiagram

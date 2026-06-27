@@ -259,8 +259,8 @@ The **Honcho memory plane** is a deliberate exception to *per-agent* `models.yml
 selection: all its LLM roles (deriver, dialectic, summary, dream) use one
 stack-wide model regardless of each agent's chat-model binding, and the memory
 plane does not go through `models.yml` availability-gating. Per platform policy it
-defaults to `claude-opus-sub-xhigh` (Claude subscription via Meridian; LiteLLM
-falls back to `local-gemma4` if Meridian is down), and is **overridable via the
+defaults to `claude-opus-sub-xhigh` (Claude subscription via Meridian; a Meridian
+outage now surfaces a visible 503, not a silent local fallback), and is **overridable via the
 `HONCHO_MODEL` env var** in `.env` (Phase 03 writes the per-role
 `*_MODEL_CONFIG__MODEL` keys + `LLM_OPENAI_BASE_URL` into `honcho/.env`).
 

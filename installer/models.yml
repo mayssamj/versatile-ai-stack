@@ -54,8 +54,8 @@ models:
   # is rejected on 4.7+). Availability-gates to `default` (local-gemma4) when
   # Meridian is down. NOT big (no local RAM). Sonnet has no xhigh (≡ high).
   claude-opus-sub-high: {runtime: meridian, served: claude-opus-4-8, effort: high, big: false, note: "Claude subscription (Opus 4.8), high effort."}
-  claude-opus-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort. PLATFORM DEFAULT (unassigned agents, the fleet, and the sims)."}
-  claude-opus-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort."}
+  claude-opus-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort. Tier for the opt-in agent-sims (Phases 32-37), HALO, honcho, and MemPalace — NOT the platform default (see claude-opus-sub-max)."}
+  claude-opus-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort. PLATFORM DEFAULT — primary, unassigned agents, and the engineering fleet."}
   claude-opus-sub-ultracode: {runtime: meridian, served: claude-opus-4-8, effort: ultracode, big: false, note: "Claude subscription (Opus 4.8), ultracode effort (coding-focused, highest tier)."}
   claude-sonnet-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
   claude-sonnet-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
@@ -133,7 +133,7 @@ assignments:
   # is used ONLY when explicitly chosen (an assignment / a sim's `-m local-gemma4`)
   # or as the last-resort keyless availability-gate when a runtime is fully down.
   hermes_manager: claude-opus-sub-max
-  hermes_techlead: claude-opus-sub-max   # operator set to platform default (was sakana-fugu) — flagging
+  hermes_techlead: claude-opus-sub-max   # platform default (operator dropped the sakana-fugu exception 2026-06-27)
   hermes_ml_engineer: claude-opus-sub-max
   hermes_frontend_engineer: claude-opus-sub-max
   hermes_backend_engineer: claude-opus-sub-max
