@@ -178,6 +178,73 @@ openshell_sandbox_create_watchdog() {
   esac
 }
 
+# --- non-destructive REVIVE ("fix it, don't recreate it") ---------------------
+# _osh_find <path...> — first executable candidate (else "").
+_osh_find() { local p; for p in "$@"; do [[ -x "$p" ]] && { printf '%s' "$p"; return 0; }; done; command -v "$(basename "${1:-x}")" 2>/dev/null || true; }
+
+# _osh_bounded <secs> <cmd...> — run cmd with a hard time budget (macOS has no `timeout`).
+# Returns the cmd's rc, or 124 on timeout. Used to probe a daemon that may HANG under host
+# memory pressure (NEVER `docker stats` — it hangs hardest exactly then).
+_osh_bounded() {
+  local secs="$1"; shift
+  "$@" & local p=$! w=0
+  while (( w < secs*2 )); do kill -0 "$p" 2>/dev/null || { wait "$p" 2>/dev/null; return $?; }; sleep 0.5; w=$((w+1)); done
+  _osh_kill "$p"; return 124
+}
+
+# _osh_token_path <name> — echo the sandbox.jwt path of the EXISTING container (rc 1 if none).
+_osh_token_path() {
+  local name="$1" docker_bin cid uuid tokdir
+  docker_bin="$(command -v docker 2>/dev/null || true)"; [[ -n "$docker_bin" ]] || return 1
+  cid="$("$docker_bin" ps -aq --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
+  [[ -n "$cid" ]] || return 1
+  uuid="$("$docker_bin" inspect "$cid" --format '{{.Name}}' 2>/dev/null | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
+  tokdir="$HOME/.local/state/openshell/docker-sandbox-tokens/default"
+  [[ -n "$uuid" && -f "$tokdir/$uuid/sandbox.jwt" ]] || return 1
+  printf '%s' "$tokdir/$uuid/sandbox.jwt"
+}
+
+# _osh_revive <OSH> <name> — NON-DESTRUCTIVE recovery of an EXISTING sandbox container:
+# re-mint the expired gateway token IN PLACE + docker start/restart the SAME container +
+# poll for Phase=Ready. NEVER deletes, NEVER recreates — /sandbox + the running agents are
+# preserved. Returns 0 iff Ready afterward. (The watchdog's proven 2026-06-19 heal, wired
+# into install/ensure so the install path stops being destructive.)
+_osh_revive() {
+  local osh="$1" name="$2" docker_bin cid status mint py ossl tok i
+  docker_bin="$(command -v docker 2>/dev/null || true)"
+  [[ -n "$docker_bin" ]] || { err "revive '$name': docker not found"; return 1; }
+  cid="$("$docker_bin" ps -aq --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
+  [[ -n "$cid" ]] || return 1   # no container -> caller decides (create / fail-explicit)
+  # F5 daemon-health gate: bounded probe. If the daemon is wedged under memory pressure,
+  # don't hang — let the caller fail-explicit.
+  if ! _osh_bounded 8 "$docker_bin" version >/dev/null 2>&1; then
+    warn "revive '$name': Docker daemon not responding within 8s (host memory pressure?)"; return 1
+  fi
+  # Re-mint the token in place (proven non-destructive cure for the expired-token storm).
+  mint="$AI_STACK/bin/openshell-jwt-mint.py"
+  py="$(command -v python3 2>/dev/null || true)"
+  ossl="$(_osh_find /opt/homebrew/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl /usr/bin/openssl)"
+  tok="$(_osh_token_path "$name" 2>/dev/null || true)"
+  if [[ -n "$tok" && -f "$mint" && -n "$py" && -n "$ossl" ]]; then
+    OPENSSL_BIN="$ossl" "$py" "$mint" --token "$tok" --write >/dev/null 2>&1 \
+      && log "  revive '$name': re-minted gateway token in place (original + .bak intact)" \
+      || warn "  revive '$name': token re-mint failed (trying start/restart anyway)"
+  else
+    log "  revive '$name': minter/openssl/token unavailable — start/restart only"
+  fi
+  status="$("$docker_bin" inspect "$cid" --format '{{.State.Status}}' 2>/dev/null || echo)"
+  if [[ "$status" == "running" ]]; then
+    "$docker_bin" restart "$cid" >/dev/null 2>&1 || { err "revive '$name': docker restart failed"; return 1; }
+  else
+    "$docker_bin" start "$cid" >/dev/null 2>&1 || { err "revive '$name': docker start failed"; return 1; }
+  fi
+  for i in 1 2 3 4 5 6 7 8; do
+    [[ "$(openshell_sandbox_phase "$osh" "$name")" == "Ready" ]] && return 0
+    sleep 4
+  done
+  return 1
+}
+
 # openshell_sandbox_ensure <OSH> <name> [from] [-- EXTRA_CREATE_ARGS...]
 # Idempotent, hang-resilient. Returns 0 iff the sandbox ends in Phase=Ready.
 # Safe to call when the sandbox already exists (no-op if already Ready).
@@ -200,76 +267,86 @@ openshell_sandbox_ensure() {
       || warn "could not create openshell-docker network — create may fail"
   fi
 
+  local force_recreate="${OPENSHELL_FORCE_RECREATE:-0}"
+  local failmark="$AI_STACK/installer/state/openshell-watchdog.alert"   # surfaced by doctor check 43
+  local docker_bin cid
+  docker_bin="$(command -v docker 2>/dev/null || true)"
+  cid=""; [[ -n "$docker_bin" ]] && cid="$("$docker_bin" ps -aq --filter "name=openshell-${name}-" 2>/dev/null | head -1)" || true
   phase="$(openshell_sandbox_phase "$osh" "$name")"
-  if [[ "$phase" == "Ready" ]]; then
-    # Phase=Ready is CONTROL-PLANE only: a sandbox whose short-lived gateway token
-    # EXPIRED still reports Ready while its exec relay is dead (every exec times
-    # out "relay open timed out"). Detect that via the in-container LOG signature
-    # (reliable + NON-INVASIVE) — NOT an exec probe, which is fragile under
-    # CLI/gateway version skew + contention and can degrade the gateway. The token
-    # can't self-refresh, so recreate to mint a fresh one (re-running the phase
-    # reconstitutes in-sandbox state). On a clean Ready, trust it.
-    if openshell_token_storm "$name"; then
-      # H3/H6 — the 1h token can't self-refresh via the CLI; recreate mints a fresh
-      # one. The delete discards in-sandbox state, so CHECKPOINT FIRST and FAIL-CLOSED:
-      # if the snapshot can't be taken+verified, REFUSE to delete (a lingering sandbox
-      # is recoverable; a deleted-without-backup one is not). Restore later via
-      # bin/openshell-state-restore.sh. (Reframed from the old 'discards state — by design'.)
-      warn "sandbox '$name' reports Ready but its gateway token EXPIRED — checkpointing state, then recreating to mint a fresh token"
-      local _ck_rc=0
-      bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" storm >/dev/null || _ck_rc=$?
-      if (( _ck_rc == 2 )); then
-        err "REFUSING to recreate '$name': pre-delete checkpoint FAILED (would lose in-sandbox state). Free disk / fix docker, then re-run. Manual reclaim: docker cp openshell-${name}-*:/sandbox ./reclaimed/"
+
+  # ===== CONTRACT: install/ensure is IDEMPOTENT + NON-DESTRUCTIVE. =====
+  # A sandbox that EXISTS is NEVER deleted+recreated automatically — recreation destroys the
+  # running agents (even though /sandbox is volume-safe). We REVIVE the same container; if it
+  # can't be revived we FAIL EXPLICITLY and LEAVE IT AS-IS for diagnosis. Destructive recreate
+  # is opt-in ONLY (OPENSHELL_FORCE_RECREATE=1). Create happens ONLY when no container exists.
+
+  # ---- A sandbox CONTAINER exists -> REVIVE, or FAIL EXPLICITLY ---------------
+  if [[ -n "$cid" ]]; then
+    if [[ "$force_recreate" == "1" ]]; then
+      warn "OPENSHELL_FORCE_RECREATE=1 — EXPLICIT destructive recreate of '$name' (checkpoint-first, fail-closed)"
+      local _ck=0; bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" force-recreate >/dev/null || _ck=$?
+      if (( _ck == 2 )); then
+        err "REFUSING to recreate '$name': pre-delete checkpoint FAILED (would lose /sandbox). Free disk / fix docker, then retry."
         return 1
       fi
       openshell_sandbox_delete "$osh" "$name"
+      # fall through to CREATE below
     else
-      ok "sandbox '$name' already Ready"; return 0
+      # Already healthy? Ready + token valid is the codebase's non-invasive signal (an EXPIRED
+      # token reports Ready but is relay-dead, so token_storm gates that into the revive path).
+      if [[ "$phase" == "Ready" ]] && ! openshell_token_storm "$name"; then
+        ok "sandbox '$name' already Ready"; return 0
+      fi
+      # Down / Error / storming / stopped -> REVIVE the SAME container. NEVER recreate.
+      warn "sandbox '$name' exists but is not healthy (Phase=${phase:-down}) — reviving in place (re-mint + start/restart; NO recreate)"
+      if _osh_revive "$osh" "$name"; then
+        ok "sandbox '$name' REVIVED — same container, /sandbox + agents preserved (not recreated)"
+        rm -f "$failmark" 2>/dev/null || true
+        return 0
+      fi
+      # Revive failed -> FAIL EXPLICITLY and PRESERVE the container untouched for diagnosis.
+      err "sandbox '$name' is present (Phase=${phase:-down}) but could NOT be revived — LEAVING IT AS-IS so its state/status is preserved for diagnosis (NOT deleting/recreating)."
+      err "  Diagnose:  docker logs --tail 80 openshell-${name}-*  ;  $osh sandbox get $name"
+      err "  After diagnosis, an EXPLICIT destructive recreate (checkpoint-first) is: OPENSHELL_FORCE_RECREATE=1 vz-ai-stack.sh install <phase>"
+      printf '%s revive FAILED at %s — left intact for diagnosis (NOT recreated). Force a clean recreate: OPENSHELL_FORCE_RECREATE=1 install <phase>\n' \
+        "$name" "$(date '+%F %T')" > "$failmark" 2>/dev/null || true
+      return 1
     fi
   elif [[ -n "$phase" ]]; then
-    # H3 — a pre-existing non-Ready sandbox may still hold real state; checkpoint
-    # best-effort before deleting (don't hard-block recovery of an already-broken
-    # sandbox, but capture whatever is there).
-    warn "sandbox '$name' present in Phase=$phase; checkpointing (best-effort) then deleting before recreate"
-    bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" recreate-nonready >/dev/null || true
+    # Registry record but NO container (pruned/lost) -> nothing to revive; /sandbox already gone.
+    # Recreate is the only option and it's destructive -> opt-in only.
+    if [[ "$force_recreate" != "1" ]]; then
+      err "sandbox '$name' has a registry record (Phase=$phase) but its CONTAINER is GONE — cannot revive (its /sandbox is already lost)."
+      err "  Recreate is destructive and opt-in: OPENSHELL_FORCE_RECREATE=1 vz-ai-stack.sh install <phase>"
+      return 1
+    fi
+    warn "OPENSHELL_FORCE_RECREATE=1 — clearing the stale registry record for '$name' before create"
     openshell_sandbox_delete "$osh" "$name"
   fi
 
-  # Tier 1.
+  # ---- No sandbox container -> first-time CREATE (the ONLY auto-create path) --
+  openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
+  [[ $rc -eq 0 ]] && return 0
+  warn "create of '$name' failed (rc=$rc) — retrying once (nothing pre-existing to preserve)"
   openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
   [[ $rc -eq 0 ]] && return 0
 
-  # Tier 2: delete + one retry. Best-effort checkpoint first — these deletes normally hit
-  # a freshly-FAILED create (empty), but a re-entrant ensure could find prior state; capture
-  # it if present (non-blocking — don't wedge mid-recovery; the storm/Phase=Error branches
-  # above already fail-closed-checkpoint a pre-existing sandbox before we ever reach Tier 1).
-  warn "create attempt 1 failed (rc=$rc) — checkpointing (best-effort) + deleting + retrying once"
-  bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" tier2-retry >/dev/null 2>&1 || true
-  openshell_sandbox_delete "$osh" "$name"
-  openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
-  [[ $rc -eq 0 ]] && return 0
-
-  # Tier 3: gateway restart (heavy — errors ALL sandboxes). H10 — guard the blast radius:
-  # (a) REFUSE if any OTHER sandbox is Ready (don't knock out a healthy sandbox to fix a
-  # dead one) unless OPENSHELL_FORCE_GATEWAY_RESTART=1; (b) snapshot the identity plane
-  # FIRST (a restart can rotate the signing kid, bricking other sandboxes' tokens).
+  # Escalate to a gateway restart ONLY if it won't harm another healthy sandbox (H10).
   if [[ "$allow_restart" == "1" ]] && command -v brew >/dev/null 2>&1; then
     local _others
     _others="$("$osh" sandbox list 2>/dev/null | _osh_strip_ansi | awk -v n="$name" 'NR>1 && $1!=n && $NF=="Ready"{print $1}' | tr '\n' ' ')"
     if [[ -n "${_others// }" && "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
-      warn "Tier-3 gateway restart SKIPPED: other healthy sandbox(es) present [${_others% }] — a restart errors them ALL. Set OPENSHELL_FORCE_GATEWAY_RESTART=1 to override; '$name' will recover on its next phase run or via checkpoint-restore."
+      warn "Tier-3 gateway restart SKIPPED: other healthy sandbox(es) present [${_others% }] — a restart errors them ALL. Set OPENSHELL_FORCE_GATEWAY_RESTART=1 to override."
     else
       [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
-      warn "escalating recovery: 'brew services restart openshell' (errors ALL sandboxes; each recovers on its next phase run)"
+      warn "escalating: 'brew services restart openshell' then create"
       brew services restart openshell >/dev/null 2>&1 || true
       local i=0; while (( i < 60 )); do port_listening 17670 && break; sleep 1; i=$((i+1)); done
-      bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" tier3-retry >/dev/null 2>&1 || true
-      openshell_sandbox_delete "$osh" "$name"
       openshell_sandbox_create_watchdog "$osh" "$name" "$from" "$create_timeout" -- "${extra[@]}"; rc=$?
       [[ $rc -eq 0 ]] && return 0
     fi
   fi
 
-  warn "sandbox '$name' could not reach Ready after all recovery tiers"
+  err "sandbox '$name' could not be created"
   return 1
 }
