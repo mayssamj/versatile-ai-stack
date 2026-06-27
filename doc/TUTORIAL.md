@@ -274,7 +274,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 
 ### L6 · Declarative model↔agent binding · 🟡 · ~12 min
 
-**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-sub-xhigh` and the `default` is `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
+**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-sub-max` and the `default` is `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
 
 **Prereqs.** Phase 01 complete. `~/ai-stack/installer/models.yml` present (shipped in-repo). `yq` available. These commands are **read-mostly**: `list` and `superset` are read-only; `assign`/`sync` mutate `models.yml` / configs and may queue a LiteLLM restart — run those only when you mean to re-point something.
 
@@ -644,22 +644,22 @@ A single generic chatbot is mediocre at most things. A *team* — each member wi
 
 **The framework-agnostic idea first.** "An agent" here is three things bolted together:
 1. **A persona** (its `SOUL.md` / `SYSTEM.md`) — mandate, access boundary, when-to-invoke, definition-of-done, gate behavior.
-2. **A model tier** — every role runs Claude Opus 4.8 over the subscription (via Meridian), with the orchestration-heavy roles at higher reasoning effort (xhigh) and the rest at max effort.
+2. **A model tier** — every role runs Claude Opus 4.8 over the subscription (via Meridian), at one uniform reasoning effort (max) across the whole fleet.
 3. **A shared protocol** (the `team-protocol` skill) — so the nine behave as a team, not nine monologues.
 
 #### The roster
 
 | Role | Speciality | Use it when… | Model tier | Access |
 |---|---|---|---|---|
-| **manager** | **Chief of Staff · Operator · Second Brain**: the operator's single entrance — runs *all* of an EM's job (people, process & execution, info/knowledge & memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape the task needs (a spec, a decision, a status read, a memory update, a drafted message, a direct fix, or a fanned-out delivery) | You have *anything* — a goal, a question, a decision, a pile to triage — the manager is the front door and routes from there | opus-sub-xhigh | **operator** (full access bounded by team-protocol §5; executes directly when fastest; defers architecture to techlead, production to sre-engineer) |
+| **manager** | **Chief of Staff · Operator · Second Brain**: the operator's single entrance — runs *all* of an EM's job (people, process & execution, info/knowledge & memory, decisions, comms, triage) and turns intent into shipped reality in whatever shape the task needs (a spec, a decision, a status read, a memory update, a drafted message, a direct fix, or a fanned-out delivery) | You have *anything* — a goal, a question, a decision, a pile to triage — the manager is the front door and routes from there | opus-sub-max | **operator** (full access bounded by team-protocol §5; executes directly when fastest; defers architecture to techlead, production to sre-engineer) |
 | **techlead** | Architecture & direction: ADRs, interface contracts, standards, design review; co-designs ML work | A change needs a design decision, an interface defined, a technology chosen, or trade-offs weighed | opus-sub-max | read-mostly (writes ADRs/design docs only) |
 | **frontend-engineer** | Accessible (WCAG 2.1 AA), performant (Core Web Vitals) UI against the contract + design system | Building/changing a UI component, styling, client state, browser data-fetching | opus-sub-max | writes UI code + its tests |
 | **backend-engineer** | Server-side APIs, services, business logic, data access; security basics (parameterized queries, authz, OWASP) | Designing/implementing an API, business logic, a schema/query, authn/authz, an integration | opus-sub-max | writes app/server/data code + tests |
 | **ml-engineer** | Model selection, eval harnesses, data/feature pipelines, finetuning, RAG/prompt design, inference wiring; **metric-driven, guards against overkill models** | A task needs an eval/benchmark, model choice, a data pipeline, finetuning, or RAG design | opus-sub-max | writes ML code/pipelines/notebooks |
-| **qa-test-engineer** | Test strategy + automation; **the green-bar quality gate** | A change needs a test strategy, tests written, behavior verified against acceptance criteria, or flaky tests triaged | opus-sub-xhigh | **tests only** (never source/prod/infra) |
+| **qa-test-engineer** | Test strategy + automation; **the green-bar quality gate** | A change needs a test strategy, tests written, behavior verified against acceptance criteria, or flaky tests triaged | opus-sub-max | **tests only** (never source/prod/infra) |
 | **reviewing-engineer** | Independent adversarial review **+ the security pass** (authz, secrets, injection, PII, crypto) | A QA-passed DIFF is ready for review, or any change is flagged for a security pass | opus-sub-max | **read-only** (findings only — never fixes) |
-| **sre-engineer** | Reliability, IaC, observability, CI/CD, progressive rollout + verified rollback | Changing infra, defining SLOs/alerts, deploying, verifying rollback, hardening reliability | opus-sub-xhigh | writes IaC/pipeline/config; **only prod-credentialed role** |
-| **incident-manager** | Incident command + blameless postmortems; coordinates the response | An incident is active and needs coordination, or a resolved one needs a postmortem; **activates out-of-band** | opus-sub-xhigh | **read-only** (drives mitigation *through* the SREs) |
+| **sre-engineer** | Reliability, IaC, observability, CI/CD, progressive rollout + verified rollback | Changing infra, defining SLOs/alerts, deploying, verifying rollback, hardening reliability | opus-sub-max | writes IaC/pipeline/config; **only prod-credentialed role** |
+| **incident-manager** | Incident command + blameless postmortems; coordinates the response | An incident is active and needs coordination, or a resolved one needs a postmortem; **activates out-of-band** | opus-sub-max | **read-only** (drives mitigation *through* the SREs) |
 
 > Tip: the same persona lives in three places — `agent-profiles/hermes/profiles/<role>/SOUL.md`, `agent-profiles/pi/agents/<role>/SYSTEM.md`, and `agent-profiles/claude-code/.claude/agents/<role>.md`. Diff any two to see how one canonical role is wrapped per platform. (The HTML edition adds live chat/model demos via `vz-ai-stack.sh tutorial-serve`.)
 
@@ -1172,7 +1172,7 @@ ls metagpt/workspace/
 open http://phoenix:6006                    # project ai-stack
 ```
 
-**Expected.** The run prints each role taking its turn and lands code + docs under `metagpt/workspace/`. `vz-ai-stack.sh test 32` runs the wrapper end-to-end; `doctor metagpt` shows check 57 green. Want a bigger, sharper swarm? `METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt "…"` (metered).
+**Expected.** The run prints each role taking its turn and lands code + docs under `metagpt/workspace/`. `vz-ai-stack.sh test 32` runs the wrapper end-to-end; `doctor metagpt` shows check 57 green. The default is the capable `claude-opus-sub-xhigh` (metered); for a free on-box pass, `METAGPT_MODEL=local-gemma4 bin/metagpt "…"`.
 
 **Run the OASIS social swarm.** CAMEL-backed agents that post / follow / react in a shared world (upstream scales to ~1M; on-box you run a small cast). Same host-venv shape as MetaGPT, driven by a sim script under `oasis/sims/`.
 
@@ -1267,7 +1267,7 @@ vz-ai-stack.sh test 35                      # headless 1-agent workflow → Lite
 open http://phoenix:6006                    # project ai-stack
 ```
 
-**Expected.** `http://chatdev:5274/` renders the DevAll UI (the install patches Vite's `allowedHosts` so the alias doesn't 403 — fall back to the `127.0.10.18` IP if needed); the backend API docs live at `http://127.0.10.18:6400/docs`. `doctor chatdev` shows check 60 green. Bigger swarm: point a workflow YAML node's `name:` at `claude-opus-sub-xhigh` (metered).
+**Expected.** `http://chatdev:5274/` renders the DevAll UI (the install patches Vite's `allowedHosts` so the alias doesn't 403 — fall back to the `127.0.10.18` IP if needed); the backend API docs live at `http://127.0.10.18:6400/docs`. `doctor chatdev` shows check 60 green. The default is `claude-opus-sub-xhigh` (metered); for a free on-box pass, point a workflow YAML node's `name:` at `local-gemma4`.
 
 **Watch the AI Town.** The most *watchable* of the set — AI characters live, move, and chat in a virtual town in real time (alias `aitown` → host 5273 → container 5173; Convex admin dashboard on :6791). Three containers under the `aitown` compose project; the whole town world is a SQLite DB bind-mounted under `data/aitown/convex` so it survives a restart.
 
@@ -1284,7 +1284,7 @@ vz-ai-stack.sh start aitown                 # idempotent; stop aitown to reclaim
 open http://phoenix:6006                    # project ai-stack
 ```
 
-**Expected.** `http://aitown:5273/` shows the live town (the install patches Vite's `allowedHosts`; fall back to the `127.0.10.19` IP if it 403s); the Convex dashboard is at `http://127.0.10.19:6791/` (loopback-only). `vz-ai-stack.sh test 36` proves it; `doctor aitown` shows check 61 green. Livelier town (metered): `(cd ai-town && npx convex env set LLM_MODEL claude-opus-sub-xhigh)` then restart. The town world is **your data** — `stop aitown` and a teardown both preserve the SQLite world.
+**Expected.** `http://aitown:5273/` shows the live town (the install patches Vite's `allowedHosts`; fall back to the `127.0.10.19` IP if it 403s); the Convex dashboard is at `http://127.0.10.19:6791/` (loopback-only). `vz-ai-stack.sh test 36` proves it; `doctor aitown` shows check 61 green. The default `claude-opus-sub-xhigh` is metered and good for a livelier town; for a free on-box pass keep the cast small and `(cd ai-town && npx convex env set LLM_MODEL local-gemma4)` then restart. The town world is **your data** — `stop aitown` and a teardown both preserve the SQLite world.
 
 **Try it live.** Serve this page with launch enabled — `vz-ai-stack.sh tutorial-serve --launch-enabled` — and the **Launch a service** panel can start **ChatDev** and **AI Town** for you and open them in a new tab. The buttons just run the same idempotent `start <svc>` shown above, server-side; it's opt-in and loopback-only (the proxy holds no key — see Act II's Try-it-live for why).
 

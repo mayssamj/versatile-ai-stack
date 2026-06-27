@@ -335,11 +335,11 @@ See [models.md](models.md) for the full reference. Three local models:
 | `local-qwen3-coder` (`qwen3-coder-30b-a3b-instruct-mlx`, ~17.2 GB) | LM Studio MLX | coding specialist (opt-in) |
 
 Shipped assignments: every agent routes to the **Claude Opus subscription via
-Meridian** — `hermes_manager` + `hermes_qa_test_engineer` + `hermes_sre_engineer` +
-`hermes_incident_manager` → `claude-opus-sub-xhigh`; `hermes_techlead` +
-`hermes_ml_engineer` + `hermes_frontend_engineer` + `hermes_backend_engineer` +
-`hermes_reviewing_engineer` → `claude-opus-sub-max`. `pi` + `deerflow` →
-`claude-opus-sub-max`; `ace` + `rlm` → `claude-opus-sub-xhigh`. A subscription-assigned agent **auto-falls-back to `local-gemma4`** when
+Meridian**, uniformly — all nine Hermes roles (`hermes_manager`, `hermes_techlead`,
+`hermes_ml_engineer`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
+`hermes_qa_test_engineer`, `hermes_reviewing_engineer`, `hermes_sre_engineer`,
+`hermes_incident_manager`) plus `pi`, `deerflow`, `ace`, and `rlm` →
+`claude-opus-sub-max`. A subscription-assigned agent **auto-falls-back to `local-gemma4`** when
 the Meridian host daemon is down, so a plain `install all` works with no Meridian. To
 activate the subscription models: bring Meridian up (`bin/start-meridian.sh`), then
 `vz-ai-stack.sh model sync`.

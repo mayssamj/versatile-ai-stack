@@ -133,7 +133,7 @@ assignments:
   # is used ONLY when explicitly chosen (an assignment / a sim's `-m local-gemma4`)
   # or as the last-resort keyless availability-gate when a runtime is fully down.
   hermes_manager: claude-opus-sub-max
-  hermes_techlead: claude-opus-sub-max   # operator set to platform default (was sakana-fugu) — flagging
+  hermes_techlead: claude-opus-sub-max   # platform default (operator dropped the sakana-fugu exception 2026-06-27)
   hermes_ml_engineer: claude-opus-sub-max
   hermes_frontend_engineer: claude-opus-sub-max
   hermes_backend_engineer: claude-opus-sub-max

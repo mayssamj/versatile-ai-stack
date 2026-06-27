@@ -430,7 +430,7 @@ sequenceDiagram
   </div>
 </div>
 <p>Three things this shows:</p>
-<ul><li>The researcher (assigned <strong>local-qwen3.6</strong>, see <a href="models.md">models.md</a>) uses a</li></ul>
+<ul><li>The researcher (assigned <strong>claude-opus-sub-max</strong>, see <a href="models.md">models.md</a>) uses a</li></ul>
 <p>local model for cheap summarization and <strong>claude-opus</strong> for the high-stakes synthesis. Mixed cost discipline.</p>
 <ul><li>Every external call goes via <code>inference.local</code>, the OpenShell L7</li></ul>
 <p>proxy. The agent never sees a real API key — the proxy injects the fleet's scoped <code>HERMES_LITELLM_KEY</code>, and LiteLLM checks every model against that key's allowlist (the derived superset, so re-assigning a model never needs a key re-mint). Each call also lands in Phoenix project <code>ai-stack</code> for free.</p>
@@ -483,8 +483,10 @@ sequenceDiagram
 </div>
 <p>What the assignments look like (from <code>models.yml</code>, see <a href="models.md">models.md</a>):</p>
 <ul><li><strong>claude-opus-sub-max</strong> (subscription via Meridian; the platform default and</li></ul>
-<p><code>primary</code>) — every assigned role: <code>hermes_manager</code>, <code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>pi</code>, <code>deerflow</code>, <code>ace</code>, <code>rlm</code>.</p>
-<ul><li><strong>sakana-fugu</strong> — <code>hermes_techlead</code> (the single exception to the default).</li><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
+<p><code>primary</code>) — every assigned role: <code>hermes_manager</code>, <code>hermes_techlead</code>, <code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>pi</code>, <code>deerflow</code>, <code>ace</code>, <code>rlm</code>.</p>
+<ul><li><strong>sakana-fugu</strong> — an available LiteLLM route, currently <strong>unassigned</strong> (no</li></ul>
+<p>agent binds to it by default; <code>hermes_techlead</code> dropped it 2026-06-27 and is now on the <code>claude-opus-sub-max</code> default like every other role).</p>
+<ul><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
 <p>LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime is down. An UNASSIGNED agent renders the <code>primary</code> (<code>claude-opus-sub-max</code>) and gates to this. (<code>default:</code> in models.yml names this fallback; it must be an Ollama model.)</p>
 <p>Notes:</p>
 <ul><li>The Hermes fleet now routes to a Claude subscription via the Meridian host</li></ul>
@@ -654,7 +656,7 @@ sequenceDiagram
   </div>
 </div>
 <h3 id="sec-5e">5e. Honcho agent memory — derivation via LiteLLM (not to be confused with §11 Memory profiles)</h3>
-<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use <code>claude-opus-sub-xhigh</code> — Honcho's own default (<code>HONCHO_MODEL</code>, set in Phase 03), not the stack-wide <code>primary</code> which is <code>claude-opus-sub-max</code> (Claude subscription via Meridian; LiteLLM falls back to <code>local-gemma4</code> if Meridian is down).</p>
+<p>Not to be confused with <a href="#11-memory-profiles--what-runs-in-each-ram-mode">§11 Memory profiles</a> (RAM modes). All Honcho LLM roles (deriver, dialectic, summary, dream) use <code>claude-opus-sub-xhigh</code> — Honcho's own default (<code>HONCHO_MODEL</code>, set in Phase 03), not the stack-wide <code>primary</code> which is <code>claude-opus-sub-max</code> (Claude subscription via Meridian; if Meridian is down LiteLLM now surfaces a visible 503 rather than silently falling back).</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-10" data-action="out" title="Zoom out">−</button>

@@ -599,14 +599,13 @@ default model is declared in `installer/models.yml` under `assignments:` and
 rendered into the soul file by `vz-ai-stack.sh model sync`. All nine
 authenticate to LiteLLM with the shared `HERMES_LITELLM_KEY` virtual key
 (allowlisted to the canonical model superset) and route to a **Claude
-subscription via Meridian** (the one exception is `hermes_techlead`, assigned
-`sakana-fugu`). The bindings as shipped (platform policy 2026-06-23 — every
-role is `claude-opus-sub-max` except techlead):
+subscription via Meridian**. The bindings as shipped (platform policy
+2026-06-27 — every role is uniformly `claude-opus-sub-max`):
 
 | Profile                     | Bound model                  | When you'd dispatch one                                          |
 |-----------------------------|------------------------------|------------------------------------------------------------------|
 | `hermes_manager`            | `claude-opus-sub-max`    | Frame a goal into a spec, decompose, delegate, orchestrate gates; executes directly when fastest |
-| `hermes_techlead`           | `sakana-fugu`            | Architecture decisions, ADRs, interface contracts, design review |
+| `hermes_techlead`           | `claude-opus-sub-max`    | Architecture decisions, ADRs, interface contracts, design review |
 | `hermes_frontend_engineer`  | `claude-opus-sub-max`    | Accessible, performant UI against the design contract            |
 | `hermes_backend_engineer`   | `claude-opus-sub-max`    | APIs, services, data access, security basics against the contract|
 | `hermes_ml_engineer`        | `claude-opus-sub-max`    | Model selection, evals, data pipelines, finetuning, RAG          |
