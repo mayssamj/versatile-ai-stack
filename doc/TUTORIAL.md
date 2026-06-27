@@ -1082,7 +1082,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 
 ### L20½ · Agent-swarm simulations — agents in a world · 🟡 · ~15 min
 
-**Why.** Tiers 1–3 gave you agents that *do a job*. This is the playground: **swarms of agents that live in a world** — they converse, role-play, post, react to *each other*, and you watch the emergent behavior. Five **opt-in** simulators ship with the stack, each a different shape of "swarm" — three are host-venv CLI sims you watch in Phoenix (`metagpt` · `agentscope` · `oasis`), and two are **watchable web apps** you open in the browser (`chatdev` · `aitown`). None are in `install all`; every agent call routes through **LiteLLM** on a scoped key, so you watch the whole swarm think in **Phoenix**.
+**Why.** Tiers 1–3 gave you agents that *do a job*. This is the playground: **swarms of agents that live in a world** — they converse, role-play, post, react to *each other*, and you watch the emergent behavior. **Six opt-in** simulators ship with the stack, each a different shape of "swarm" — four are host-venv CLI sims you watch in Phoenix (`metagpt` · `agentscope` · `oasis` · `concordia`), and two are **watchable web apps** you open in the browser (`chatdev` · `aitown`). None are in `install all`; every agent call routes through **LiteLLM** on a scoped key, so you watch the whole swarm think in **Phoenix**.
 
 **Which tool.**
 
@@ -1191,6 +1191,64 @@ open http://phoenix:6006                    # project ai-stack
 
 **Expected.** The demo prints `OASIS_SMOKE_OK agents=3 replies=3` (every agent must reply or it fails); `test 34` confirms it; `doctor oasis` shows check 59 green. Write your own world as `oasis/sims/<file>.py` and run it with `bin/oasis oasis/sims/<file>.py` — the wrapper injects the scoped key + `OPENAI_BASE_URL` for you.
 
+**Run the Concordia GABM experiment.** The research-grade member of the set — DeepMind's *generative agent-based modeling*. Agents with structured beliefs/memory act in a shared world, and a **Game Master** entity adjudicates every action: it decides what's plausible, narrates the scene, and **resolves each turn into a canonical event** the others then observe. Where OASIS hands you emergent social-media dynamics, Concordia is where you *design a controlled experiment* — a negotiation, an election, a contested resource — and watch how it plays out. Same host-venv shape as MetaGPT/OASIS, driven by a sim script under `concordia/sims/`.
+
+```bash
+# 1. Install (opt-in). Host venv (py3.12 — the first 3.12 sim) + a sentence-transformers
+#    embedder + scoped CONCORDIA_LITELLM_KEY + bin/concordia; the install GATES on a real
+#    1-step GABM sim driving LLM calls through LiteLLM.
+vz-ai-stack.sh install concordia            # alias for: install 37
+
+# 2. Run the bundled demo — Alice + Bob meet in a village square; the Game Master
+#    narrates and resolves each turn into an event the other then observes.
+bin/concordia concordia/sims/smoke_sim.py
+
+# 3. Prove it end-to-end, then watch every entity + Game-Master call as a trace.
+vz-ai-stack.sh test 37
+open http://phoenix:6006                     # project ai-stack
+```
+
+**Expected.** The demo prints the scene, each entity's action, and the Game Master's *resolved event*, ending with `CONCORDIA_SMOKE_OK entities=2 steps=1 llm_calls=N`; `test 37` prints `Smoke 37 PASS`; `doctor concordia` shows check 66 green.
+
+**Model note — Concordia is different.** It fans out **many concurrent LLM calls per step** (the Game Master + every entity + every component), so its default is the capable **`claude-opus-sub-xhigh`** — *not* `local-gemma4`, which serializes on Ollama and times out. The install/`test` gate runs the faster `claude-sonnet-sub-high` to stay under its timeout. Override per run with `CONCORDIA_MODEL=…`, and keep on-box experiments small (a handful of entities, a few steps — even a 2-step run is several minutes).
+
+**Make it yours.** Drop a script in `concordia/sims/` and run it with `bin/concordia concordia/sims/<file>.py` — the wrapper injects the scoped key + `OPENAI_BASE_URL` for you. A minimal GABM experiment is *entities + a Game Master + a premise*, assembled from prefabs:
+
+```python
+# concordia/sims/my_experiment.py — a minimal 2-entity GABM run (run: bin/concordia concordia/sims/my_experiment.py)
+import os, numpy as np
+from concordia.contrib.language_models.openai.gpt_model import GptLanguageModel
+from concordia.utils import helper_functions
+from concordia.typing import prefab as prefab_lib
+import concordia.prefabs.entity as entity_prefabs
+import concordia.prefabs.game_master as gm_prefabs
+from concordia.prefabs.simulation import generic as simulation
+from sentence_transformers import SentenceTransformer
+
+model = GptLanguageModel(                          # OpenAI-compatible → routed through LiteLLM
+    model_name=os.environ.get("CONCORDIA_MODEL", "claude-opus-sub-xhigh"),
+    api_key=os.environ["OPENAI_API_KEY"], api_base=os.environ["OPENAI_BASE_URL"])
+_st = SentenceTransformer(os.environ.get("CONCORDIA_EMBEDDER", "sentence-transformers/all-MiniLM-L6-v2"))
+embedder = lambda text: np.asarray(_st.encode(text), dtype=np.float32)    # associative-memory embedder
+
+prefabs = {**helper_functions.get_package_classes(entity_prefabs),        # registry: 'basic__Entity', 'generic__GameMaster', …
+           **helper_functions.get_package_classes(gm_prefabs)}
+instances = [
+    prefab_lib.InstanceConfig(prefab="basic__Entity", role=prefab_lib.Role.ENTITY,
+                              params={"name": "Alice", "goal": "win the contract"}),
+    prefab_lib.InstanceConfig(prefab="basic__Entity", role=prefab_lib.Role.ENTITY,
+                              params={"name": "Bob", "goal": "get the best price"}),
+    prefab_lib.InstanceConfig(prefab="generic__GameMaster", role=prefab_lib.Role.GAME_MASTER,
+                              params={"name": "rules"}),
+]
+config = prefab_lib.Config(prefabs=prefabs, instances=instances,
+                           default_premise="Alice and Bob negotiate a contract in the market square.",
+                           default_max_steps=1)
+simulation.Simulation(config=config, model=model, embedder=embedder).play(max_steps=1)   # prints the transcript
+```
+
+> `local-gemma4` times out here (the concurrent per-step calls serialize on Ollama) — keep the `claude-opus-sub-xhigh` default, or pass `CONCORDIA_MODEL=claude-sonnet-sub-high` for a faster run.
+
 **Watch the ChatDev web app.** The other two sims are **browser** apps, not `bin/<svc>` CLIs — opt-in containers (Phases 35 / 36) that route through LiteLLM. ChatDev 2.0 "DevAll" is a *watchable* multi-agent software company you drive from a Vue web app (frontend container :5173 → host 5274; FastAPI backend on :6400).
 
 ```bash
@@ -1229,9 +1287,9 @@ open http://phoenix:6006                    # project ai-stack
 
 **Try it live.** Serve this page with launch enabled — `vz-ai-stack.sh tutorial-serve --launch-enabled` — and the **Launch a service** panel can start **ChatDev** and **AI Town** for you and open them in a new tab. The buttons just run the same idempotent `start <svc>` shown above, server-side; it's opt-in and loopback-only (the proxy holds no key — see Act II's Try-it-live for why).
 
-**Reversible.** `rm -rf agentscope/.venv && rm -f installer/state/phase_33.done` (same shape for `metagpt`/`oasis`). The `<svc>/sims/` directories are **your data** — they're kept.
+**Reversible.** `rm -rf agentscope/.venv && rm -f installer/state/phase_33.done` (same shape for `metagpt`/`oasis`/`concordia`). The `<svc>/sims/` directories are **your data** — they're kept.
 
-**Go deeper.** Phases `installer/phases/33_agentscope.sh` · `32_metagpt.sh` · `34_oasis.sh` · `35_chatdev.sh` · `36_aitown.sh` carry full rationale headers; the plan + which-tool rationale is `doc/specs/2026-06-23-agent-sim-platforms-install-plan.md`; licenses in `doc/ATTRIBUTION.md`. All five also appear in the Explorer (`doc/EXPLORE.html`, the **`extras`** tab) as clickable demo cards.
+**Go deeper.** Phases `installer/phases/33_agentscope.sh` · `32_metagpt.sh` · `34_oasis.sh` · `35_chatdev.sh` · `36_aitown.sh` · `37_concordia.sh` carry full rationale headers; the plan + which-tool rationale is `doc/specs/2026-06-23-agent-sim-platforms-install-plan.md`; licenses in `doc/ATTRIBUTION.md`. All six also appear in the Explorer (`doc/EXPLORE.html`, the **`extras`** tab) as clickable demo cards.
 
 ## Act VI — Build Your Own
 

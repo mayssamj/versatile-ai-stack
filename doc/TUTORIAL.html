@@ -1159,7 +1159,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 <p><strong>Lesson.</strong> Tier 3 isn't only researchers — it's also <em>light</em> automation. AutoFyn gives you an isolated autonomous coder; Paperclip gives you a personal orchestrator that, wired to Honcho, stops re-asking "what were we doing?" The plugin is the smallest possible integration: zero code, one toggle, and the L8 memory plane does the rest.</p>
 <p><strong>Go deeper.</strong> AutoFyn's agent app binds <code>0.0.0.0:8500</code> inside the container regardless of env — never set <code>AGENT_PORT</code> elsewhere or the healthcheck targets a closed port and AutoFyn shows unhealthy forever. Paperclip's <code>pnpm dev</code> binds <code>127.0.0.1:3100</code> only; the <code>paperclip</code> alias works via a tiny Node TCP relay. The Honcho plugin is activated <em>inside the UI</em> (not by the installer) and won't appear in <code>stack status</code>.</p>
 <h3 id="l20--agent-swarm-simulations--agents-in-a-world----15-min">L20½ · Agent-swarm simulations — agents in a world · 🟡 · ~15 min <span class="tier inter">intermediate</span></h3>
-<p><strong>Why.</strong> Tiers 1–3 gave you agents that <em>do a job</em>. This is the playground: <strong>swarms of agents that live in a world</strong> — they converse, role-play, post, react to <em>each other</em>, and you watch the emergent behavior. Five <strong>opt-in</strong> simulators ship with the stack, each a different shape of "swarm" — three are host-venv CLI sims you watch in Phoenix (<code>metagpt</code> · <code>agentscope</code> · <code>oasis</code>), and two are <strong>watchable web apps</strong> you open in the browser (<code>chatdev</code> · <code>aitown</code>). None are in <code>install all</code>; every agent call routes through <strong>LiteLLM</strong> on a scoped key, so you watch the whole swarm think in <strong>Phoenix</strong>.</p>
+<p><strong>Why.</strong> Tiers 1–3 gave you agents that <em>do a job</em>. This is the playground: <strong>swarms of agents that live in a world</strong> — they converse, role-play, post, react to <em>each other</em>, and you watch the emergent behavior. <strong>Six opt-in</strong> simulators ship with the stack, each a different shape of "swarm" — four are host-venv CLI sims you watch in Phoenix (<code>metagpt</code> · <code>agentscope</code> · <code>oasis</code> · <code>concordia</code>), and two are <strong>watchable web apps</strong> you open in the browser (<code>chatdev</code> · <code>aitown</code>). None are in <code>install all</code>; every agent call routes through <strong>LiteLLM</strong> on a scoped key, so you watch the whole swarm think in <strong>Phoenix</strong>.</p>
 <p><strong>Which tool.</strong></p>
 <table><thead><tr><th>Tool</th><th>Best for</th><th>Install</th><th>First run</th></tr></thead><tbody><tr><td><strong>AgentScope</strong> (33)</td><td>Build/scale <strong>your own</strong> sims — agents converse, observe, act</td><td><code>install agentscope</code></td><td><code>bin/agentscope agentscope/sims/smoke_sim.py</code></td></tr><tr><td><strong>MetaGPT</strong> (32)</td><td>A fixed <strong>software-company</strong> swarm (PM→architect→engineer→QA) from a one-line brief</td><td><code>install metagpt</code></td><td><code>bin/metagpt "build a CLI todo app"</code></td></tr><tr><td><strong>OASIS</strong> (34)</td><td><strong>Large social swarms</strong> — agents post/follow/react in a shared world (≤1M upstream)</td><td><code>install oasis</code></td><td><code>bin/oasis oasis/sims/smoke_sim.py</code></td></tr><tr><td><strong>ChatDev</strong> (35)</td><td>A <strong>watchable</strong> multi-agent <em>software company</em> ("DevAll") — drive a build from a Vue web app</td><td><code>install chatdev</code></td><td>open http://chatdev:5274/</td></tr><tr><td><strong>AI Town</strong> (36)</td><td>A <strong>watchable</strong> virtual town — AI characters live and chat in real time</td><td><code>install aitown</code></td><td>open http://aitown:5273/</td></tr><tr><td><strong>Concordia</strong> (37)</td><td>Controlled <strong>social-science experiments</strong> — agents with beliefs/memory + a <strong>Game Master</strong> that enforces world rules (negotiation, governance, elections)</td><td><code>install concordia</code></td><td><code>bin/concordia concordia/sims/smoke_sim.py</code></td></tr></tbody></table>
 <p><strong>Reality check (M4 / 24 GB).</strong> A "large swarm" on-box means <em>dozens</em> of agents on a small fast model (<code>local-gemma4</code>) with queuing — local inference throughput, not the orchestrator, is the ceiling. For hundreds–thousands, point the scoped key at a metered cloud model. And <code>local-gemma4</code> is a <strong>reasoning</strong> model: sims need <code>max_tokens ≥ 512</code> or agents spend the whole budget "thinking" and return empty content.</p>
@@ -1237,6 +1237,53 @@ bin/oasis oasis/sims/smoke_sim.py
 vz-ai-stack.sh test 34
 open http://phoenix:6006                    # project ai-stack</code></pre>
 <p><strong>Expected.</strong> The demo prints <code>OASIS_SMOKE_OK agents=3 replies=3</code> (every agent must reply or it fails); <code>test 34</code> confirms it; <code>doctor oasis</code> shows check 59 green. Write your own world as <code>oasis/sims/&lt;file&gt;.py</code> and run it with <code>bin/oasis oasis/sims/&lt;file&gt;.py</code> — the wrapper injects the scoped key + <code>OPENAI_BASE_URL</code> for you.</p>
+<p><strong>Run the Concordia GABM experiment.</strong> The research-grade member of the set — DeepMind's <em>generative agent-based modeling</em>. Agents with structured beliefs/memory act in a shared world, and a <strong>Game Master</strong> entity adjudicates every action: it decides what's plausible, narrates the scene, and <strong>resolves each turn into a canonical event</strong> the others then observe. Where OASIS hands you emergent social-media dynamics, Concordia is where you <em>design a controlled experiment</em> — a negotiation, an election, a contested resource — and watch how it plays out. Same host-venv shape as MetaGPT/OASIS, driven by a sim script under <code>concordia/sims/</code>.</p>
+<pre><button class="copy-btn" data-copy>copy</button><code># 1. Install (opt-in). Host venv (py3.12 — the first 3.12 sim) + a sentence-transformers
+#    embedder + scoped CONCORDIA_LITELLM_KEY + bin/concordia; the install GATES on a real
+#    1-step GABM sim driving LLM calls through LiteLLM.
+vz-ai-stack.sh install concordia            # alias for: install 37
+
+# 2. Run the bundled demo — Alice + Bob meet in a village square; the Game Master
+#    narrates and resolves each turn into an event the other then observes.
+bin/concordia concordia/sims/smoke_sim.py
+
+# 3. Prove it end-to-end, then watch every entity + Game-Master call as a trace.
+vz-ai-stack.sh test 37
+open http://phoenix:6006                     # project ai-stack</code></pre>
+<p><strong>Expected.</strong> The demo prints the scene, each entity's action, and the Game Master's <em>resolved event</em>, ending with <code>CONCORDIA_SMOKE_OK entities=2 steps=1 llm_calls=N</code>; <code>test 37</code> prints <code>Smoke 37 PASS</code>; <code>doctor concordia</code> shows check 66 green.</p>
+<p><strong>Model note — Concordia is different.</strong> It fans out <strong>many concurrent LLM calls per step</strong> (the Game Master + every entity + every component), so its default is the capable <strong><code>claude-opus-sub-xhigh</code></strong> — <em>not</em> <code>local-gemma4</code>, which serializes on Ollama and times out. The install/<code>test</code> gate runs the faster <code>claude-sonnet-sub-high</code> to stay under its timeout. Override per run with <code>CONCORDIA_MODEL=…</code>, and keep on-box experiments small (a handful of entities, a few steps — even a 2-step run is several minutes).</p>
+<p><strong>Make it yours.</strong> Drop a script in <code>concordia/sims/</code> and run it with <code>bin/concordia concordia/sims/&lt;file&gt;.py</code> — the wrapper injects the scoped key + <code>OPENAI_BASE_URL</code> for you. A minimal GABM experiment is <em>entities + a Game Master + a premise</em>, assembled from prefabs:</p>
+<pre><button class="copy-btn" data-copy>copy</button><code># concordia/sims/my_experiment.py — a minimal 2-entity GABM run (run: bin/concordia concordia/sims/my_experiment.py)
+import os, numpy as np
+from concordia.contrib.language_models.openai.gpt_model import GptLanguageModel
+from concordia.utils import helper_functions
+from concordia.typing import prefab as prefab_lib
+import concordia.prefabs.entity as entity_prefabs
+import concordia.prefabs.game_master as gm_prefabs
+from concordia.prefabs.simulation import generic as simulation
+from sentence_transformers import SentenceTransformer
+
+model = GptLanguageModel(                          # OpenAI-compatible → routed through LiteLLM
+    model_name=os.environ.get("CONCORDIA_MODEL", "claude-opus-sub-xhigh"),
+    api_key=os.environ["OPENAI_API_KEY"], api_base=os.environ["OPENAI_BASE_URL"])
+_st = SentenceTransformer(os.environ.get("CONCORDIA_EMBEDDER", "sentence-transformers/all-MiniLM-L6-v2"))
+embedder = lambda text: np.asarray(_st.encode(text), dtype=np.float32)    # associative-memory embedder
+
+prefabs = {**helper_functions.get_package_classes(entity_prefabs),        # registry: 'basic__Entity', 'generic__GameMaster', …
+           **helper_functions.get_package_classes(gm_prefabs)}
+instances = [
+    prefab_lib.InstanceConfig(prefab="basic__Entity", role=prefab_lib.Role.ENTITY,
+                              params={"name": "Alice", "goal": "win the contract"}),
+    prefab_lib.InstanceConfig(prefab="basic__Entity", role=prefab_lib.Role.ENTITY,
+                              params={"name": "Bob", "goal": "get the best price"}),
+    prefab_lib.InstanceConfig(prefab="generic__GameMaster", role=prefab_lib.Role.GAME_MASTER,
+                              params={"name": "rules"}),
+]
+config = prefab_lib.Config(prefabs=prefabs, instances=instances,
+                           default_premise="Alice and Bob negotiate a contract in the market square.",
+                           default_max_steps=1)
+simulation.Simulation(config=config, model=model, embedder=embedder).play(max_steps=1)   # prints the transcript</code></pre>
+<div class="callout"><p><code>local-gemma4</code> times out here (the concurrent per-step calls serialize on Ollama) — keep the <code>claude-opus-sub-xhigh</code> default, or pass <code>CONCORDIA_MODEL=claude-sonnet-sub-high</code> for a faster run.</p></div>
 <p><strong>Watch the ChatDev web app.</strong> The other two sims are <strong>browser</strong> apps, not <code>bin/&lt;svc&gt;</code> CLIs — opt-in containers (Phases 35 / 36) that route through LiteLLM. ChatDev 2.0 "DevAll" is a <em>watchable</em> multi-agent software company you drive from a Vue web app (frontend container :5173 → host 5274; FastAPI backend on :6400).</p>
 <pre><button class="copy-btn" data-copy>copy</button><code># 1. Install (opt-in). Builds one image, runs two managed containers
 #    (chatdev + chatdev-backend) on loopback 127.0.10.18.
@@ -1264,8 +1311,8 @@ vz-ai-stack.sh start aitown                 # idempotent; stop aitown to reclaim
 open http://phoenix:6006                    # project ai-stack</code></pre>
 <p><strong>Expected.</strong> <code>http://aitown:5273/</code> shows the live town (the install patches Vite's <code>allowedHosts</code>; fall back to the <code>127.0.10.19</code> IP if it 403s); the Convex dashboard is at <code>http://127.0.10.19:6791/</code> (loopback-only). <code>vz-ai-stack.sh test 36</code> proves it; <code>doctor aitown</code> shows check 61 green. Livelier town (metered): <code>(cd ai-town &amp;&amp; npx convex env set LLM_MODEL claude-opus-sub-xhigh)</code> then restart. The town world is <strong>your data</strong> — <code>stop aitown</code> and a teardown both preserve the SQLite world.</p>
 <p><strong>Try it live.</strong> Serve this page with launch enabled — <code>vz-ai-stack.sh tutorial-serve --launch-enabled</code> — and the <strong>Launch a service</strong> panel can start <strong>ChatDev</strong> and <strong>AI Town</strong> for you and open them in a new tab. The buttons just run the same idempotent <code>start &lt;svc&gt;</code> shown above, server-side; it's opt-in and loopback-only (the proxy holds no key — see Act II's Try-it-live for why).</p>
-<p><strong>Reversible.</strong> <code>rm -rf agentscope/.venv &amp;&amp; rm -f installer/state/phase_33.done</code> (same shape for <code>metagpt</code>/<code>oasis</code>). The <code>&lt;svc&gt;/sims/</code> directories are <strong>your data</strong> — they're kept.</p>
-<p><strong>Go deeper.</strong> Phases <code>installer/phases/33_agentscope.sh</code> · <code>32_metagpt.sh</code> · <code>34_oasis.sh</code> · <code>35_chatdev.sh</code> · <code>36_aitown.sh</code> carry full rationale headers; the plan + which-tool rationale is <code>doc/specs/2026-06-23-agent-sim-platforms-install-plan.md</code>; licenses in <code>doc/ATTRIBUTION.md</code>. All five also appear in the Explorer (<code>doc/EXPLORE.html</code>, the <strong><code>extras</code></strong> tab) as clickable demo cards.</p>
+<p><strong>Reversible.</strong> <code>rm -rf agentscope/.venv &amp;&amp; rm -f installer/state/phase_33.done</code> (same shape for <code>metagpt</code>/<code>oasis</code>/<code>concordia</code>). The <code>&lt;svc&gt;/sims/</code> directories are <strong>your data</strong> — they're kept.</p>
+<p><strong>Go deeper.</strong> Phases <code>installer/phases/33_agentscope.sh</code> · <code>32_metagpt.sh</code> · <code>34_oasis.sh</code> · <code>35_chatdev.sh</code> · <code>36_aitown.sh</code> · <code>37_concordia.sh</code> carry full rationale headers; the plan + which-tool rationale is <code>doc/specs/2026-06-23-agent-sim-platforms-install-plan.md</code>; licenses in <code>doc/ATTRIBUTION.md</code>. All six also appear in the Explorer (<code>doc/EXPLORE.html</code>, the <strong><code>extras</code></strong> tab) as clickable demo cards.</p>
 </section>
 
 <section id="act-vi--build-your-own">
