@@ -615,6 +615,56 @@ bash ~/ai-stack/bin/start-hermes-telegram.sh
 
 ---
 
+## "The Slack bot doesn't reply" (Phase 38)
+
+By far the most common cause: **the bot is LOCKED.** The gateway is secure-by-default
+— with no allowlist it connects to Slack but **denies every user**, so your DMs and
+`@`-mentions get no response. `doctor` shows check 67 passing with a "**running but
+LOCKED**" note, and Phase 38 prints a loud "SLACK BOT IS LOCKED" banner. Fix:
+
+```bash
+# 1. Get your Slack member id — Slack profile → ⋮ (More) → Copy member ID (U…).
+# 2. Add it to .env (mode 0600):
+echo 'HERMES_SLACK_ALLOWED_USERS=U0123ABCD' >> ~/ai-stack/.env   # your member id
+# 3. Re-apply (restarts the gateway with the new allowlist):
+bash ~/ai-stack/vz-ai-stack.sh install 38
+```
+
+Open access (anyone in the workspace) is `HERMES_SLACK_ALLOW_ALL=true` in `.env`
+— **not advised**, since the bot can drive all 9 agent profiles.
+
+Other causes:
+
+```bash
+OSH=/opt/homebrew/bin/openshell
+# Is the gateway actually running inside the sandbox?
+$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status      # expect "running (PID …)"
+# Read the gateway log (auth errors, blocked egress, the Socket-Mode hello):
+$OSH sandbox exec -n hermes-fleet-v1 -- tail -40 /sandbox/.hermes-gateway.log
+# Restart it:
+bash ~/ai-stack/bin/start-hermes-slack.sh
+```
+
+- **`policy_denied` / blocked egress** in the log → a Slack host is missing from the
+  Phase 04 `slack` egress policy (Socket Mode needs `slack.com`, `api.slack.com`,
+  `wss-primary.slack.com`, `wss-backup.slack.com`, `files.slack.com`). Re-run
+  `vz-ai-stack.sh install 04` (or `install 38`, which live-applies the policy).
+- **`invalid_auth` / `token_revoked` / `missing_scope` / `not_allowed_token_type`**
+  in the log → a token is wrong/revoked or the app is missing a scope. Slack needs
+  BOTH `HERMES_SLACK_BOT_TOKEN` (`xoxb-…`) and `HERMES_SLACK_APP_TOKEN` (`xapp-…`,
+  with `connections:write` for Socket Mode). After changing the app's scopes you must
+  **re-install the Slack app** to issue a fresh bot token, update `.env`, then re-run
+  `install 38`.
+- **Only one token configured** → a missing app token means no Socket Mode connection
+  at all (check 67 fails with "not both in sandbox"). Set both in `.env` and re-run
+  `install 38`.
+- **Gateway not running after a relay outage** → the Socket-Mode WebSocket dials
+  slack.com *directly* (not through the relay), so it survives relay idle-timeouts;
+  but if the sandbox was recreated (`reset … hard` + `install`), re-run `install 38`.
+  If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).
+
+---
+
 ## MemPalace verbatim memory (Phase 26)
 
 MemPalace is installed by `install all` (Phase 26) — local-first **verbatim**

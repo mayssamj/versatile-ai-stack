@@ -147,6 +147,7 @@ network_policies:
       - { host: api.slack.com, port: 443 }
       - { host: wss-primary.slack.com, port: 443 }
       - { host: wss-backup.slack.com, port: 443 }
+      - { host: wss.slack.com, port: 443 }
       - { host: files.slack.com, port: 443 }
     binaries:
       - { path: "/**" }

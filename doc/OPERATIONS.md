@@ -58,8 +58,9 @@ stack test inference           # alias → smoke test for phase 01 (litellm)
 ```
 
 Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
-`hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
-`halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. The
+`slack`→hermes_slack, `hermes`→hermes_fleet, `sandbox`→openshell,
+`unsloth`→unsloth_studio, `halo`→halo_autoreason, `ui`→uis, `docs`→documents,
+`memory`→alt_memory. The
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
@@ -318,6 +319,45 @@ re-run `install 20`:
 
 `stack status` shows `hermes_telegram` as `n/a` (it's a sandbox-internal daemon);
 the real liveness probe is `doctor` check 33. See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) if the bot doesn't reply.
+
+---
+
+## Hermes Slack gateway (Phase 38, opt-in)
+
+Opt-in companion to Telegram on the **same in-sandbox gateway** (one
+`hermes gateway run` process serves both channels). Slack uses **Socket Mode** — an
+OUTBOUND WebSocket to slack.com (Phase 04's `slack` egress policy) — so there is no
+inbound webhook and no exposed port. Tokens + allowlist live in `.env`; `install 38`
+writes them into the sandbox and (re)starts the gateway.
+
+```bash
+OSH=/opt/homebrew/bin/openshell
+
+# Start / restart (idempotent — one gateway, latest config; serves Slack + Telegram):
+bash ~/ai-stack/bin/start-hermes-slack.sh
+# or, to also (re)apply tokens + egress + allowlist from .env:
+bash ~/ai-stack/vz-ai-stack.sh install 38            # alias: install slack
+
+# Status / logs / stop:
+$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status
+$OSH sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-gateway.log
+$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
+```
+
+**Access control (read this before expecting replies).** The gateway is
+secure-by-default: with no allowlist it DENIES every user. Set ONE in `.env`, then
+re-run `install 38`:
+
+- `HERMES_SLACK_ALLOWED_USERS=<U…>[,<U…>…]` — Slack member ids (Slack profile → ⋮
+  *More* → *Copy member ID*). **Recommended.**
+- `HERMES_SLACK_ALLOW_ALL=true` — open to the whole workspace. Not advised (the bot
+  drives 9 profiles).
+
+Needs BOTH `HERMES_SLACK_BOT_TOKEN` (`xoxb-…`) and `HERMES_SLACK_APP_TOKEN`
+(`xapp-…`, `connections:write` for Socket Mode); create the app at
+<https://api.slack.com/apps>. `stack status` shows `hermes_slack` as `n/a` (a
+sandbox-internal daemon); the real liveness probe is `doctor` check 67. See
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) if the bot doesn't reply.
 
 ---

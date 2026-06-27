@@ -4,6 +4,67 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-27 — Phase 38 NEW: Hermes Slack gateway (two-way, Socket Mode)
+
+Opt-in companion to the Telegram gateway (Phase 20): adds Slack as a NATIVE
+channel on the SAME in-sandbox hermes gateway. Nous Hermes runs every configured
+channel from ONE `hermes gateway run` process, so Slack rides alongside Telegram —
+no new daemon, no exposed port. Slack uses **Socket Mode** (an OUTBOUND WebSocket
+to slack.com), so there is no inbound webhook / public URL. Tokens live in `.env`
+as `HERMES_SLACK_BOT_TOKEN` (xoxb-…) + `HERMES_SLACK_APP_TOKEN` (xapp-…).
+
+- **NEW Phase 38 `38_hermes_slack.sh`** (opt-in — NOT in `install all`) — writes
+  `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` into the sandbox's `~/.hermes/.env` (piped
+  via STDIN, never in argv or logs), live-applies the Phase 04 `slack` egress
+  policy as a backstop, sets the allowlist (below), then (re)starts the gateway via
+  `bin/start-hermes-slack.sh`. Shape-checks both tokens (`xoxb-`/`xapp-`) and fails
+  fast BEFORE touching the shared gateway, so a malformed Slack token can never tear
+  down Telegram via `run --replace`. Idempotent precheck (tokens present + running +
+  allowlist in sync). Install: `vz-ai-stack.sh install 38` (alias `install slack`).
+- **NEW `bin/start-hermes-slack.sh`** — (re)starts the in-sandbox gateway so it
+  serves Slack alongside any other configured channel; inspects the gateway log for
+  the Socket-Mode `hello` handshake, auth errors, and blocked egress, and **exits
+  non-zero (so Phase 38 does not stamp success) when Slack genuinely can't connect** —
+  a blocked egress host or an auth/scope error fails the install loudly instead of
+  leaving a green-but-dead bot (§24 code-review finding).
+- **Egress — Phase 04 `slack` network_policy stanza** (`openshell/policies/hermes-fleet-v1.yaml`):
+  `slack.com:443`, `api.slack.com:443`, `wss-primary.slack.com:443`,
+  `wss-backup.slack.com:443`, `wss.slack.com:443`, `files.slack.com:443`. The sandbox is deny-by-default,
+  so Socket Mode can only dial out because these hosts are allowlisted (egress only;
+  harmless when Slack isn't configured).
+- **Architecture — in-sandbox self-persisting daemon, NOT a host daemon.** Same as
+  Telegram: the gateway runs INSIDE `hermes-fleet-v1`, survives the launching `exec`
+  stream closing, and its Socket-Mode WebSocket dials slack.com DIRECTLY (not through
+  the OpenShell relay), so it also survives the relay's idle-timeout. ONE process
+  serves every channel; `run --replace` converges, it does not clobber Telegram.
+- **SECURITY — secure-by-default allowlist.** With neither
+  `HERMES_SLACK_ALLOWED_USERS` (comma-list of Slack member ids, `U…`/`W…`) nor
+  `HERMES_SLACK_ALLOW_ALL=true` set, the gateway connects but DENIES every user (the
+  bot can drive all fleet profiles, so it is not open by accident). Phase 38 + doctor
+  surface a loud "SLACK BOT IS LOCKED" notice telling the user to copy their Slack
+  member id, add it to `.env`, and re-run `install 38`.
+- **NEW doctor check 67** (`67_hermes_slack.sh`) — skips cleanly when
+  `HERMES_SLACK_BOT_TOKEN` isn't set; else asserts the in-sandbox gateway is running
+  + BOTH tokens present + NO Slack auth error + NO blocked egress, reading only the
+  in-sandbox `hermes gateway status` + gateway log. Makes NO external Slack API call
+  and never prints the tokens. A passing check may still note "**running but
+  LOCKED**" when no allowlist is set.
+- **`services.yml`** `hermes_slack` (`type: sandbox-daemon` → `status` shows `n/a`
+  like the other sandbox services; real liveness is check 67). Opt-in (Phase 38).
+- **§24-reviewed** (design council + 3-reviewer code review, all SHIP-WITH-CHANGES).
+  The exact Slack config keys were verified against the installed `hermes_cli` v0.16.0
+  (`SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`/`SLACK_ALLOWED_USERS`/`SLACK_ALLOW_ALL_USERS`/
+  `SLACK_HOME_CHANNEL`, stored in `~/.hermes/.env`) — NOT the upstream docs, which
+  track `main` and use a different (`platforms.slack.*`) schema. **Deferred follow-ups:**
+  migrate `bin/start-hermes-telegram.sh` onto the shared `installer/lib/hermes.sh`
+  restart primitive (left untouched here to avoid regressing the working Telegram path
+  — `run --replace` converges, so there is no clobber bug, only DRY debt); the
+  in-sandbox `hermes config set KEY "$T"` briefly exposes the token in the sandbox's
+  process argv (inherited from Phase 20; accepted — the sandbox runs only our fleet).
+- **Counts: 51 services · 68 doctor checks · 17 opt-in extras.**
+
+---
+
 ## 2026-06-25
 
 ### Added

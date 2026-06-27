@@ -61,7 +61,7 @@ hermes_slack_diagnose() {
   # Genuine Slack auth errors are hard failures. Filter benign Socket-Mode churn
   # first (reconnect/ping/pong/rate-limit) so it can't false-match below.
   local gwlog
-  gwlog="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- bash -c 'tail -40 /sandbox/.hermes-gateway.log 2>/dev/null' 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
+  gwlog="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- bash -c 'tail -120 /sandbox/.hermes-gateway.log 2>/dev/null' 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
   if grep -viE 'reconnect|disconnect|rate.?limit|\b429\b|ping|pong' <<<"$gwlog" \
      | grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|missing_scope|not_allowed_token_type'; then
     echo "gateway log shows a Slack auth error — a token may be revoked/malformed or the app is missing a scope (re-install the Slack app after scope changes)"

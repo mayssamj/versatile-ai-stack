@@ -1,13 +1,13 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 67 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 68 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
 Run filtered:
 
 ```bash
-stack doctor                    # all 67
+stack doctor                    # all 68
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -829,6 +829,18 @@ Asserts the `models-serve` web console (the Model & Agent Console) is present an
 ## 66 · Concordia venv + scoped LiteLLM key (opt-in, Phase 37)
 
 Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `installer/state/phase_37*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv generative-agent-based-modeling (GABM) sim. When installed it requires: the venv (`concordia/.venv/bin/python`), both `import concordia` and `import sentence_transformers` succeeding in that venv (the latter is Concordia's mandatory associative-memory embedder), the `bin/concordia` wrapper, and the scoped `CONCORDIA_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`), plus an allow-list assertion that the key permits the model Concordia is bound to (`models.yml` `.assignments.concordia`, else the default `claude-sonnet-sub-high`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `vz-ai-stack.sh install 37` (rebuild venv + re-mint scoped key + refresh `bin/concordia`); prove the sim with `vz-ai-stack.sh test 37`.
+
+---
+
+## 67 · Hermes Slack gateway running (Phase 38, Socket Mode)
+
+| | |
+|---|---|
+| Asserts | the native hermes gateway is running INSIDE `hermes-fleet-v1` (via `hermes gateway status`) and BOTH `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` are present in the sandbox's `~/.hermes/.env`. |
+| Fails when | the gateway isn't running, either token isn't configured in the sandbox, the gateway log shows a genuine Slack auth error (`invalid_auth` / `token_revoked` / `token_expired` / `missing_scope` / `not_allowed_token_type`), or it shows blocked egress (`policy_denied`) — a Slack host missing from the Phase 04 `slack` policy. |
+| Auto-fix | restarts the gateway: `bash bin/start-hermes-slack.sh` (or re-run `vz-ai-stack.sh install 38`). |
+
+Skips cleanly (passes) when `HERMES_SLACK_BOT_TOKEN` isn't set — the Slack gateway is an opt-in add-on (Phase 38). Makes **no external Slack API call** and never prints the tokens; it reads only the in-sandbox `hermes gateway status` and the gateway-log tail. Benign Socket-Mode churn (`reconnect` / `disconnect` / `ping` / `pong` / rate-limit / `429`) is filtered before matching auth errors so a healthy, reconnecting bot doesn't false-fail. A passing check may still note "**running but LOCKED**" (no allowlist → denies every user) — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) to set `HERMES_SLACK_ALLOWED_USERS`.
 
 ---
 

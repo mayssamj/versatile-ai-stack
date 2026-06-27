@@ -16,7 +16,7 @@ and you reach it four ways:
 | **Hermes Workspace** | a web command center (Dashboard / Chat / Conductor / Memory / Sessions / Profiles) | seeing the whole fleet at a glance, point-and-click chat & dispatch |
 | **`hermes` CLI** | the real agent CLI, run *inside* the sandbox | scripting, one-shots, the interactive TUI, model config |
 | **claw3d bridge** | one OpenAI-shaped HTTP endpoint fronting every role | `curl`-ing any agent, backing the 3D office |
-| **chat apps** | Telegram (pre-wired) and Slack (self-setup) | reaching the fleet from your phone or your team channel |
+| **chat apps** | Telegram (Phase 20) and Slack (opt-in Phase 38), both two-way | reaching the fleet from your phone or your team channel |
 
 > **Conventions.** 🟢 basic · 🟡 intermediate · 🔴 advanced. Commands are
 > **copy-run** — paste them, compare against **Expected**. Services are reached
@@ -400,9 +400,9 @@ config.yaml, which the installer greps directly when verifying routing).
 
 ## 5) Reach Hermes from chat apps — Telegram & Slack · 🟡
 
-**Frame this clearly: Telegram works out of the box; Slack is a documented
-self-setup with two prerequisites.** Hermes-agent natively supports several chat
-platforms, but ai-stack only **pre-wires Telegram**.
+**Both are install phases now: Telegram (Phase 20) and Slack (opt-in Phase 38)
+are pre-wired** — drop the tokens in `.env` and run the phase. Hermes-agent
+natively supports several chat platforms; ai-stack wires these two, both two-way.
 
 ### Telegram — pre-wired by ai-stack (Phase 20)
 
@@ -435,52 +435,74 @@ openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
 The bot is **`@vz_hermes_controller_bot`**. DM it (once you're allowlisted) and a
 profile answers.
 
-### Slack — supported by hermes-agent, NOT pre-wired (self-setup)
+### Slack — pre-wired by ai-stack (opt-in Phase 38)
 
-hermes-agent natively supports Slack via `hermes slack` / `hermes send` / the
-gateway, but **ai-stack ships only Telegram wired**. To enable Slack yourself
-there are **two prerequisites you must do**:
+Slack is now wired as an **opt-in install phase**, two-way, over **Socket Mode**
+(an OUTBOUND WebSocket to slack.com — no inbound webhook, no public URL). It runs on
+the **same in-sandbox gateway** Phase 20 points at Telegram (one `hermes gateway run`
+process serves both channels), so there's no host daemon and no exposed port. The
+simple path is **tokens in `.env` + `install 38`**.
 
-**Prerequisite 1 — egress.** The `hermes-fleet-v1` network policy allowlists
-**only `api.telegram.org` today** (`openshell/policies/hermes-fleet-v1.yaml`).
-The sandbox is **deny-by-default**, so without a Slack egress block the Slack
-connection just hangs. Add a Slack egress section to that policy — Slack needs
-`api.slack.com:443`, `slack.com:443`, and a WebSocket path for **Socket Mode** —
-then apply it:
+You need a Slack app — create one at <https://api.slack.com/apps> (the
+`hermes slack manifest` command can print a ready-to-paste manifest, see *Advanced*
+below) — with a **bot token** (`xoxb-…`) and an **app-level token** (`xapp-…`, with
+the `connections:write` scope for Socket Mode). Put both in `~/ai-stack/.env`, then
+install:
 
 ```bash
-# edit openshell/policies/hermes-fleet-v1.yaml, adding a slack egress block
-# (api.slack.com:443, slack.com:443, and the wss endpoint for Socket Mode), then:
-openshell policy set hermes-fleet-v1 \
-  --policy /Users/mayssam.sayyadian/ai-stack/openshell/policies/hermes-fleet-v1.yaml --wait
+# in ~/ai-stack/.env:
+HERMES_SLACK_BOT_TOKEN=xoxb-…
+HERMES_SLACK_APP_TOKEN=xapp-…
+HERMES_SLACK_ALLOWED_USERS=<your Slack member id>   # U… — see secure-by-default below
+# then:
+vz-ai-stack.sh install 38            # alias: install slack
 ```
 
-**Prerequisite 2 — token.** Put a Slack **bot token** in the sandbox's
-`~/.hermes/.env` (that's where hermes reads its secrets — the same file Phase 20
-writes the Telegram token into).
+`install 38` writes the tokens into the sandbox, applies Phase 04's `slack` egress
+policy (`slack.com`, `api.slack.com`, the `wss-*.slack.com` Socket-Mode endpoints,
+`files.slack.com`), and (re)starts the gateway.
 
-Then pick how two-way you want it:
+**Secure-by-default.** Exactly like Telegram: with **no allowlist** the bot connects
+but **denies every user** — it stays silent. Set `HERMES_SLACK_ALLOWED_USERS` to your
+Slack **member id** (Slack profile → ⋮ *More* → *Copy member ID*, a `U…` value) and
+re-run `install 38`. `HERMES_SLACK_ALLOW_ALL=true` opens it to the whole workspace —
+not advised (the bot drives all nine profiles).
 
-**One-way push (simplest — no gateway, no LLM needed).** Fire a message at a
-channel:
+**Status / stop** (same in-sandbox gateway lifecycle as Telegram):
+
+```bash
+openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway status
+openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
+```
+
+Once you're allowlisted, **DM your Hermes app** in Slack (or `@`-mention it in a
+channel it's in) and a profile answers. Liveness is `doctor` check 67; if it doesn't
+reply, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+> **Heads up:** pointing a repo/shell-capable fleet at a **corporate** Slack
+> workspace is a data-governance decision — prefer a personal workspace.
+
+#### Advanced / manual (one-way push · custom manifest)
+
+You don't need any of this for the wired path above — it's for one-off pushes or a
+hand-rolled app.
+
+**One-way push (no gateway, no LLM needed).** Fire a message at a channel from inside
+the sandbox:
 
 ```bash
 # inside the sandbox (openshell sandbox connect hermes-fleet-v1), or via exec:
 hermes send -t slack:#your-channel "deploy finished ✅"
+hermes send --list slack             # list the targets hermes can reach
 ```
 
-Target forms: `slack:#channel` or `slack:C0123ABCD` (a channel id). List the
-targets hermes can reach:
+Target forms: `slack:#channel` or `slack:C0123ABCD` (a channel id). (`hermes send`
+also targets telegram / discord / signal the same way.)
 
-```bash
-hermes send --list slack
-```
-
-(`hermes send` also targets telegram / discord / signal the same way.)
-
-**Two-way slash-command app.** Generate a Slack app manifest that registers the
-gateway's commands as native slash commands (`/btw`, `/stop`, `/model`, …),
-create a Slack app from it, install it, then run the gateway:
+**Custom slash-command manifest.** `install 38` already wires two-way DMs and
+`@`-mentions; if you instead want to hand-build the Slack app from a generated
+manifest (e.g. to register the gateway's commands as native slash commands `/btw`,
+`/stop`, `/model`, …), generate one and wire it manually:
 
 ```bash
 hermes slack manifest          # prints a Slack app manifest to paste into api.slack.com
@@ -488,9 +510,9 @@ hermes gateway setup           # interactive wizard to wire the credentials
 hermes gateway run             # run the gateway (now serving Slack)
 ```
 
-> **Summary:** Telegram = `install 20` + your allowlist id, done. Slack = add the
-> egress block + a bot token, then either `hermes send` (push) or
-> `hermes slack manifest` → app → `hermes gateway setup`/`run` (two-way).
+> **Summary:** Telegram = `install 20` + your allowlist id. Slack = both tokens in
+> `.env` + `install 38` + your allowlist member id (two-way, Socket Mode). Advanced:
+> `hermes send` for one-way push, or `hermes slack manifest` for a custom app.
 
 ---
 
@@ -587,16 +609,16 @@ make the fleet safe to hand a goal to.
 | Bridge / office shows `[<name> unavailable]` | that agent's relay is down | `brew services restart openshell` (§6) |
 | Local-model 500: **"No fallback model group found for local-gemma4"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local-gemma4` has no fallback group | warm it once (`ollama run gemma4:e4b-mlx ''`), or just use the role's **default** model — `vz-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
 | Workspace **Sessions sidebar** crashes (`reading 'map'`) | dashboard not bound `0.0.0.0` cross-container | ai-stack ships the hardened image + `HERMES_DASHBOARD_HOST=0.0.0.0` (§1) |
-| Slack connection hangs | sandbox is deny-by-default; no Slack egress | add the Slack egress block + `openshell policy set … --wait` (§5) |
+| Slack bot silent | secure-by-default denies all with no allowlist | set `HERMES_SLACK_ALLOWED_USERS` + re-run `install 38` (§5) |
 | Telegram bot silent | secure-by-default denies all with no allowlist | set `HERMES_TELEGRAM_ALLOWED_USERS` + re-run `install 20` (§5) |
 | A role runs on the wrong model | upstream down → availability-gated to `local-gemma4` | check the **DRIFT** column in `model list`; it re-gates when the upstream returns (§4) |
 
 **The security model (baked in, not optional).**
 
-- **The sandbox is deny-by-default egress** (the Phase 04 network policy). That's
-  exactly *why* Slack needs an explicit egress add (§5) — nothing leaves the
-  sandbox unless the policy allows it. Telegram works only because
-  `api.telegram.org` is on the allowlist.
+- **The sandbox is deny-by-default egress** (the Phase 04 network policy). Nothing
+  leaves the sandbox unless the policy allows it — Telegram works only because
+  `api.telegram.org` is allowlisted, and Slack only because the Slack hosts
+  (`slack.com` / `api.slack.com` / `wss-*.slack.com`) are (both shipped in Phase 04).
 - **Agents never hold the LiteLLM key.** Each role calls inference with **no
   credentials**; the **OpenShell gateway injects the scoped key server-side**, so
   a profile can think (via LiteLLM) without ever being able to read or exfiltrate
