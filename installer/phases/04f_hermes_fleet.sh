@@ -471,7 +471,36 @@ configure_hermes_profile() {
     >/dev/null 2>&1 || warn "hermes ${pflag:-(default)} api_key config returned non-zero"
 }
 log "Configuring Hermes profiles → LiteLLM (per-profile model from models.yml, availability-gated)..."
-configure_hermes_profile "" "$HERMES_MODEL"       # default profile (root config) keeps the safe default
+# Root/default profile model — the model a gateway DM uses when NO named profile is
+# selected. WAS hardcoded to the local availability gate ($HERMES_MODEL), so every
+# gateway message (Telegram/Slack) SILENTLY loaded a local model on the host — contrary
+# to the f515948 "no model silently uses a local one" policy (the named profiles were
+# repointed to the cloud default but this root default was missed). Now = the platform
+# default (models.yml .primary, e.g. claude-opus-sub-max), availability-gated the SAME
+# way named profiles are, so a keyless/offline install still renders to the local gate
+# (no 403, and no doctor-40 DRIFT vs `model sync`). Local stays opt-in, never silent.
+HERMES_DEFAULT_MODEL="$HERMES_MODEL"
+if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
+  _pdef="$(yq -r '.primary // ""' "$MODELS_YML" 2>/dev/null || true)"
+  if [[ -n "$_pdef" && "$_pdef" != "null" ]]; then
+    # Gate EXACTLY like resolve_profile_model (if/fi so a failed gate can't trip
+    # set -Eeuo pipefail; lmstudio keeps the served-slug check so we never render a
+    # model LiteLLM can't actually serve).
+    case "$(yq -r ".models.\"$_pdef\".runtime" "$MODELS_YML" 2>/dev/null || true)" in
+      lmstudio)
+        if _lms_up && grep -qF "model_name: ${_pdef}" "$LITELLM_CFG" 2>/dev/null \
+           && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null | grep -qF "\"$_pdef\""; then
+          HERMES_DEFAULT_MODEL="$_pdef"
+        fi ;;
+      meridian)
+        if _meridian_up && grep -qF "model_name: ${_pdef}" "$LITELLM_CFG" 2>/dev/null; then
+          HERMES_DEFAULT_MODEL="$_pdef"
+        fi ;;
+      *) HERMES_DEFAULT_MODEL="$_pdef" ;;
+    esac
+  fi
+fi
+configure_hermes_profile "" "$HERMES_DEFAULT_MODEL"   # root/default = platform default (.primary), gated exactly like resolve_profile_model
 for entry in "${PROFILES[@]}"; do
   _prof="${entry%%|*}"
   _model="$(resolve_profile_model "$_prof")"
