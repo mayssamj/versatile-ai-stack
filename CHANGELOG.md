@@ -4,6 +4,41 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-28 — Pin codex-bridge package + holistic reasoning-budget hardening
+
+**Follow-up to the silent-model-drift investigation.** Two themes: lock down the
+gpt-sub bridge, and raise output-token ceilings where reasoning models could be
+silently starved.
+
+- **`bin/start-codex-bridge.sh`** — pinned `CODEX_BRIDGE_PKG` from the floating
+  `openai-oauth` to **`openai-oauth@1.0.2`** (npx was free to pull an unreviewed
+  release of a package that fronts the ChatGPT OAuth). Audited 1.0.2: it targets
+  the CORRECT Codex backend (`https://chatgpt.com/backend-api/codex`), NOT
+  `api.openai.com/v1/responses` — the wrong-endpoint→401→silent-downgrade bug
+  other Codex bridges hit (openclaw#38706) — and it forwards the requested model
+  id with no canonical-version collapse (unlike Meridian). So gpt-sub does NOT
+  silently downgrade; the only residual is that GPT models won't self-report
+  their version, so the served model can't be confirmed client-side.
+- **`doc/TUTORIAL.html`** — raised the Chat-demo `MAX_TOKENS` 4096→**16384** and
+  added a retry-on-400 guard. `max_tokens` is a shared reasoning+output budget on
+  OpenAI-style reasoners and a ceiling (not a target), so a high cap only rescues
+  the long-reasoning tail at no normal-run cost. Verified caps: every OpenRouter
+  chat model wired here caps completion ≥16384 (deepseek-flash 65536, kimi-k2.6
+  262144, gpt-5.5 128000, opus 128000, glm-5.2 32768; kimi-k2.7-code ==16384) and
+  OpenRouter CLAMPS over-cap values rather than rejecting them. As belt-and-braces
+  for any provider that strictly 400s "max_tokens too large" (e.g. an untested
+  Gemini cap), `chatOnce()` now retries ONCE at 4096 on exactly that 400 — a 400
+  spends no tokens, so the retry is free.
+- **`doc/TUTORIAL.md` + `services.yml`** — the prompt-sandwich example used
+  `max_tokens:50` on a reasoning summarizer (local-gemma4): a copy-paste demo that
+  would itself reproduce the empty-answer bug. Bumped to 512 (thinking room for a
+  one-line summary) in the tutorial body (edited `TUTORIAL.md` source + regenerated
+  the HTML) and in the `help.usage` example. NOTE: a stack-wide audit (885
+  token-limit refs) found the REAL answer paths already use adequate budgets (≥512,
+  many with explicit reasoning-model comments); the small caps elsewhere are
+  intentional liveness/smoke probes (max_tokens 1–16) where a tiny reply is correct.
+
+
 ## 2026-06-28 — Meridian Opus pin (sub served 4.7 not 4.8) + tutorial reasoning budget
 
 **Fix 1 — `claude-opus-sub-*` silently served Opus 4.7, not 4.8.** Root cause: the

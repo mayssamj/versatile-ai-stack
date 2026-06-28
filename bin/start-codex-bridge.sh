@@ -56,10 +56,15 @@ LABEL="com.ai-stack.codex-bridge"
 # (3456) — keep them distinct.
 PORT="${CODEX_BRIDGE_PORT:-3457}"
 HOST_BIND="${CODEX_BRIDGE_HOST:-127.0.0.1}"
-# The proxy package run via npx. PIN this to an audited version once you've
-# reviewed it (e.g. openai-oauth@1.2.3) — it fronts your ChatGPT OAuth, so treat
-# it as a trusted dependency. Override with CODEX_BRIDGE_PKG to swap/vendor.
-CODEX_BRIDGE_PKG="${CODEX_BRIDGE_PKG:-openai-oauth}"
+# The proxy package run via npx. PINNED to an audited version — it fronts your
+# ChatGPT OAuth, so treat it as a trusted dependency and never let `npx` float it
+# to an unreviewed release. Audited 2026-06-28: 1.0.2 targets the CORRECT Codex
+# backend (https://chatgpt.com/backend-api/codex), NOT api.openai.com/v1/responses
+# (the wrong-endpoint→401→silent-model-downgrade bug other Codex bridges hit, e.g.
+# openclaw#38706), and it forwards the requested model id (no canonical-version
+# collapse). Bump this pin only after re-auditing the new version's endpoint +
+# model handling. Override with CODEX_BRIDGE_PKG to swap/vendor.
+CODEX_BRIDGE_PKG="${CODEX_BRIDGE_PKG:-openai-oauth@1.0.2}"
 # Codex CLI caches the ChatGPT OAuth here after `npx @openai/codex login`.
 AUTH_FILE="${CODEX_AUTH_FILE:-$HOME/.codex/auth.json}"
 
