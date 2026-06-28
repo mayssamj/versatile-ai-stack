@@ -244,10 +244,17 @@ model_list:
   #   (tools, edits) runs on the host and returns the final result.
   # `api_key` is a dummy — Meridian holds the real OAuth, not LiteLLM.
   # The `-sub` suffix = SUBSCRIPTION (your Claude plan, no API key). NOTE:
-  # Meridian's /v1/models catalog is static (lists ≤4.7) but it PASSES THROUGH
-  # any model id to its bundled claude-code (2.1.160), so claude-opus-4-8 works.
-  # (The wire model id keeps hyphens — `claude-opus-4-8` — because that's what
-  # Anthropic expects; the dotted model_name is just the alias shown in Open WebUI.)
+  # Meridian does NOT pass the wire model id straight through. It COLLAPSES every
+  # Claude request to an SDK alias (opus/sonnet/haiku) and resolves that alias to
+  # a hardcoded CANONICAL_*_MODEL baked into the installed Meridian build (e.g.
+  # 1.42.1 pins opus → claude-opus-4-7), THEN echoes the requested id back in the
+  # response `model` field cosmetically. So sending `claude-opus-4-8` does NOT by
+  # itself get you 4.8 — an older Meridian silently serves 4.7. The served model
+  # is pinned by MERIDIAN_DEFAULT_OPUS_MODEL (set in bin/start-meridian.sh, which
+  # WINS over the internal pin); doctor check 41 asserts that override equals the
+  # opus wire id below so the two can't drift. Keep the wire id hyphenated
+  # (`claude-opus-4-8`) — that's what Anthropic expects; the dotted model_name is
+  # just the alias shown in Open WebUI.
   #
   # EFFORT: Opus 4.8 reasoning depth is controlled by `output_config.effort`
   # (low/medium/high/xhigh/max), NOT a token budget (budget_tokens is rejected
