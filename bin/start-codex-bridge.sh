@@ -51,6 +51,10 @@ STATE="$AI_STACK/installer/state"
 LOG="$STATE/codex-bridge.launchd.log"
 PLIST="$HOME/Library/LaunchAgents/com.ai-stack.codex-bridge.plist"
 LABEL="com.ai-stack.codex-bridge"
+# One-time risk acknowledgement is REMEMBERED here (gitignored installer/state),
+# so you accept once and never have to re-type 'I accept' or set
+# CODEX_BRIDGE_ACCEPT_RISK again. Delete this file to re-arm the warning.
+RISK_ACK_FILE="$STATE/codex-bridge.risk-accepted"
 
 # Tunables. Loopback bind is intentional. Port 3457 sits one above Meridian
 # (3456) — keep them distinct.
@@ -109,10 +113,24 @@ _require_auth() {
   return 0
 }
 
-# One-time, blocking risk acknowledgement on `install`. Bypass for automation
-# with CODEX_BRIDGE_ACCEPT_RISK=1. NEVER shown on the launchd `run` path.
+# Record the acknowledgement so it's never asked again (best-effort; a failed
+# write just means the banner shows next time — never fatal).
+_risk_persist() {
+  mkdir -p "$STATE" 2>/dev/null || true
+  printf 'accepted %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo yes)" > "$RISK_ACK_FILE" 2>/dev/null || true
+}
+
+# One-time, blocking risk acknowledgement on `install`. REMEMBERED across runs:
+# once accepted (interactively or via CODEX_BRIDGE_ACCEPT_RISK=1) it's recorded in
+# $RISK_ACK_FILE and never asked again — so you don't have to remember the env var.
+# Bypass/pre-seed for automation with CODEX_BRIDGE_ACCEPT_RISK=1. Re-arm the
+# warning by deleting $RISK_ACK_FILE. NEVER shown on the launchd `run` path.
 _risk_ack() {
-  [[ "${CODEX_BRIDGE_ACCEPT_RISK:-0}" == "1" ]] && return 0
+  # Already accepted before, or explicitly bypassed -> silent (and (re)record it).
+  if [[ -f "$RISK_ACK_FILE" || "${CODEX_BRIDGE_ACCEPT_RISK:-0}" == "1" ]]; then
+    _risk_persist
+    return 0
+  fi
   cat >&2 <<'BANNER'
 
   ┌────────────────────────────────────────────────────────────────────┐
@@ -137,7 +155,7 @@ _risk_ack() {
 
 BANNER
   if [[ ! -t 0 ]]; then
-    echo "codex-bridge: non-interactive; set CODEX_BRIDGE_ACCEPT_RISK=1 to proceed." >&2
+    echo "codex-bridge: non-interactive + not yet accepted — set CODEX_BRIDGE_ACCEPT_RISK=1 once (it's then remembered) to proceed." >&2
     return 1
   fi
   local reply=""
@@ -146,6 +164,8 @@ BANNER
     echo "codex-bridge: not acknowledged — nothing installed." >&2
     return 1
   fi
+  _risk_persist   # remember it — never ask again (delete $RISK_ACK_FILE to re-arm)
+  echo "codex-bridge: acknowledgement recorded ($RISK_ACK_FILE) — future installs won't re-prompt." >&2
   return 0
 }
 
