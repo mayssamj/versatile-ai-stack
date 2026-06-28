@@ -4,6 +4,57 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-28 — Hermes fleet bot: authorized GPT-5 fallback (Claude-sub out-of-usage)
+
+**Fixes the Hermes Slack/Telegram bot replying "Model returned no content after
+retries."** Root-caused (host-side, by replaying the gateway's EXACT captured 43KB
+request against the live LiteLLM proxy): the **Claude Max/Pro subscription bridged
+by Meridian is OUT OF USAGE QUOTA** — the upstream returns, verbatim, `400 You're
+out of extra usage. Add more at claude.ai/settings/usage`. A *large* agent request
+(17 tool schemas + a 4915-char system prompt ≈ 13k tokens) is rejected while a
+trivial "say hi" (≈6 tokens) still passes; **streaming** (what Hermes always sends)
+masks the rejection as an empty 200 (`finish=stop`, no usage) so Hermes empties
+after retries, while non-stream returns 500. NOT a transport/streaming/Meridian
+bug — raw curl from inside the sandbox returns clean content; only the quota fails
+the heavy request. (The prior session's Meridian-SSE hypothesis is refuted.)
+
+**Fix — `installer/phases/04f_hermes_fleet.sh::configure_hermes_profile`** now also
+wires `openai-gpt-sub` (GPT-5.x on the ChatGPT subscription, via codex-bridge, served
+through the SAME LiteLLM proxy) as the Hermes-client fallback, folded into the
+profile's existing sandbox-exec. Verified live: after wiring, `hermes -z` returns
+content and LiteLLM logs show `claude-opus-4-8`→empty → `openai-gpt-sub`→`gpt-5.5`→200.
+Hermes eagerly consults its fallback on an empty/errored reply (confirmed in
+`hermes_cli` source). Design: SKIPPED for a local-gated profile (`model ==
+HERMES_MODEL`) so local stays opt-in and is never silently escalated to cloud;
+GATED on the `openai-gpt-sub` route existing in LiteLLM (EOL-anchored grep so an
+`openai-gpt-sub-*`/`openai-gpt-pro-sub` slug can't false-match — note `\b` does NOT
+prevent this on BSD grep since `-` is a word boundary); `fallback_model` dict so
+repeated `hermes config set` is idempotent; `provider: custom:litellm` reuses the
+scoped key (no key in argv); a post-install verify asserts `fallback_model` landed.
+
+**Reconciliation with the no-silent-fallback policy (see the `Changed` entry that
+removed the `litellm_settings.fallbacks` cloud→local chains).** That policy made a
+*router-layer* cloud→local fallback visible (a 503 instead of a quiet capability
+degrade) and added a "never a silent bill" guard. This change does NOT reopen it:
+(1) it lives at the **Hermes CLIENT layer**, not the LiteLLM router — a chat user
+can't act on a 503, so a working reply beats an error; (2) it is **cloud→cloud**, no
+capability collapse to a local model; (3) the target is a **subscription** (ChatGPT
+Codex), so there is **no metered/silent bill**; (4) the **default stays opus** and
+resumes automatically when the quota resets; (5) **local-gated profiles are skipped**,
+so a local install never silently escalates to paid cloud. User pre-authorized GPT-5
+as the fallback for exactly this case. **§24 council reviewed** (adversarial +
+architect + qa/infra; all approve-with-changes — grep anchor, post-install verify,
+this reconciliation, cloud-only gate, and live-config convergence all applied).
+
+Config-only — no service/doctor-check/phase count change. **Separately surfaced
+(not fixed here):** the gateway process doesn't auto-restart after a sandbox reboot,
+and Slack/Telegram egress via the sandbox proxy `10.200.0.1:3128` returns 403 while
+direct egress works — both block a live Slack DM E2E and are tracked as follow-ups
+(along with a tertiary fallback for the documented gpt-5.5 Codex silent-drop, a
+doctor sub-check for `fallback_model`, and `fleet new` parity).
+
+---
+
 ## 2026-06-27 — Phase 38 NEW: Hermes Slack gateway (two-way, Socket Mode)
 
 Opt-in companion to the Telegram gateway (Phase 20): adds Slack as a NATIVE

@@ -461,10 +461,36 @@ resolve_profile_model() {
 # <pflag>: "" for the default profile, or "--profile <name>".
 # provider=custom:litellm + base_url are model-independent (set once here; safe
 # to re-set). api_key is re-piped via STDIN ONLY (never in argv/log).
+#
+# AUTHORIZED CLOUD FALLBACK (openai-gpt-sub = GPT-5.x on the ChatGPT subscription,
+# via the SAME LiteLLM provider): wired as the Hermes fallback so a gateway DM
+# still gets a reply when the primary (opus via Meridian) returns empty/errors.
+# Motivating failure: when the Claude subscription is OUT OF USAGE, a large agent
+# request (full toolset + system prompt) is rejected upstream — surfacing as an
+# EMPTY 200 stream (500 non-stream) — so the bot answers "no content after
+# retries"; Hermes eagerly consults the fallback on an empty/errored reply
+# (verified live: opus empty -> openai-gpt-sub serves it). Default stays opus and
+# resumes automatically when usage resets. NOTE this is a Hermes-CLIENT-layer
+# cloud->cloud fallback (NOT the litellm_settings.fallbacks cloud->local chains
+# removed per CHANGELOG: a chat user can't act on a 503, and capability doesn't
+# collapse). Design: (a) SKIPPED for a local-gated profile (model == HERMES_MODEL)
+# so local stays opt-in, never silently escalated to paid cloud; (b) GATED on the
+# openai-gpt-sub route existing in LiteLLM (codex-bridge installed) — END-OF-LINE
+# anchored grep so a future openai-gpt-sub-* / openai-gpt-pro-sub slug can't
+# false-match (note: \b does NOT prevent this on BSD grep — `-` is a word
+# boundary — so anchor on EOL, which is stronger than -F and \b);
+# (c) FOLDED into the same sandbox-exec as the primary sets (no extra openshell
+# relay round-trip under host RAM pressure); (d) fallback_model (dict) so repeated
+# `hermes config set fallback_model.*` overwrite idempotently on re-run, and
+# get_fallback_chain merges it into the chain; provider=custom:litellm reuses
+# providers.litellm.api_key (no key duplicated into argv).
 configure_hermes_profile() {
-  local pflag="$1" model="$2"
+  local pflag="$1" model="$2" fb_cmd=""
+  if [[ "$model" != "$HERMES_MODEL" ]] && grep -qE 'model_name: openai-gpt-sub[[:space:]]*$' "$LITELLM_CFG" 2>/dev/null; then
+    fb_cmd="; hermes $pflag config set fallback_model.provider custom:litellm >/dev/null; hermes $pflag config set fallback_model.model openai-gpt-sub >/dev/null; hermes $pflag config set fallback_model.base_url $LITELLM_SANDBOX_URL >/dev/null"
+  fi
   "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
-    "hermes $pflag config set model.default $model >/dev/null; hermes $pflag config set model.provider custom:litellm >/dev/null; hermes $pflag config set providers.litellm.base_url $LITELLM_SANDBOX_URL >/dev/null; hermes $pflag config set providers.litellm.model $model >/dev/null" \
+    "hermes $pflag config set model.default $model >/dev/null; hermes $pflag config set model.provider custom:litellm >/dev/null; hermes $pflag config set providers.litellm.base_url $LITELLM_SANDBOX_URL >/dev/null; hermes $pflag config set providers.litellm.model $model >/dev/null${fb_cmd}" \
     2>&1 | tail -2 || warn "hermes ${pflag:-(default)} non-secret config returned non-zero"
   printf '%s' "$HERMES_KEY" | "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
     "read -r K; hermes $pflag config set providers.litellm.api_key \"\$K\" >/dev/null" \
@@ -500,14 +526,14 @@ if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
     esac
   fi
 fi
-configure_hermes_profile "" "$HERMES_DEFAULT_MODEL"   # root/default = platform default (.primary), gated exactly like resolve_profile_model
+configure_hermes_profile "" "$HERMES_DEFAULT_MODEL"   # root/default = platform default (.primary), gated exactly like resolve_profile_model (+ cloud fallback folded in)
 for entry in "${PROFILES[@]}"; do
   _prof="${entry%%|*}"
   _model="$(resolve_profile_model "$_prof")"
   note "  $_prof -> $_model"
   configure_hermes_profile "--profile $_prof" "$_model"
 done
-ok "configured default + ${#PROFILES[@]} profiles"
+ok "configured default + ${#PROFILES[@]} profiles (+ openai-gpt-sub fallback on cloud profiles where available)"
 
 # --- Verify the config landed (without printing the api_key) --------------
 # Grep the rendered config.yaml for the provider wiring; never cat it (it holds
@@ -520,6 +546,23 @@ if [[ "$VERIFY_OUT" == "WIRED" ]]; then
   ok "hermes_manager config.yaml routes to LiteLLM (provider=custom:litellm)"
 else
   warn "hermes_manager LiteLLM routing not detected (got '${VERIFY_OUT:-none}') — check with: openshell sandbox exec -n $SANDBOX --no-tty -- hermes --profile hermes_manager config check"
+fi
+
+# --- Verify the authorized cloud fallback landed (only when expected) -------
+# A silent `hermes config set fallback_model.*` failure would otherwise stay
+# invisible until the bot next hits the Claude-subscription quota and replies
+# empty. Only assert it when we actually wired one: hermes_manager resolved to a
+# CLOUD model (not the local gate) AND the openai-gpt-sub route exists in LiteLLM.
+_mgr_model="$(resolve_profile_model hermes_manager 2>/dev/null || echo "$HERMES_MODEL")"
+if [[ "$_mgr_model" != "$HERMES_MODEL" ]] && grep -qE 'model_name: openai-gpt-sub[[:space:]]*$' "$LITELLM_CFG" 2>/dev/null; then
+  FB_OUT="$("$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c \
+    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; grep -q "fallback_model" "$f" && echo FB_OK || echo FB_MISSING' \
+    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+  if [[ "$FB_OUT" == "FB_OK" ]]; then
+    ok "hermes_manager cloud fallback wired (fallback_model -> openai-gpt-sub)"
+  else
+    warn "hermes_manager cloud fallback NOT detected (got '${FB_OUT:-none}') — opus-out-of-usage would yield EMPTY replies; re-run 'vz-ai-stack.sh install 04f'"
+  fi
 fi
 
 # --- Wire the fleet to the local Sourcegraph MCP (opt-in, gated) -----------
