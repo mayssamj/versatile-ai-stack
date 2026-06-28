@@ -1814,6 +1814,7 @@ vz-ai-stack.sh install concordia      # 37 — generative agent-based modeling (
 | Symptom → fix | `doc/TROUBLESHOOTING.md` |
 | Which model runs where, and why | `doc/models.md` |
 | An interactive map of all services | `doc/EXPLORE.html` |
+| Run Claude Code itself on any model your LiteLLM serves (kimi, gpt, glm, …) | `doc/CLAUDE-CODE-MODELS.md` |
 
 **Steps — extend the stack.**
 
@@ -1827,6 +1828,13 @@ vz-ai-stack.sh model sync
 # 2. ADD A FLEET ROLE — give the Hermes fleet a new specialist profile.
 vz-ai-stack.sh fleet list
 vz-ai-stack.sh fleet add researcher2 --role "deep web research" --model local-qwen3.6
+
+# 3. RUN CLAUDE CODE ON STACK MODELS — drive the Claude Code CLI itself through
+#    LiteLLM, on any served model (kimi / gpt / glm / your GPT-5 sub / fugu), not
+#    just the default Anthropic models. Cloud models load nothing locally; local
+#    models are opt-in (they use RAM): CLAUDE_LITELLM_ALLOW_LOCAL=1.
+bin/claude-litellm --list                 # the models you can use
+bin/claude-litellm openrouter-kimi        # launch Claude Code on Kimi  (see doc/CLAUDE-CODE-MODELS.md)
 ```
 
 **Lesson.** Two layers stay declarative and you should keep them that way: **`installer/models.yml`** is the one place that decides which model each agent uses (`model {list,assign,sync,superset}` renders it everywhere), and **`services.yml`** profiles (`fleet`, `coding`, `research`, `paranoid`) bulk-toggle which services are on. Add a new fleet specialist with `vz-ai-stack.sh fleet add` (and tear it down with `fleet remove`); spin up a *separate* isolated fleet with `fleet new <name>`.
