@@ -4,6 +4,37 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-28 — Claude Code on any LiteLLM model: `bin/claude-litellm` (kimi, gpt, glm, …)
+
+**Run the Claude Code CLI on any model this stack's LiteLLM serves — kimi, GLM, GPT,
+DeepSeek, your GPT-5 ChatGPT-sub, Fugu, OpenRouter-Claude, or a local model — instead of
+the default Anthropic cloud models.** Claude Code speaks the Anthropic Messages API
+(`POST /v1/messages`); LiteLLM (`litellm:main-stable`) serves an Anthropic-compatible
+`/v1/messages`, so `bin/claude-litellm` points `ANTHROPIC_BASE_URL` at the proxy, names a
+served model, and execs `claude`. Verified live (HTTP 200): `openrouter-kimi/-glm/-gpt/
+-deepseek`, `openai-gpt`, `openai-gpt-sub` (GPT-5 on the ChatGPT sub), `openrouter-claude-opus`,
+`sakana-fugu`, all `local-*`. NOT usable: `claude-*-sub` (Meridian) → 404 (LiteLLM bridges
+Anthropic→OpenAI `/v1/responses`, which Meridian doesn't implement); `google-gemini-*` → 500
+(missing `GEMINI_API_KEY`).
+
+- **New `bin/claude-litellm`** — model-agnostic wrapper (`MODEL` positional) with `--check`
+  (round-trip self-test), `--list`, `--help`; resolves `.env` (override → script-relative →
+  `$HOME` fallback); reads a scoped key, `unset`s `ANTHROPIC_API_KEY`, exports the proxy vars
+  (key never on `claude`'s argv), and execs `claude`. **RAM-safe by default**: no implicit
+  default model (no-arg prints a menu), `local-*` models refused unless
+  `CLAUDE_LITELLM_ALLOW_LOCAL=1`, and the background/fast model defaults to the main model
+  (never spins up a second model) — hardened after a bulk local-model probe OOM'd the 24GB box.
+- **New `doc/CLAUDE-CODE-MODELS.md`** — full per-model compatibility matrix (live-tested vs
+  inferred), usage, RAM-safety/opt-in, key mint/re-sync/budget/revoke, and troubleshooting
+  (the `honcho-database` Postgres is LiteLLM's key-store — if it's stopped, all routes 4xx/5xx).
+- **New `.env` var `CLAUDE_CODE_LITELLM_KEY`** — scoped virtual key (alias `claude-code-launcher`),
+  granted all served models, `$20/30d` budget cap (only metered models spend); pinned — re-sync
+  via the doc one-liner after a `model sync`/rename.
+- §24-reviewed (security / architect / QA, all approve-with-fixes; fixes folded in: jq-built
+  request body, CRLF strip, IPv4 default, no-xtrace, temp-file trap, accurate secret-hygiene wording).
+
+---
+
 ## 2026-06-28 — Hermes fleet bot: authorized GPT-5 fallback (Claude-sub out-of-usage)
 
 **Fixes the Hermes Slack/Telegram bot replying "Model returned no content after

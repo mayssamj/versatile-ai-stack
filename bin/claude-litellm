@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# claude-litellm — run the Claude Code CLI against ANY model served by this stack's
+# LiteLLM proxy (cloud or local), instead of the default Anthropic cloud models.
+# Play with kimi / glm / gpt / deepseek / your GPT-5 sub / fugu — all inside Claude Code,
+# with LiteLLM's virtual-key auth, budget cap, and Phoenix tracing.
+#
+# HOW IT WORKS: Claude Code speaks the Anthropic Messages API (POST /v1/messages).
+# LiteLLM serves an Anthropic-compatible /v1/messages that translates to the backend a
+# model maps to. So this sets ANTHROPIC_BASE_URL -> LiteLLM, names a served model, and
+# execs `claude`. Verified usable on this stack (HTTP 200 via /v1/messages):
+#   openrouter-kimi / -kimi-code / -glm / -glm-vision / -gpt / -gpt-pro / -deepseek
+#   openai-gpt / openai-gpt-sub (GPT-5 on your ChatGPT sub) / openrouter-claude-opus
+#   sakana-fugu ... and local-* (Ollama + LM Studio) IF you opt in (see RAM note).
+# NOT usable:
+#   • claude-*-sub (Claude subscription via Meridian) -> 404: LiteLLM bridges Anthropic
+#     to the OpenAI /v1/responses API, which Meridian doesn't implement.
+#   • google-gemini-* -> needs GEMINI_API_KEY / GOOGLE_API_KEY set in the stack.
+# Run `claude-litellm --list` for the live menu, `--check <model>` to test one.
+#
+# RAM SAFETY (this is a memory-constrained box): every `local-*` model loads multi-GB
+# weights into RAM via Ollama/LM Studio. Loading several at once exhausts memory. So
+# this launcher REFUSES local models unless you opt in with CLAUDE_LITELLM_ALLOW_LOCAL=1,
+# and never picks one by default. Cloud models load nothing locally — prefer them.
+#
+# COST: cloud models are METERED (the scoped key is budget-capped — see doc). The
+# background/fast model defaults to your MAIN model, so no extra model is ever spun up.
+#
+# SECRET HYGIENE: the scoped virtual key is read from .env at runtime and EXPORTED into
+# `claude`'s environment (never on its argv), so it never appears in claude's process
+# listing. (--check/--list/pre-flight pass it to curl via a header arg, briefly visible
+# in `ps` for that call — same as the stack's other scoped-key curls.)
+#
+# USAGE:
+#   claude-litellm <MODEL> [-- <claude args...>]   launch on MODEL (no implicit default)
+#   claude-litellm --check <MODEL>                 self-test the /v1/messages round-trip, don't launch
+#   claude-litellm --list                          list models you can use
+#   claude-litellm --help                          this help
+#
+# ENV OVERRIDES:
+#   CLAUDE_LITELLM_MODEL          main model (instead of the positional arg)
+#   CLAUDE_LITELLM_FAST_MODEL     background/fast model (default: = main model)
+#   CLAUDE_LITELLM_ALLOW_LOCAL=1  permit a local-* model (loads weights into RAM)
+#   LITELLM_BASE_URL             proxy base URL (default: http://127.0.0.1:4000)
+#   AI_STACK_ENV                 path to the .env holding CLAUDE_CODE_LITELLM_KEY
+set -Eeuo pipefail
+{ set +x; } 2>/dev/null   # never trace — keeps the key out of stderr if a parent shell has set -x
+
+# Re-exec under bash 5+ if the system bash is the ancient 3.2 (macOS default).
+if (( BASH_VERSINFO[0] < 5 )); then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x "$b" ]] && exec "$b" "$0" "$@"
+  done
+  echo "claude-litellm: needs bash 5+ (brew install bash)" >&2; exit 2
+fi
+
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+say()  { printf '\033[36m• %s\033[0m\n' "$*" >&2; }
+warn() { printf '\033[33m⚠ %s\033[0m\n' "$*" >&2; }
+die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+
+for t in curl jq; do command -v "$t" >/dev/null || die "missing required tool: $t"; done
+
+BASE="${LITELLM_BASE_URL:-http://127.0.0.1:4000}"
+
+# Resolve .env: explicit override -> script-relative (main checkout) -> $HOME fallback
+# (so it still works from a git worktree, where .env is gitignored/absent).
+resolve_env() {
+  local c
+  for c in "${AI_STACK_ENV:-}" "$AI_STACK/.env" "$HOME/ai-stack/.env"; do
+    [[ -n "$c" && -f "$c" ]] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+ENVF="$(resolve_env)" || die "no .env found (checked \$AI_STACK_ENV, $AI_STACK/.env, ~/ai-stack/.env)"
+
+KEY="$(grep '^CLAUDE_CODE_LITELLM_KEY=' "$ENVF" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+[[ -n "$KEY" ]] || die "CLAUDE_CODE_LITELLM_KEY not set in $ENVF — mint a scoped key first (see doc/CLAUDE-CODE-MODELS.md)."
+
+# Refuse local models unless explicitly opted in — they load multi-GB weights into RAM.
+local_guard() {
+  case "$1" in
+    local-*) [[ "${CLAUDE_LITELLM_ALLOW_LOCAL:-0}" == 1 ]] || die \
+      "'$1' is a LOCAL model — it loads multi-GB weights into RAM on this memory-constrained box. Re-run with CLAUDE_LITELLM_ALLOW_LOCAL=1 if you really want it (and make sure other local models are unloaded). Prefer a cloud model: openrouter-kimi / openrouter-gpt / openai-gpt-sub." ;;
+  esac
+}
+
+menu() {
+  cat >&2 <<'EOF'
+Pick a model — no default is assumed (so nothing loads by surprise). Examples:
+  claude-litellm openrouter-kimi        # Kimi (reasoning)
+  claude-litellm openrouter-glm         # GLM
+  claude-litellm openrouter-gpt         # GPT via OpenRouter
+  claude-litellm openai-gpt-sub         # GPT-5 on your ChatGPT subscription
+  claude-litellm openrouter-claude-opus # real Claude Opus 4.8 (metered)
+  claude-litellm sakana-fugu            # Sakana Fugu
+Full live menu:  claude-litellm --list
+Local models load into RAM and are opt-in:  CLAUDE_LITELLM_ALLOW_LOCAL=1 claude-litellm local-qwen3
+EOF
+}
+
+# Print the header comment block as help (portable: awk, not GNU-only sed ranges).
+usage() { awk 'NR==1{next} /^set -Eeuo/{exit} {sub(/^# ?/,""); print}' "$0"; }
+
+# One Anthropic /v1/messages round-trip. Says "OK <text>" on 200, else prints body + fails.
+roundtrip() {
+  local model="$1" tmp code body payload
+  # Build the JSON with jq (a hard dep) so a model name with quotes/backslashes
+  # can't break out of / inject into the request body.
+  payload="$(jq -nc --arg m "$model" '{model:$m,max_tokens:512,messages:[{role:"user",content:"Reply with exactly: OK"}]}')"
+  tmp="$(mktemp)"; trap 'rm -f "$tmp"' RETURN
+  code="$(curl -s -o "$tmp" -w '%{http_code}' --max-time 150 \
+    -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -H 'anthropic-version: 2023-06-01' \
+    -X POST "$BASE/v1/messages" -d "$payload")" || true
+  body="$(cat "$tmp")"
+  if [[ "$code" == 200 ]]; then
+    # reasoning models put the answer in a text block AFTER a thinking block; scan all.
+    say "HTTP 200 ✓  $model replied: $(printf '%s' "$body" | jq -r '[.content[]?|select(.type=="text").text]|join(" ")|if .=="" then "(reasoning only at this budget — fine in Claude Code)" else . end')"
+    return 0
+  fi
+  printf '%s\n' "$body" | jq . 2>/dev/null || printf '%s\n' "$body"
+  return 1
+}
+
+case "${1:-}" in
+  --help|-h) usage; exit 0 ;;
+  --list)
+    list_json="$(curl -s --max-time 15 -H "Authorization: Bearer $KEY" "$BASE/v1/models")" \
+      || die "could not reach LiteLLM at $BASE"
+    printf '%s' "$list_json" | jq -r '.data[].id' 2>/dev/null | sort \
+      || die "LiteLLM at $BASE returned an unexpected (non-JSON) response — is the key-store (honcho-database) up?"
+    exit 0 ;;
+  --check)
+    M="${2:-${CLAUDE_LITELLM_MODEL:-}}"
+    [[ -n "$M" ]] || die "usage: claude-litellm --check <model>"
+    local_guard "$M"
+    say "round-trip check → POST $BASE/v1/messages  model=$M"
+    roundtrip "$M" && exit 0
+    die "model '$M' is not usable via /v1/messages. claude-*-sub (Meridian) 404 here; google-gemini-* needs an API key; if everything fails, the key-store (honcho-database) may be down. Run --list / try openrouter-kimi|openrouter-gpt|openai-gpt." ;;
+esac
+
+# Resolve the main model: positional MODEL (not starting with '-') or $CLAUDE_LITELLM_MODEL.
+MAIN_MODEL="${CLAUDE_LITELLM_MODEL:-}"
+if [[ -n "${1:-}" && "${1:0:1}" != "-" ]]; then MAIN_MODEL="$1"; shift; fi
+[[ "${1:-}" == "--" ]] && shift
+[[ -n "$MAIN_MODEL" ]] || { menu; exit 2; }
+
+# Background/fast model defaults to the main model — never spins up a second model.
+FAST_MODEL="${CLAUDE_LITELLM_FAST_MODEL:-$MAIN_MODEL}"
+local_guard "$MAIN_MODEL"
+local_guard "$FAST_MODEL"
+
+command -v claude >/dev/null || die "the 'claude' CLI is not on PATH"
+
+# Pre-flight: warn (don't block) on an unreachable proxy, an unserved model, or a
+# model class known not to work via /v1/messages.
+served="$(curl -s --max-time 8 -H "Authorization: Bearer $KEY" "$BASE/v1/models" 2>/dev/null | jq -r '.data[].id' 2>/dev/null || true)"
+if [[ -z "$served" ]]; then
+  warn "LiteLLM at $BASE didn't answer /v1/models — launching anyway; it (or its key-store honcho-database) may be down."
+elif ! grep -qxF "$MAIN_MODEL" <<<"$served"; then
+  warn "'$MAIN_MODEL' is not in the models this key can use. Run: claude-litellm --list"
+fi
+case "$MAIN_MODEL" in
+  *claude*sub*) warn "'$MAIN_MODEL' is a Claude-subscription model via Meridian — it 404s on /v1/messages; pick another (--list)." ;;
+  *gemini*)     warn "'$MAIN_MODEL' needs GEMINI_API_KEY/GOOGLE_API_KEY set in the stack, else it 500s." ;;
+esac
+
+say "Claude Code → LiteLLM ($BASE)"
+say "  main model : $MAIN_MODEL"
+say "  fast model : $FAST_MODEL  (background tasks)"
+say "  auth       : scoped key 'claude-code-launcher' (budget-capped)"
+
+# Clear any inherited direct-Anthropic auth so only the proxy Bearer path is used,
+# then export (NOT pass via argv) so the key never appears in claude's `ps` entry.
+unset ANTHROPIC_API_KEY
+export ANTHROPIC_BASE_URL="$BASE"
+export ANTHROPIC_AUTH_TOKEN="$KEY"
+export ANTHROPIC_MODEL="$MAIN_MODEL"
+export ANTHROPIC_SMALL_FAST_MODEL="$FAST_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$FAST_MODEL"
+exec claude "$@"
