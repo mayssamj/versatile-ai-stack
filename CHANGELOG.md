@@ -4,6 +4,41 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-28 — Meridian Opus pin (sub served 4.7 not 4.8) + tutorial reasoning budget
+
+**Fix 1 — `claude-opus-sub-*` silently served Opus 4.7, not 4.8.** Root cause: the
+LiteLLM routes correctly declare wire id `claude-opus-4-8`, but Meridian does NOT
+pass the id through — it collapses every Claude request to an SDK alias and
+resolves it to a hardcoded `CANONICAL_OPUS_MODEL` baked into the installed build
+(1.42.1 pins `claude-opus-4-7`), then **echoes the requested id back** in the
+response `model` field (cosmetic — verified by direct probe: prose self-id was
+`claude-opus-4-7[1m]` while `.model` said `claude-opus-4-8`). Meridian ≥1.43.0
+bumped the pin to 4-8. **Fix — `bin/start-meridian.sh`** now exports
+`MERIDIAN_DEFAULT_OPUS_MODEL=claude-opus-4-8` (+sonnet `claude-sonnet-4-6`, haiku
+`claude-haiku-4-5`) in the launchd plist and the foreground `run` exec; this env
+override WINS over Meridian's internal pin, so it works even on 1.42.1 and is
+immune to a future build moving its pin. `restart` applies it (script-level
+`${VAR:-default}`); `install` additionally locks it into the plist on disk.
+**`installer/doctor/checks/41_meridian.sh`** gains a daemon-independent
+config-vs-config guard asserting each `MERIDIAN_DEFAULT_*_MODEL` override equals
+its routed `*-sub-*` wire id (opus + sonnet), plus a `<1.43.0` upgrade advisory.
+`litellm/config.yaml` + `doc/USER-GUIDE.md` comments corrected (the old "passes
+through any model id … verified via the trace" claim was false — the trace only
+echoed the request). §24 council: 3 reviewers (adversarial SHIP, architect REVISE,
+qa BLOCK) → consensus after debate (qa's TUTORIAL.md blocker refuted by `--check`).
+
+**Fix 2 — tutorial Chat demo: reasoning models returned an empty answer.**
+`doc/TUTORIAL.html` sent a flat `max_tokens: 1024` for every model. Reasoning
+models (Kimi, gemma4, qwen3, deepseek-r1…) spend the shared budget on hidden
+reasoning FIRST and their reasoning length varies run-to-run, so long-reasoning
+runs left no room for the answer → empty content + a reasoning-trace fallback
+("raise max_tokens"). Reproduced through LiteLLM: openrouter-kimi reasoned
+574–1113 tokens across runs on a trivial prompt. **Fix:** raised `MAX_TOKENS`
+1024→4096 (a ceiling, not a target — no latency/cost on normal runs, only rescues
+truncated ones; `reasoning_effort=low` was tested and is unreliable — Kimi and
+gemma4 ignore it) and clarified the truncation fallback. tutorial-serve reads the
+HTML fresh per request, so a browser hard-refresh suffices.
+
 ## 2026-06-28 — Hermes fleet bot: authorized GPT-5 fallback (Claude-sub out-of-usage)
 
 **Fixes the Hermes Slack/Telegram bot replying "Model returned no content after

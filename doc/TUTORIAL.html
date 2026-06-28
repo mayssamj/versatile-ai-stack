@@ -1688,11 +1688,17 @@ const API = {
 };
 const DEFAULT_MODEL = "local-gemma4";
 let EMBED_MODEL = "";      // set from /api/health on boot (the embedding model for the Embeddings demo)
-// Generous budget: the default local model (gemma4:e4b) is a "thinking" model —
-// it spends tokens reasoning before the answer, so a small cap can be consumed
-// entirely by the reasoning trace, leaving an empty final answer. 1024 leaves
-// room for both; chatOnce() also surfaces the reasoning if no answer comes back.
-const MAX_TOKENS = 1024;
+// Generous budget. max_tokens is a SHARED budget for reasoning models: hidden
+// reasoning tokens are spent FIRST, and the visible answer only gets what's left.
+// MANY wired models reason (gemma4:e4b, qwen3, deepseek-r1, openrouter-kimi, …)
+// and their reasoning length VARIES run-to-run, so a tight cap (the old 1024)
+// truncates the answer to empty on the long-reasoning runs — it "works" in casual
+// testing and fails for real users. max_tokens is a CEILING, not a target: a
+// model stops when it's done, so a larger cap adds NO latency/cost on normal runs
+// and only rescues the runs that would otherwise be cut off mid-thought. 4096
+// gives comfortable headroom for reasoning + a full answer on demo-sized prompts
+// across every model; chatOnce() still surfaces the trace if a run exceeds it.
+const MAX_TOKENS = 4096;
 
 let LIVE = false;          // set true once /api/health succeeds
 let MODEL_IDS = [];        // ids from /api/models
@@ -1827,13 +1833,15 @@ async function chatOnce(model, prompt) {
   const reasoning = msg && (msg.reasoning_content || msg.reasoning) || "";
   const finish = choice && choice.finish_reason;
   let content = answer;
-  // "Thinking" models (e.g. gemma4:e4b) can spend the whole token budget reasoning
-  // and return an empty answer. Never show a blank panel: fall back to the reasoning
-  // trace, and flag truncation so the user knows to raise max_tokens.
+  // "Thinking" models can, on an unusually long reasoning run, spend the whole
+  // (already-generous) token budget reasoning and return an empty answer. Never
+  // show a blank panel: fall back to the reasoning trace so the demo still shows
+  // the model worked. Re-running usually yields a complete answer (reasoning
+  // length varies); a heavy reasoner on a complex prompt is the typical cause.
   if (!content && reasoning) {
-    content = "(the model used its token budget thinking and didn't reach a final answer — raise max_tokens for one. Its reasoning so far:)\n\n" + reasoning;
+    content = "(this run reasoned past the demo's " + MAX_TOKENS + "-token budget before finishing its answer — re-run, or try a shorter prompt. Its reasoning so far:)\n\n" + reasoning;
   } else if (content && finish === "length") {
-    content += "\n\n… (truncated at the demo's max_tokens limit)";
+    content += "\n\n… (truncated at the demo's " + MAX_TOKENS + "-token limit — re-run for the full answer)";
   }
   if (!content) content = "(no content returned)";
   return { content: content, raw: data, finish: finish };
