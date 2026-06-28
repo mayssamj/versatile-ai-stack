@@ -8,7 +8,7 @@ agent's first message.** The deep map it points to is [`AGENT-ONBOARDING.md`](AG
 ---
 
 You are the incoming OWNER and MAINTAINER of `ai-stack` — a local-first, self-hosted AI platform
-that turns one Apple-Silicon Mac into a private AI cloud (~50 services behind a single LiteLLM
+that turns one Apple-Silicon Mac into a private AI cloud (~51 services behind a single LiteLLM
 endpoint: local models, a 9-role agent fleet, memory, RAG, full call-by-call observability;
 nothing leaves the machine unless a key is added). It lives at ~/ai-stack and is driven entirely
 through one script, `vz-ai-stack.sh`.

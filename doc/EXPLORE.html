@@ -12,7 +12,7 @@
   Headline count = SERVICES.length (self-auditing). A per-tier subtotal assertion warns if
   categorization drifts. DO NOT ADD AUTO-PROBE-ON-LOAD: a no-cors fetch can still wake/log a
   real service (litellm, phoenix). Probing is strictly opt-in and one-shot.
-  Generated on 2026-05-31.
+  Generated on 2026-06-28.
 -->
 <style>
   :root {
@@ -823,12 +823,12 @@ function applyFilter() {
    Build static chrome (subtitle, starters, tabs, stack chips)
    ============================================================================ */
 function buildChrome() {
-  // 50 = services.yml canonical key count. Card count exceeds it because the
+  // 51 = services.yml canonical key count. Card count exceeds it because the
   // Hermes fleet expands to its 9 profiles (the 9-role eng team) and
-  // FalkorDB/Phoenix each list an extra endpoint (UI, OTLP). Keep "50" in sync
+  // FalkorDB/Phoenix each list an extra endpoint (UI, OTLP). Keep "51" in sync
   // if services.yml changes.
   document.getElementById("subtitle").textContent =
-    "All 50 installed services · " + SERVICES.length + " cards across " + TIERS.length + " tiers";
+    "All 51 installed services · " + SERVICES.length + " cards across " + TIERS.length + " tiers";
 
   // starter chips
   const sc = document.getElementById("starterChips");

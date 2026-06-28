@@ -26,7 +26,7 @@ The fastest way to grasp what this stack can do: open **[`doc/EXPLORE.html`](doc
 in any browser. It's a **single self-contained file** — no server, no build, no internet —
 so you can just double-click it; it even works offline straight from `file://`.
 
-> **AI-Stack Explorer** — *“All 50 installed services · 60 cards across 7 tiers · self-contained — works offline from file://”*
+> **AI-Stack Explorer** — *“All 51 installed services · 60 cards across 7 tiers · self-contained — works offline from file://”*
 
 It renders an interactive, searchable card for **every** service — what it is, why you'd
 reach for it, and a copy-paste demo — grouped into seven color-coded tiers:

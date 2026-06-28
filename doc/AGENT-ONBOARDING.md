@@ -54,13 +54,13 @@ Three things to burn in:
 
 | Thing | Snapshot | Get it live |
 |---|---|---|
-| Services | **50** in `services.yml` (~25 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
-| Doctor checks | **67** (dynamic — a new check file auto-bumps it) | `bash vz-ai-stack.sh doctor` |
-| Phase files | **45** (00–37 + sub-phases; ~30 core / ~15 opt-in) | `bash vz-ai-stack.sh phases` |
+| Services | **51** in `services.yml` (~25 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
+| Doctor checks | **68** (dynamic — a new check file auto-bumps it) | `bash vz-ai-stack.sh doctor` |
+| Phase files | **46** (00–38 + sub-phases; 29 core / 17 opt-in) | `bash vz-ai-stack.sh phases` |
 | Chat-model routes | **20** across **6 runtimes** | `bash vz-ai-stack.sh model list` |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash vz-ai-stack.sh status` |
 
-> Why "50" but other docs say different: `services.yml` has 50 keys, but many are not *reachable
+> Why "51" but other docs say different: `services.yml` has 51 keys, but many are not *reachable
 > services* — 2 `litellm-feature` (in-process callbacks), 1 `agent-pattern` (a prompting
 > discipline, not a process), 1 `litellm-virtual-key` (a credential), 15 `cli-only` (no daemon).
 > Counting "things with a URL" gives ~25. **This is the recurring trap: define what you're
@@ -161,11 +161,12 @@ One entry point (`bin/stack` is a thin wrapper). Put `bin/` on PATH:
 | Command | What it does |
 |---|---|
 | `status` | Declared-vs-actual + ownership table (your first read) |
-| `doctor [filter]` | 66 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
+| `doctor [filter]` | 68 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
 | `phases` | Every phase: id → name |
 | `verify` | Cheap (<10s) runtime probe of the alias chain (lo0/`/etc/hosts`/DNS/routing) |
 | `logs <svc> [-f]` | `docker logs` wrapper |
 | `model list\|assign\|sync\|…` | Declarative model↔agent binding (see §5) |
+| `bin/claude-litellm <model>` | Run the Claude Code CLI itself on any LiteLLM model (kimi/gpt/glm/…); see `doc/CLAUDE-CODE-MODELS.md` |
 | `embedding list\|show\|assign\|global` | Embedding-model registry (guards dim/coupling) |
 
 **Lifecycle**
