@@ -64,6 +64,7 @@ if [[ -f "$CONF" ]]; then
   _wd_inherit AI_STACK_SANDBOX_PERSIST
   _wd_inherit AI_STACK_WATCHDOG_RECREATE
   _wd_inherit AI_STACK_WATCHDOG_HALT
+  _wd_inherit AI_STACK_WATCHDOG_GATEWAY_SUPERVISE
 fi
 RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
 HALT="${AI_STACK_WATCHDOG_HALT:-1}"
@@ -127,6 +128,54 @@ BASH4="$(_find /opt/homebrew/bin/bash /usr/local/bin/bash)"
 log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 notify() { /usr/bin/osascript -e "display notification \"$1\" with title \"ai-stack watchdog\"" >/dev/null 2>&1 || true; }
 
+# --- W3 thrash-hardening: bounded exec (macOS has NO `timeout`/`gtimeout` here) --
+# Run a command with a hard wall-clock budget; return its rc, or 124 on timeout.
+# Mirrors installer/lib/openshell.sh::_osh_bounded so the watchdog never WEDGES on a
+# `docker logs`/`exec` that hangs under host memory pressure (the exact condition the
+# heal path must survive). The 600s stale-lock reclaim is the only other backstop, so
+# every per-cycle docker call that can hang under thrash MUST go through this.
+_wd_bounded() {
+  local s="$1" p w=0; shift
+  "$@" & p=$!
+  while (( w < s*2 )); do kill -0 "$p" 2>/dev/null || { wait "$p" 2>/dev/null; return $?; }; sleep 0.5; w=$((w+1)); done
+  kill -TERM "$p" 2>/dev/null; sleep 1; kill -KILL "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; return 124
+}
+
+# --- W2 gateway-liveness supervision (default ON; AI_STACK_WATCHDOG_GATEWAY_SUPERVISE=0 off) ---
+# The hermes gateway is a PROCESS inside the hermes-fleet-v1 sandbox. A container
+# restart (reboot / docker restart) or a process crash leaves it DOWN, and today
+# the ONLY relaunch path is the token-storm heal (handle_storm -> phase 20) — so a
+# clean reboot with no storm revives the CONTAINER (restart=unless-stopped) but the
+# bot stays dark. W2 makes liveness DETERMINISTIC + idempotent regardless of any
+# ad-hoc path: each cycle, if the sandbox is up but `hermes gateway run` is absent,
+# relaunch it. Relaunch goes through `docker exec` (NOT the openshell relay, which
+# HANGS under the very thrash this must survive), detached (`exec -d`), idempotent
+# (`--replace` ends with exactly one). Rate-limited by the 180s launchd cycle (no tight
+# loop), and SKIPPED when a heal already relaunched it this cycle (gated on storming==0 —
+# avoids racing handle_storm's relaunch, where two concurrent `--replace` cycle-kill).
+W2_SUPERVISE="${AI_STACK_WATCHDOG_GATEWAY_SUPERVISE:-1}"
+HERMES_GW_LOG_IN="/sandbox/.hermes-gateway.log"   # in-sandbox gateway log (matches installer/lib/hermes.sh)
+_gateway_alive() {  # _gateway_alive <cid> -> 0 iff `hermes gateway run` is running in the sandbox
+  local cid="$1"
+  _wd_bounded 12 "$DOCKER" exec "$cid" sh -c "ps -eo args 2>/dev/null | grep -q '[h]ermes gateway run'"
+}
+_gateway_relaunch() {  # _gateway_relaunch <cid> <name> -> relaunch the gateway detached (idempotent)
+  local cid="$1" name="$2"
+  # exec -d returns immediately (no '& disown' foreground-hang); hermes reads its config
+  # from /sandbox/.hermes on start, so a bare relaunch is sufficient (no full phase re-run).
+  # BOUNDED (review B1): even `exec -d` blocks until the daemon DISPATCHES it, which can hang
+  # under the very thrash this heals — never let a relaunch wedge the cycle (the only other
+  # backstop is the 600s stale-lock reclaim = the watchdog dark for 10 min).
+  if _wd_bounded 15 "$DOCKER" exec -d "$cid" sh -c "export HOME=/sandbox; cd /sandbox; nohup /sandbox/.venv/bin/hermes gateway run --replace >$HERMES_GW_LOG_IN 2>&1" >>"$LOG" 2>&1; then
+    log "  W2: relaunched hermes gateway in $name (docker exec -d, --replace)"; return 0
+  fi
+  # Persistent relaunch failure (broken binary / corrupt config / wedged daemon): make it
+  # OPERATOR-VISIBLE, not just a log line (review N2) — desktop notify each failure.
+  log "  W2: gateway relaunch in $name returned non-zero (timeout/error) — re-checked next cycle"
+  notify "hermes gateway relaunch FAILED in $name — check: $AI_STACK/installer/state/openshell-watchdog.log"
+  return 1
+}
+
 # --- subcommands: manage the launchd timer (install/uninstall/status) ---------
 PLIST="$HOME/Library/LaunchAgents/com.ai-stack.openshell-watchdog.plist"
 LABEL="com.ai-stack.openshell-watchdog"
@@ -154,6 +203,7 @@ case "${1:-run}" in
     <key>AI_STACK_WATCHDOG_REMINT</key><string>${REMINT}</string>
     <key>AI_STACK_SANDBOX_PERSIST</key><string>${PERSIST}</string>
     <key>AI_STACK_WATCHDOG_REMINT_THRESHOLD</key><string>${REMINT_THRESHOLD}</string>
+    <key>AI_STACK_WATCHDOG_GATEWAY_SUPERVISE</key><string>${W2_SUPERVISE}</string>
     <!-- The `docker` CLI is engine-AGNOSTIC: Docker Desktop / Colima / Podman all
          install it to /opt/homebrew/bin (resolved FIRST by _find, before
          ~/.orbstack/bin), so this PATH works for every engine. The ENGINE itself
@@ -174,8 +224,8 @@ PL
     # Persist the EFFECTIVE modes so a later BARE `install` (Phase 04 / manual heal) inherits
     # them instead of resetting to the committed defaults (the regression vector). An explicit
     # env var on a future call still overrides + updates this file.
-    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\n' \
-        "$REMINT" "$PERSIST" "$RECREATE" "$HALT"; } > "$CONF" 2>/dev/null || true
+    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\nAI_STACK_WATCHDOG_GATEWAY_SUPERVISE=%s\n' \
+        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE"; } > "$CONF" 2>/dev/null || true
     echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false); modes persisted -> watchdog.conf)"; exit 0 ;;
   uninstall)
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
@@ -224,7 +274,9 @@ _mark() { local key="$1"; { grep -vE "^$key " "$THROTTLE_FILE" 2>/dev/null || tr
 # Storm signature for a sandbox container id: expired-token retry storm.
 _is_storming() {
   local cid="$1" logs
-  logs="$("$DOCKER" logs "$cid" --since 3m --tail 60 2>&1 || true)"
+  # W3: bound the docker logs read — it hangs hardest under host memory pressure,
+  # the exact condition a storm coincides with; a wedged read would block the cycle.
+  logs="$(_wd_bounded 10 "$DOCKER" logs "$cid" --since 3m --tail 60 2>&1 || true)"
   grep -q 'ExpiredSignature' <<<"$logs" && return 0
   # >=8 reconnect lines in the last 3 min = a no-backoff storm (not a one-off blip)
   (( $(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs") >= 8 )) && return 0
@@ -292,13 +344,13 @@ _remint_heal() {  # _remint_heal <name> <cid> -> 0 healed
   # rc 2 = minted + restarted but not Ready YET. Caller must NOT fall through to the
   # destructive halt/recreate (that would discard the fresh-token state); next cycle re-checks.
   _verify_ready "$name" || { log "  re-mint($name): minted+restarted, not Ready yet — leaving it for the next cycle"; return 2; }
-  # Relaunch in-sandbox daemons a docker restart kills. /sandbox state itself survives a
-  # restart. hermes-fleet-v1 runs the persistent Telegram gateway (phase 20); pi-v1 has NO
-  # persistent daemon (Pi is launched on demand by bin/pi), so it needs no relaunch.
-  case "$name" in hermes-fleet-v1) relaunch="20" ;; *) relaunch="" ;; esac
-  if [[ -n "$relaunch" ]]; then
-    cpath="$(_child_path)"
-    _phase_install "$cpath" $relaunch || log "  re-mint($name): daemon relaunch (phase $relaunch) had issues"
+  # Relaunch the in-sandbox gateway a docker restart kills. /sandbox state survives the
+  # restart so a bare relaunch suffices. hermes-fleet-v1 runs the gateway; pi-v1 has NO
+  # persistent daemon. Use docker exec (NOT phase 20 / the openshell relay — the relay
+  # HANGS under the memory thrash a storm coincides with, the exact condition this heals).
+  # The loop's W2 liveness check is gated on storming==0, so it can't double-relaunch here.
+  if [[ "$name" == "hermes-fleet-v1" ]]; then
+    _gateway_relaunch "$cid" "$name" || log "  re-mint($name): gateway relaunch had issues"
   fi
   return 0
 }
@@ -443,6 +495,28 @@ for name in "${SANDBOXES[@]}"; do
       _mark "$name"
       handle_storm "$name" "$cid"
       acted=1
+    fi
+  fi
+
+  # W2: gateway-liveness supervision. ONLY when NOT storming — a storm-heal (handle_storm
+  # -> _remint_heal) already relaunched the gateway this cycle, so gating on storming==0
+  # makes W2 and the heal-relaunch mutually exclusive (no two concurrent `--replace` that
+  # would cycle-kill each other). The 180s cycle is the natural throttle: a chronically
+  # dead/broken gateway is relaunched at most once/cycle (idempotent --replace, never a
+  # tight loop) and each relaunch is logged so a persistently-dark gateway stays visible.
+  if [[ "$W2_SUPERVISE" == "1" && "$storming" == "0" && "$name" == "hermes-fleet-v1" ]]; then
+    # NB: `set -Eeuo pipefail` is in effect — capture the rc via `|| gw_rc=$?` so a
+    # non-zero (gateway DOWN = rc 1) does NOT abort the whole cycle. A bare
+    # `_gateway_alive; gw_rc=$?` would let set -e kill the script before the relaunch.
+    gw_rc=0; _gateway_alive "$cid" || gw_rc=$?
+    # rc 0 = alive (no-op). rc 124 = liveness check TIMED OUT — docker may be wedged under
+    # thrash; "unknown" is NOT "dead", so we must NOT relaunch a possibly-healthy gateway
+    # (review B2: a spurious --replace would drop live Slack/Telegram connections). rc 1 = dead.
+    if (( gw_rc == 124 )); then
+      log "W2: $name gateway liveness check TIMED OUT (docker wedged under thrash?) — NOT relaunching this cycle"
+    elif (( gw_rc != 0 )); then
+      log "W2: $name gateway process DOWN (sandbox up, no storm) — relaunching"
+      _gateway_relaunch "$cid" "$name" && acted=1
     fi
   fi
 done

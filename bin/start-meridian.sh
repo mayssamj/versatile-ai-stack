@@ -46,6 +46,24 @@ LABEL="com.ai-stack.meridian"
 PORT="${MERIDIAN_PORT:-3456}"
 HOST_BIND="${MERIDIAN_HOST:-127.0.0.1}"
 
+# --- Canonical model pins (the fix for the silent Opus 4.7-vs-4.8 drift) -------
+# Meridian collapses every Claude request to an SDK alias (opus/sonnet/haiku) and
+# resolves that alias to a HARDCODED CANONICAL_*_MODEL baked into the installed
+# Meridian build. On 1.42.1 the Opus pin is `claude-opus-4-7`, so a request for
+# `claude-opus-4-8` was silently served as 4.7 (and the response `model` field
+# only ECHOED the requested id — cosmetic, not what served it). Meridian honors
+# MERIDIAN_DEFAULT_*_MODEL env overrides which WIN over the internal pin, so we
+# pin the served model deterministically here — version-resilient (works on
+# 1.42.1; immune to a future build silently moving its canonical pin).
+# Opus + Sonnet MUST match the wire ids ai-stack routes in litellm/config.yaml
+# (the `claude-{opus,sonnet}-sub-*` model_list entries); doctor check 41 asserts
+# that equality so the two can't drift apart. Haiku has NO `*-sub-*` route today —
+# its pin is harmless version-resilient defense (Meridian collapses all three SDK
+# aliases) and is not cross-checked. Override via the env to route elsewhere.
+MERIDIAN_DEFAULT_OPUS_MODEL="${MERIDIAN_DEFAULT_OPUS_MODEL:-claude-opus-4-8}"
+MERIDIAN_DEFAULT_SONNET_MODEL="${MERIDIAN_DEFAULT_SONNET_MODEL:-claude-sonnet-4-6}"
+MERIDIAN_DEFAULT_HAIKU_MODEL="${MERIDIAN_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5}"
+
 mkdir -p "$STATE" "$HOME/Library/LaunchAgents"
 
 # Resolve binaries without a login shell (launchd has a minimal PATH).
@@ -121,6 +139,9 @@ case "${1:-run}" in
     <key>AI_STACK</key><string>$AI_STACK</string>
     <key>MERIDIAN_PORT</key><string>$PORT</string>
     <key>MERIDIAN_HOST</key><string>$HOST_BIND</string>
+    <key>MERIDIAN_DEFAULT_OPUS_MODEL</key><string>$MERIDIAN_DEFAULT_OPUS_MODEL</string>
+    <key>MERIDIAN_DEFAULT_SONNET_MODEL</key><string>$MERIDIAN_DEFAULT_SONNET_MODEL</string>
+    <key>MERIDIAN_DEFAULT_HAIKU_MODEL</key><string>$MERIDIAN_DEFAULT_HAIKU_MODEL</string>
     <key>PATH</key><string>$RUN_PATH</string>
   </dict>
   <key>StandardOutPath</key><string>$LOG</string>
@@ -160,4 +181,6 @@ esac
 [[ -n "$MERIDIAN_BIN" ]] || { echo "meridian not found — run: npm install -g @rynfar/meridian" >&2; exit 1; }
 export PATH="$RUN_PATH"
 export MERIDIAN_PORT="$PORT" MERIDIAN_HOST="$HOST_BIND"
+# Pin the served Claude model (overrides Meridian's internal CANONICAL_*_MODEL).
+export MERIDIAN_DEFAULT_OPUS_MODEL MERIDIAN_DEFAULT_SONNET_MODEL MERIDIAN_DEFAULT_HAIKU_MODEL
 exec "$MERIDIAN_BIN"

@@ -44,8 +44,54 @@ _mer_effort_drift() {
   done < <(yq -r '.models | keys | .[]' "$myml" 2>/dev/null)
 }
 
+# _mer_route_wire <model_name> — the wire id ai-stack routes for a *-sub-* model
+# (strip the openai/ prefix). Empty if yq is missing or the route is absent.
+_mer_route_wire() {
+  local cfg="$AI_STACK/litellm/config.yaml"
+  command -v yq >/dev/null 2>&1 || return 0
+  MN="$1" yq -r \
+    '.model_list[] | select(.model_name == strenv(MN)) | .litellm_params.model // ""' \
+    "$cfg" 2>/dev/null | sed 's#^openai/##' | head -1
+}
+# _mer_pin <ENVVAR> — the served-model override start-meridian.sh pins (its
+# default). This is the value that WINS over Meridian's internal CANONICAL_*_MODEL.
+_mer_pin() {
+  sed -n "s/^$1=\"\${$1:-\([A-Za-z0-9._-]*\)}\".*/\1/p" \
+    "$AI_STACK/bin/start-meridian.sh" 2>/dev/null | head -1
+}
+
 meridian_diagnose() {
   local cfg="$AI_STACK/litellm/config.yaml" port; port="$(_mer_port)"
+
+  # Model-pin integrity (config vs config, daemon-independent) — catches the silent
+  # version-drift class: ai-stack routes e.g. `claude-opus-4-8` but Meridian collapses
+  # every Claude request to its hardcoded CANONICAL_*_MODEL unless start-meridian.sh
+  # pins MERIDIAN_DEFAULT_*_MODEL (which wins). Assert each override == its wire id
+  # so the served model can't silently diverge from what the route declares. (Haiku
+  # has no `*-sub-*` route in config.yaml, so it can't be cross-checked here.)
+  local _alias _envvar _route _wire _pin
+  for _alias in "OPUS:MERIDIAN_DEFAULT_OPUS_MODEL:claude-opus-sub-max" \
+                "SONNET:MERIDIAN_DEFAULT_SONNET_MODEL:claude-sonnet-sub-max"; do
+    _envvar="${_alias#*:}"; _route="${_alias##*:}"; _envvar="${_envvar%%:*}"
+    _wire="$(_mer_route_wire "$_route")"; _pin="$(_mer_pin "$_envvar")"
+    if [[ -n "$_wire" && -n "$_pin" && "$_wire" != "$_pin" ]]; then
+      echo "Meridian served-model pin disagrees with the routed wire id:"
+      echo "    bin/start-meridian.sh pins $_envvar=$_pin"
+      echo "    litellm/config.yaml routes $_route -> $_wire"
+      echo "  effect: the subscription may silently serve the wrong version (the response 'model' field only ECHOES the request — it is NOT what served it)."
+      echo "  fix: make the two equal, then: bash $AI_STACK/bin/start-meridian.sh restart"
+      return 1
+    fi
+  done
+  # Defense-in-depth advisory: an old Meridian whose internal pin lags is harmless
+  # AS LONG AS the env override above is applied. Note it so an upgrade is on radar.
+  local _mbin; _mbin="$(_mer_bin)"
+  if [[ -n "$_mbin" ]]; then
+    local mver; mver="$("$_mbin" --version 2>/dev/null | head -1)"
+    if [[ -n "$mver" ]] && printf '%s\n%s\n' "1.43.0" "$mver" | sort -V | head -1 | grep -qvx "1.43.0"; then
+      echo "  (note: Meridian $mver < 1.43.0 pins opus internally to claude-opus-4-7; the MERIDIAN_DEFAULT_OPUS_MODEL override compensates, but 'npm install -g @rynfar/meridian' is recommended.)"
+    fi
+  fi
 
   # Effort-ladder integrity (config vs models.yml) — runs regardless of daemon
   # state, because a flattened ladder is a real config regression either way.

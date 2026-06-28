@@ -34,7 +34,75 @@ Anthropic→OpenAI `/v1/responses`, which Meridian doesn't implement); `google-g
   request body, CRLF strip, IPv4 default, no-xtrace, temp-file trap, accurate secret-hygiene wording).
 
 ---
+## 2026-06-28 — Pin codex-bridge package + holistic reasoning-budget hardening
 
+**Follow-up to the silent-model-drift investigation.** Two themes: lock down the
+gpt-sub bridge, and raise output-token ceilings where reasoning models could be
+silently starved.
+
+- **`bin/start-codex-bridge.sh`** — pinned `CODEX_BRIDGE_PKG` from the floating
+  `openai-oauth` to **`openai-oauth@1.0.2`** (npx was free to pull an unreviewed
+  release of a package that fronts the ChatGPT OAuth). Audited 1.0.2: it targets
+  the CORRECT Codex backend (`https://chatgpt.com/backend-api/codex`), NOT
+  `api.openai.com/v1/responses` — the wrong-endpoint→401→silent-downgrade bug
+  other Codex bridges hit (openclaw#38706) — and it forwards the requested model
+  id with no canonical-version collapse (unlike Meridian). So gpt-sub does NOT
+  silently downgrade; the only residual is that GPT models won't self-report
+  their version, so the served model can't be confirmed client-side.
+- **`doc/TUTORIAL.html`** — raised the Chat-demo `MAX_TOKENS` 4096→**16384** and
+  added a retry-on-400 guard. `max_tokens` is a shared reasoning+output budget on
+  OpenAI-style reasoners and a ceiling (not a target), so a high cap only rescues
+  the long-reasoning tail at no normal-run cost. Verified caps: every OpenRouter
+  chat model wired here caps completion ≥16384 (deepseek-flash 65536, kimi-k2.6
+  262144, gpt-5.5 128000, opus 128000, glm-5.2 32768; kimi-k2.7-code ==16384) and
+  OpenRouter CLAMPS over-cap values rather than rejecting them. As belt-and-braces
+  for any provider that strictly 400s "max_tokens too large" (e.g. an untested
+  Gemini cap), `chatOnce()` now retries ONCE at 4096 on exactly that 400 — a 400
+  spends no tokens, so the retry is free.
+- **`doc/TUTORIAL.md` + `services.yml`** — the prompt-sandwich example used
+  `max_tokens:50` on a reasoning summarizer (local-gemma4): a copy-paste demo that
+  would itself reproduce the empty-answer bug. Bumped to 512 (thinking room for a
+  one-line summary) in the tutorial body (edited `TUTORIAL.md` source + regenerated
+  the HTML) and in the `help.usage` example. NOTE: a stack-wide audit (885
+  token-limit refs) found the REAL answer paths already use adequate budgets (≥512,
+  many with explicit reasoning-model comments); the small caps elsewhere are
+  intentional liveness/smoke probes (max_tokens 1–16) where a tiny reply is correct.
+
+
+## 2026-06-28 — Meridian Opus pin (sub served 4.7 not 4.8) + tutorial reasoning budget
+
+**Fix 1 — `claude-opus-sub-*` silently served Opus 4.7, not 4.8.** Root cause: the
+LiteLLM routes correctly declare wire id `claude-opus-4-8`, but Meridian does NOT
+pass the id through — it collapses every Claude request to an SDK alias and
+resolves it to a hardcoded `CANONICAL_OPUS_MODEL` baked into the installed build
+(1.42.1 pins `claude-opus-4-7`), then **echoes the requested id back** in the
+response `model` field (cosmetic — verified by direct probe: prose self-id was
+`claude-opus-4-7[1m]` while `.model` said `claude-opus-4-8`). Meridian ≥1.43.0
+bumped the pin to 4-8. **Fix — `bin/start-meridian.sh`** now exports
+`MERIDIAN_DEFAULT_OPUS_MODEL=claude-opus-4-8` (+sonnet `claude-sonnet-4-6`, haiku
+`claude-haiku-4-5`) in the launchd plist and the foreground `run` exec; this env
+override WINS over Meridian's internal pin, so it works even on 1.42.1 and is
+immune to a future build moving its pin. `restart` applies it (script-level
+`${VAR:-default}`); `install` additionally locks it into the plist on disk.
+**`installer/doctor/checks/41_meridian.sh`** gains a daemon-independent
+config-vs-config guard asserting each `MERIDIAN_DEFAULT_*_MODEL` override equals
+its routed `*-sub-*` wire id (opus + sonnet), plus a `<1.43.0` upgrade advisory.
+`litellm/config.yaml` + `doc/USER-GUIDE.md` comments corrected (the old "passes
+through any model id … verified via the trace" claim was false — the trace only
+echoed the request). §24 council: 3 reviewers (adversarial SHIP, architect REVISE,
+qa BLOCK) → consensus after debate (qa's TUTORIAL.md blocker refuted by `--check`).
+
+**Fix 2 — tutorial Chat demo: reasoning models returned an empty answer.**
+`doc/TUTORIAL.html` sent a flat `max_tokens: 1024` for every model. Reasoning
+models (Kimi, gemma4, qwen3, deepseek-r1…) spend the shared budget on hidden
+reasoning FIRST and their reasoning length varies run-to-run, so long-reasoning
+runs left no room for the answer → empty content + a reasoning-trace fallback
+("raise max_tokens"). Reproduced through LiteLLM: openrouter-kimi reasoned
+574–1113 tokens across runs on a trivial prompt. **Fix:** raised `MAX_TOKENS`
+1024→4096 (a ceiling, not a target — no latency/cost on normal runs, only rescues
+truncated ones; `reasoning_effort=low` was tested and is unreliable — Kimi and
+gemma4 ignore it) and clarified the truncation fallback. tutorial-serve reads the
+HTML fresh per request, so a browser hard-refresh suffices.
 ## 2026-06-28 — Hermes fleet bot: authorized GPT-5 fallback (Claude-sub out-of-usage)
 
 **Fixes the Hermes Slack/Telegram bot replying "Model returned no content after

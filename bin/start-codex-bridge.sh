@@ -51,15 +51,24 @@ STATE="$AI_STACK/installer/state"
 LOG="$STATE/codex-bridge.launchd.log"
 PLIST="$HOME/Library/LaunchAgents/com.ai-stack.codex-bridge.plist"
 LABEL="com.ai-stack.codex-bridge"
+# One-time risk acknowledgement is REMEMBERED here (gitignored installer/state),
+# so you accept once and never have to re-type 'I accept' or set
+# CODEX_BRIDGE_ACCEPT_RISK again. Delete this file to re-arm the warning.
+RISK_ACK_FILE="$STATE/codex-bridge.risk-accepted"
 
 # Tunables. Loopback bind is intentional. Port 3457 sits one above Meridian
 # (3456) — keep them distinct.
 PORT="${CODEX_BRIDGE_PORT:-3457}"
 HOST_BIND="${CODEX_BRIDGE_HOST:-127.0.0.1}"
-# The proxy package run via npx. PIN this to an audited version once you've
-# reviewed it (e.g. openai-oauth@1.2.3) — it fronts your ChatGPT OAuth, so treat
-# it as a trusted dependency. Override with CODEX_BRIDGE_PKG to swap/vendor.
-CODEX_BRIDGE_PKG="${CODEX_BRIDGE_PKG:-openai-oauth}"
+# The proxy package run via npx. PINNED to an audited version — it fronts your
+# ChatGPT OAuth, so treat it as a trusted dependency and never let `npx` float it
+# to an unreviewed release. Audited 2026-06-28: 1.0.2 targets the CORRECT Codex
+# backend (https://chatgpt.com/backend-api/codex), NOT api.openai.com/v1/responses
+# (the wrong-endpoint→401→silent-model-downgrade bug other Codex bridges hit, e.g.
+# openclaw#38706), and it forwards the requested model id (no canonical-version
+# collapse). Bump this pin only after re-auditing the new version's endpoint +
+# model handling. Override with CODEX_BRIDGE_PKG to swap/vendor.
+CODEX_BRIDGE_PKG="${CODEX_BRIDGE_PKG:-openai-oauth@1.0.2}"
 # Codex CLI caches the ChatGPT OAuth here after `npx @openai/codex login`.
 AUTH_FILE="${CODEX_AUTH_FILE:-$HOME/.codex/auth.json}"
 
@@ -104,10 +113,24 @@ _require_auth() {
   return 0
 }
 
-# One-time, blocking risk acknowledgement on `install`. Bypass for automation
-# with CODEX_BRIDGE_ACCEPT_RISK=1. NEVER shown on the launchd `run` path.
+# Record the acknowledgement so it's never asked again (best-effort; a failed
+# write just means the banner shows next time — never fatal).
+_risk_persist() {
+  mkdir -p "$STATE" 2>/dev/null || true
+  printf 'accepted %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo yes)" > "$RISK_ACK_FILE" 2>/dev/null || true
+}
+
+# One-time, blocking risk acknowledgement on `install`. REMEMBERED across runs:
+# once accepted (interactively or via CODEX_BRIDGE_ACCEPT_RISK=1) it's recorded in
+# $RISK_ACK_FILE and never asked again — so you don't have to remember the env var.
+# Bypass/pre-seed for automation with CODEX_BRIDGE_ACCEPT_RISK=1. Re-arm the
+# warning by deleting $RISK_ACK_FILE. NEVER shown on the launchd `run` path.
 _risk_ack() {
-  [[ "${CODEX_BRIDGE_ACCEPT_RISK:-0}" == "1" ]] && return 0
+  # Already accepted before, or explicitly bypassed -> silent (and (re)record it).
+  if [[ -f "$RISK_ACK_FILE" || "${CODEX_BRIDGE_ACCEPT_RISK:-0}" == "1" ]]; then
+    _risk_persist
+    return 0
+  fi
   cat >&2 <<'BANNER'
 
   ┌────────────────────────────────────────────────────────────────────┐
@@ -132,7 +155,7 @@ _risk_ack() {
 
 BANNER
   if [[ ! -t 0 ]]; then
-    echo "codex-bridge: non-interactive; set CODEX_BRIDGE_ACCEPT_RISK=1 to proceed." >&2
+    echo "codex-bridge: non-interactive + not yet accepted — set CODEX_BRIDGE_ACCEPT_RISK=1 once (it's then remembered) to proceed." >&2
     return 1
   fi
   local reply=""
@@ -141,6 +164,8 @@ BANNER
     echo "codex-bridge: not acknowledged — nothing installed." >&2
     return 1
   fi
+  _risk_persist   # remember it — never ask again (delete $RISK_ACK_FILE to re-arm)
+  echo "codex-bridge: acknowledgement recorded ($RISK_ACK_FILE) — future installs won't re-prompt." >&2
   return 0
 }
 

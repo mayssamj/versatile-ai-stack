@@ -271,9 +271,16 @@ Open `http://openwebui:8080`, refresh — the default model is
 **`claude-opus-sub-max`**. No Open WebUI Function/pipe, no API key. Manage
 with `start-meridian.sh status|restart|uninstall`; `vz-ai-stack.sh doctor` check 41
 reports health. The subscription models run **claude-opus-4-8** /
-**claude-sonnet-4-6** — verified end-to-end via the LiteLLM trace. (Meridian's
-`/v1/models` catalog lists ≤4.7 but **passes through** any model id to its
-bundled claude-code 2.1.160, so 4.8 works.)
+**claude-sonnet-4-6**, pinned by `MERIDIAN_DEFAULT_OPUS_MODEL` /
+`MERIDIAN_DEFAULT_SONNET_MODEL` in `start-meridian.sh`. ⚠️ This pin is REQUIRED:
+Meridian does **not** pass the wire model id through — it collapses every Claude
+request to an SDK alias (opus/sonnet/haiku) and resolves it to a hardcoded
+`CANONICAL_*_MODEL` baked into the installed build (e.g. Meridian ≤1.42.x pins
+opus → `claude-opus-4-7`), then **echoes the requested id back** in the response
+`model` field cosmetically. So a bare `claude-opus-4-8` request on an older
+Meridian is silently served as 4.7 — the echoed `model` field does NOT prove what
+served it. The env override wins over the internal pin (works even on 1.42.1);
+doctor check 41 asserts the override equals the routed wire id so they can't drift.
 
 **Effort / reasoning level — pick by picking the model.** Per-chat effort can't
 be sent from Open WebUI (LiteLLM's `drop_params` strips it), so each effort level
