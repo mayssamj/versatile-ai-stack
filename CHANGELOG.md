@@ -34,6 +34,35 @@ is **complete** — every `127.0.10.x` HTTP service already has `localhost:port`
 
 ---
 
+## 2026-06-29 — Unified light design system across all six web surfaces
+
+**Look & feel overhaul (§24-reviewed).** Collapsed three divergent visual languages
+(MODELS/EXPLORE `--canvas/--card`; TUTORIAL/USER-GUIDE/DIAGRAMS `--bg/--fg`; FLEET's
+bespoke dark "aerospace console") onto ONE light-default design system with modern,
+deliberate typography and a single iris brand accent held apart from status-blue.
+
+- **New `doc/assets/design-system.css`** — canonical source of truth: `@font-face`
+  (self-hosted woff2, offline-safe), light-default tokens + a `[data-theme="dark"]`
+  toggle, base typography, and a `ds-`-namespaced component library (collision-safe,
+  so linking it can't disturb a page's existing markup).
+- **Self-hosted fonts** in `doc/assets/fonts/` (latin woff2, ~136 KB total): Space
+  Grotesk (display) + IBM Plex Sans (UI/prose) + IBM Plex Mono (code/labels/data),
+  all SIL OFL 1.1 — see `OFL.txt` + ATTRIBUTION.md. No CDN; renders identically offline.
+- **All six pages** link the shared CSS and replace their `:root` with a legacy-name
+  alias shim; **light is now the canonical default** (was dark / OS-preference).
+  TUTORIAL + USER-GUIDE heroes rebuilt from mono/gradient → solid Space Grotesk;
+  FLEET's HUD-grid texture, Futura-uppercase chrome, and hardcoded dark surfaces
+  (rail, editor, reader, footer) neutralized to the light tokens.
+- **DIAGRAMS** regenerated from its template (`build_diagrams_html.py`); TUTORIAL
+  prose-sync verified intact (`build_tutorial_html.py --check` → in sync). EXPLORE's
+  7 functional tier hues retuned for AA legibility on light (brighter dark variants
+  retained for the dark theme).
+- **`tutorial_proxy.py` / `models_proxy.py`** static allowlist extended with
+  `.woff2`/`.woff` so the self-hosted fonts load on the live tutorial-/models-serve
+  surfaces (fleet-studio already serves the whole `doc/` tree).
+- Verified end-to-end in a real browser: all six render light, the dark toggle still
+  works, and CSS + every font return 200 on each serving path.
+
 ## 2026-06-29 — Watchdog resilience: revive-exited sandboxes (W4) + crash-loop breaker (W1) + host-memory in status (S1)
 
 **Auto-heal hardening (§24-reviewed).** Three council-approved fixes plus a latent

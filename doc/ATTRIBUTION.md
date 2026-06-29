@@ -37,6 +37,21 @@ Everything else is permissive (MIT / Apache-2.0 / ISC / BSL-1.0) — see the ful
 
 ---
 
+## Web UI typography (design-system fonts · self-hosted)
+Bundled as latin-subset `woff2` in `doc/assets/fonts/` so the web surfaces render
+their intended typography offline (no CDN, no external request). All three families
+are **SIL OFL 1.1** (permissive: keep the license + reserved names, don't sell the
+fonts by themselves). Full text + copyright notices:
+[`doc/assets/fonts/OFL.txt`](assets/fonts/OFL.txt).
+
+| Component | Upstream | License | Notes |
+|---|---|---|---|
+| **Space Grotesk** (display: wordmark + hero) | https://github.com/floriankarsten/space-grotesk | SIL OFL 1.1 | Copyright 2020 The Space Grotesk Project Authors. |
+| **IBM Plex Sans** (UI + prose) | https://github.com/IBM/plex | SIL OFL 1.1 | © 2017 IBM Corp., Reserved Font Name "Plex". |
+| **IBM Plex Mono** (code, labels, data) | https://github.com/IBM/plex | SIL OFL 1.1 | © 2017 IBM Corp., Reserved Font Name "Plex". |
+
+---
+
 ## Inference & gateway
 | Component | Upstream | License | Notes |
 |---|---|---|---|

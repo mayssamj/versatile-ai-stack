@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -34,46 +34,39 @@
   │  window.__fleet for automated verification.                               │
   └──────────────────────────────────────────────────────────────────────────┘
 -->
+<link rel="stylesheet" href="assets/design-system.css">
 <style>
-  /* ── Fleet Command Deck · dark aerospace console ─────────────────────────── */
+  /* ── ai-stack design system (light) · was: dark aerospace console ─────────── */
   :root {
-    --bg:        #0c0f16;
-    --bg-2:      #0f131c;
-    --panel:     #121826;
-    --panel-2:   #161d2d;
-    --line:      #232c3d;
-    --line-2:    #2d384c;
-    --ink:       #d9dfea;
-    --ink-dim:   #97a1b4;
-    --ink-faint: #7a8699;
+    /* ── ai-stack design system ──────────────────────────────────────────
+       Canonical light-default tokens live in assets/design-system.css. Below:
+       legacy (--bg/--panel/--ink/...) → canonical aliases. Light is the default.
+       --danger and --r are intentionally NOT redefined here (the canonical ones
+       apply — self-aliasing would be circular). */
+    --bg:var(--canvas); --bg-2:var(--sunken); --panel:var(--surface); --panel-2:var(--raised);
+    --line:var(--border); --line-2:var(--border-strong);
+    --ink:var(--text); --ink-dim:var(--muted); --ink-faint:var(--faint);
 
-    /* fleet identity hues (functional: tells you which framework at a glance) */
-    --cc:    #f5a623;   /* claude-code → amber  */
-    --cc-d:  #5a4420;
-    --herm:  #7aa2f7;   /* hermes      → indigo */
-    --herm-d:#28344f;
-    --pi:    #5fd39b;   /* pi          → phosphor green */
-    --pi-d:  #234539;
+    /* fleet identity hues (functional: which framework at a glance) — light-tuned */
+    --cc:var(--accent);  --cc-d:var(--accent-dim);          /* claude-code → brand iris */
+    --herm:#3b5bdb;      --herm-d:rgba(59,91,219,.12);       /* hermes      → indigo */
+    --pi:#0d9488;        --pi-d:rgba(13,148,136,.12);        /* pi          → teal-green */
 
-    /* semantic states (kept distinct from fleet hues) */
-    --dirty: #ff8a8a;
-    --saved: #7ee787;
-    --danger:#ff6b6b;
+    /* semantic states */
+    --dirty:var(--danger); --saved:var(--ok);
 
-    --mono: "SF Mono", "SFMono-Regular", "Menlo", "Monaco", ui-monospace, monospace;
-    --display: "Futura", "Avenir Next Condensed", "Avenir Next", sans-serif;
-    --body: "Avenir Next", "Avenir", -apple-system, BlinkMacSystemFont, sans-serif;
-
-    --r: 7px;
+    --mono:var(--font-mono); --display:var(--font-display); --body:var(--font-ui);
+  }
+  [data-theme="dark"] {
+    /* FLEET is light-only (no toggle); this keeps the dormant dark theme legible if
+       data-theme="dark" is ever set — restores bright framework hues for a dark bg. */
+    --herm:#7aa2f7; --pi:#5fd39b;
   }
 
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    background:
-      radial-gradient(1200px 600px at 78% -8%, #15203320, transparent 60%),
-      radial-gradient(900px 500px at 8% 108%, #1a142410, transparent 55%),
-      var(--bg);
+    background: var(--canvas);
     color: var(--ink);
     font-family: var(--body);
     font-size: 14px;
@@ -81,16 +74,7 @@
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
   }
-  /* faint HUD grid texture */
-  body::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background-image:
-      linear-gradient(#ffffff05 1px, transparent 1px),
-      linear-gradient(90deg, #ffffff05 1px, transparent 1px);
-    background-size: 46px 46px;
-    mask-image: radial-gradient(circle at 50% 35%, #000 0%, transparent 85%);
-    opacity: .5;
-  }
+  /* HUD grid texture removed — flat light canvas */
 
   .app { position: relative; z-index: 1; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
 
@@ -310,6 +294,49 @@
   ::-webkit-scrollbar { width: 11px; height: 11px; }
   ::-webkit-scrollbar-thumb { background: #2a3445; border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
   ::-webkit-scrollbar-thumb:hover { background: #36425a; background-clip: content-box; }
+
+  /* ═══ ai-stack design-system alignment — neutralizes the legacy dark aerospace styling ═══
+     Appended last so these win by source order. The :root shim already remapped
+     every --bg/--panel/--ink/... token to the light palette; the rules below fix the
+     places the original hardcoded dark hexes or white-on-dark text instead of tokens. */
+  body::before { content: none; }                          /* no HUD grid texture */
+
+  /* typography: de-uppercase the display-font chrome (was Futura uppercase) */
+  .wordmark .mk { font-family: var(--font-display); text-transform: none; letter-spacing: -.01em; font-size: 18px; }
+  .hero .htitle { font-family: var(--font-display); text-transform: none; letter-spacing: -.01em; }
+  .seg button, .btn, .crumb .chip { font-family: var(--font-ui); text-transform: none; letter-spacing: normal; }
+  .seg button, .btn { font-size: 12px; }
+  .btn.primary { color: #fff; }                            /* iris primary needs light text (was dark-on-amber) */
+
+  /* surfaces: hardcoded dark gradients/fills → light tokens */
+  header.bar { background: color-mix(in srgb, var(--canvas) 86%, transparent); }
+  .rail { background: var(--surface); }
+  footer.deck { background: var(--canvas); }
+  .row:hover { background: var(--raised); }
+  .row.active { background: var(--accent-dim); }
+  .row.active .nm { color: var(--accent); }
+  .hero .ring { background: var(--raised); box-shadow: none; }
+  .hero .ring span { color: var(--accent); }
+  .tag { background: var(--raised); }
+  .reader th { background: var(--sunken); }
+  .reader blockquote { background: var(--accent-dim); }
+
+  /* text that was white-on-dark → ink (keep .reader h3 as accent per original intent) */
+  .card .ttl, .reader h1, .reader h2, .reader h4, .reader strong { color: var(--text); }
+
+  /* code surfaces: dark editor / pre / inline code → light */
+  textarea.editor { background: var(--raised); color: var(--text); }
+  .reader pre { background: var(--raised); }
+  .reader pre code { color: var(--text); }
+  .reader code { background: var(--raised); color: var(--accent); }
+
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+  /* council fixes — clear remaining aerospace residue in the connected/working state */
+  .group-h { font-family: var(--font-mono); letter-spacing: .1em; }        /* roster labels → mono eyebrow, not wide Futura */
+  .dot.live, .dot.ro, .row .ddot, .dirty-flag .ddot, footer .ct .ddot { box-shadow: none; }  /* drop the glow halos */
+  .toast { box-shadow: var(--shadow-pop); }                                /* was a heavy 63%-black dark-theme shadow */
 </style>
 </head>
 <body>
@@ -317,7 +344,7 @@
   <header class="bar">
     <h1 class="sr-only">Fleet Studio — review and edit agent-profiles</h1>
     <div class="wordmark">
-      <span class="mk">FLEET <b>STUDIO</b></span>
+      <span class="mk">Fleet <b>Studio</b></span>
       <span class="sub">agent-profiles · review &amp; edit</span>
     </div>
     <div class="spacer"></div>

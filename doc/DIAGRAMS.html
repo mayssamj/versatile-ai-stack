@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,20 +7,19 @@
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
 <!-- svg-pan-zoom removed: zoom + pan are now pure CSS transform on a wrapping
      layer. No CDN dependency for zoom, no race with mermaid's SVG injection. -->
+<link rel="stylesheet" href="assets/design-system.css">
 <style>
   :root {
-    --bg:#0c1117; --bg-elev:#161b22; --bg-soft:#21262d; --bg-code:#0d1117;
-    --fg:#e6edf3; --fg-soft:#8b949e; --fg-dim:#6e7681;
-    --accent:#58a6ff; --accent-soft:rgba(88,166,255,.12);
-    --border:#30363d; --border-soft:#21262d;
-    --radius:8px; --mono:ui-monospace,"SF Mono",Menlo,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;
-  }
-  [data-theme="light"] {
-    --bg:#fff; --bg-elev:#f6f8fa; --bg-soft:#eaeef2; --bg-code:#f6f8fa;
-    --fg:#1f2328; --fg-soft:#59636e; --fg-dim:#818b97;
-    --accent:#0969da; --accent-soft:rgba(9,105,218,.10);
-    --border:#d0d7de; --border-soft:#eaeef2;
+    /* ── ai-stack design system ──────────────────────────────────────────
+       Canonical light-default tokens live in assets/design-system.css. Below:
+       legacy (--bg/--fg/...) → canonical aliases. Light is now the default;
+       toggling [data-theme="dark"] re-points every alias to the dark palette. */
+    --bg:var(--canvas); --bg-elev:var(--surface); --bg-soft:var(--raised); --bg-code:var(--raised);
+    --fg:var(--text); --fg-soft:var(--muted); --fg-dim:var(--faint);
+    --accent-soft:var(--accent-dim);
+    --border-soft:var(--border);
+    --radius:var(--r);
+    --mono:var(--font-mono); --sans:var(--font-ui);
   }
   * { box-sizing:border-box; }
   html,body { margin:0; padding:0; }
@@ -39,7 +38,7 @@
     display:flex; align-items:center; gap:16px;
   }
   [data-theme="light"] header { background:rgba(255,255,255,0.92); }
-  header .logo { font-family:var(--mono); font-weight:700; font-size:16px; color:var(--fg); text-decoration:none; }
+  header .logo { font-family:var(--font-display); font-weight:700; font-size:16px; color:var(--fg); text-decoration:none; }
   header .logo .accent { color:var(--accent); }
   header .spacer { flex:1; }
   .icon-btn { background:transparent; border:1px solid var(--border); color:var(--fg-soft); border-radius:4px; padding:6px 10px; cursor:pointer; font-size:13px; }
@@ -81,7 +80,7 @@
     display:flex; align-items:center; justify-content:center;
   }
   .zoom-btn:hover { background:var(--accent-soft); border-color:var(--accent); }
-  .zoom-btn.copied { background:rgba(63,185,80,0.2); border-color:#3fb950; color:#3fb950; }
+  .zoom-btn.copied { background:var(--ok-dim); border-color:var(--ok); color:var(--ok); }
   .diagram-viewport {
     height: 70vh; padding: 0; background: #fff;
     position: relative; overflow: hidden;
@@ -1164,9 +1163,9 @@ document.getElementById('themeToggle').addEventListener('click', () => {
   const cur = document.documentElement.getAttribute('data-theme');
   const next = cur === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
-  try { localStorage.setItem('ai-stack-diag-theme', next); } catch(e){}
+  try { localStorage.setItem('ai-stack-theme', next); } catch(e){}
 });
-try { const t = localStorage.getItem('ai-stack-diag-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch(e){}
+try { const t = localStorage.getItem('ai-stack-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch(e){}
 
 // Capture original mermaid source BEFORE mermaid mutates the DOM (for copy button).
 document.querySelectorAll('.mermaid').forEach(d => { d.dataset.originalSrc = d.textContent; });
