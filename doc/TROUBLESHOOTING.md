@@ -222,6 +222,26 @@ while a `vz-ai-stack.sh` is already running. Doctor **check 39 (`openshell_storm
 on-demand twin (`stack doctor openshell` surfaces a live storm and whether the watchdog
 is loaded); **check 43 (`watchdog_alert`)** surfaces a pending alert the watchdog left.
 
+**Durability / auto-heal modes** (persisted sticky in `installer/state/watchdog.conf` by
+`$WD install`, so a later bare `install` keeps them — an explicit env var still wins):
+
+- `AI_STACK_SANDBOX_PERSIST=1` + `AI_STACK_WATCHDOG_REMINT=1` — sandboxes are long-lived
+  (`restart=unless-stopped` + the timer runs at boot), and a storm is healed by an **in-place
+  token re-mint** (no recreate, no data loss) instead of warn-only halt.
+- `AI_STACK_WATCHDOG_GATEWAY_SUPERVISE=1` (**W2**, default ON) — relaunch the Hermes gateway
+  process inside the sandbox if it dies (reboot / crash) so the Slack/Telegram bot comes back
+  without a manual `install`.
+- `AI_STACK_WATCHDOG_REVIVE_EXITED=1` (**W4**, default ON) — `docker start` a managed sandbox
+  that died on reboot/crash and wasn't auto-restarted (an operator `docker stop` is respected:
+  an `unless-stopped`/`always` container left exited is treated as a deliberate stop).
+- `AI_STACK_WATCHDOG_CRASHLOOP_BREAK=1` (**W1**, default ON) — a NON-sandbox managed container
+  stuck restarting (a bad image/config crash-loop, e.g. `autofyn-agent`) is stopped
+  (`restart=no` + stop, writable layer kept) and surfaced, so it stops burning CPU.
+
+`stack status` shows the active modes on its **`durability:`** line plus a **host-memory** block
+(swap, free+inactive RAM, top host-app RSS) — on this 24 GB box the memory lever is host apps
+(quit LM Studio / Chrome) rather than the containers.
+
 ---
 
 ## "The whole machine feels hot/slow even when idle" (OrbStack CPU floor + the 34-container stack)

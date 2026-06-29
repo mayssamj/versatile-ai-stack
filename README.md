@@ -26,7 +26,7 @@ The fastest way to grasp what this stack can do: open **[`doc/EXPLORE.html`](doc
 in any browser. It's a **single self-contained file** — no server, no build, no internet —
 so you can just double-click it; it even works offline straight from `file://`.
 
-> **AI-Stack Explorer** — *“All 51 installed services · 60 cards across 7 tiers · self-contained — works offline from file://”*
+> **AI-Stack Explorer** — *“All 51 installed services across 7 tiers · self-contained — works offline from file://”*
 
 It renders an interactive, searchable card for **every** service — what it is, why you'd
 reach for it, and a copy-paste demo — grouped into seven color-coded tiers:
@@ -503,6 +503,10 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   knows what an LLM is but not what an "LLM proxy" or "vector DB" is. 20
   small Mermaid diagrams (every service box shows `name :port`). ~990 lines,
   but each service is ~200 words.
+- **[CLAUDE-CODE-MODELS.md](doc/CLAUDE-CODE-MODELS.md)** — run the Claude Code CLI on
+  **any** model this stack's LiteLLM serves (kimi, GLM, GPT, DeepSeek, your GPT-5
+  ChatGPT-sub, Fugu, OpenRouter-Claude, or a local model) via `bin/claude-litellm` —
+  full per-model compatibility matrix, RAM-safety, and key mint/budget/revoke.
 - **[DIAGRAMS.md](doc/DIAGRAMS.md)** — system architecture in pictures. System
   overview, 8-layer boundary diagram, 4 user-story sequence diagrams (chat
   via Open WebUI, Hermes researcher uses local+cloud, PDF ingestion, agent

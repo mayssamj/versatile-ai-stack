@@ -29,7 +29,7 @@ stack phases                            # list every phase as id → name (also:
 stack install <phase|all>               # install one phase by NAME or number (or everything)
 stack install <phase|all> --dry-run     # read-only preview of what would run (alias: --plan)
 stack verify                            # Phase 00·V — 6 runtime probes; no install
-stack status                            # declared vs actual table
+stack status                            # declared vs actual table + host-memory pressure + auto-heal posture
 stack <cmd> --help  /  stack help <cmd> # focused per-command usage (bare `help`/`--help` = full list)
 stack help <svc>|services|regen         # what it is · how it's configured · how to use (see below)
 stack model list|assign|sync|superset   # declarative model<->agent binding (see models.md)
@@ -64,8 +64,8 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
-The **14 opt-in extras** (Phases 21–25, 27–30 · 32 · 33 · 34 · 35 · 36: `portless`, `cmux`, `skillspector`,
-`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`) are NOT part of `install all` — add them
+The **17 opt-in extras** (Phases 21–25, 27–38: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `ingress`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`, `concordia`, `slack`) are NOT part of `install all` — add them
 individually by name. Their doctor checks (34–38, 49, 50, 51, 52, 57–61) pass-as-skip until installed.
 
 ### Per-service help (`stack help`)

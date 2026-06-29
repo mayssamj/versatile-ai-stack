@@ -59,7 +59,7 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 `hermes`→hermes_fleet, `sandbox`→openshell, `unsloth`→unsloth_studio,
 `halo`→halo_autoreason, `ui`→uis, `docs`→documents, `memory`→alt_memory. Run
 `stack phases` if you're not sure of a name. `install all` runs the 29 core phases
-(the 14 opt-in extras are excluded — see §5).
+(the 17 opt-in extras are excluded — see §5).
 
 ---
 
@@ -143,7 +143,7 @@ view at start): `docker exec litellm tail -f /traces/litellm.jsonl`.
 
 ---
 
-## 5. Opt-in extras (Phases 21–25, 27–36) — add only what you want
+## 5. Opt-in extras (Phases 21–25, 27–38) — add only what you want
 
 These are **not** in `install all`. Add by name; each one's doctor check (34–38, 49)
 passes-as-skip until you install it. (MemPalace, Phase 26, is no longer here — it's a
