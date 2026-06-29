@@ -4,6 +4,48 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-29 — Watchdog resilience: revive-exited sandboxes (W4) + crash-loop breaker (W1) + host-memory in status (S1)
+
+**Auto-heal hardening (§24-reviewed).** Three council-approved fixes plus a latent
+silent-death bug found during induced-event testing. Follows the W2/W3 gateway-
+supervision work (`4d8ad4d`). Each behavior validated by inducing the real event.
+
+- **`bin/openshell-watchdog.sh` — W4 (revive exited sandbox; default ON,
+  `AI_STACK_WATCHDOG_REVIVE_EXITED=0` to disable).** The cycle SKIPPED a managed
+  sandbox with no running container, so one that died on reboot/crash and wasn't
+  auto-restarted stayed down. W4 revives it with `docker start` (non-destructive).
+  Operator intent is respected: a clean exit 0, or a `restart=unless-stopped`/`always`
+  container sitting exited (Docker honors a manual `docker stop` by not restarting it),
+  is left alone; only a `restart=no` death or an OOM-kill is revived. Re-mints the
+  token first when REMINT is on. A deleted-container sandbox is NOT auto-recreated.
+- **W1 (crash-loop breaker; default ON, `AI_STACK_WATCHDOG_CRASHLOOP_BREAK=0`).** A
+  NON-sandbox managed container stuck restarting (bad image/config — e.g. autofyn-
+  agent's `ImportError: cannot import name 'SANDBOX_KIND_DOCKER'`) burns CPU forever.
+  W1 detects it by the DELTA in RestartCount across cycles (default N=2 — Docker's
+  exponential restart-backoff throttles a steady-state loop to a few restarts/window,
+  so a high N would MISS it; autofyn-agent crept to RestartCount=41 this way), gated
+  on `status==restarting`, seed-and-skip the first observation, and breaks it with
+  `restart=no` + `stop` (writable layer kept; `docker start` to retry) + a RED
+  FAILMARK. Scoped to OUR containers only (label / compose working_dir); sandboxes
+  excluded (their token-storm heal + W4 own them).
+- **`installer/lib/status.sh` — S1 (host-memory surface).** `status` now shows swap,
+  free+inactive (parsed with the correct 16KB Apple-Silicon page size — a hardcoded
+  4KB quartered every number on M-series), top host RSS by name, the durability
+  posture, and any watchdog alert — surfacing the REAL memory lever (host apps like
+  LM Studio/Chrome, not containers). Read-only; can't break the table or load a model.
+- **`_wd_inherit` silent-death fix.** A sticky-mode key ABSENT from `watchdog.conf`
+  made `v=$(grep…)` exit 1 → under `set -Eeuo pipefail` the cycle died with NO log
+  output. Added `|| true` + an explicit `return 0` so an absent key inherits nothing
+  and the cycle survives — this would have bitten every new key on an older conf.
+- **§24 council (adversarial + architect + SRE) → APPROVE-WITH-CHANGES, all fixed
+  before merge:** W4 operator-intent (a `docker stop` exits 137/143, not 0 — the
+  original exit-0 guard was wrong); W1 gate narrowed to `restarting` (the `exit!=0`
+  arm false-fired on already-exited containers, silently setting `restart=no`); all
+  new `docker inspect` calls bounded by `_wd_bounded`; FAILMARK made per-name across
+  W1/W4 AND `handle_storm` (the old `>`/`rm -f` wiped other containers' alerts). **C1
+  (at-create container caps) DEFERRED** — containers aren't the memory lever on this
+  box (host apps are), so caps are theatre here; re-open only on S1-produced evidence.
+
 ## 2026-06-28 — Pin codex-bridge package + holistic reasoning-budget hardening
 
 **Follow-up to the silent-model-drift investigation.** Two themes: lock down the
