@@ -4,6 +4,36 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-29 — Hermes gateway-config durability (W5 self-heal) + install-lock stale-reclaim
+
+**The Hermes gateway config got GUTTED to 2 lines (no model/provider), killing inference AND Slack
+auth at once.** Root cause: the complete config (model/provider/fallback + Slack allowlist/home)
+lives ONLY in the sandbox's EPHEMERAL `~/.hermes/config.yaml`, written by Phase 04f via the openshell
+relay with failures swallowed — a relay-hang under thrash (or a recreate that ran Phase 20 but not a
+*successful* 04f) leaves a partial file. Nothing snapshotted or healed it. **§24 council (adversarial
++ architect + SRE) — unanimous APPROVE-WITH-CHANGES; all blocking findings fixed + re-tested.**
+
+- **W5 — gateway-config self-heal in `bin/openshell-watchdog.sh`** (default ON;
+  `AI_STACK_WATCHDOG_CONFIG_HEAL=0` off; sticky via watchdog.conf+plist). Each cycle it keeps a HOST
+  snapshot (`installer/state/`, gitignored, 0600 — holds the scoped key) of a **promotable** config and
+  **restores** a **gutted** one + relaunches. Its OWN top-level guard, INDEPENDENT of W2 (council B1).
+  - **Asymmetric gates** (council B2/W4): *promote* (snapshot) requires a complete **cloud** config —
+    NEVER snapshot a local-gated config (a later restore would load a local model → OOM the box,
+    violating the no-local directive); *restore* fires only on a TRUE truncation (≤7 lines) — never
+    clobbers a large Hermes schema-restructure. Relaunch failure is logged so W2 retries (council SRE-1).
+- **Install-lock stale-reclaim** — the watchdog's `[[ -d $INSTALL_LOCK ]] && exit` deferred **forever**
+  on a crashed install, silently disabling ALL auto-heal (W1–W5 + storm) — found live as a 25-min
+  stall. Now defers only for a LIVE install (pid alive AND a `vz-ai-stack` process — closes the
+  PID-reuse "defer-for-hours" hole) with a young-lock grace for `lock_acquire`'s mkdir→write-pid race.
+- **Owner admin commands** — `vz-ai-stack.sh hermes config {snapshot|restore|show}` and
+  `hermes slack {allow <id…>|allow-all|deny-all|list}`. The Slack allowlist writes the AUTHORITATIVE
+  store (`config.yaml` via `hermes config set`, same as Phase 38 — run.py bridges it over `.env`, so it
+  WINS), making a command-set allowlist W5-snapshot-durable. IDs are regex-validated (no shell injection).
+- **Doctor check 68** (`68_hermes_gateway_config.sh`) — self-healing: promotable→snapshot, gutted→restore.
+  Doctor count **68 → 69** swept across 11 docs (+ TUTORIAL.html regen).
+
+---
+
 ## 2026-06-29 — Hostname audit + `ingress list` / `ingress add` (loopback-proxy)
 
 **Hostname reachability audit + two new commands (§24-reviewed, unanimous SHIP).** A 2-angle

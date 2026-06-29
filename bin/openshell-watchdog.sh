@@ -71,6 +71,7 @@ if [[ -f "$CONF" ]]; then
   _wd_inherit AI_STACK_WATCHDOG_GATEWAY_SUPERVISE
   _wd_inherit AI_STACK_WATCHDOG_REVIVE_EXITED
   _wd_inherit AI_STACK_WATCHDOG_CRASHLOOP_BREAK
+  _wd_inherit AI_STACK_WATCHDOG_CONFIG_HEAL
 fi
 RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
 HALT="${AI_STACK_WATCHDOG_HALT:-1}"
@@ -179,6 +180,54 @@ _gateway_relaunch() {  # _gateway_relaunch <cid> <name> -> relaunch the gateway 
   # OPERATOR-VISIBLE, not just a log line (review N2) — desktop notify each failure.
   log "  W2: gateway relaunch in $name returned non-zero (timeout/error) — re-checked next cycle"
   notify "hermes gateway relaunch FAILED in $name — check: $AI_STACK/installer/state/openshell-watchdog.log"
+  return 1
+}
+
+# --- W5: gateway-CONFIG durability (default ON; AI_STACK_WATCHDOG_CONFIG_HEAL=0 off) ----------
+# The COMPLETE gateway config (model/provider/fallback + Slack allowlist/home-channel) lives in the
+# sandbox's EPHEMERAL /sandbox/.hermes/config.yaml. A sandbox recreate, or a relay-hang during
+# Phase 04f's `hermes config set`, can GUT it (seen 2026-06-29: a 2-line config — no model/provider
+# → the bot can't infer AND Slack auth breaks at once; Telegram survived only because its line did).
+# Self-maintain a HOST snapshot: a PROMOTABLE (healthy CLOUD) live config → refresh the snapshot; a
+# GUTTED (truncated) live config → restore from the snapshot + relaunch. The promote/restore gates
+# differ on purpose (see _config_* below): never snapshot a local-gated config (a later restore would
+# load a local model + OOM the box) and never clobber a large schema-restructure. Non-destructive (the
+# snapshot is a copy). Uses docker, NOT the openshell relay (which HANGS under the very thrash that guts).
+CONFIG_HEAL="${AI_STACK_WATCHDOG_CONFIG_HEAL:-1}"
+GW_CONFIG_SNAP="$STATE/hermes-gateway-config.snapshot.yaml"
+GW_CONFIG_IN="/sandbox/.hermes/config.yaml"
+# Restore-TRIGGER vs snapshot-PROMOTE use DIFFERENT gates (council B2/W4). KEEP byte-identical with
+# installer/lib/hermes.sh::hermes_gw_config_{complete,gutted,promotable}.
+#   complete   = has top-level model+provider (the inference keys a gut loses).
+#   gutted     = NOT complete AND tiny (<=7 lines) — a TRUE truncation (the 2-line 19:32 gut), NOT a
+#                large schema-restructure (clobbering that would roll back a healthy Hermes upgrade).
+#   promotable = complete AND default model is CLOUD (not local-*) — snapshotting a local-gated config
+#                would later RESTORE it -> load a local model -> OOM the box (the no-local directive).
+_config_complete()   { grep -qE '^model:' <<<"${1:-}" && grep -qE '^providers:' <<<"${1:-}"; }
+_config_gutted()     { [[ -n "${1:-}" ]] && ! _config_complete "${1:-}" && (( $(grep -c '' <<<"${1:-}") <= 7 )); }
+_config_promotable() { _config_complete "${1:-}" && ! grep -qE '^[[:space:]]*default:[[:space:]]*local(-[a-z0-9]+)?[[:space:]]*$' <<<"${1:-}"; }
+_gateway_config_heal() {  # <cid> <name> -> rc 0 ONLY if it RESTORED a gutted config + relaunched
+  local cid="$1" name="$2" live
+  live="$(_wd_bounded 10 "$DOCKER" exec "$cid" sh -c "cat $GW_CONFIG_IN 2>/dev/null" || true)"
+  # PROMOTE: refresh the host snapshot ONLY from a healthy CLOUD config (0600 — it holds the scoped key).
+  if _config_promotable "$live"; then
+    { printf '%s' "$live" > "$GW_CONFIG_SNAP.tmp" && chmod 600 "$GW_CONFIG_SNAP.tmp" && mv -f "$GW_CONFIG_SNAP.tmp" "$GW_CONFIG_SNAP"; } 2>/dev/null || true
+    return 1   # healthy — nothing to heal (snapshot refreshed)
+  fi
+  # RESTORE only a TRUE gut; leave a complete-but-local config OR a large restructure alone.
+  _config_gutted "$live" || return 1
+  if [[ ! -s "$GW_CONFIG_SNAP" ]] || ! _config_promotable "$(cat "$GW_CONFIG_SNAP" 2>/dev/null || true)"; then
+    log "W5: $name gateway config is GUTTED (no model/provider) and no healthy (cloud) snapshot — heal: vz-ai-stack.sh install 04f"
+    notify "$name gateway config gutted — no snapshot to restore (run install 04f)"
+    return 1
+  fi
+  if _wd_bounded 15 "$DOCKER" cp "$GW_CONFIG_SNAP" "$cid:$GW_CONFIG_IN" >>"$LOG" 2>&1; then
+    log "W5: $name gateway config was GUTTED — RESTORED from host snapshot, relaunching gateway"
+    notify "$name gateway config restored from snapshot ✓"
+    _gateway_relaunch "$cid" "$name" || log "W5: $name config restored but gateway relaunch FAILED — W2 retries next cycle"
+    return 0
+  fi
+  log "W5: $name gateway config restore (docker cp) FAILED"
   return 1
 }
 
@@ -361,6 +410,7 @@ case "${1:-run}" in
     <key>AI_STACK_WATCHDOG_GATEWAY_SUPERVISE</key><string>${W2_SUPERVISE}</string>
     <key>AI_STACK_WATCHDOG_REVIVE_EXITED</key><string>${W4_REVIVE}</string>
     <key>AI_STACK_WATCHDOG_CRASHLOOP_BREAK</key><string>${CRASHLOOP_BREAK}</string>
+    <key>AI_STACK_WATCHDOG_CONFIG_HEAL</key><string>${CONFIG_HEAL}</string>
     <!-- The `docker` CLI is engine-AGNOSTIC: Docker Desktop / Colima / Podman all
          install it to /opt/homebrew/bin (resolved FIRST by _find, before
          ~/.orbstack/bin), so this PATH works for every engine. The ENGINE itself
@@ -381,8 +431,8 @@ PL
     # Persist the EFFECTIVE modes so a later BARE `install` (Phase 04 / manual heal) inherits
     # them instead of resetting to the committed defaults (the regression vector). An explicit
     # env var on a future call still overrides + updates this file.
-    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\nAI_STACK_WATCHDOG_GATEWAY_SUPERVISE=%s\nAI_STACK_WATCHDOG_REVIVE_EXITED=%s\nAI_STACK_WATCHDOG_CRASHLOOP_BREAK=%s\n' \
-        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE" "$W4_REVIVE" "$CRASHLOOP_BREAK"; } > "$CONF" 2>/dev/null || true
+    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\nAI_STACK_WATCHDOG_GATEWAY_SUPERVISE=%s\nAI_STACK_WATCHDOG_REVIVE_EXITED=%s\nAI_STACK_WATCHDOG_CRASHLOOP_BREAK=%s\nAI_STACK_WATCHDOG_CONFIG_HEAL=%s\n' \
+        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE" "$W4_REVIVE" "$CRASHLOOP_BREAK" "$CONFIG_HEAL"; } > "$CONF" 2>/dev/null || true
     echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false); modes persisted -> watchdog.conf)"; exit 0 ;;
   uninstall)
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
@@ -418,7 +468,25 @@ fi
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
 # Defer if an install is in progress (avoid fighting over sandboxes).
-[[ -d "$INSTALL_LOCK" ]] && { log "install in progress — deferring this cycle"; exit 0; }
+# Defer ONLY if a LIVE install holds the lock. A crashed/killed install leaves a stale lock dir,
+# and with NO reclaim the watchdog would defer FOREVER — silently disabling ALL auto-heal (W1-W5
+# + storm). So check the lock's pid: alive => real install (defer); dead/absent => STALE (proceed).
+if [[ -d "$INSTALL_LOCK" ]]; then
+  _il_pid="$(cat "$INSTALL_LOCK/pid" 2>/dev/null || echo)"
+  _il_age=$(( $(date +%s) - $(stat -f %m "$INSTALL_LOCK" 2>/dev/null || echo 0) ))
+  # Defer ONLY for a LIVE install. The naive `[[ -d ]] && exit` deferred FOREVER on a crashed install
+  # (disabling ALL auto-heal); a bare pid-liveness check instead defers for HOURS once the dead pid is
+  # RECYCLED to an unrelated process (council W1). So: pid alive AND is a vz-ai-stack process => real
+  # install, defer (any duration); pid empty but lock YOUNG (<15s) => lock_acquire's mkdir-then-write
+  # race (council W2) => defer; else (dead/reused pid, or old+no-pid) => STALE => proceed.
+  if [[ -n "$_il_pid" ]] && kill -0 "$_il_pid" 2>/dev/null \
+       && ps -p "$_il_pid" -o command= 2>/dev/null | grep -q 'vz-ai-stack'; then
+    log "install in progress (pid $_il_pid) — deferring this cycle"; exit 0
+  elif [[ -z "$_il_pid" ]] && (( _il_age < 15 )); then
+    log "install lock too new (${_il_age}s, no pid yet) — deferring this cycle"; exit 0
+  fi
+  log "ignoring STALE install lock (pid '${_il_pid:-none}' not a live install, age ${_il_age}s) — proceeding with auto-heal"
+fi
 
 _throttled() {  # _throttled <key> — true if <key> was acted on within THROTTLE_SECS
   local key="$1" now last
@@ -663,14 +731,18 @@ for name in "${SANDBOXES[@]}"; do
   # would cycle-kill each other). The 180s cycle is the natural throttle: a chronically
   # dead/broken gateway is relaunched at most once/cycle (idempotent --replace, never a
   # tight loop) and each relaunch is logged so a persistently-dark gateway stays visible.
-  if [[ "$W2_SUPERVISE" == "1" && "$storming" == "0" && "$name" == "hermes-fleet-v1" ]]; then
-    # NB: `set -Eeuo pipefail` is in effect — capture the rc via `|| gw_rc=$?` so a
-    # non-zero (gateway DOWN = rc 1) does NOT abort the whole cycle. A bare
-    # `_gateway_alive; gw_rc=$?` would let set -e kill the script before the relaunch.
+  # W5: gateway-CONFIG heal/snapshot — its OWN guard, INDEPENDENT of W2 (council B1: nesting it under
+  # W2 meant disabling W2 silently killed snapshotting + healing). Runs BEFORE W2; a restore relaunches
+  # the gateway, so cfg_healed skips W2's relaunch this cycle (no double `--replace`).
+  cfg_healed=0
+  if [[ "$CONFIG_HEAL" == "1" && "$storming" == "0" && "$name" == "hermes-fleet-v1" ]]; then
+    if _gateway_config_heal "$cid" "$name"; then cfg_healed=1; acted=1; fi
+  fi
+  if [[ "$W2_SUPERVISE" == "1" && "$storming" == "0" && "$name" == "hermes-fleet-v1" && "$cfg_healed" == "0" ]]; then
+    # NB: `set -Eeuo pipefail` is in effect — capture the rc via `|| gw_rc=$?` so a non-zero (gateway
+    # DOWN = rc 1) does NOT abort the whole cycle. rc 124 = liveness TIMED OUT (docker wedged under
+    # thrash) — "unknown" is NOT "dead", so do NOT relaunch a possibly-healthy gateway. rc 1 = dead.
     gw_rc=0; _gateway_alive "$cid" || gw_rc=$?
-    # rc 0 = alive (no-op). rc 124 = liveness check TIMED OUT — docker may be wedged under
-    # thrash; "unknown" is NOT "dead", so we must NOT relaunch a possibly-healthy gateway
-    # (review B2: a spurious --replace would drop live Slack/Telegram connections). rc 1 = dead.
     if (( gw_rc == 124 )); then
       log "W2: $name gateway liveness check TIMED OUT (docker wedged under thrash?) — NOT relaunching this cycle"
     elif (( gw_rc != 0 )); then
