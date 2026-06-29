@@ -51,6 +51,31 @@ PYEOF
 then ok "autofyn: dashboard ports bound to 127.0.0.1 + ${AF_BIND_IP} (no 0.0.0.0)"
 else warn "autofyn: dashboard ports not patched (compose format changed?) — may still bind 0.0.0.0"; fi
 
+# Make the :stable image's /app win over the mounted /workspace. autofyn's own compose mounts
+# `.:/workspace` with working_dir=/workspace for DEV mode (live source overrides the baked image),
+# but the stack runs autofyn as a RUNTIME off :stable, and the host checkout is a clone of the PUBLIC
+# repo that LAGS the image (even production@HEAD lacks SANDBOX_KIND_DOCKER). So `python -m server`
+# puts cwd=/workspace on sys.path[0] and the stale /workspace/config/constants.py SHADOWS
+# /app/config/constants.py → `ImportError: cannot import name 'SANDBOX_KIND_DOCKER'` → crash-loop
+# (the watchdog W1 then halts the agent). PYTHONSAFEPATH=1 (py3.11+) disables the automatic
+# cwd/script-dir sys.path prepend so /app (PYTHONPATH=/app) wins. Injected via a stack-managed
+# compose override (compose auto-merges docker-compose.override.yml) so autofyn's own compose stays
+# pristine for actual autofyn devs. Idempotent.
+_af_override="$AF/docker-compose.override.yml"
+if [[ ! -f "$_af_override" ]] || ! grep -q 'PYTHONSAFEPATH:' "$_af_override" 2>/dev/null; then
+  cat > "$_af_override" <<'YAML'
+# ai-stack managed (bin/start-autofyn.sh / doctor check 69) — do NOT hand-edit.
+# PYTHONSAFEPATH=1 makes the :stable image's /app win over the mounted /workspace (a clone of the
+# public repo that LAGS the image): without it `python -m server` puts cwd=/workspace on sys.path[0]
+# and the stale /workspace/config/constants.py shadows /app/config/constants.py → ImportError. py3.11+.
+services:
+  agent:
+    environment:
+      PYTHONSAFEPATH: "1"
+YAML
+  ok "autofyn: wrote docker-compose.override.yml (PYTHONSAFEPATH=1 — image /app wins over the /workspace shadow)"
+fi
+
 case "${1:-}" in
   --recreate)  (cd "$AF" && docker compose down && docker compose up -d) ;;
   *)           (cd "$AF" && docker compose up -d) ;;
