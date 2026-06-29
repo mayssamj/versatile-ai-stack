@@ -62,6 +62,43 @@ print_status_footer() {
   fi
 }
 
+# print_host_memory (S1) — surface HOST memory pressure in `status`. READ-ONLY and
+# purely informational (NEVER a fault): the 24GB box is oversubscribed by host apps
+# (LM Studio, Chrome), not the stack — the OrbStack VM is ~2GB resident, so shedding
+# containers frees ~nothing. The real lever is quitting those apps, so we name them.
+# All probes are list-only (vm_stat/sysctl/ps) — none can load a model — and every
+# pipeline is `|| true`-guarded so a SIGPIPE/odd exit can't abort `status` under
+# `set -Eeuo pipefail`. The caller also wraps this in `|| true` (defense in depth):
+# a host-memory readout must never break the core service table.
+print_host_memory() {
+  printf '\n── %s\n' "Host memory (informational — host apps dominate, not a stack fault)"
+  local sw free_mb
+  sw="$(sysctl -n vm.swapusage 2>/dev/null || true)"
+  # Page size is 16KB on Apple Silicon, 4KB on Intel — read it from vm_stat, never assume.
+  free_mb="$(vm_stat 2>/dev/null | awk '
+      /page size of/   {ps=$8}
+      /Pages free/     {gsub(/\./,"",$3); f=$3}
+      /Pages inactive/ {gsub(/\./,"",$3); i=$3}
+      END {if(ps=="")ps=16384; printf "%d", (f+i)*ps/1048576}' 2>/dev/null || true)"
+  printf '  swap:          %s\n' "${sw:-unknown}"
+  printf '  free+inactive: %s MB\n' "${free_mb:-?}"
+  printf '  top host RSS:\n'
+  # RSS is in KB; show by basename so "Google Chrome Helper", "LM Studio", "llama-server"
+  # are recognizable. head closing the pipe early can SIGPIPE sort → guard the whole pipe.
+  { ps -axo rss=,comm= 2>/dev/null | sort -rn | head -5 \
+      | awk '{rss=$1/1024; $1=""; sub(/^[ \t]+/,""); n=$0; sub(/.*\//,"",n); if(length(n)>44)n=substr(n,1,44); printf "    %6.0f MB  %s\n", rss, n}'; } || true
+  # Auto-heal posture + any active watchdog alert, so `status` shows the resilience state.
+  local conf="$AI_STACK/installer/state/watchdog.conf" alert="$AI_STACK/installer/state/openshell-watchdog.alert" modes
+  if [[ -f "$conf" ]]; then
+    modes="$(grep -E '=1$' "$conf" 2>/dev/null | sed -E 's/=1$//; s/AI_STACK_WATCHDOG_//; s/AI_STACK_SANDBOX_//' | tr '[:upper:]' '[:lower:]' | tr '\n' ',' | sed 's/,$//' || true)"
+    printf '  durability:    %s\n' "${modes:-off (defaults)}"
+  fi
+  if [[ -f "$alert" ]]; then
+    printf '  %swatchdog ALERT:%s %s\n' "$C_BOLD" "$C_RESET" "$(head -1 "$alert" 2>/dev/null || true)"
+  fi
+  printf '  %slever: host apps dominate RAM — quit LM Studio / Chrome tabs to relieve pressure (the stack cannot shed what it does not own)%s\n' "$C_DIM" "$C_RESET"
+}
+
 # Returns: "managed" (we own it), "foreign" (running but not labeled by us),
 # "absent" (no container).
 ownership() {
@@ -247,6 +284,10 @@ for grp in "${GROUP_ORDER[@]}"; do
   printf '\n── %s\n' "$(group_label "$grp")"
   for name in "${members[@]}"; do render_row "$name"; done
 done
+
+# Host-memory pressure surface (S1) — after the service table, before the footer.
+# Wrapped in `|| true`: an informational readout must never break the core status.
+print_host_memory || true
 
 # Legend (when describing or asked), then the footer, then the inference hint.
 if (( SHOW_DESC )) || (( SHOW_LEGEND )); then print_legend; fi

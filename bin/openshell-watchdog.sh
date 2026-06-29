@@ -59,12 +59,18 @@ CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshol
 # set (an explicit env var still wins). The `install` subcommand writes the effective modes back.
 CONF="$STATE/watchdog.conf"
 if [[ -f "$CONF" ]]; then
-  _wd_inherit() { local n="$1" v; [[ -n "${!n+x}" ]] && return 0; v="$(grep -E "^$n=" "$CONF" 2>/dev/null | tail -1 | cut -d= -f2-)"; [[ -n "$v" ]] && export "$n=$v"; }
+  # `|| true` + trailing `return 0`: a key ABSENT from watchdog.conf makes grep exit 1 →
+  # under `set -Eeuo pipefail` the `v=$(...)` assignment would fail and KILL the cycle before
+  # any logging (silent exit 1). That bites every NEW key on an older conf (e.g. REVIVE_EXITED/
+  # CRASHLOOP_BREAK on a conf written before they existed). Absent key = inherit nothing, return ok.
+  _wd_inherit() { local n="$1" v; [[ -n "${!n+x}" ]] && return 0; v="$(grep -E "^$n=" "$CONF" 2>/dev/null | tail -1 | cut -d= -f2- || true)"; [[ -n "$v" ]] && export "$n=$v"; return 0; }
   _wd_inherit AI_STACK_WATCHDOG_REMINT
   _wd_inherit AI_STACK_SANDBOX_PERSIST
   _wd_inherit AI_STACK_WATCHDOG_RECREATE
   _wd_inherit AI_STACK_WATCHDOG_HALT
   _wd_inherit AI_STACK_WATCHDOG_GATEWAY_SUPERVISE
+  _wd_inherit AI_STACK_WATCHDOG_REVIVE_EXITED
+  _wd_inherit AI_STACK_WATCHDOG_CRASHLOOP_BREAK
 fi
 RECREATE="${AI_STACK_WATCHDOG_RECREATE:-0}"
 HALT="${AI_STACK_WATCHDOG_HALT:-1}"
@@ -176,6 +182,155 @@ _gateway_relaunch() {  # _gateway_relaunch <cid> <name> -> relaunch the gateway 
   return 1
 }
 
+# --- W4 revive-exited + W1 crash-loop breaker (both default ON; sticky via watchdog.conf) ---
+W4_REVIVE="${AI_STACK_WATCHDOG_REVIVE_EXITED:-1}"          # docker-start a sandbox that died uncleanly (reboot/crash) and wasn't auto-restarted
+CRASHLOOP_BREAK="${AI_STACK_WATCHDOG_CRASHLOOP_BREAK:-1}"  # restart=no + stop a NON-sandbox MANAGED container stuck restarting
+CRASHLOOP_N="${AI_STACK_WATCHDOG_CRASHLOOP_N:-2}"          # >= this many restarts since last cycle (DELTA) = still actively looping. LOW BY DESIGN:
+# Docker's exponential restart-backoff throttles a long-running looper to only a FEW restarts per 180s window (it reaches
+# multi-second delays quickly), so a high N would MISS a steady-state loop — exactly the case W1 exists for (autofyn-agent
+# crept to RestartCount=41 this way). The `status==restarting` gate below — not N — is the real false-positive guard.
+CRASHCOUNT_FILE="$STATE/watchdog-restart-counts"          # per-cycle RestartCount snapshot for the W1 delta
+
+# Per-name FAILMARK helpers — ALL writers (W1/W4 AND handle_storm) go through these so the
+# alert file stays coherent: one line per container, no writer wipes another's alert. (Before,
+# handle_storm's `>`/`rm -f` wiped W1/W4 lines — §24 review.) Literal prefix match via awk
+# `index` (not ERE) so a container name containing a regex metachar (`.`) can't mis-filter.
+_failmark_set() {  # replace <name>'s line (keep all others), append <line>
+  local name="$1" line="$2"
+  { awk -v n="$name " 'index($0,n)!=1' "$FAILMARK" 2>/dev/null || true; printf '%s\n' "$line"; } > "$FAILMARK.tmp" \
+    && mv -f "$FAILMARK.tmp" "$FAILMARK" 2>/dev/null || true
+}
+_failmark_clear() {  # remove ONLY <name>'s line; delete the file if nothing else remains
+  local name="$1"
+  [[ -f "$FAILMARK" ]] || return 0
+  awk -v n="$name " 'index($0,n)!=1' "$FAILMARK" 2>/dev/null > "$FAILMARK.tmp" || true
+  if [[ -s "$FAILMARK.tmp" ]]; then mv -f "$FAILMARK.tmp" "$FAILMARK" 2>/dev/null || true
+  else rm -f "$FAILMARK.tmp" "$FAILMARK" 2>/dev/null || true; fi
+}
+
+# --- W4: revive an EXITED managed sandbox ------------------------------------
+# The loop SKIPS a sandbox with no RUNNING container, so one that died on reboot/crash and
+# was NOT auto-restarted (PERSIST off, or Docker didn't restart it) stays DOWN forever. W4
+# revives it — but only when it died UNCLEANLY, and never when the operator stopped it or a
+# watchdog alert already halted it. `docker start` is NON-destructive (writable layer kept);
+# a deleted-container sandbox is NOT auto-recreated (that destructive path stays a deliberate
+# `install`). A revive that immediately re-fails is bounded by the throttle (and surfaced).
+_w4_revive_exited() {
+  local name="$1"
+  [[ "$W4_REVIVE" == "1" ]] || return 0
+  local cid; cid="$(_wd_bounded 10 "$DOCKER" ps -aq --filter "name=openshell-${name}-" 2>/dev/null | head -1 || true)"
+  [[ -n "$cid" ]] || return 0      # no container at all = deleted sandbox; recreate is a deliberate `install`
+  # ONE bounded inspect for everything (status|exitcode|oom|restart-policy) — never let an
+  # unbounded inspect wedge the cycle under the very post-crash/reboot thrash W4 runs after (§24 SRE).
+  local info st ec oom rp
+  info="$(_wd_bounded 15 "$DOCKER" inspect -f '{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.HostConfig.RestartPolicy.Name}}' "$cid" 2>/dev/null || true)"
+  [[ -n "$info" ]] || return 0     # timeout / gone — re-checked next cycle
+  IFS='|' read -r st ec oom rp <<< "$info"
+  # KNOWN GAP (deliberate, §24 architect): a sandbox stuck "restarting" for a NON-token reason
+  # (corrupt /sandbox, bad mount, repeated OOM under unless-stopped) is healed by NO path — storm
+  # needs the token signature, W1 excludes openshell-*, and auto-breaking a sandbox restart-loop
+  # risks a false positive on a legit transient. Healing is intentionally left to Docker's policy.
+  # (Follow-up: a surface-only delta+notify like W1's, to make it visible for pi-v1 which has no gateway.)
+  [[ "$st" == "exited" ]] || return 0   # restarting=Docker handling it; created/paused/dead not our revive case
+  # Guard 1: a watchdog ALERT names it (storm-halt / W1) — deliberately contained; reviving would
+  # just re-fail. The operator heals it explicitly.
+  if [[ -f "$FAILMARK" ]] && awk -v n="$name " 'index($0,n)==1{f=1} END{exit !f}' "$FAILMARK" 2>/dev/null; then
+    log "W4: $name exited but a watchdog ALERT names it (contained) — NOT auto-reviving"; return 0
+  fi
+  # Guard 2: distinguish a deliberate STOP from a DEATH. The exit code ALONE can't — `docker stop`
+  # exits 137/143, identical to a reboot SIGKILL (§24 adversarial caught this). Disambiguate by intent:
+  #   • OOMKilled=true → the system killed it → revive (unambiguous death).
+  #   • exit 0 → a clean finish → leave it.
+  #   • restart=unless-stopped/always + exited → Docker would auto-restart a CRASH, so an exited one
+  #     means Docker honored an operator `docker stop` → operator intent → leave it.
+  #   • restart=no + exited (nonzero, not OOM) → Docker won't bring it back; reviving a dead
+  #     non-persistent sandbox is the durability intent → revive.
+  if [[ "$oom" != "true" ]]; then
+    [[ "$ec" == "0" ]] && return 0
+    case "$rp" in
+      unless-stopped|always) log "W4: $name exited under restart=$rp (Docker honors a manual stop) — operator intent, not reviving"; return 0 ;;
+    esac
+  fi
+  if _throttled "revive:$name"; then
+    log "W4: $name exited (code $ec, oom $oom, policy $rp) — revive throttled (<${THROTTLE_SECS}s), skipping"; return 0
+  fi
+  _mark "revive:$name"
+  log "W4: $name container EXITED (code $ec, oom $oom, policy $rp) — reviving via docker start (non-destructive)"
+  # Fresh token at boot: if REMINT is on and a token file exists, re-mint it FIRST (container
+  # stopped) so the relay reads a valid token on start instead of immediately storming. BOUNDED (§24).
+  if [[ "$REMINT" == "1" ]]; then
+    local tok; tok="$(_wd_bounded 5 _token_path "$cid" 2>/dev/null || true)"
+    [[ -n "$tok" ]] && { _remint_file "$name" "$tok" && log "  W4: re-minted $name token before start" || true; }
+  fi
+  if _wd_bounded 30 "$DOCKER" start "$cid" >>"$LOG" 2>&1; then
+    log "  W4: docker start $name OK (cid ${cid:0:12}); storm/gateway handled by the normal path next cycle"
+    notify "$name was down — auto-revived ✓"; acted=1
+  else
+    log "  W4: docker start $name FAILED (rc/timeout) — marking for the operator"
+    _failmark_set "$name" "$name was EXITED and auto-revive (docker start) FAILED at $(date '+%F %T') — manual: vz-ai-stack.sh install"
+    notify "⚠ $name down — auto-revive FAILED; needs manual repair"
+  fi
+}
+
+# --- W1: crash-loop breaker --------------------------------------------------
+# A NON-sandbox MANAGED container stuck restarting (bad image/config — e.g. autofyn-agent's
+# `ImportError: cannot import name 'SANDBOX_KIND_DOCKER'`) burns CPU forever, never serves,
+# and compounds host thrash. Detect by the DELTA in RestartCount across cycles (the ABSOLUTE
+# count is stale — autofyn-agent sat at 41 long after it stopped looping), SEED-and-skip the
+# first observation, require it be actively failing, and break a confirmed loop with
+# restart=no + stop (NON-destructive: writable layer kept; `docker start` to retry) + a RED
+# FAILMARK. Sandboxes are EXCLUDED (their token-storm heal + W4 own them); only OUR containers
+# are touched (never a foreign one). Needs bash 4+ (assoc array) — the plist prefers brew bash.
+_w1_is_managed() {  # 0 iff container $1 is ours (our label, or a compose working_dir under $AI_STACK)
+  local id="$1" out lbl wd
+  # ONE bounded inspect (§24 SRE) — not two unbounded inspects per candidate under thrash.
+  out="$(_wd_bounded 5 "$DOCKER" inspect "$id" --format '{{ index .Config.Labels "ai-stack.managed" }}|{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
+  IFS='|' read -r lbl wd <<< "$out"
+  [[ -n "$lbl" && "$lbl" != "<no value>" ]] && return 0
+  [[ -n "$wd" && "$wd" != "<no value>" && "$wd" == "$AI_STACK"* ]] && return 0
+  return 1
+}
+_w1_crashloop_scan() {
+  [[ "$CRASHLOOP_BREAK" == "1" ]] || return 0
+  (( BASH_VERSINFO[0] >= 4 )) || return 0
+  local ids; ids="$(_wd_bounded 15 "$DOCKER" ps -aq 2>/dev/null || true)"
+  [[ -n "$ids" ]] || return 0
+  local inspect_out
+  inspect_out="$(_wd_bounded 20 "$DOCKER" inspect $ids --format '{{.Id}}|{{.Name}}|{{.RestartCount}}|{{.State.ExitCode}}|{{.State.Status}}' 2>/dev/null || true)"
+  [[ -n "$inspect_out" ]] || return 0
+  declare -A prev
+  if [[ -f "$CRASHCOUNT_FILE" ]]; then
+    while read -r _id _c; do [[ -n "$_id" ]] && prev["$_id"]="$_c"; done < "$CRASHCOUNT_FILE"
+  fi
+  local now_lines="" id name rc ec st base delta
+  while IFS='|' read -r id name rc ec st; do
+    [[ -n "$id" ]] || continue
+    now_lines+="$id $rc"$'\n'
+    name="${name#/}"
+    [[ "$name" == openshell-* ]] && continue                      # sandboxes self-heal (storm path + W4)
+    base="${prev[$id]:-}"
+    [[ -n "$base" ]] || continue                                  # SEED-and-skip: first sighting, no baseline
+    delta=$(( rc - base )); if (( delta < 0 )); then delta=0; fi
+    (( delta >= CRASHLOOP_N )) || continue
+    # Gate on "restarting" ONLY (§24 adversarial): `ec != 0` also matches an already-EXITED
+    # (no-longer-looping) container — operator-stopped, or Docker exhausted a finite retry budget —
+    # and would wrongly set restart=no + a "CRASH-LOOPING" alert on it. "restarting" = Docker is
+    # actively backing-off-retrying = a LIVE loop. (Caught at a brief "running" instant → next cycle.)
+    [[ "$st" == "restarting" ]] || continue
+    _w1_is_managed "$id" || continue                              # never touch a foreign container
+    if _throttled "crashloop:$name"; then continue; fi
+    _mark "crashloop:$name"
+    log "W1: CRASH-LOOP '$name' (+${delta} restarts since last check, exit $ec, status $st) — restart=no + stop (non-destructive)"
+    _wd_bounded 15 "$DOCKER" update --restart=no "$id" >>"$LOG" 2>&1 || log "  W1: update --restart=no $name failed"
+    _wd_bounded 20 "$DOCKER" stop "$id" >>"$LOG" 2>&1 \
+      && log "  W1: stopped $name (writable layer kept; fix image/config, then 'docker start $name')" \
+      || log "  W1: docker stop $name failed"
+    _failmark_set "$name" "$name CRASH-LOOPING — broke the loop (restart=no + stopped) at $(date '+%F %T'); fix image/config, then: docker start $name  (non-compose: also 'docker update --restart=unless-stopped' to restore boot-persistence)"
+    notify "$name crash-looping — stopped it (CPU burn halted; needs a fix)"; acted=1
+  done <<< "$inspect_out"
+  [[ -n "$now_lines" ]] && { printf '%s' "$now_lines" > "$CRASHCOUNT_FILE.tmp" && mv -f "$CRASHCOUNT_FILE.tmp" "$CRASHCOUNT_FILE" 2>/dev/null; } || true
+}
+
 # --- subcommands: manage the launchd timer (install/uninstall/status) ---------
 PLIST="$HOME/Library/LaunchAgents/com.ai-stack.openshell-watchdog.plist"
 LABEL="com.ai-stack.openshell-watchdog"
@@ -204,6 +359,8 @@ case "${1:-run}" in
     <key>AI_STACK_SANDBOX_PERSIST</key><string>${PERSIST}</string>
     <key>AI_STACK_WATCHDOG_REMINT_THRESHOLD</key><string>${REMINT_THRESHOLD}</string>
     <key>AI_STACK_WATCHDOG_GATEWAY_SUPERVISE</key><string>${W2_SUPERVISE}</string>
+    <key>AI_STACK_WATCHDOG_REVIVE_EXITED</key><string>${W4_REVIVE}</string>
+    <key>AI_STACK_WATCHDOG_CRASHLOOP_BREAK</key><string>${CRASHLOOP_BREAK}</string>
     <!-- The `docker` CLI is engine-AGNOSTIC: Docker Desktop / Colima / Podman all
          install it to /opt/homebrew/bin (resolved FIRST by _find, before
          ~/.orbstack/bin), so this PATH works for every engine. The ENGINE itself
@@ -224,8 +381,8 @@ PL
     # Persist the EFFECTIVE modes so a later BARE `install` (Phase 04 / manual heal) inherits
     # them instead of resetting to the committed defaults (the regression vector). An explicit
     # env var on a future call still overrides + updates this file.
-    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\nAI_STACK_WATCHDOG_GATEWAY_SUPERVISE=%s\n' \
-        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE"; } > "$CONF" 2>/dev/null || true
+    { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\nAI_STACK_WATCHDOG_GATEWAY_SUPERVISE=%s\nAI_STACK_WATCHDOG_REVIVE_EXITED=%s\nAI_STACK_WATCHDOG_CRASHLOOP_BREAK=%s\n' \
+        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE" "$W4_REVIVE" "$CRASHLOOP_BREAK"; } > "$CONF" 2>/dev/null || true
     echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false); modes persisted -> watchdog.conf)"; exit 0 ;;
   uninstall)
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
@@ -234,7 +391,7 @@ PL
     launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | grep -iE 'state|pid|last exit|runs' | head \
       || echo "launchd job not loaded"
     echo "--- persistence mode (baked into installed plist) ---"
-    grep -E 'AI_STACK_WATCHDOG_REMINT|AI_STACK_SANDBOX_PERSIST|RunAtLoad' "$PLIST" 2>/dev/null \
+    grep -E 'AI_STACK_WATCHDOG_REMINT|AI_STACK_SANDBOX_PERSIST|AI_STACK_WATCHDOG_GATEWAY_SUPERVISE|AI_STACK_WATCHDOG_REVIVE_EXITED|AI_STACK_WATCHDOG_CRASHLOOP_BREAK|RunAtLoad' "$PLIST" 2>/dev/null \
       | sed -E 's/<key>|<\/key>|<string>|<\/string>|<|\/>/ /g; s/  +/ /g; s/^ //' \
       || echo "(plist not installed)"
     echo "--- recent watchdog log ($LOG) ---"; tail -n 15 "$LOG" 2>/dev/null || echo "(no log yet)"; exit 0 ;;
@@ -372,7 +529,7 @@ handle_storm() {  # handle_storm <name> <cid>
     local _rc=0; _remint_heal "$name" "$cid" || _rc=$?
     if (( _rc == 0 )); then
       log "  HEALED $name via in-place token re-mint + restart (state preserved, no recreate)"
-      rm -f "$FAILMARK"; notify "$name token re-minted ✓ (persisted, no data loss)"
+      _failmark_clear "$name"; notify "$name token re-minted ✓ (persisted, no data loss)"
       return 0
     elif (( _rc == 2 )); then
       log "  $name re-minted + restarted, awaiting Ready — NOT halting/recreating (fresh-token state preserved; re-checked next cycle)"
@@ -402,8 +559,8 @@ handle_storm() {  # handle_storm <name> <cid>
         && log "  halted the container to stop the CPU burn (record preserved; restart/recreate to use it)" \
         || log "  (docker stop failed)"
     fi
-    printf '%s expired-token storm at %s — auto-recreate OFF (data-safe; halted+checkpointed). Heal: vz-ai-stack.sh install %s\n' \
-      "$name" "$(date '+%F %T')" "$phases" > "$FAILMARK"
+    _failmark_set "$name" "$(printf '%s expired-token storm at %s — auto-recreate OFF (data-safe; halted+checkpointed). Heal: vz-ai-stack.sh install %s' \
+      "$name" "$(date '+%F %T')" "$phases")"
     notify "$name token storm — halted+checkpointed; recreate when ready (auto-recreate OFF)"
     return 0
   fi
@@ -413,7 +570,7 @@ handle_storm() {  # handle_storm <name> <cid>
   local cpath; cpath="$(_child_path)"
   if ! PATH="$cpath" command -v docker >/dev/null 2>&1 || [[ -z "$OPENSHELL" ]]; then
     log "REFUSING to recreate $name: rebuild prerequisites missing (docker on PATH / openshell). Sandbox LEFT INTACT — never delete without a viable rebuild."
-    printf '%s storm; auto-recreate ABORTED (no docker/openshell for rebuild) — sandbox left intact %s\n' "$name" "$(date '+%F %T')" > "$FAILMARK"
+    _failmark_set "$name" "$(printf '%s storm; auto-recreate ABORTED (no docker/openshell for rebuild) — sandbox left intact %s' "$name" "$(date '+%F %T')")"
     notify "⚠ $name storm — recreate aborted (rebuild prereqs missing); left intact"
     return 0
   fi
@@ -426,7 +583,7 @@ handle_storm() {  # handle_storm <name> <cid>
   bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" recreate >>"$LOG" 2>&1 || _ck_rc=$?
   if (( _ck_rc == 2 )); then
     log "  REFUSING to recreate $name: pre-delete checkpoint FAILED — sandbox LEFT INTACT (never delete without a verified backup)."
-    printf '%s auto-recreate ABORTED: checkpoint failed at %s — sandbox left intact, needs manual repair\n' "$name" "$(date '+%F %T')" > "$FAILMARK"
+    _failmark_set "$name" "$(printf '%s auto-recreate ABORTED: checkpoint failed at %s — sandbox left intact, needs manual repair' "$name" "$(date '+%F %T')")"
     notify "⚠ $name recreate aborted — checkpoint failed; left intact"
     return 0
   fi
@@ -434,11 +591,11 @@ handle_storm() {  # handle_storm <name> <cid>
   local rc=0; _phase_install "$cpath" $phases || rc=1
   if (( rc == 0 )) && _verify_ready "$name"; then
     log "  recreate of $name SUCCEEDED + verified Ready"
-    rm -f "$FAILMARK"
+    _failmark_clear "$name"
     notify "$name recreated ✓"
   else
     log "  RECREATE of $name FAILED (install rc=$rc / not Ready) — sandbox is NOT healthy. Manual: bash $AI_STACK/vz-ai-stack.sh install $phases"
-    printf '%s auto-recreate FAILED (rc=%s) at %s — sandbox missing/unhealthy; manual repair needed\n' "$name" "$rc" "$(date '+%F %T')" > "$FAILMARK"
+    _failmark_set "$name" "$(printf '%s auto-recreate FAILED (rc=%s) at %s — sandbox missing/unhealthy; manual repair needed' "$name" "$rc" "$(date '+%F %T')")"
     notify "⚠ $name recreate FAILED — needs manual repair (see doctor)"
   fi
 }
@@ -456,7 +613,9 @@ fi
 acted=0
 for name in "${SANDBOXES[@]}"; do
   cid="$("$DOCKER" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
-  [[ -n "$cid" ]] || continue
+  # W4: no RUNNING container for this managed sandbox — try to revive an EXITED one that died
+  # on reboot/crash and wasn't auto-restarted (durability: sandboxes are meant to be long-lived).
+  if [[ -z "$cid" ]]; then _w4_revive_exited "$name"; continue; fi
 
   # Persistence: keep managed containers on restart=unless-stopped so they survive a
   # docker/system restart (safe now: capped + the storm-heal below re-mints any
@@ -520,6 +679,10 @@ for name in "${SANDBOXES[@]}"; do
     fi
   fi
 done
+
+# W1: crash-loop breaker — break any NON-sandbox MANAGED container stuck restarting (bad
+# image/config like autofyn-agent's ImportError) so it stops burning CPU and is surfaced.
+_w1_crashloop_scan || true
 
 # Generic runaway net: any managed container pegged across two ~3s samples. Uses an
 # associative array (`declare -A`), which needs bash 4+. Guard it so this script NEVER
