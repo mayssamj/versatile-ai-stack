@@ -783,7 +783,15 @@ cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
 cmd_embedding() { bash "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
 cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
-cmd_hermes()  { bash "$AI_STACK/installer/lib/fleet.sh" run "$@"; }   # run ONE agent: vz-ai-stack.sh hermes <role> ["prompt"]
+cmd_hermes()  {   # config|slack = gateway admin (config durability + Slack allowlist); else run ONE agent
+  # NB: 'config' and 'slack' are RESERVED sub-words here — a fleet role literally named config/slack
+  # would be unreachable via `hermes <role>` (use the fleet runner directly). No real role uses them.
+  case "${1:-}" in
+    config) shift; source "$AI_STACK/installer/lib/hermes.sh"; hermes_cmd_config "$@" ;;
+    slack)  shift; source "$AI_STACK/installer/lib/hermes.sh"; hermes_cmd_slack  "$@" ;;
+    *)      bash "$AI_STACK/installer/lib/fleet.sh" run "$@" ;;   # run ONE agent: vz-ai-stack.sh hermes <role> ["prompt"]
+  esac
+}
 cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
 cmd_ingress() { bash "$AI_STACK/installer/lib/ingress.sh" "$@"; }
 cmd_url()     { bash "$AI_STACK/bin/url" "$@"; }
