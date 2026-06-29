@@ -347,7 +347,7 @@ host alias. (The detailed two-layer aliasing mechanics live in
 │   │   ├── 18_rlm.sh                — RLM (Recursive Language Models): rlms + bin/rlm
 │   │   ├── 19_claw3d.sh             — claw3d 3D agent office + host bridge
 │   │   ├── 20_hermes_telegram.sh    — Hermes Telegram gateway (allowlist-gated)
-│   │   ├── 21–25, 27–36   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand, ingress, metagpt, agentscope, oasis, chatdev, aitown, concordia
+│   │   ├── 21–25, 27–38   — opt-in extras (install BY NAME): portless … sourcegraph, aionui, openwork, understand, ingress, metagpt, agentscope, oasis, chatdev, aitown, concordia, slack
 │   │   └── 04h_agent_fleet.sh       — RUNS LAST: cross-platform 9-role fleet (Claude Code + Pi) + widens PI/HERMES keys
 │   │
 │   ├── doctor/
@@ -452,8 +452,8 @@ immediately.
 ### One file per phase
 
 The old install guide was an HTML doc with 18 sections. The new installer has
-37 phase scripts (`installer/phases/00_host.sh` through `36_aitown.sh`; 15 of
-them — 21–25, 27–36 — are opt-in extras installed by name), each:
+46 phase scripts (`installer/phases/00_host.sh` through `38_hermes_slack.sh`; 17 of
+them — 21–25, 27–38 — are opt-in extras installed by name), each:
 
 - Self-contained — can run standalone via `bash vz-ai-stack.sh install <phase>`.
 - Has a `precheck()` function that returns 0 if the phase is already done.
