@@ -4,6 +4,36 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-29 — Hostname audit + `ingress list` / `ingress add` (loopback-proxy)
+
+**Hostname reachability audit + two new commands (§24-reviewed, unanimous SHIP).** A 2-angle
+audit (registry + runtime-bind, cross-checked) found hostname coverage for always-on web UIs
+is **complete** — every `127.0.10.x` HTTP service already has `localhost:port` / `name:port` /
+`name/`. The host-side viewers the user noticed (`models-serve`, `tutorial-serve`, `fleet-studio`,
+`understand-dashboard`) are loopback-by-design (Host-pinned / secure-context-bound), not gaps.
+
+- **`vz-ai-stack.sh ingress list`** — every configured hostname, all three URL forms, live
+  reachability, and **bind posture** (flags host servers on `0.0.0.0` that the Docker-only
+  loopback-publish guard, check 63, structurally misses — e.g. lmstudio/docs-mcp/unsloth),
+  plus a "host-only servers with no hostname" section. Read-only, zero-privilege, no cold-start.
+- **`vz-ai-stack.sh ingress add <name> <port>` / `remove <name>`** — register any `localhost:port`
+  as a port-free `http://name/` via a new `http-loopback` alias protocol: the host Caddy binds the
+  alias `127.0.10.x:80/:443` and reverse-proxies to `127.0.0.1:<port>` with a `header_up Host`
+  rewrite (so a loopback Host-pin still passes), **without modifying the target server**. Yields
+  `name/` only (not `name:port`). Prints the `sudo prepare-sudo` + `ingress reload` activation block
+  — never self-activates (§5). `--rewrite-origin` was considered and **rejected** (CSRF bypass).
+- **`vz-ai-stack.sh url`** is now a top-level command (was `bin/url` only); `bin/url` honors
+  `AI_STACK_ALIASES_TSV` and renders `http-loopback` rows as `http://name/`.
+- **Fix:** the ingress smoke hardcoded `13` sites (live = 17) → `test ingress` was RED; the count
+  is now **dynamic** (derived from `ingress_alias_in_scope`, can't drift), plus new loopback
+  shape + lo0-guard negative tests. Doctor checks unchanged (17 auto-skips loopback rows; 20/64
+  already exempt). Docs swept (aliases.tsv header/NOTE +understand, TUTORIAL.md + regen, help).
+- **Flagged follow-ups (not changed here):** `lmstudio`/`docs-mcp`/`unsloth` bind `0.0.0.0`
+  (LAN-reachable; constrained by container access); `tutorial_proxy` CORS `*` weakens its
+  Host-pin; `models-serve` vs `unsloth` both default to `:8898` (bind collision if co-run).
+
+---
+
 ## 2026-06-29 — Watchdog resilience: revive-exited sandboxes (W4) + crash-loop breaker (W1) + host-memory in status (S1)
 
 **Auto-heal hardening (§24-reviewed).** Three council-approved fixes plus a latent

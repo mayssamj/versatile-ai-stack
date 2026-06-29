@@ -20,6 +20,15 @@
 # the OrbStack *:80 wildcard described above). name:port + container URLs are
 # unchanged. HTTP rows on a 127.0.10.x IP get a site; redis/grpc + 127.0.0.1
 # rows are excluded. Spec: doc/specs/2026-06-21-bare-hostname-ingress.md
+#
+# 2026-06-29 — `vz-ai-stack.sh ingress add <name> <port>` registers a NEW port-free
+# http://name/ for any host server bound to 127.0.0.1:<port> (e.g. a *-serve viewer),
+# WITHOUT modifying that server. It appends a row with protocol `http-loopback`: the host
+# Caddy binds the alias 127.0.10.x:80/:443 and reverse-proxies to 127.0.0.1:<port> with an
+# upstream `header_up Host` rewrite (so a loopback Host-pin still passes). Such a row yields
+# `name/` ONLY — NOT `name:port` (nothing binds the alias IP). `ingress list` shows every
+# hostname + all URL forms + reachability + bind posture; `ingress remove <name>` reverses an
+# `add`. Activate/teardown either via `sudo prepare-sudo` + `sudo ingress reload`.
 litellm		127.0.10.1	http		4000		4000		01		litellm
 phoenix		127.0.10.2	http		6006		6006		01h		phoenix
 phoenix-otlp	127.0.10.3	grpc		4317		4317		01h		phoenix
@@ -61,3 +70,9 @@ sourcegraph	127.0.10.20	http	7080	7080	27	sourcegraph
 #   • claw3d-bridge (:7780) — auth-less + can drive all 9 agents → loopback by design.
 #   • lmstudio (:1234)      — reached from the LiteLLM CONTAINER, so host-gateway
 #                             (host.docker.internal), not a host lo0 alias.
+#   • understand-mcp (:7081)— reached from the fleet CONTAINERS via host.docker.internal
+#                             (token-gated) — same pattern as lmstudio; no host lo0 alias.
+# On-demand host VIEWERS (no alias by design; reach at localhost:PORT, or give one with
+# `ingress add`): tutorial-serve (:8899), models-serve (:8898), fleet-studio (:8975),
+# understand-dashboard (Vite). models/tutorial Host-pin to loopback; fleet-studio needs an
+# https:// secure context — so `ingress add` for those wants https://name/ + `ingress trust`.

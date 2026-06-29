@@ -76,8 +76,13 @@ ingress_caddy_bin() {
 # daemons (openwork/aionui). Keyed on the alias row (never service_key) so
 # `falkordb-ui` (http, .8) is in but `falkordb` (redis, .7) is out.
 ingress_alias_in_scope() {
-  local a="$1"
-  [[ "${ALIAS_PROTOCOL[$a]:-}" == "http" ]] || return 1
+  local a="$1" proto
+  proto="${ALIAS_PROTOCOL[$a]:-}"   # separate line: under set -u, $a must be set BEFORE this expands
+  # `http`          — service dual-binds its own alias IP; Caddy proxies <ip>:<port>.
+  # `http-loopback` — service binds 127.0.0.1 only (a host process / Host-pinned viewer
+  #                   added via `ingress add`); Caddy listens on the alias IP and proxies
+  #                   to 127.0.0.1:<port>. Both are in-scope for the port-free `name/` site.
+  [[ "$proto" == "http" || "$proto" == "http-loopback" ]] || return 1
   [[ "${ALIAS_IP[$a]:-}" =~ ^127\.0\.10\. ]] || return 1
   return 0
 }
@@ -93,8 +98,10 @@ ingress_alias_in_scope() {
 #                                machine-wide CA; we trust opt-in via the LOGIN
 #                                keychain (`ingress trust`) instead.
 # Per in-scope alias, two EXPLICIT site blocks: http:// and https:// (tls
-# internal), both `bind`-ing the alias's own IP, reverse-proxying to
-# <ip>:<native_port>. Pure/deterministic (AC-4). A site is emitted regardless of
+# internal), both `bind`-ing the alias's own IP. The reverse-proxy upstream depends
+# on the protocol: `http` → <ip>:<native_port> (the service dual-binds its alias IP);
+# `http-loopback` → 127.0.0.1:<native_port> with an upstream Host rewrite (the service
+# binds 127.0.0.1 only). Pure/deterministic (AC-4). A site is emitted regardless of
 # upstream liveness (a down service 502s by design — the bind must exist for the
 # AC-2 no-collision proof).
 ingress_caddyfile_content() {
@@ -112,12 +119,25 @@ ingress_caddyfile_content() {
   for a in "${ALIASES_LIST[@]}"; do
     ingress_alias_in_scope "$a" || continue
     ip="${ALIAS_IP[$a]}"; port="${ALIAS_HOST_PORT[$a]}"
-    if ! printf '%s\n' "$lo0_ips" | grep -qxF "$ip"; then
+    # INGRESS_TEST_NO_LO0_GUARD: smoke-only seam to exercise PURE generation
+    # deterministically on a machine where the alias IPs aren't bound (fresh CI /
+    # worktree). NEVER set in production — the guard below is the daemon's
+    # crash-loop protection (the negative smoke test asserts it fires when unset).
+    if [[ -z "${INGRESS_TEST_NO_LO0_GUARD:-}" ]] && ! printf '%s\n' "$lo0_ips" | grep -qxF "$ip"; then
       warn "ingress: skipping http(s)://$a — its loopback IP $ip is not on lo0 (run: sudo vz-ai-stack.sh prepare-sudo, then re-reload)" >&2
       continue
     fi
-    printf '\nhttp://%s {\n\tbind %s\n\treverse_proxy %s:%s\n}\n' "$a" "$ip" "$ip" "$port"
-    printf 'https://%s {\n\tbind %s\n\ttls internal\n\treverse_proxy %s:%s\n}\n' "$a" "$ip" "$ip" "$port"
+    if [[ "${ALIAS_PROTOCOL[$a]}" == "http-loopback" ]]; then
+      # Upstream is on 127.0.0.1 (the host server never binds the alias IP). Rewrite the
+      # upstream Host to 127.0.0.1:<port> so the server's loopback Host-pin (anti-DNS-
+      # rebinding) still passes; the Caddy listener stays on the alias IP (lo0, host-only).
+      # Do NOT rewrite Origin — that would defeat the upstream CSRF guard (§24 security review).
+      printf '\nhttp://%s {\n\tbind %s\n\treverse_proxy 127.0.0.1:%s {\n\t\theader_up Host 127.0.0.1:%s\n\t}\n}\n' "$a" "$ip" "$port" "$port"
+      printf 'https://%s {\n\tbind %s\n\ttls internal\n\treverse_proxy 127.0.0.1:%s {\n\t\theader_up Host 127.0.0.1:%s\n\t}\n}\n' "$a" "$ip" "$port" "$port"
+    else
+      printf '\nhttp://%s {\n\tbind %s\n\treverse_proxy %s:%s\n}\n' "$a" "$ip" "$ip" "$port"
+      printf 'https://%s {\n\tbind %s\n\ttls internal\n\treverse_proxy %s:%s\n}\n' "$a" "$ip" "$ip" "$port"
+    fi
   done
 }
 
@@ -403,6 +423,167 @@ ingress_teardown() {
   ok "ingress: torn down ($tier)"
 }
 
+# --- list / add / remove (hostname registry view + opt-in registrar) ---------
+
+# _ingress_bind_posture <port> — classify what's LISTENING on <port> (host-local,
+# no network I/O, no cold-start): "lan" if any listener is on 0.0.0.0/* (LAN-reachable),
+# "loopback" if only 127.x/[::1], "down" if nothing. lsof is fast + local.
+_ingress_bind_posture() {
+  local port="$1" out
+  out="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)" || true
+  [[ -z "$out" ]] && { echo down; return; }
+  if grep -qE "(\*|0\.0\.0\.0|\[::\]):${port}([^0-9]|$)" <<<"$out"; then echo lan; else echo loopback; fi
+}
+
+# _ingress_next_free_ip — lowest unused 127.0.10.N (1..254). Scans ALL such tokens in
+# aliases.tsv INCLUDING comment lines, so a reserved-but-commented IP (e.g. .15) is never
+# reclaimed. Returns 1 (no echo) when the /24 host range is exhausted.
+_ingress_next_free_ip() {
+  local used n
+  used="$(grep -oE '127\.0\.10\.[0-9]+' "$AI_STACK_ALIASES_TSV" 2>/dev/null | sed 's/.*\.//' | sort -un)"
+  for n in $(seq 1 254); do
+    grep -qxF "$n" <<<"$used" || { printf '127.0.10.%s' "$n"; return 0; }
+  done
+  return 1
+}
+
+# _ingress_tsv_write <tmpfile> — atomically replace aliases.tsv with <tmpfile>'s
+# contents (rename is atomic; no flock — Darwin has none — and temp+mv can't corrupt).
+# Preserves the tracked 0644 mode.
+_ingress_tsv_write() { chmod 0644 "$1" 2>/dev/null || true; mv "$1" "$AI_STACK_ALIASES_TSV"; }
+
+# ingress_list — read-only map of every configured hostname (source of truth =
+# aliases.tsv, via aliases_load — no second parser), all URL forms, bind posture,
+# and host-local liveness. Zero privilege, zero network, safe to run anytime.
+ingress_list() {
+  aliases_load || return 1
+  local caddy_up=0; launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1 && caddy_up=1
+
+  hdr "ai-stack hostnames  (source: installer/lib/aliases.tsv)"
+  printf '%-18s %-12s %-24s %-22s %-9s %s\n' "ALIAS" "IP" "name:port" "name/" "BIND" "UP"
+  # ASCII rule (box-drawing chars are multibyte → break printf width counting → misalign).
+  printf '%-18s %-12s %-24s %-22s %-9s %s\n' "------------------" "-----------" "----------------------- " "--------------------- " "--------" "--"
+  local a ip proto port np ns bind mark up
+  for a in "${ALIASES_LIST[@]}"; do
+    ip="${ALIAS_IP[$a]}"; proto="${ALIAS_PROTOCOL[$a]}"; port="${ALIAS_HOST_PORT[$a]}"
+    case "$proto" in
+      http)          np="$a:$port" ;;
+      http-loopback) np="- (use name/)" ;;
+      redis)         np="redis://$a:$port" ;;
+      grpc)          np="$a:$port (grpc)" ;;
+      *)             np="$a:$port" ;;
+    esac
+    if ingress_alias_in_scope "$a"; then ns="http://$a/"; else ns="-"; fi
+    bind="$(_ingress_bind_posture "$port")"
+    # ASCII markers only (BIND is not the last column → multibyte ⚠/— would misalign it).
+    case "$bind" in lan) mark="LAN!"; up="up" ;; loopback) mark="loopback"; up="up" ;; *) mark="-"; up="-" ;; esac
+    printf '%-18s %-12s %-24s %-22s %-9s %s\n' "$a" "$ip" "$np" "$ns" "$mark" "$up"
+  done
+  echo
+  note "Every HTTP alias is also reachable at localhost:<port>."
+  if (( caddy_up )); then note "Port-free http://name/ is served by the ingress daemon (running)."
+  else note "Port-free http://name/ needs the ingress daemon: sudo vz-ai-stack.sh ingress up"; fi
+
+  hdr "Host-only servers — no hostname (reach at localhost:PORT)"
+  printf '  %-22s %-16s %s\n' "tutorial-serve"       "localhost:8899" "on-demand doc server (loopback Host-pinned)"
+  printf '  %-22s %-16s %s\n' "models-serve"         "localhost:8898" "model console (loopback Host-pinned; shares :8898 w/ unsloth)"
+  printf '  %-22s %-16s %s\n' "fleet-studio"         "localhost:8975" "needs an https:// secure context to use a hostname"
+  printf '  %-22s %-16s %s\n' "understand-dashboard" "localhost:5173" "Vite graph dashboard (on-demand)"
+  note "Give any localhost:PORT a port-free hostname:  vz-ai-stack.sh ingress add <name> <port>"
+
+  # LAN-exposure scan — generic (catches host servers with NO alias too, e.g. lmstudio).
+  local lan; lan="$(lsof -nP +c 0 -iTCP -sTCP:LISTEN 2>/dev/null \
+      | awk '{a=$(NF-1)} a ~ /^(\*|0\.0\.0\.0|\[::\]):[0-9]+$/ {print "  " $1 "  " a}' \
+      | sed 's/\\x20/ /g' | sort -u)"   # lsof +c 0 escapes spaces as \x20 on macOS (verified) — unescape for display
+  if [[ -n "$lan" ]]; then
+    echo; warn "Listening on ALL interfaces (0.0.0.0 — reachable from your LAN, not just this Mac):"
+    printf '%s\n' "$lan" >&2
+    warn "Host servers binding 0.0.0.0 (e.g. lmstudio/docs-mcp/unsloth) are often that way for container access; review if your network is untrusted."
+  fi
+}
+
+# ingress_add <name> <port> [--ip 127.0.10.N] — register a port-free http://name/ for a
+# localhost:port server via a loopback-proxy (http-loopback) alias row. TSV-only (check 64
+# is forward-only). Does NOT auto-run sudo — prints the activation block (§5/§25).
+ingress_add() {
+  local name="" port="" want_ip=""
+  while (( $# )); do
+    case "$1" in
+      --ip)  [[ -n "${2:-}" ]] || { err "ingress add: --ip requires a value (127.0.10.N)"; return 2; }
+             want_ip="$2"; shift 2 ;;   # guard FIRST: `shift 2` with $#<2 can't advance → infinite loop
+      -*)    err "ingress add: unknown flag '$1'"; return 2 ;;
+      *)     if   [[ -z "$name" ]]; then name="$1"
+             elif [[ -z "$port" ]]; then port="$1"
+             else err "ingress add: too many arguments"; return 2; fi; shift ;;
+    esac
+  done
+  [[ -n "$name" && -n "$port" ]] || { err "usage: vz-ai-stack.sh ingress add <name> <port> [--ip 127.0.10.N]"; return 2; }
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { err "ingress add: <name> must be lowercase DNS-safe ^[a-z0-9][a-z0-9-]*\$ (got '$name')"; return 2; }
+  [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || { err "ingress add: <port> must be 1-65535 (got '$port')"; return 2; }
+  aliases_load || return 1
+  [[ -z "${ALIAS_IP[$name]:-}" ]] || { err "ingress add: '$name' already exists (${ALIAS_IP[$name]} ${ALIAS_PROTOCOL[$name]} :${ALIAS_HOST_PORT[$name]}). Pick another name, or 'ingress remove $name' first."; return 1; }
+  local ip
+  if [[ -n "$want_ip" ]]; then
+    [[ "$want_ip" =~ ^127\.0\.10\.[0-9]+$ ]] || { err "ingress add: --ip must be 127.0.10.N (got '$want_ip')"; return 2; }
+    local _oct="${want_ip##*.}"
+    (( _oct >= 1 && _oct <= 254 )) || { err "ingress add: --ip octet must be 1-254 (got '$want_ip'; .0/.255 are network/broadcast)"; return 2; }
+    # Taken-check against ALL 127.0.10.N tokens incl. comment/reserved rows (same set the
+    # allocator uses); exact fixed-string match avoids the dots-as-ERE-wildcards trap.
+    grep -oE '127\.0\.10\.[0-9]+' "$AI_STACK_ALIASES_TSV" 2>/dev/null | grep -qxF "$want_ip" \
+      && { err "ingress add: $want_ip is already allocated (incl. reserved/commented rows)"; return 1; }
+    ip="$want_ip"
+  else
+    ip="$(_ingress_next_free_ip)" || { err "ingress add: no free 127.0.10.N in 1-254 — host range exhausted"; return 1; }
+  fi
+  if ! lsof -nP -iTCP@127.0.0.1:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    warn "ingress add: nothing is listening on 127.0.0.1:$port right now — http://$name/ will 502 until that server starts (fine if you start it later)."
+  fi
+  local tmp; tmp="$(mktemp "${AI_STACK_ALIASES_TSV%/*}/.aliases.XXXXXX")" || return 1  # co-located → mv is atomic (same fs)
+  cp "$AI_STACK_ALIASES_TSV" "$tmp" || { rm -f "$tmp"; return 1; }
+  printf '%s\t%s\thttp-loopback\t%s\t%s\tmanual\t%s\n' "$name" "$ip" "$port" "$port" "$name" >> "$tmp"
+  _ingress_tsv_write "$tmp" || { err "ingress add: failed to update aliases.tsv"; return 1; }
+  ok "ingress add: registered http://$name/ → 127.0.0.1:$port  (alias $ip, http-loopback)"
+  ingress_write_caddyfile >/dev/null 2>&1 || true   # site appears after the IP is on lo0
+  note "Host-pinned apps (models/tutorial-serve) & secure-context apps (fleet-studio) want https://$name/ + 'ingress trust' for full use; plain http://$name/ is loopback-proxied as-is."
+  _ingress_print_activation "$name"
+}
+
+# ingress_remove <name> — remove a manually-added (http-loopback) hostname. Refuses core
+# dual-bind aliases (removing one would break the stack — edit aliases.tsv directly instead).
+ingress_remove() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || { err "usage: vz-ai-stack.sh ingress remove <name>"; return 2; }
+  # Validate BEFORE using $name in the ERE below (a metachar-laden name could over-match).
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { err "ingress remove: invalid name '$name' (expected ^[a-z0-9][a-z0-9-]*\$)"; return 2; }
+  aliases_load || return 1
+  [[ -n "${ALIAS_IP[$name]:-}" ]] || { err "ingress remove: '$name' is not in aliases.tsv"; return 1; }
+  if [[ "${ALIAS_PROTOCOL[$name]}" != "http-loopback" ]]; then
+    err "ingress remove: '$name' is a core ${ALIAS_PROTOCOL[$name]} alias, not a manually-added hostname — refusing (would break the service)."
+    err "  Edit installer/lib/aliases.tsv directly if you really intend to remove it."
+    return 1
+  fi
+  local ip="${ALIAS_IP[$name]}"
+  local tmp; tmp="$(mktemp "${AI_STACK_ALIASES_TSV%/*}/.aliases.XXXXXX")" || return 1  # co-located → mv is atomic (same fs)
+  grep -vE "^${name}[[:space:]]" "$AI_STACK_ALIASES_TSV" > "$tmp" || true
+  _ingress_tsv_write "$tmp" || { err "ingress remove: failed to update aliases.tsv"; return 1; }
+  ok "ingress remove: removed hostname '$name' (was $ip http-loopback)"
+  ingress_write_caddyfile >/dev/null 2>&1 || true
+  echo
+  note "Apply (needs sudo — run from your MAIN checkout):"
+  printf '    sudo vz-ai-stack.sh prepare-sudo && sudo vz-ai-stack.sh ingress reload\n'
+  note "prepare-sudo removes the /etc/hosts entry + updates the lo0 plist so $ip is NOT re-bound on reboot."
+  note "$ip stays on lo0 until your next reboot (harmless); free it now with: sudo ifconfig lo0 -alias $ip"
+}
+
+# _ingress_print_activation <name> — the single ordered sudo block to light up a new hostname.
+_ingress_print_activation() {
+  local name="$1"
+  echo
+  note "Activate (needs sudo — run from your MAIN checkout, then quit+reopen the browser for https):"
+  printf '    sudo vz-ai-stack.sh prepare-sudo && sudo vz-ai-stack.sh ingress reload\n'
+  note "Verify:  curl -I http://$name/    (200/301/401/404 = wired; 000/502 = upstream not up)"
+}
+
 # --- CLI (run-direct only) --------------------------------------------------
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   _cmd="${1:-status}"; shift 2>/dev/null || true
@@ -411,6 +592,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     down)             ingress_down "$@" ;;
     reload)           ingress_reload "$@" ;;
     status)           ingress_status ;;
+    list|ls)          ingress_list "$@" ;;
+    add)              ingress_add "$@" ;;
+    remove|rm)        ingress_remove "$@" ;;
     trust)            ingress_trust "$@" ;;
     untrust)          ingress_untrust "$@" ;;
     teardown)         ingress_teardown "$@" ;;
@@ -418,6 +602,6 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     print-caddyfile)  ingress_caddyfile_content ;;
     print-plist)      ingress_plist_content ;;
     print-wrapper)    ingress_wrapper_content ;;
-    *) err "ingress: unknown subcommand '$_cmd' (up|down|reload|status|trust|untrust|teardown|generate|print-*)"; exit 2 ;;
+    *) err "ingress: unknown subcommand '$_cmd' (list|add|remove|up|down|reload|status|trust|untrust|teardown|generate|print-*)"; exit 2 ;;
   esac
 fi

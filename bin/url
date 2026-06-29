@@ -24,7 +24,8 @@
 set -Eeuo pipefail
 
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ALIASES="$AI_STACK/installer/lib/aliases.tsv"
+# Honor the same single-source override the rest of the stack uses (network.sh/ingress.sh).
+ALIASES="${AI_STACK_ALIASES_TSV:-$AI_STACK/installer/lib/aliases.tsv}"
 [[ -r "$ALIASES" ]] || { echo "url: $ALIASES not readable" >&2; exit 1; }
 
 # Schemes we know how to build URLs for. Anything else, just print the
@@ -37,7 +38,8 @@ url_for() {
     /^#/ || NF<5 {next}
     $1==a {
       proto=$3; port=$4
-      if (proto=="http")       url = "http://"  a ":" port
+      if (proto=="http")              url = "http://"  a ":" port
+      else if (proto=="http-loopback") url = "http://" a "/"   # loopback-proxy: port-free only
       else if (proto=="grpc")  url = a ":" port " (grpc)"
       else if (proto=="redis") url = "redis://" a ":" port
       else                     url = proto "://" a ":" port
@@ -54,7 +56,8 @@ list_all() {
     /^#/ || NF<5 {next}
     {
       proto=$3; port=$4
-      if (proto=="http")       url = "http://"  $1 ":" port
+      if (proto=="http")              url = "http://"  $1 ":" port
+      else if (proto=="http-loopback") url = "http://" $1 "/"   # loopback-proxy: port-free only
       else if (proto=="grpc")  url = $1 ":" port " (grpc)"
       else if (proto=="redis") url = "redis://" $1 ":" port
       else                     url = proto "://" $1 ":" port
@@ -102,7 +105,7 @@ fi
 # Append path suffix (only for URL schemes, not the bare grpc form).
 if [[ -n "$PATH_SUFFIX" ]]; then
   case "$URL" in
-    http://*|https://*) URL="${URL}${PATH_SUFFIX}" ;;
+    http://*|https://*) URL="${URL%/}${PATH_SUFFIX}" ;;   # %/ drops a trailing slash (http-loopback `name/`) so /path can't double up
     *) ;;
   esac
 fi

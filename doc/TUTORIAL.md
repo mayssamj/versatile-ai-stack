@@ -421,16 +421,17 @@ Layer 2 — **port-less names** (opt-in `ingress`). Tired of remembering `:4000`
 ```bash
 sudo vz-ai-stack.sh ingress up    # start the Caddy ingress daemon (needs sudo: binds :80/:443)
 vz-ai-stack.sh ingress trust      # trust the local CA so https://name/ shows a green lock
-vz-ai-stack.sh ingress status     # list what's wired, then open http://litellm/ — no port!
+vz-ai-stack.sh ingress list       # every hostname + all URL forms + reachability + bind posture
+vz-ai-stack.sh ingress status     # daemon health, then open http://litellm/ — no port!
 ```
 
 **Expected.** `grep ai-stack /etc/hosts` shows a managed block of `127.0.10.x  <name>` lines; the `name:port` curl returns LiteLLM's readiness JSON. After `ingress up` + `trust`, `http://litellm/` (no port) reverse-proxies to LiteLLM and `https://` shows a trusted certificate; `ingress status` lists every bound alias.
 
 **Try it live.** The page's **Service status** demo (demo 6, under *Interactive demos*) calls `GET /api/status`, which probes these same hostnames and shows which are up — that's name resolution working in your browser (only up/down per service; no internal addresses leave the box). `ingress up`/`trust` are sudo/host operations, so they stay copy-run.
 
-**Lesson.** Two layers, both **host-only** — they change how *your Mac's browser* addresses services, never what the containers see. `prepare-sudo` gives you `name:port` (always); `ingress` upgrades that to port-less `name/` (opt-in Caddy). The single source of truth for the aliases is `installer/lib/aliases.tsv`.
+**Lesson.** Two layers, both **host-only** — they change how *your Mac's browser* addresses services, never what the containers see. `prepare-sudo` gives you `name:port` (always); `ingress` upgrades that to port-less `name/` (opt-in Caddy). The single source of truth for the aliases is `installer/lib/aliases.tsv`. Run `vz-ai-stack.sh ingress list` any time to see every hostname, all three URL forms, live reachability, and which servers are exposed on `0.0.0.0`. To give a host-only server (a `*-serve` viewer on `localhost:PORT`) its own port-less name, run `vz-ai-stack.sh ingress add <name> <port>` then the same `sudo prepare-sudo` + `sudo ingress reload`.
 
-**Go deeper.** [doc/specs/2026-06-21-bare-hostname-ingress.md](../doc/specs/2026-06-21-bare-hostname-ingress.md) (the design), `installer/lib/ingress.sh` (the `up`/`down`/`trust`/`status`/`generate` CLI), `installer/lib/network.sh` (the `/etc/hosts` + `lo0` alias layer).
+**Go deeper.** [doc/specs/2026-06-21-bare-hostname-ingress.md](../doc/specs/2026-06-21-bare-hostname-ingress.md) (the design), `installer/lib/ingress.sh` (the `list`/`add`/`remove`/`up`/`down`/`trust`/`status`/`generate` CLI), `installer/lib/network.sh` (the `/etc/hosts` + `lo0` alias layer).
 ## Act III — Memory & Knowledge
 
 Tier 1 gave you a stateless model that forgets you the moment a chat ends. Tier 2 turns it into a *personalized, grounded* assistant: Honcho remembers facts across sessions, Qdrant + the ingester let it cite YOUR documents, and FalkorDB lets it reason over relationships. Three storage shapes, one stack — all on-box, all observable in Phoenix.

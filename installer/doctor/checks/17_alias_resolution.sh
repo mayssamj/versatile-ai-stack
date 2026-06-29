@@ -32,6 +32,11 @@ _alias_owner_up() {
     if container_running "$n" 2>/dev/null; then return 0; fi
   done
   # Host-daemon fallback: a listener on the alias IP:port means the owner is up.
+  # NOTE (http-loopback rows, added via `ingress add`): the server binds 127.0.0.1, NOT
+  # the alias IP — Caddy bridges the alias on :80. So this lsof on the alias IP:host_port
+  # finds nothing → returns 1 → the diagnose loop `continue`s the row BEFORE _alias_probe_one
+  # is reached. That is intentional and correct: there is no `name:host_port` listener to
+  # probe for a loopback row (only the port-free `name/` via Caddy, covered by check 56).
   if [[ -n "$ip" && -n "$host_port" ]] \
     && lsof -nP -iTCP@"$ip":"$host_port" -sTCP:LISTEN >/dev/null 2>&1; then
     return 0

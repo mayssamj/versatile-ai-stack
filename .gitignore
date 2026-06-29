@@ -90,6 +90,7 @@ __pycache__/
 *.swp
 *~
 installer/models.yml.bak
+installer/lib/.aliases.*   # atomic-write temp from `ingress add/remove` (co-located for atomic mv; rm'd on success)
 
 # ── Local-only host diagnostics (contain serial/hostname/home-path PII — never commit) ──
 ORBSTACK_EDR_EXCLUSION_REQUEST.md
