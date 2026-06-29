@@ -77,6 +77,7 @@ STATIC_TYPES = {
     ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg", ".gif": "image/gif", ".ico": "image/x-icon",
     ".webp": "image/webp",
+    ".woff2": "font/woff2", ".woff": "font/woff",   # self-hosted design-system fonts
 }
 
 # Route allowlist: (method, path) -> upstream LiteLLM path. DENY everything else.

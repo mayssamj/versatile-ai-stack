@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,28 +16,23 @@
   - On load we GET /api/health; if it fails (page opened via file:// without the proxy) the demo
     panels are DISABLED with an inline hint to run `vz-ai-stack.sh tutorial-serve`.
   - Model output is rendered with textContent only — never innerHTML — to avoid injection.
-  Style mirrors doc/USER-GUIDE.html (dark-first + prefers-color-scheme light, CSS-var palette).
+  Style: the shared ai-stack design system (assets/design-system.css) — light-default + a [data-theme] dark toggle.
 -->
+<link rel="stylesheet" href="assets/design-system.css">
 <style>
   :root {
-    --bg: #0c1117; --bg-elev: #161b22; --bg-soft: #21262d; --bg-code: #0d1117;
-    --fg: #e6edf3; --fg-soft: #8b949e; --fg-dim: #6e7681;
-    --accent: #58a6ff; --accent-soft: rgba(88,166,255,.12);
-    --good: #3fb950; --warn: #d29922; --bad: #f85149; --info: #58a6ff;
-    --border: #30363d; --border-soft: #21262d;
-    --radius: 8px; --radius-sm: 4px;
-    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
-    /* tier accents — mirror EXPLORE.html */
-    --t-basic: #3fb950; --t-inter: #d29922; --t-adv: #f85149;
-  }
-  [data-theme="light"] {
-    --bg: #ffffff; --bg-elev: #f6f8fa; --bg-soft: #eaeef2; --bg-code: #f6f8fa;
-    --fg: #1f2328; --fg-soft: #59636e; --fg-dim: #818b97;
-    --accent: #0969da; --accent-soft: rgba(9,105,218,.10);
-    --good: #1a7f37; --warn: #9a6700; --bad: #cf222e; --info: #0969da;
-    --border: #d0d7de; --border-soft: #eaeef2;
-    --t-basic: #1a7f37; --t-inter: #9a6700; --t-adv: #cf222e;
+    /* ── ai-stack design system ──────────────────────────────────────────
+       Canonical light-default tokens live in assets/design-system.css. Below:
+       legacy (--bg/--fg/...) → canonical aliases + the 3 tier accents. Light is
+       the default; toggling [data-theme="dark"] re-points every alias to dark. */
+    --bg:var(--canvas); --bg-elev:var(--surface); --bg-soft:var(--raised); --bg-code:var(--raised);
+    --fg:var(--text); --fg-soft:var(--muted); --fg-dim:var(--faint);
+    --accent-soft:var(--accent-dim);
+    --good:var(--ok); --bad:var(--danger);
+    --border-soft:var(--border);
+    --radius:var(--r); --radius-sm:var(--r-sm);
+    --mono:var(--font-mono); --sans:var(--font-ui);
+    --t-basic:var(--tier-1); --t-inter:var(--tier-2); --t-adv:var(--tier-3);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -72,7 +67,7 @@
   }
   [data-theme="light"] header { background: rgba(255,255,255,0.92); }
   header .logo {
-    font-family: var(--mono); font-weight: 700; font-size: 16px;
+    font-family: var(--font-display); font-weight: 700; font-size: 16px;
     color: var(--fg); text-decoration: none; white-space: nowrap;
   }
   header .logo .accent { color: var(--accent); }
@@ -119,10 +114,9 @@
   /* Hero */
   .hero { text-align: center; padding: 48px 0 32px; }
   .hero h1 {
-    font-size: 46px; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 12px;
-    font-family: var(--mono);
-    background: linear-gradient(135deg, var(--accent) 0%, var(--good) 100%);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-family: var(--font-display);
+    font-size: 46px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px;
+    color: var(--text);
   }
   .hero p { color: var(--fg-soft); font-size: 18px; max-width: 680px; margin: 0 auto 24px; }
   .hero .stat-row { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
@@ -1717,10 +1711,10 @@ document.getElementById("themeToggle").addEventListener("click", () => {
   const root = document.documentElement;
   const next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
   root.setAttribute("data-theme", next);
-  try { localStorage.setItem("vzTutorialTheme", next); } catch (e) {}
+  try { localStorage.setItem("ai-stack-theme", next); } catch (e) {}
 });
 try {
-  const saved = localStorage.getItem("vzTutorialTheme");
+  const saved = localStorage.getItem("ai-stack-theme");
   if (saved) document.documentElement.setAttribute("data-theme", saved);
 } catch (e) {}
 document.getElementById("printBtn").addEventListener("click", () => window.print());

@@ -1,38 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model &amp; Agent Console</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%9A%99%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/design-system.css">
 <style>
 /* ─── Design tokens ─────────────────────────────────────────────────── */
 :root {
-  --canvas:#0c0e12; --card:#14171d; --raised:#1b1f2a; --border:#222732;
-  --text:#e6e9ef; --muted:#8b93a2; --mono:#aeb6c7;
-  --accent:#5b9dff; --accent-dim:rgba(91,157,255,.15);
-  --ok:#3fb950; --ok-dim:rgba(63,185,80,.15);
-  --warn:#d29922; --warn-dim:rgba(210,153,34,.18);
-  --danger:#f87171; --danger-dim:rgba(248,113,113,.15);
-  --info:#22d3ee; --info-dim:rgba(34,211,238,.12);
-  --neutral:#6e7681;
-  --radius:10px; --radius-sm:6px; --radius-xs:4px;
-  --shadow:0 4px 20px rgba(0,0,0,.4);
-  --shadow-sm:0 2px 8px rgba(0,0,0,.3);
-  --mono-font:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  --ui-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  /* ── ai-stack design system ──────────────────────────────────────────
+     Canonical tokens (light-default palette, type, spacing, shadow) live in
+     assets/design-system.css. Below are legacy-name aliases so this page's
+     existing selectors keep working unchanged. Light is now the default; the
+     old prefers-color-scheme override is gone (theme is driven by data-theme). */
+  --card:var(--surface);
+  --mono:var(--faint);                 /* NOTE: MODELS uses --mono as a TEXT COLOR */
+  --neutral:var(--faint);
+  --radius:var(--r); --radius-sm:var(--r-sm); --radius-xs:4px;
+  --mono-font:var(--font-mono); --ui-font:var(--font-ui);
   --t1:1.25rem; --t2:1rem; --t3:.875rem; --t4:.8125rem; --t5:.75rem;
-  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
-}
-@media (prefers-color-scheme:light) {
-  :root {
-    --canvas:#f4f6fa; --card:#ffffff; --raised:#eef1f6; --border:#d4dae4;
-    --text:#1a1f29; --muted:#5a6472; --mono:#3a4453;
-    --shadow:0 4px 20px rgba(0,0,0,.12); --shadow-sm:0 2px 8px rgba(0,0,0,.08);
-    --accent-dim:rgba(59,130,246,.1); --ok-dim:rgba(34,197,94,.1);
-    --warn-dim:rgba(234,179,8,.12); --danger-dim:rgba(239,68,68,.1);
-    --info-dim:rgba(6,182,212,.1);
-  }
+  --sp1:var(--s1); --sp2:var(--s2); --sp3:var(--s3); --sp4:var(--s4); --sp5:var(--s5); --sp6:var(--s6);
 }
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
@@ -82,7 +70,7 @@ button { font-family:var(--ui-font); }
   max-width:1600px; margin:0 auto; padding:10px var(--sp4);
   display:flex; align-items:center; gap:var(--sp3); flex-wrap:wrap;
 }
-.wordmark { font-size:var(--t2); font-weight:700; letter-spacing:.2px; }
+.wordmark { font-family:var(--font-display); font-size:var(--t2); font-weight:700; letter-spacing:.2px; }
 .wordmark span { color:var(--accent); }
 .header-status { display:flex; align-items:center; gap:var(--sp2); flex-wrap:wrap; flex:1; }
 .header-actions { display:flex; align-items:center; gap:var(--sp2); }

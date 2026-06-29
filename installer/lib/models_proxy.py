@@ -80,6 +80,7 @@ STATIC_TYPES = {
     ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
     ".ico": "image/x-icon", ".webp": "image/webp",
+    ".woff2": "font/woff2", ".woff": "font/woff",   # self-hosted design-system fonts
 }
 
 MAX_BODY = 64 * 1024
