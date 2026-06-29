@@ -27,6 +27,10 @@ AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Honor the same single-source override the rest of the stack uses (network.sh/ingress.sh).
 ALIASES="${AI_STACK_ALIASES_TSV:-$AI_STACK/installer/lib/aliases.tsv}"
 [[ -r "$ALIASES" ]] || { echo "url: $ALIASES not readable" >&2; exit 1; }
+# Personal `ingress add` hostnames live in the gitignored local file; merge it like
+# aliases_load does. Listed FIRST so a local row WINS on a name collision (override).
+ALIASES_LOCAL="${AI_STACK_ALIASES_LOCAL_TSV:-$AI_STACK/installer/lib/aliases.local.tsv}"
+ALIAS_FILES=(); [[ -r "$ALIASES_LOCAL" ]] && ALIAS_FILES+=("$ALIASES_LOCAL"); ALIAS_FILES+=("$ALIASES")
 
 # Schemes we know how to build URLs for. Anything else, just print the
 # alias:port without a scheme prefix.
@@ -46,7 +50,7 @@ url_for() {
       print url
       exit
     }
-  ' "$ALIASES"
+  ' "${ALIAS_FILES[@]}"
 }
 
 list_all() {
@@ -54,7 +58,9 @@ list_all() {
   printf '%-16s %s\n' "─────" "───"
   awk 'BEGIN{FS="[\t]+"}
     /^#/ || NF<5 {next}
+    $1 in seen {next}        # local file read first → a local override wins, listed once
     {
+      seen[$1]=1
       proto=$3; port=$4
       if (proto=="http")              url = "http://"  $1 ":" port
       else if (proto=="http-loopback") url = "http://" $1 "/"   # loopback-proxy: port-free only
@@ -63,7 +69,7 @@ list_all() {
       else                     url = proto "://" $1 ":" port
       printf "%-16s %s\n", $1, url
     }
-  ' "$ALIASES"
+  ' "${ALIAS_FILES[@]}"
   echo
   echo "Sandboxed (no alias / no port):"
   echo "  pi              bash bin/pi              (OpenShell sandbox)"
@@ -97,7 +103,7 @@ done
 
 URL="$(url_for "$ALIAS")"
 if [[ -z "$URL" ]]; then
-  echo "url: alias '$ALIAS' not found in $ALIASES" >&2
+  echo "url: alias '$ALIAS' not found in ${ALIAS_FILES[*]}" >&2
   echo "Hint: run \`url\` with no args to list known aliases." >&2
   exit 1
 fi

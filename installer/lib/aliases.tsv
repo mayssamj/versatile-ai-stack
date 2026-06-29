@@ -29,6 +29,9 @@
 # `name/` ONLY — NOT `name:port` (nothing binds the alias IP). `ingress list` shows every
 # hostname + all URL forms + reachability + bind posture; `ingress remove <name>` reverses an
 # `add`. Activate/teardown either via `sudo prepare-sudo` + `sudo ingress reload`.
+# `ingress add` rows do NOT land HERE — they go to the gitignored `aliases.local.tsv`
+# (personal, never committed to the public repo). aliases_load merges that file ON TOP of
+# this one; a local row reusing a name here OVERRIDES it. This file stays the shared table.
 litellm		127.0.10.1	http		4000		4000		01		litellm
 phoenix		127.0.10.2	http		6006		6006		01h		phoenix
 phoenix-otlp	127.0.10.3	grpc		4317		4317		01h		phoenix

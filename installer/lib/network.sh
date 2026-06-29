@@ -18,8 +18,12 @@
 
 [[ -z "${AI_STACK:-}" ]] && { echo "network.sh: AI_STACK unset" >&2; exit 2; }
 
-# Single source of truth for the IP table.
+# Single source of truth for the IP table (TRACKED — shared/public).
 AI_STACK_ALIASES_TSV="${AI_STACK_ALIASES_TSV:-$AI_STACK/installer/lib/aliases.tsv}"
+# Personal/local hostnames added via `ingress add` go HERE (gitignored) — never the
+# tracked public aliases.tsv. aliases_load merges this ON TOP: a local row with a name
+# already in the tracked table overrides its fields (so you can repoint an alias locally).
+AI_STACK_ALIASES_LOCAL_TSV="${AI_STACK_ALIASES_LOCAL_TSV:-$AI_STACK/installer/lib/aliases.local.tsv}"
 
 # Configurable to escape VPN/route collisions (D20).
 AI_STACK_SUBNET="${AI_STACK_SUBNET:-10.99.0.0/24}"
@@ -29,15 +33,39 @@ AI_STACK_GATEWAY="${AI_STACK_GATEWAY:-10.99.0.1}"
 # enforced centrally yet, since each bin/start-*.sh still hand-rolls its run).
 AI_STACK_NET_FLAGS="--network ai-stack --add-host=ollama:host-gateway"
 
-export AI_STACK_ALIASES_TSV AI_STACK_SUBNET AI_STACK_GATEWAY AI_STACK_NET_FLAGS
+export AI_STACK_ALIASES_TSV AI_STACK_ALIASES_LOCAL_TSV AI_STACK_SUBNET AI_STACK_GATEWAY AI_STACK_NET_FLAGS
 
 # Hosts-block markers.
 HOSTS_MARK_BEGIN="# >>> ai-stack (managed; do not edit manually) >>>"
 HOSTS_MARK_END="# <<< ai-stack (managed) <<<"
 
 # --- aliases_load -----------------------------------------------------------
-# Populates 6 associative arrays + 1 ordered list. Idempotent — safe to source
-# repeatedly. Skips comment lines (starting with #) and blank lines.
+# Populates 6 associative arrays + 1 ordered list from the tracked aliases.tsv PLUS
+# the optional gitignored aliases.local.tsv (personal `ingress add` rows). Idempotent.
+# A name appears in ALIASES_LIST once; a local row with an already-seen name overrides
+# its fields (last file wins) without duplicating the list entry. Skips #-comments + blanks.
+_aliases_load_one() {
+  local file="$1"
+  [[ -r "$file" ]] || return 0   # the local file is optional — absence is normal
+  local raw alias ip protocol host_port container_port phase service_key norm
+  while IFS= read -r raw || [[ -n "$raw" ]]; do
+    raw="${raw%$'\r'}"                                  # strip a stray CR
+    [[ -z "$raw" ]] && continue
+    [[ "$raw" =~ ^[[:space:]]*# ]] && continue
+    # Collapse runs of whitespace to a single tab, then split on TAB (tab-alignment tolerant).
+    norm="$(printf '%s\n' "$raw" | awk -F'\t' '{ s=""; for(i=1;i<=NF;i++){ if($i!=""){ s=s $i "\t" } } sub(/\t$/,"",s); print s }')"
+    IFS=$'\t' read -r alias ip protocol host_port container_port phase service_key <<<"$norm" || true
+    [[ -z "${alias:-}" || -z "${ip:-}" ]] && continue
+    [[ -z "${ALIAS_IP[$alias]+x}" ]] && ALIASES_LIST+=("$alias")   # append to the ordered list only if NEW
+    ALIAS_IP[$alias]="$ip"
+    ALIAS_PROTOCOL[$alias]="$protocol"
+    ALIAS_HOST_PORT[$alias]="$host_port"
+    ALIAS_CONTAINER_PORT[$alias]="$container_port"
+    ALIAS_PHASE[$alias]="$phase"
+    ALIAS_SERVICE_KEY[$alias]="$service_key"
+  done < "$file"
+}
+
 aliases_load() {
   declare -gA ALIAS_IP=()
   declare -gA ALIAS_PROTOCOL=()
@@ -51,30 +79,8 @@ aliases_load() {
     err "aliases_load: $AI_STACK_ALIASES_TSV not readable"
     return 1
   fi
-
-  local raw alias ip protocol host_port container_port phase service_key
-  # Read whole file, split into fields manually so we are tolerant of
-  # multiple-tab spacing without depending on `read -a` quirks.
-  while IFS= read -r raw || [[ -n "$raw" ]]; do
-    # Strip CR if file picked one up.
-    raw="${raw%$'\r'}"
-    # Skip blank lines and comments.
-    [[ -z "$raw" ]] && continue
-    [[ "$raw" =~ ^[[:space:]]*# ]] && continue
-    # Collapse runs of whitespace to a single tab, then split on TAB.
-    local norm
-    norm="$(printf '%s\n' "$raw" | awk -F'\t' '{ s=""; for(i=1;i<=NF;i++){ if($i!=""){ s=s $i "\t" } } sub(/\t$/,"",s); print s }')"
-    IFS=$'\t' read -r alias ip protocol host_port container_port phase service_key <<<"$norm" || true
-    [[ -z "${alias:-}" || -z "${ip:-}" ]] && continue
-    ALIAS_IP[$alias]="$ip"
-    ALIAS_PROTOCOL[$alias]="$protocol"
-    ALIAS_HOST_PORT[$alias]="$host_port"
-    ALIAS_CONTAINER_PORT[$alias]="$container_port"
-    ALIAS_PHASE[$alias]="$phase"
-    ALIAS_SERVICE_KEY[$alias]="$service_key"
-    ALIASES_LIST+=("$alias")
-  done < "$AI_STACK_ALIASES_TSV"
-
+  _aliases_load_one "$AI_STACK_ALIASES_TSV"          # tracked / shared
+  _aliases_load_one "$AI_STACK_ALIASES_LOCAL_TSV"    # optional local overrides (gitignored)
   return 0
 }
 

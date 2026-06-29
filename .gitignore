@@ -90,7 +90,11 @@ __pycache__/
 *.swp
 *~
 installer/models.yml.bak
-installer/lib/.aliases.*   # atomic-write temp from `ingress add/remove` (co-located for atomic mv; rm'd on success)
+# atomic-write temp from `ingress add/remove` (co-located for atomic mv; rm'd on success)
+# NOTE: .gitignore has NO inline comments — the # must be on its own line or it joins the pattern.
+installer/lib/.aliases.*
+# personal `ingress add` hostnames — local-only, never committed to the public repo
+installer/lib/aliases.local.tsv
 
 # ── Local-only host diagnostics (contain serial/hostname/home-path PII — never commit) ──
 ORBSTACK_EDR_EXCLUSION_REQUEST.md

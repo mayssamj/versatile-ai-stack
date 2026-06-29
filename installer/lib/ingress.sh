@@ -436,21 +436,22 @@ _ingress_bind_posture() {
 }
 
 # _ingress_next_free_ip — lowest unused 127.0.10.N (1..254). Scans ALL such tokens in
-# aliases.tsv INCLUDING comment lines, so a reserved-but-commented IP (e.g. .15) is never
-# reclaimed. Returns 1 (no echo) when the /24 host range is exhausted.
+# BOTH the tracked aliases.tsv AND the local overrides, INCLUDING comment lines, so a
+# reserved-but-commented IP (e.g. .15) or a personal local row is never reclaimed.
+# Returns 1 (no echo) when the /24 host range is exhausted.
 _ingress_next_free_ip() {
   local used n
-  used="$(grep -oE '127\.0\.10\.[0-9]+' "$AI_STACK_ALIASES_TSV" 2>/dev/null | sed 's/.*\.//' | sort -un)"
+  used="$(grep -hoE '127\.0\.10\.[0-9]+' "$AI_STACK_ALIASES_TSV" "$AI_STACK_ALIASES_LOCAL_TSV" 2>/dev/null | sed 's/.*\.//' | sort -un)"
   for n in $(seq 1 254); do
     grep -qxF "$n" <<<"$used" || { printf '127.0.10.%s' "$n"; return 0; }
   done
   return 1
 }
 
-# _ingress_tsv_write <tmpfile> — atomically replace aliases.tsv with <tmpfile>'s
-# contents (rename is atomic; no flock — Darwin has none — and temp+mv can't corrupt).
-# Preserves the tracked 0644 mode.
-_ingress_tsv_write() { chmod 0644 "$1" 2>/dev/null || true; mv "$1" "$AI_STACK_ALIASES_TSV"; }
+# _ingress_tsv_write <tmpfile> [dest] — atomically replace <dest> (default the tracked
+# aliases.tsv) with <tmpfile>'s contents (rename is atomic; no flock — Darwin has none —
+# and temp+mv can't corrupt). Preserves 0644 mode. add/remove pass the LOCAL file.
+_ingress_tsv_write() { chmod 0644 "$1" 2>/dev/null || true; mv "$1" "${2:-$AI_STACK_ALIASES_TSV}"; }
 
 # ingress_list — read-only map of every configured hostname (source of truth =
 # aliases.tsv, via aliases_load — no second parser), all URL forms, bind posture,
@@ -529,8 +530,8 @@ ingress_add() {
     (( _oct >= 1 && _oct <= 254 )) || { err "ingress add: --ip octet must be 1-254 (got '$want_ip'; .0/.255 are network/broadcast)"; return 2; }
     # Taken-check against ALL 127.0.10.N tokens incl. comment/reserved rows (same set the
     # allocator uses); exact fixed-string match avoids the dots-as-ERE-wildcards trap.
-    grep -oE '127\.0\.10\.[0-9]+' "$AI_STACK_ALIASES_TSV" 2>/dev/null | grep -qxF "$want_ip" \
-      && { err "ingress add: $want_ip is already allocated (incl. reserved/commented rows)"; return 1; }
+    grep -hoE '127\.0\.10\.[0-9]+' "$AI_STACK_ALIASES_TSV" "$AI_STACK_ALIASES_LOCAL_TSV" 2>/dev/null | grep -qxF "$want_ip" \
+      && { err "ingress add: $want_ip is already allocated (incl. reserved/commented + local rows)"; return 1; }
     ip="$want_ip"
   else
     ip="$(_ingress_next_free_ip)" || { err "ingress add: no free 127.0.10.N in 1-254 — host range exhausted"; return 1; }
@@ -538,11 +539,18 @@ ingress_add() {
   if ! lsof -nP -iTCP@127.0.0.1:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     warn "ingress add: nothing is listening on 127.0.0.1:$port right now — http://$name/ will 502 until that server starts (fine if you start it later)."
   fi
-  local tmp; tmp="$(mktemp "${AI_STACK_ALIASES_TSV%/*}/.aliases.XXXXXX")" || return 1  # co-located → mv is atomic (same fs)
-  cp "$AI_STACK_ALIASES_TSV" "$tmp" || { rm -f "$tmp"; return 1; }
+  # Personal hostnames go in the gitignored LOCAL file (never the tracked public aliases.tsv).
+  local LF="$AI_STACK_ALIASES_LOCAL_TSV"
+  local tmp; tmp="$(mktemp "${LF%/*}/.aliases.XXXXXX")" || return 1   # co-located → mv is atomic (same fs)
+  if [[ -f "$LF" ]]; then
+    cp "$LF" "$tmp" || { rm -f "$tmp"; return 1; }
+  else
+    printf '# ai-stack LOCAL hostname overrides (gitignored) — your personal `ingress add` rows.\n# Same TSV columns as aliases.tsv; aliases_load merges these ON TOP. Safe to edit/delete.\n' > "$tmp"
+  fi
   printf '%s\t%s\thttp-loopback\t%s\t%s\tmanual\t%s\n' "$name" "$ip" "$port" "$port" "$name" >> "$tmp"
-  _ingress_tsv_write "$tmp" || { err "ingress add: failed to update aliases.tsv"; return 1; }
+  _ingress_tsv_write "$tmp" "$LF" || { err "ingress add: failed to update $LF"; return 1; }
   ok "ingress add: registered http://$name/ → 127.0.0.1:$port  (alias $ip, http-loopback)"
+  note "Stored in your gitignored aliases.local.tsv — personal, never committed to the repo."
   ingress_write_caddyfile >/dev/null 2>&1 || true   # site appears after the IP is on lo0
   note "Host-pinned apps (models/tutorial-serve) & secure-context apps (fleet-studio) want https://$name/ + 'ingress trust' for full use; plain http://$name/ is loopback-proxied as-is."
   _ingress_print_activation "$name"
@@ -556,16 +564,26 @@ ingress_remove() {
   # Validate BEFORE using $name in the ERE below (a metachar-laden name could over-match).
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { err "ingress remove: invalid name '$name' (expected ^[a-z0-9][a-z0-9-]*\$)"; return 2; }
   aliases_load || return 1
-  [[ -n "${ALIAS_IP[$name]:-}" ]] || { err "ingress remove: '$name' is not in aliases.tsv"; return 1; }
+  [[ -n "${ALIAS_IP[$name]:-}" ]] || { err "ingress remove: '$name' is not a registered hostname (checked aliases.tsv + aliases.local.tsv)"; return 1; }
   if [[ "${ALIAS_PROTOCOL[$name]}" != "http-loopback" ]]; then
     err "ingress remove: '$name' is a core ${ALIAS_PROTOCOL[$name]} alias, not a manually-added hostname — refusing (would break the service)."
     err "  Edit installer/lib/aliases.tsv directly if you really intend to remove it."
     return 1
   fi
   local ip="${ALIAS_IP[$name]}"
-  local tmp; tmp="$(mktemp "${AI_STACK_ALIASES_TSV%/*}/.aliases.XXXXXX")" || return 1  # co-located → mv is atomic (same fs)
-  grep -vE "^${name}[[:space:]]" "$AI_STACK_ALIASES_TSV" > "$tmp" || true
-  _ingress_tsv_write "$tmp" || { err "ingress remove: failed to update aliases.tsv"; return 1; }
+  # http-loopback rows live ONLY in the local file (the tracked aliases.tsv never gets them).
+  local LF="$AI_STACK_ALIASES_LOCAL_TSV"
+  # The row must actually be IN the local file. A http-loopback row in the TRACKED aliases.tsv
+  # is a pre-migration leftover (old `ingress add`) — refuse rather than silently no-op + "✓".
+  { [[ -f "$LF" ]] && grep -qE "^${name}[[:space:]]" "$LF"; } || {
+    err "ingress remove: '$name' is not in your local aliases.local.tsv."
+    err "  (A http-loopback row in the tracked installer/lib/aliases.tsv is a pre-migration leftover —"
+    err "   move it to aliases.local.tsv, or edit aliases.tsv directly to remove it.)"
+    return 1
+  }
+  local tmp; tmp="$(mktemp "${LF%/*}/.aliases.XXXXXX")" || return 1   # co-located → mv is atomic (same fs)
+  grep -vE "^${name}[[:space:]]" "$LF" > "$tmp" || true
+  _ingress_tsv_write "$tmp" "$LF" || { err "ingress remove: failed to update $LF"; return 1; }
   ok "ingress remove: removed hostname '$name' (was $ip http-loopback)"
   ingress_write_caddyfile >/dev/null 2>&1 || true
   echo

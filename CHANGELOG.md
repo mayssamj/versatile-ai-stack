@@ -4,6 +4,21 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-29 — `ingress add` writes to a gitignored `aliases.local.tsv` (local override)
+
+**Personal hostnames no longer dirty the tracked public `aliases.tsv`.** `ingress add`/`remove`
+now target a gitignored `installer/lib/aliases.local.tsv`; `aliases_load` merges it on top of
+the shared table (via a new `_aliases_load_one` helper) — a local row reusing a tracked name
+**overrides** it, and each name appears once in `ALIASES_LIST`. The IP allocator + `--ip`
+collision check + `bin/url` all scan **both** files (local listed first → local wins; `bin/url`
+dedups its listing). Fixes the rough edge from the previous change where every `ingress add`
+left `aliases.tsv` dirty on a public repo. Smoke proves: add→local file, tracked file
+byte-untouched, merge+override+dedup, cross-file `--ip` collision. §24: 2-agent review (small,
+additive, reversible). Migration: any existing personal row in the tracked `aliases.tsv` moves
+to the local file (models-serve), so the repo goes clean.
+
+---
+
 ## 2026-06-29 — Hermes gateway-config durability (W5 self-heal) + install-lock stale-reclaim
 
 **The Hermes gateway config got GUTTED to 2 lines (no model/provider), killing inference AND Slack

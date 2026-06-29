@@ -25,6 +25,11 @@ wantnot() { if grep -qF -- "$2" <<<"$1"; then err "UNEXPECTED: $2"; fail=1; else
 # prepare-sudo has bound the alias IPs on THIS host). The guard itself is exercised
 # by the NEGATIVE test (M5) further down, which runs with this UNSET.
 export INGRESS_TEST_NO_LO0_GUARD=1
+# Pin the STRUCTURAL assertions to NO local overrides (/dev/null), so they're hermetic even
+# on a host that has a real installer/lib/aliases.local.tsv (otherwise its http-loopback rows
+# would, e.g., make `wantnot header_up` below go RED). The local-FILE tests further down
+# override this with their own temp file.
+export AI_STACK_ALIASES_LOCAL_TSV=/dev/null
 aliases_load   # populate ALIASES_LIST/ALIAS_* in THIS shell (the $(...) calls run in subshells)
 
 cfg="$(ingress_caddyfile_content)" || { err "generator returned non-zero"; exit 1; }
@@ -119,33 +124,57 @@ w2="$(ingress_write_caddyfile "$dest" 2>&1)"
 if grep -q "already current" <<<"$w2"; then ok "writer: idempotent (2nd run = no-op)"; else err "writer: not idempotent"; fail=1; fi
 rm -rf "$wd"
 
-# --- ingress add / remove / list / url round-trip (offline; isolated temp TSV) -----------
-# Runs the CLI in a SUBSHELL with AI_STACK_ALIASES_TSV + INGRESS_CADDYFILE pointed at temps,
-# so the tracked aliases.tsv is never touched. Guards are exercised via `&& fail || ok` so
-# `set -e` never aborts on an intentionally-failing command.
-sd="$(mktemp -d)"; stsv="$sd/aliases.tsv"
+# --- ingress add / remove / list / url round-trip — LOCAL-file model (offline; temps) ----
+# CLI runs in a SUBSHELL with the tracked AI_STACK_ALIASES_TSV, the personal
+# AI_STACK_ALIASES_LOCAL_TSV, and INGRESS_CADDYFILE all pointed at temps — real files
+# untouched. Guards use `&& fail || ok` so `set -e` never aborts on an expected failure.
+sd="$(mktemp -d)"; stsv="$sd/aliases.tsv"; slocal="$sd/aliases.local.tsv"
 cat "$AI_STACK/installer/lib/aliases.tsv" > "$stsv"
-ING() { AI_STACK_ALIASES_TSV="$stsv" INGRESS_CADDYFILE="$sd/Caddyfile" bash "$AI_STACK/installer/lib/ingress.sh" "$@"; }
+ING()  { AI_STACK_ALIASES_TSV="$stsv" AI_STACK_ALIASES_LOCAL_TSV="$slocal" INGRESS_CADDYFILE="$sd/Caddyfile" bash "$AI_STACK/installer/lib/ingress.sh" "$@"; }
+URLC() { AI_STACK_ALIASES_TSV="$stsv" AI_STACK_ALIASES_LOCAL_TSV="$slocal" bash "$AI_STACK/bin/url" "$@"; }
+stsv_before="$(cat "$stsv")"
 
 if ING add zztest 12345 >/dev/null 2>&1; then ok "add: succeeded"; else err "add: failed"; fail=1; fi
-# next-free IP must skip the commented .15 → .21 (current high-water is .20); http-loopback + manual key
-if grep -qE "^zztest[[:space:]]+127\.0\.10\.21[[:space:]]+http-loopback[[:space:]]+12345[[:space:]]+12345[[:space:]]+manual" "$stsv"; then ok "add: row = .21 http-loopback (skips reserved .15)"; else err "add: row malformed"; grep zztest "$stsv" | sed 's/^/    /'; fail=1; fi
-# list renders the name/ form; url renders http://name/ (port-free)
+# the row lands in the LOCAL file (.21 — skips reserved .15), with the http-loopback/manual shape
+if grep -qE "^zztest[[:space:]]+127\.0\.10\.21[[:space:]]+http-loopback[[:space:]]+12345[[:space:]]+12345[[:space:]]+manual" "$slocal"; then ok "add: row → LOCAL file (.21 http-loopback, skips .15)"; else err "add: local row malformed"; cat "$slocal" 2>/dev/null | sed 's/^/    /'; fail=1; fi
+# the TRACKED file is byte-for-byte UNTOUCHED — personal hostnames never dirty the public repo
+if [[ "$(cat "$stsv")" == "$stsv_before" ]]; then ok "add: tracked aliases.tsv UNTOUCHED"; else err "add: tracked file was modified!"; fail=1; fi
+# aliases_load MERGES the local row → list + url + generator all see it
 want "$(ING list 2>/dev/null)" "http://zztest/"
-uout="$(AI_STACK_ALIASES_TSV="$stsv" bash "$AI_STACK/bin/url" zztest 2>/dev/null)"
-if [[ "$uout" == "http://zztest/" ]]; then ok "url: zztest → http://zztest/"; else err "url: got '$uout'"; fail=1; fi
-# url path-suffix must NOT double the slash (http://zztest/ + /v1 → http://zztest/v1)
-upath="$(AI_STACK_ALIASES_TSV="$stsv" bash "$AI_STACK/bin/url" zztest /v1 2>/dev/null)"
+# the GENERATOR (the path that actually builds Caddy sites) emits the LOCAL row, right shape
+genout="$(AI_STACK="$AI_STACK" AI_STACK_ALIASES_TSV="$stsv" AI_STACK_ALIASES_LOCAL_TSV="$slocal" INGRESS_TEST_NO_LO0_GUARD=1 bash -c 'source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/ingress.sh"; ingress_caddyfile_content' 2>/dev/null)"
+want    "$genout" "http://zztest {"                  # local row produces a site
+want    "$genout" "bind 127.0.10.21"                 # binds its alias IP
+want    "$genout" "reverse_proxy 127.0.0.1:12345 {"  # upstream is loopback
+want    "$genout" "header_up Host 127.0.0.1:12345"   # Host rewrite present
+wantnot "$genout" "reverse_proxy 127.0.10.21:12345"  # must NOT proxy the alias IP
+uout="$(URLC zztest 2>/dev/null)"
+if [[ "$uout" == "http://zztest/" ]]; then ok "url: zztest (local) → http://zztest/"; else err "url: got '$uout'"; fail=1; fi
+upath="$(URLC zztest /v1 2>/dev/null)"
 if [[ "$upath" == "http://zztest/v1" ]]; then ok "url: path suffix no double-slash"; else err "url path: got '$upath'"; fail=1; fi
 # guards — each MUST be rejected (non-zero), none may hang
-ING add zztest 9 >/dev/null 2>&1 && { err "dup-name accepted"; fail=1; } || ok "guard: dup-name rejected"
+ING add zztest 9 >/dev/null 2>&1 && { err "dup-name accepted"; fail=1; } || ok "guard: dup-name rejected (merged check)"
 ING add Bad_Name 80 >/dev/null 2>&1 && { err "invalid name accepted"; fail=1; } || ok "guard: invalid name rejected"
 ING add okname 99999 >/dev/null 2>&1 && { err "bad port accepted"; fail=1; } || ok "guard: port>65535 rejected"
 ING add okname 80 --ip 127.0.10.255 >/dev/null 2>&1 && { err ".255 accepted"; fail=1; } || ok "guard: --ip .255 rejected"
 ING add okname 80 --ip >/dev/null 2>&1 && { err "--ip no-value accepted"; fail=1; } || ok "guard: --ip no-value rejected (no hang)"
-ING remove litellm >/dev/null 2>&1 && { err "core alias removable"; fail=1; } || ok "guard: core alias remove refused"
-# remove zztest → gone, TSV restored
-if ING remove zztest >/dev/null 2>&1 && ! grep -q '^zztest' "$stsv"; then ok "remove: zztest removed"; else err "remove: zztest still present"; fail=1; fi
+ING add okname 80 --ip 127.0.10.1 >/dev/null 2>&1 && { err "tracked IP .1 reused"; fail=1; } || ok "guard: --ip collision across BOTH files rejected"
+ING remove litellm >/dev/null 2>&1 && { err "core alias removable"; fail=1; } || ok "guard: core (tracked) alias remove refused"
+# remove zztest → gone from the LOCAL file
+if ING remove zztest >/dev/null 2>&1 && ! grep -q '^zztest' "$slocal"; then ok "remove: zztest removed from local file"; else err "remove: zztest still present"; fail=1; fi
+
+# local-WINS override + dedup: a local row reusing a tracked name (litellm) repoints its
+# fields, and litellm must still appear EXACTLY ONCE in ALIASES_LIST (no double-count).
+printf 'litellm\t127.0.10.99\thttp-loopback\t4000\t4000\tmanual\tlitellm\n' > "$slocal"
+ovr="$(AI_STACK="$AI_STACK" AI_STACK_ALIASES_TSV="$stsv" AI_STACK_ALIASES_LOCAL_TSV="$slocal" bash -c '
+  source "$AI_STACK/installer/lib/common.sh"; source "$AI_STACK/installer/lib/network.sh"
+  aliases_load
+  n=0; for a in "${ALIASES_LIST[@]}"; do [[ "$a" == litellm ]] && n=$((n+1)); done
+  echo "${ALIAS_IP[litellm]}|${ALIAS_PROTOCOL[litellm]}|$n"')"
+if [[ "$ovr" == "127.0.10.99|http-loopback|1" ]]; then ok "merge: local row OVERRIDES tracked (litellm→.99) + dedup (once)"; else err "merge override: got '$ovr' (want 127.0.10.99|http-loopback|1)"; fail=1; fi
+# bin/url's OWN two-file awk must honor the override too (litellm now renders port-free)
+ovr_url="$(URLC litellm 2>/dev/null)"
+if [[ "$ovr_url" == "http://litellm/" ]]; then ok "merge: bin/url honors local override (litellm → http://litellm/)"; else err "url override: got '$ovr_url' (want http://litellm/)"; fail=1; fi
 rm -rf "$sd"
 
 echo
