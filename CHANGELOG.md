@@ -4,6 +4,30 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-29 — Fix AutoFyn agent crash-loop (`/workspace` shadows `/app`) + self-healing doctor check
+
+**`autofyn-agent` was dead for ~21h** — `ImportError: cannot import name 'SANDBOX_KIND_DOCKER' from
+'config.constants' (/workspace/config/constants.py)`, crash-looped then halted by the watchdog (W1).
+Root cause: autofyn's own compose mounts the host checkout `.:/workspace` with `working_dir=/workspace`
+for **dev mode** (live source overrides the baked image), but the stack runs autofyn as a **runtime**
+off the `:stable` image, and the host checkout is a clone of the **public** repo that *lags* the image
+(even `production@HEAD` lacks `SANDBOX_KIND_DOCKER` — the image is ahead of public). `python -m server`
+puts `cwd=/workspace` on `sys.path[0]`, so the stale `/workspace/config/constants.py` **shadows** the
+image's `/app/config/constants.py`.
+
+- **Fix:** `bin/start-autofyn.sh` now writes a stack-managed `docker-compose.override.yml` setting
+  **`PYTHONSAFEPATH=1`** (py3.11+ — disables the automatic cwd/script-dir `sys.path` prepend) for the
+  `agent` service, so the image's `/app` (`PYTHONPATH=/app`) wins over the `/workspace` shadow.
+  Compose auto-merges the override, so autofyn's own compose stays pristine for actual autofyn devs;
+  drift-proof (the image code always wins regardless of the clone's state). Idempotent.
+- **Doctor check 69** (`69_autofyn_agent.sh`) — **self-healing**: when autofyn is installed and the
+  agent is down/unhealthy, it ensures the `PYTHONSAFEPATH` override and restarts **only** the agent
+  (the Claude-Code-SDK brain — idle on startup, loads **no** local model). Verified: stop agent →
+  check → `running/healthy`. Doctor count **69 → 70** (11 docs + TUTORIAL regen).
+- Verified live: agent `running/healthy`, `/health` → `{"status":"idle"}`, no ImportError, no model load.
+
+---
+
 ## 2026-06-29 — Hermes gateway-config durability (W5 self-heal) + install-lock stale-reclaim
 
 **The Hermes gateway config got GUTTED to 2 lines (no model/provider), killing inference AND Slack

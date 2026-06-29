@@ -161,7 +161,7 @@ One entry point (`bin/stack` is a thin wrapper). Put `bin/` on PATH:
 | Command | What it does |
 |---|---|
 | `status` | Declared-vs-actual + ownership table (your first read) |
-| `doctor [filter]` | 69 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
+| `doctor [filter]` | 70 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
 | `phases` | Every phase: id → name |
 | `verify` | Cheap (<10s) runtime probe of the alias chain (lo0/`/etc/hosts`/DNS/routing) |
 | `logs <svc> [-f]` | `docker logs` wrapper |
@@ -332,7 +332,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **69 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **70 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.

@@ -203,7 +203,7 @@ bash vz-ai-stack.sh phases
 **Expected.**
 
 - `status` shows each service with `DECLARED enabled` / `ACTUAL running` and an `OWNERSHIP` of `managed` (or `(compose)` for Honcho). A row marked **`foreign`** means a container was started outside the installer — adopt it with `vz-ai-stack.sh adopt <svc>` (a confirmed, data-safe flow).
-- `doctor` targets **all green (69 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
+- `doctor` targets **all green (70 checks)**. A handful require the post-install steps (e.g. the Phoenix API key) or specific phases; the opt-in-extra and Telegram checks **pass-as-skip** when those tools aren't installed, so a default `install all` still reads green. Check 39 also confirms the OpenShell CPU-storm watchdog is loaded; check 44 covers MemPalace (now part of `install all`) and checks 49 / 50 / 51 / 52 cover the Sourcegraph fleet MCP / AionUi / OpenWork / Understand-Anything when those opt-in extras are installed; check 53 is an always-on container-liveness census that fails if any managed container is down; check 54 verifies the OpenShell gateway is up on :17670 and reds until you `brew trust nvidia/openshell`.
 
 **How to read drift.** `status` is "what's running right now"; `doctor` is "is each thing correct." If `status` is clean but `doctor` flags something, it's usually a config/credential gap (e.g. `PHOENIX_API_KEY` not yet set) — doctor names the fix. If `status` shows `foreign` or a missing container, that's the thing to adopt or re-install first.
 
@@ -1697,7 +1697,7 @@ export OPENAI_API_KEY=<a LiteLLM virtual key>
 **Steps — the verbs.**
 
 ```bash
-# HEALTH — run the full diagnostic sweep (69 checks, each self-diagnosing).
+# HEALTH — run the full diagnostic sweep (70 checks, each self-diagnosing).
 vz-ai-stack.sh doctor
 vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShell token-storm guard)
 
