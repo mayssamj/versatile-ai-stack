@@ -101,7 +101,8 @@ require_env() {
       return 1
     fi
     warn "$key was missing/empty; writing default into $ENV_FILE"
-    set_env "$key" "$default"
+    # CA-4: propagate a DLP-blocked write — don't return the in-memory default as if it persisted.
+    set_env "$key" "$default" || return 1
     val="$default"
   fi
   printf '%s' "$val"
@@ -209,7 +210,11 @@ env_ensure_baseline() {
 # fix_crlf — strip CR from every line. Used by doctor.
 fix_crlf() {
   ensure_env_file
-  local tmp; tmp="$(mktemp "${ENV_FILE}.XXXXXX")"
+  local tmp; tmp="$(mktemp "${ENV_FILE}.XXXXXX")" || return 1
   chmod 600 "$tmp"
-  tr -d '\r' < "$ENV_FILE" > "$tmp" && mv -f "$tmp" "$ENV_FILE"
+  tr -d '\r' < "$ENV_FILE" > "$tmp" && mv -f "$tmp" "$ENV_FILE" && return 0
+  # CA-4: same DLP-block-must-not-be-swallowed treatment as set_env — clean up + fail loud.
+  rm -f "$tmp" 2>/dev/null || true
+  err "fix_crlf: FAILED to rewrite $ENV_FILE (tr/mv error; an endpoint DLP agent may have blocked the write) — left unchanged."
+  return 1
 }

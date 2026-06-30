@@ -32,6 +32,9 @@ if chflags uchg "$ENV_FILE" 2>/dev/null; then
     && ok "blocked write -> rc!=0 + loud (names the file + DLP), value NOT swallowed" \
     || bad "blocked write swallowed or quiet: rc=$rc out='$out'"
   grep -qx 'BLOCKED=nope' "$ENV_FILE" && bad "the blocked value leaked into .env" || ok "the blocked value did NOT land in .env"
+  # the central CA-4 claim: the LOUD error must NEVER contain the secret value
+  grep -q 'nope' <<<"$out" && bad "secret value LEAKED into the loud error message" || ok "loud error omits the secret value (DLP hygiene)"
+  ls "$ENV_FILE".* >/dev/null 2>&1 && bad "a 0600 temp .env.XXXXXX was stranded (secret-on-disk)" || ok "no stranded temp after the blocked write"
 else
   echo "  [skip] chflags uchg unavailable on this fs — can't simulate the block"
 fi
