@@ -4,6 +4,42 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-30 — Fleet resilience hardening (round 1): 9 fixes from a 71-incident review + 17-risk future-inspection
+
+A standalone resilience initiative (§24): mined 71 prior fleet/hermes/sandbox/openshell
+incidents from memory + git, distilled 10 lessons, inspected the current code for 17
+future-risks, ranked them, and fixed the top tier (3-reviewer comprehensive review;
+29 offline assertions). Round 1 closed two gaps the 2026-06-30 install-self-heal itself
+exposed plus the highest-impact host-state collisions:
+
+- **GW-1** a standalone `install 04f` self-heal minted a LOCAL-ONLY Hermes key while
+  the profiles route to the CLOUD default — LiteLLM enforces the allow-list server-side,
+  so every gateway DM 403'd after the recommended heal. Now reconciles the key to the
+  bound models via `litellm_reconcile_key` (UNION, off-argv, loopback-fallback).
+- **R4 / R2 / R3 — clock-skew family (sleep/wake, OrbStack VM restart):** the storm
+  detector now uses an ABSOLUTE `--since` epoch (a relative duration is computed on the
+  client clock, not the daemon's — it blinded/false-positived the detector under skew);
+  the re-mint heal verifies the storm actually STOPPED (not just control-plane `Ready`)
+  and escalates to HALT if a fresh token is still rejected, instead of a false-green
+  loop; the minter backdates `iat`/`nbf` by a `--skew` leeway so a VM clock ahead of the
+  host doesn't reject a just-minted token.
+- **R1 / R7** the generic CPU net's `docker stats` and the pre-halt/recreate checkpoint
+  `docker commit` — both the calls that hang hardest under swap thrash — are now bounded
+  (`_wd_bounded`), so a wedged daemon can't dark the watchdog for a 10-minute window.
+- **R6** the operator-sticky `watchdog.conf` (auto-heal modes) is written atomically
+  (a torn write had silently reverted REMINT/PERSIST to OFF).
+- **GW-2** 04h key-widening leaked the scoped key into argv → routed through the
+  off-argv `litellm_reconcile_key`. **GW-3** doctor 30 now asserts the Hermes key
+  COVERS the live bound cloud model (the drift-detector that would have caught GW-1).
+- **Corporate-agent collision dimension recorded** (CrowdStrike/Zscaler/Netwrix/CyberArk/
+  Nessus/Jamf): the stack is a guest that must classify EXTERNAL causes (Zscaler TLS-MITM,
+  EPM denial, scan tax) vs INTERNAL faults and never apply a destructive internal
+  remediation to an external cause. Guards CA-1..CA-5 queued for round 2.
+
+Round-2 backlog (tracked): GW-4 (W5 restores a dead key), GW-5 (04f mint loopback),
+GW-6 (litellm keystore creds), GW-7 (MCP-token snapshot), R5 (kid rotation), R8
+(self-masking storm), R9 (proactive re-mint not consumed), CA-1..CA-5.
+
 ## 2026-06-30 — Hermes install resilience: 04f self-heals the token storm + unify/StartedAt-gate the detector
 
 Root-caused a recurring `install 04f` failure ("gateway token EXPIRED … must be
