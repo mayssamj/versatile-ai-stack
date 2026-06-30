@@ -88,12 +88,17 @@ _storm_since_arg() {
   printf '%s' "$since"
 }
 
-# storm_detect <docker_bin> <cid> — the canonical detector.
-#   rc 0 = STORMING   (expired-token signature emitted AFTER the last restart)
-#   rc 1 = healthy    (no in-window storm signature, OR inputs absent)
-#   rc 2 = UNKNOWN    (the bounded docker-logs read timed out — daemon wedged)
-# Matches any of: ExpiredSignature | RefreshSandboxToken … Unauthenticated |
-# >=8 reconnect lines (a no-backoff storm, not a one-off blip).
+# storm_detect <docker_bin> <cid> — the canonical LOG-signature detector.
+#   rc 0 = STORMING    (an UNAMBIGUOUS token-rejection signature: ExpiredSignature /
+#                       RefreshSandboxToken…Unauthenticated — the gateway rejected the token)
+#   rc 1 = healthy     (no in-window storm signature, OR inputs absent)
+#   rc 2 = UNKNOWN     (the bounded docker-logs read timed out — daemon wedged)
+#   rc 3 = SUSPECTED   (>=8 reconnect lines but NO token-rejection signature — AMBIGUOUS: a real
+#                       storm whose ExpiredSignature scrolled past --tail, OR a relay flap from
+#                       EXTERNAL host CPU/IO thrash, e.g. a Nessus/CrowdStrike scan, on a VALID
+#                       token). MUST be corroborated against real token expiry before acting —
+#                       see storm_confirmed (CR-4: an external scan must NOT fake a token storm
+#                       and trigger a destructive re-mint/restart heal during the very scan).
 storm_detect() {
   local docker_bin="$1" cid="$2" since logs rc=0
   [[ -n "$docker_bin" && -n "$cid" ]] || return 1
@@ -104,14 +109,51 @@ storm_detect() {
   # of an AND-OR list), so a no-match here is safe.
   grep -q 'ExpiredSignature' <<<"$logs" && return 0
   grep -q 'RefreshSandboxToken.*Unauthenticated' <<<"$logs" && return 0
-  # >=8 reconnect lines = a no-backoff storm. CAPTURE-then-compare (NOT `(( $(grep -c …) ))`):
-  # `grep -c` EXITS 1 on a zero count (while printing "0"), and inside a command substitution
-  # that exit-1 is NOT AND-OR-exempt — under the inherited `set -E` ERR trap that vz-ai-stack.sh
-  # installs, a benign zero-count would fire a spurious "ERR line …" on every healthy install.
-  # `|| true` + numeric-validate neutralizes it.
+  # >=8 reconnect lines WITHOUT a token-rejection line = SUSPECTED, not confirmed. CAPTURE-then-
+  # compare (NOT `(( $(grep -c …) ))`): `grep -c` EXITS 1 on a zero count, and inside a command
+  # substitution that exit-1 is NOT AND-OR-exempt — under the inherited `set -E` ERR trap
+  # vz-ai-stack.sh installs, a benign zero-count would fire a spurious "ERR line …". `|| true` +
+  # numeric-validate neutralizes it.
   local _reconnects=0
   _reconnects="$(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs" 2>/dev/null)" || true
   [[ "$_reconnects" =~ ^[0-9]+$ ]] || _reconnects=0
-  (( _reconnects >= 8 )) && return 0
+  (( _reconnects >= 8 )) && return 3   # SUSPECTED — corroborate via storm_confirmed (CR-4)
+  return 1
+}
+
+# _storm_token_secs_left <docker_bin> <cid> — echo the sandbox gateway token's seconds-to-expiry
+# (negative = already expired), or nothing + rc1 if it can't be determined. Decode-only via the
+# minter's --exp-only (no openssl needed). Used to CORROBORATE an ambiguous reconnect-flood
+# against ACTUAL expiry. Overridable in tests.
+_storm_token_secs_left() {
+  local docker_bin="$1" cid="$2" uuid base m tok py mint
+  py="$(command -v python3 2>/dev/null || true)"; [[ -n "$py" ]] || return 1
+  mint="${AI_STACK:-$HOME/ai-stack}/bin/openshell-jwt-mint.py"; [[ -f "$mint" ]] || return 1
+  uuid="$("$docker_bin" inspect "$cid" --format '{{.Name}}' 2>/dev/null | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
+  [[ -n "$uuid" ]] || return 1
+  base="$HOME/.local/state/openshell/docker-sandbox-tokens"; tok=""
+  for m in "$base"/*/"$uuid"/sandbox.jwt; do [[ -f "$m" ]] && { tok="$m"; break; }; done
+  [[ -n "$tok" ]] || return 1
+  "$py" "$mint" --token "$tok" --exp-only 2>/dev/null
+}
+
+# storm_confirmed <docker_bin> <cid> — storm_detect + CR-4 corroboration of the ambiguous
+# reconnect-flood (rc 3). Returns 0 STORM / 1 healthy / 2 UNKNOWN. This is what the watchdog +
+# installer + doctor call (NOT storm_detect) so an external CPU/IO scan flap on a VALID token
+# can never trigger a destructive heal. A reconnect-flood is a storm ONLY when the token is
+# actually at/near expiry; a valid token under a flood = external pressure -> healthy (defer).
+storm_confirmed() {
+  local docker_bin="$1" cid="$2" rc=0 left
+  storm_detect "$docker_bin" "$cid" || rc=$?
+  case "$rc" in
+    0|1|2) return "$rc" ;;   # confirmed token-rejection / healthy / unknown — pass through
+    3)
+      left="$(_storm_token_secs_left "$docker_bin" "$cid" 2>/dev/null || true)"
+      if [[ "$left" =~ ^-?[0-9]+$ ]]; then
+        (( left <= 120 )) && return 0 || return 1   # near/expired => real storm ; valid => external flap
+      fi
+      return 1   # INDETERMINATE (no python3/minter/token) -> do NOT churn a heal on a maybe-flap
+      ;;
+  esac
   return 1
 }

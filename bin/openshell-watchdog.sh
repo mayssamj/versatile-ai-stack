@@ -539,10 +539,14 @@ _mark() { local key="$1"; { grep -vE "^$key " "$THROTTLE_FILE" 2>/dev/null || tr
 # storm-detect.sh is somehow unavailable (shared-repo safety).
 _is_storming() {
   local cid="$1" rc=0
-  if declare -F storm_detect >/dev/null 2>&1; then
+  if declare -F storm_confirmed >/dev/null 2>&1; then
+    # storm_confirmed corroborates an ambiguous reconnect-flood against real token expiry so an
+    # external CPU/IO scan (Nessus/CrowdStrike) flap on a VALID token can't fake a storm and
+    # trigger a destructive re-mint/restart heal during the scan (CR-4). rc 2 (UNKNOWN) maps to 1.
+    storm_confirmed "$DOCKER" "$cid" || rc=$?
+    [[ $rc -eq 0 ]] && return 0 || return 1
+  elif declare -F storm_detect >/dev/null 2>&1; then
     storm_detect "$DOCKER" "$cid" || rc=$?
-    # Explicit return (the bare `(( rc == 0 )); return` relied on a set -e side-effect — dead
-    # `return` + a non-`&&` caller would kill the cycle). rc 2 (UNKNOWN) maps to 1.
     [[ $rc -eq 0 ]] && return 0 || return 1
   fi
   local logs

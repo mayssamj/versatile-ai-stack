@@ -390,17 +390,14 @@ litellm_settings:
   # keep getting Opus (just via OpenRouter) when Anthropic's API
   # is down, instead of silently swapping to GPT.
   fallbacks:
-    # PLATFORM MODEL POLICY (2026-06-23): claude-opus-sub-max is the DEFAULT
-    # model across the whole platform (Hermes fleet, Honcho, MemPalace, DeerFlow,
-    # Open WebUI, unassigned agents). local-qwen3 (Qwen3 8B on Ollama) is the
-    # OFFLINE FALLBACK for when the Claude subscription via the Meridian daemon is
-    # unavailable. LiteLLM is the SINGLE owner of Meridian failover: EVERY
-    # meridian-routed `*-sub-*` model fails over to local-qwen3 here, so a default
-    # call degrades to local compute instead of a bare 503 — and per-phase
-    # availability-gating only needs to handle the lmstudio case. CAVEATS: if BOTH
-    # Meridian AND Ollama are down the caller still gets a LiteLLM 503 (no fallback
-    # left); local-qwen3 is lower-capability — watch traces/litellm.jsonl if
-    # answer quality drops during a Meridian outage.
+    # INTENTIONALLY EMPTY — there are NO active cloud->local fallback entries (verified
+    # 2026-06-30: `yq '.litellm_settings.fallbacks'` => null). A Meridian/codex/cloud failure —
+    # INCLUDING a corporate Zscaler TLS-interception block — returns a VISIBLE LiteLLM 503; it
+    # NEVER fails over to a local model. DELIBERATE: on the M4/24GB box a reactive local-model
+    # load would risk an OOM/swap-thrash (the hard no-local directive), and a Zscaler TLS hiccup
+    # must NOT silently degrade the whole platform onto a weak 8B local model. DO NOT add a
+    # cloud->local fallback here. (The prose below describing a local-qwen3 / local-gemma4
+    # failover is STALE — that policy was removed; ignore it.)
     # Codex bridge (ChatGPT subscription). Fail over to local-gemma4 ONLY —
     # never to the metered openai-gpt-5.* (no surprise card billing). If both
     # the bridge AND Ollama are down the caller gets a 503 (same as Meridian).

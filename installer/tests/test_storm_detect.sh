@@ -73,10 +73,27 @@ unset FAKE_STORM_AT
 
 echo "== storm_detect: signature coverage (G3 — all three, one detector) =="
 export FAKE_STARTEDAT="$(iso_at -3600)"
-export FAKE_LOG_MODE=refresh;    storm_detect "$FAKE" cid; (( $? == 0 )) && ok "RefreshSandboxToken Unauthenticated -> STORM" || bad "RefreshSandboxToken not detected"
-export FAKE_LOG_MODE=reconnect8; storm_detect "$FAKE" cid; (( $? == 0 )) && ok ">=8 reconnect lines -> STORM" || bad ">=8 reconnect not detected"
+export FAKE_LOG_MODE=refresh;    storm_detect "$FAKE" cid; (( $? == 0 )) && ok "RefreshSandboxToken Unauthenticated -> STORM (confirmed)" || bad "RefreshSandboxToken not detected"
+export FAKE_LOG_MODE=reconnect8; storm_detect "$FAKE" cid; (( $? == 3 )) && ok ">=8 reconnect lines -> SUSPECTED (rc3, needs corroboration)" || bad ">=8 reconnect not rc3"
 export FAKE_LOG_MODE=reconnect3; storm_detect "$FAKE" cid; (( $? == 1 )) && ok "<8 reconnect lines -> healthy" || bad "3 reconnect wrongly flagged"
 export FAKE_LOG_MODE=clean;      storm_detect "$FAKE" cid; (( $? == 1 )) && ok "clean logs -> healthy" || bad "clean logs wrongly flagged"
+
+echo "== storm_confirmed: CR-4 — a reconnect-flood is a storm ONLY if the token is really expiring =="
+export FAKE_LOG_MODE=reconnect8 FAKE_STARTEDAT="$(iso_at -3600)"
+_storm_token_secs_left(){ echo 1800; }   # token VALID -> the flood is an external scan flap
+storm_confirmed "$FAKE" cid; (( $? == 1 )) && ok "reconnect-flood + VALID token -> healthy (external flap, NO heal churn)" || bad "valid-token flood wrongly flagged a storm"
+_storm_token_secs_left(){ echo 30; }      # token near expiry -> a real storm whose sig scrolled past --tail
+storm_confirmed "$FAKE" cid; (( $? == 0 )) && ok "reconnect-flood + NEAR-EXPIRY token -> STORM" || bad "near-expiry flood missed"
+_storm_token_secs_left(){ echo -10; }     # already expired
+storm_confirmed "$FAKE" cid; (( $? == 0 )) && ok "reconnect-flood + EXPIRED token -> STORM" || bad "expired flood missed"
+_storm_token_secs_left(){ return 1; }     # indeterminate (no minter/python3/token)
+storm_confirmed "$FAKE" cid; (( $? == 1 )) && ok "reconnect-flood + INDETERMINATE expiry -> healthy (no churn)" || bad "indeterminate flood churned a heal"
+unset -f _storm_token_secs_left
+export FAKE_LOG_MODE=storm FAKE_STARTEDAT="$(iso_at -17)" FAKE_STORM_AT="$(( $(NOW) - 5 ))"
+storm_confirmed "$FAKE" cid; (( $? == 0 )) && ok "confirmed ExpiredSignature -> STORM (pass-through)" || bad "confirmed-storm pass-through failed"
+unset FAKE_STORM_AT
+export FAKE_LOG_MODE=clean FAKE_STARTEDAT="$(iso_at -3600)"
+storm_confirmed "$FAKE" cid; (( $? == 1 )) && ok "clean -> healthy (pass-through)" || bad "clean pass-through failed"
 
 echo "== storm_detect / _storm_bounded: UNKNOWN tri-state on a wedged read (G9) =="
 _storm_bounded 1 sleep 5; rc=$?

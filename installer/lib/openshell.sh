@@ -75,7 +75,11 @@ openshell_token_storm() {
   [[ -n "$docker_bin" ]] || return 1
   cid="$("$docker_bin" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
   [[ -n "$cid" ]] || return 1
-  storm_detect "$docker_bin" "$cid" || rc=$?
+  # storm_confirmed (NOT raw storm_detect): corroborates an ambiguous reconnect-flood against
+  # real token expiry, so a Nessus/CrowdStrike scan flap on a VALID token can't fake a storm here
+  # (CR-4). Falls back to storm_detect if the corroborating layer isn't sourced.
+  if declare -F storm_confirmed >/dev/null 2>&1; then storm_confirmed "$docker_bin" "$cid" || rc=$?
+  else storm_detect "$docker_bin" "$cid" || rc=$?; fi
   # Explicit return (NOT a bare `(( rc == 0 ))` whose set -e side-effect is the result) so a
   # future non-conditional caller can't be killed by set -e. rc 2 (UNKNOWN) maps to 1.
   [[ $rc -eq 0 ]] && return 0 || return 1

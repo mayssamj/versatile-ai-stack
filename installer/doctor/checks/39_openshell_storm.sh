@@ -32,8 +32,12 @@ openshell_storm_diagnose() {
   for name in hermes-fleet-v1 pi-v1; do
     cid="$("$docker" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
     [[ -n "$cid" ]] || continue
-    if declare -F storm_detect >/dev/null 2>&1; then
-      rc=0; storm_detect "$docker" "$cid" || rc=$?
+    if declare -F storm_confirmed >/dev/null 2>&1 || declare -F storm_detect >/dev/null 2>&1; then
+      # storm_confirmed corroborates an ambiguous reconnect-flood vs real token expiry (CR-4) so a
+      # scan-induced relay flap on a VALID token isn't reported as a storm; fall back to storm_detect.
+      rc=0
+      if declare -F storm_confirmed >/dev/null 2>&1; then storm_confirmed "$docker" "$cid" || rc=$?
+      else storm_detect "$docker" "$cid" || rc=$?; fi
       case "$rc" in
         0) storming="${storming}${name} ";;
         2) unknown="${unknown}${name} ";;   # wedged-docker read — UNKNOWN, not green
