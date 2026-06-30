@@ -95,8 +95,18 @@ storm_detect() {
   win="$(_storm_window_secs "$docker_bin" "$cid")"
   logs="$(_storm_bounded 10 "$docker_bin" logs "$cid" --since "${win}s" --tail 200 2>&1)"; rc=$?
   (( rc == 124 )) && return 2   # wedged read -> UNKNOWN, NOT "healthy" (G9)
+  # The `grep -q … && return 0` form is exempt from set -e / the ERR trap (non-final command
+  # of an AND-OR list), so a no-match here is safe.
   grep -q 'ExpiredSignature' <<<"$logs" && return 0
   grep -q 'RefreshSandboxToken.*Unauthenticated' <<<"$logs" && return 0
-  (( $(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs") >= 8 )) && return 0
+  # >=8 reconnect lines = a no-backoff storm. CAPTURE-then-compare (NOT `(( $(grep -c …) ))`):
+  # `grep -c` EXITS 1 on a zero count (while printing "0"), and inside a command substitution
+  # that exit-1 is NOT AND-OR-exempt — under the inherited `set -E` ERR trap that vz-ai-stack.sh
+  # installs, a benign zero-count would fire a spurious "ERR line …" on every healthy install.
+  # `|| true` + numeric-validate neutralizes it.
+  local _reconnects=0
+  _reconnects="$(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs" 2>/dev/null)" || true
+  [[ "$_reconnects" =~ ^[0-9]+$ ]] || _reconnects=0
+  (( _reconnects >= 8 )) && return 0
   return 1
 }

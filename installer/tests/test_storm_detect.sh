@@ -78,6 +78,15 @@ echo "== storm_detect / _storm_bounded: UNKNOWN tri-state on a wedged read (G9) 
 _storm_bounded 1 sleep 5; rc=$?
 (( rc == 124 )) && ok "_storm_bounded times out a hung cmd -> 124" || bad "expected 124 on timeout, got $rc"
 
+echo "== storm_detect: no spurious ERR trap on the healthy path under inherited set -E (prod) =="
+# vz-ai-stack.sh installs `trap … ERR`; set -E inherits it into storm_detect. `grep -c` exits
+# 1 on a zero count, and inside `(( $(grep -c …) ))` that benign zero used to FIRE the trap on
+# every healthy install. Regression-guard: run under the same trap shape, assert it never fires.
+export FAKE_LOG_MODE=clean FAKE_STARTEDAT="$(iso_ago 3600)"
+export ERRMARK="$TMP/errfire"; : > "$ERRMARK"
+( set -Eeuo pipefail; trap 'echo x >>"$ERRMARK"' ERR; storm_detect "$FAKE" cid || true ) >/dev/null 2>&1 || true
+[[ ! -s "$ERRMARK" ]] && ok "healthy path fires NO ERR trap (grep -c exit-1 neutralized)" || bad "ERR trap fired $(wc -l <"$ERRMARK" | tr -d ' ')x on healthy path"
+
 echo
 echo "RESULT: $PASS passed, $FAIL failed"
 (( FAIL == 0 ))
