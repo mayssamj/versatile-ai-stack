@@ -32,6 +32,16 @@
 # LOUD (RED marker + notify) — never a silent destroy-without-rebuild.
 # Opt-in AI_STACK_WATCHDOG_HALT=1: `docker stop` the storming container (non-destructive,
 # sandbox record preserved) to cut the CPU burn while you decide.
+#
+# SLEEP-COVERAGE CAVEAT (G14): launchd `StartInterval` timers are SUSPENDED while the Mac
+# sleeps, and `RunAtLoad` fires only at boot/login (NOT on wake). So the PROACTIVE re-mint
+# (last REMINT_THRESHOLD secs of the 1h TTL) can be slept straight through, and on wake the
+# token may already be expired with a window before the first post-wake cycle re-mints. That
+# residual window is covered by (a) the install paths now self-healing in place
+# (installer/lib/openshell.sh::openshell_sandbox_ensure, called by Phase 04/04f/15) and
+# (b) the daemon-health-gated reactive heal below. An opt-in wake-observer LaunchAgent that
+# fires one cycle on wake is a possible future hardening (needs operator sign-off — it adds a
+# resident agent).
 set -Eeuo pipefail
 
 AI_STACK="${AI_STACK:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -494,6 +504,17 @@ if [[ -d "$INSTALL_LOCK" ]]; then
   log "ignoring STALE install lock (pid '${_il_pid:-none}' not a live install, age ${_il_age}s) — proceeding with auto-heal"
 fi
 
+# G10 — daemon-health gate: a wedged docker daemon (the host-thrash condition a storm
+# coincides with — cf. the 06-29 21:48 W2 timeout) would otherwise hang this cycle on the
+# unbounded per-cycle docker calls until the 600s stale-lock reclaim (watchdog dark ~10 min,
+# possibly missing a proactive re-mint that then expires). Probe under a hard bound; if the
+# daemon isn't responsive, skip THIS cycle cleanly (the EXIT trap releases the lock) and
+# re-check next interval — never wedge.
+if ! _wd_bounded 8 "$DOCKER" version >/dev/null 2>&1; then
+  log "docker daemon not responding within 8s (wedged under host memory pressure?) — skipping this cycle"
+  exit 0
+fi
+
 _throttled() {  # _throttled <key> — true if <key> was acted on within THROTTLE_SECS
   local key="$1" now last
   now="$(date +%s)"
@@ -560,11 +581,17 @@ _verify_ready() {
 
 # --- in-place token re-mint (persistence) -----------------------------------
 _token_path() {  # _token_path <cid> -> echo sandbox.jwt path (rc 1 if absent)
-  local cid="$1" uuid
+  local cid="$1" uuid base m found=()
   uuid="$("$DOCKER" inspect "$cid" --format '{{.Name}}' 2>/dev/null \
     | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
-  [[ -n "$uuid" && -f "$TOKDIR/$uuid/sandbox.jwt" ]] || return 1
-  echo "$TOKDIR/$uuid/sandbox.jwt"
+  [[ -n "$uuid" ]] || return 1
+  # G5: glob by UUID (unique across gateways), NOT the hardcoded /default/ slug — under a
+  # non-default gateway name the token was unfindable, so re-mint silently no-op'd and the
+  # heal degraded to a restart that can't refresh an expired token. Match exactly one; >1 -> fail.
+  base="${TOKDIR%/default}"
+  for m in "$base"/*/"$uuid"/sandbox.jwt; do [[ -f "$m" ]] && found+=("$m"); done
+  (( ${#found[@]} == 1 )) || return 1
+  echo "${found[0]}"
 }
 _token_secs_left() {  # _token_secs_left <tokenpath> -> echo seconds-to-expiry
   [[ -n "$PYTHON3" && -f "$MINT" && -f "$1" ]] || return 1

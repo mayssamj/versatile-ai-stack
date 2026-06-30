@@ -216,7 +216,17 @@ fi
 
 # --- 6. Wire an EXISTING Hermes fleet (gated; non-fatal) --------------------
 if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk -v n="$SANDBOX" 'NR>1 && $1==n{f=1} END{exit !f}'; then
-  configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "fleet MCP wiring incomplete (re-run 'vz-ai-stack.sh install 04f')"
+  # G8: the sandbox can be present-but-token-storming (expired token); MCP wiring runs over
+  # the dead exec relay and silently no-ops. Make the skip HEALTH-aware via the storm CHECK
+  # (NOT openshell_sandbox_ensure — reviving/restarting the bot as a side effect of an opt-in
+  # `install sourcegraph` would be a surprising blast radius). The revive belongs to 04f,
+  # which now self-heals, so just point there.
+  if openshell_token_storm "$SANDBOX"; then
+    note "Hermes fleet '$SANDBOX' present but token-storming — skipping MCP wiring (would no-op over the dead relay)."
+    note "  Heal + wire in one step (04f now self-heals in place): vz-ai-stack.sh install 04f"
+  else
+    configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "fleet MCP wiring incomplete (re-run 'vz-ai-stack.sh install 04f')"
+  fi
 else
   note "No Hermes fleet sandbox yet — it will auto-wire when you run 'vz-ai-stack.sh install agent_fleet'."
 fi

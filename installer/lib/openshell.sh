@@ -197,14 +197,42 @@ _osh_bounded() {
 
 # _osh_token_path <name> — echo the sandbox.jwt path of the EXISTING container (rc 1 if none).
 _osh_token_path() {
-  local name="$1" docker_bin cid uuid tokdir
+  local name="$1" docker_bin cid uuid base m found=()
   docker_bin="$(command -v docker 2>/dev/null || true)"; [[ -n "$docker_bin" ]] || return 1
   cid="$("$docker_bin" ps -aq --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
   [[ -n "$cid" ]] || return 1
   uuid="$("$docker_bin" inspect "$cid" --format '{{.Name}}' 2>/dev/null | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
-  tokdir="$HOME/.local/state/openshell/docker-sandbox-tokens/default"
-  [[ -n "$uuid" && -f "$tokdir/$uuid/sandbox.jwt" ]] || return 1
-  printf '%s' "$tokdir/$uuid/sandbox.jwt"
+  [[ -n "$uuid" ]] || return 1
+  # G5: locate by UUID (unique across gateways), NOT the hardcoded /default/ slug. Phase 04
+  # adopts a gateway of ANY name; pinning /default/ made the token unfindable under a
+  # non-default gateway, so re-mint silently no-op'd and the "heal" degraded to a
+  # restart-only that can't refresh an expired token. Match exactly one; >1 (impossible for
+  # a unique UUID) -> fail-explicit rather than pick one silently.
+  base="$HOME/.local/state/openshell/docker-sandbox-tokens"
+  for m in "$base"/*/"$uuid"/sandbox.jwt; do [[ -f "$m" ]] && found+=("$m"); done
+  (( ${#found[@]} == 1 )) || return 1
+  printf '%s' "${found[0]}"
+}
+
+# _osh_relaunch_gateway <name> <cid> — G4: a `docker restart` in _osh_revive kills the
+# in-sandbox `hermes gateway run` process, so an install-path revive otherwise leaves the
+# bot DARK until the watchdog's next W2 cycle. Restore it directly via `docker exec -d`
+# (NOT the openshell relay, which hangs under the very thrash a storm coincides with).
+# Name-scoped to the gateway-bearing sandbox (pi-v1 has none); `--replace` keeps it
+# idempotent (converges with Phase 20 / the watchdog). Bounded + best-effort + NON-fatal:
+# a relaunch hiccup must never fail an otherwise-successful revive (W2 retries next cycle).
+_osh_relaunch_gateway() {
+  local name="$1" cid="$2" docker_bin
+  [[ "$name" == "hermes-fleet-v1" ]] || return 0
+  docker_bin="$(command -v docker 2>/dev/null || true)"
+  [[ -n "$docker_bin" && -n "$cid" ]] || return 0
+  if _osh_bounded 15 "$docker_bin" exec -d "$cid" sh -c \
+       'export HOME=/sandbox; cd /sandbox; nohup /sandbox/.venv/bin/hermes gateway run --replace >/sandbox/.hermes-gateway.log 2>&1'; then
+    log "  revive '$name': relaunched hermes gateway (docker exec -d, --replace)"
+  else
+    warn "  revive '$name': gateway relaunch returned non-zero (watchdog W2 retries next cycle)"
+  fi
+  return 0
 }
 
 # _osh_revive <OSH> <name> — NON-DESTRUCTIVE recovery of an EXISTING sandbox container:
@@ -235,12 +263,30 @@ _osh_revive() {
     ossl=""
   fi
   tok="$(_osh_token_path "$name" 2>/dev/null || true)"
+  local minted=0
   if [[ -n "$tok" && -f "$mint" && -n "$py" && -n "$ossl" ]]; then
-    OPENSSL_BIN="$ossl" "$py" "$mint" --token "$tok" --write >/dev/null 2>&1 \
-      && log "  revive '$name': re-minted gateway token in place (original + .bak intact)" \
-      || warn "  revive '$name': token re-mint failed (trying start/restart anyway)"
+    if OPENSSL_BIN="$ossl" "$py" "$mint" --token "$tok" --write >/dev/null 2>&1; then
+      minted=1; log "  revive '$name': re-minted gateway token in place (original + .bak intact)"
+    else
+      warn "  revive '$name': token re-mint FAILED"
+    fi
   else
-    log "  revive '$name': minter/openssl/token unavailable — start/restart only"
+    log "  revive '$name': minter/openssl/token unavailable — cannot re-mint"
+  fi
+  # G6: if NO fresh token was written AND the existing token is CONFIRMED expired, a docker
+  # restart would just re-read the SAME expired token and immediately re-storm — so refuse to
+  # restart and fail-explicit (caller leaves the container as-is for diagnosis). Block ONLY on
+  # a confirmed expiry (--exp-only DECODES the token, no openssl, so it works on a LibreSSL
+  # host); an INDETERMINATE check (no python3 / decode fails) falls through to restart-anyway
+  # (today's behavior — never a NEW hard block).
+  if (( minted == 0 )) && [[ -n "$tok" && -f "$mint" && -n "$py" ]]; then
+    local _left
+    _left="$("$py" "$mint" --token "$tok" --exp-only 2>/dev/null || echo)"
+    if [[ "$_left" =~ ^-?[0-9]+$ ]] && (( _left <= 0 )); then
+      err "  revive '$name': token EXPIRED (${_left}s) and could NOT be re-minted — refusing to restart"
+      err "  (a restart would re-read the expired token and immediately re-storm). Fix: brew install openssl@3"
+      return 1
+    fi
   fi
   status="$("$docker_bin" inspect "$cid" --format '{{.State.Status}}' 2>/dev/null || echo)"
   if [[ "$status" == "running" ]]; then
@@ -251,7 +297,10 @@ _osh_revive() {
   # Poll for Ready, but BOUND each `sandbox get` — the relay CLI can HANG under memory pressure
   # (the pathology openshell_sandbox_create_watchdog already guards against).
   for i in 1 2 3 4 5 6 7 8; do
-    [[ "$(_osh_bounded 12 "$osh" sandbox get "$name" 2>/dev/null | _osh_strip_ansi | awk '/^[[:space:]]*Phase:[[:space:]]*/{print $2; exit}')" == "Ready" ]] && return 0
+    if [[ "$(_osh_bounded 12 "$osh" sandbox get "$name" 2>/dev/null | _osh_strip_ansi | awk '/^[[:space:]]*Phase:[[:space:]]*/{print $2; exit}')" == "Ready" ]]; then
+      _osh_relaunch_gateway "$name" "$cid"   # G4: the docker restart above killed the in-sandbox gateway PROCESS
+      return 0
+    fi
     sleep 4
   done
   return 1

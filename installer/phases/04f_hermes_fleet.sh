@@ -12,6 +12,16 @@ source "$AI_STACK/installer/lib/env.sh"   # get_env/set_env for HERMES_LITELLM_K
 source "$AI_STACK/installer/lib/openshell.sh"  # openshell_token_storm (expired-token detection)
 source "$AI_STACK/installer/lib/mcp.sh"        # configure_hermes_mcp_sourcegraph (gated on SG token)
 
+# G13: yq drives the DATA-DRIVEN roster (fleet_profiles, below). A MISSING yq makes the
+# roster silently EMPTY, which later surfaces as the misleading "Expected N souls … found 0"
+# abort (same surface as a real soul/upload bug) — and an empty roster could even let the
+# precheck wrongly report "already complete". Fail early naming the actual cause. (yq is a
+# hard dependency of this phase; this is independent of any partial-checkout of models.yml.)
+if ! command -v yq >/dev/null 2>&1; then
+  err "yq is required for the Hermes fleet roster (installer/models.yml) — install it: brew install yq"
+  exit 1
+fi
+
 PHASE=04f
 SANDBOX=hermes-fleet-v1
 SOULS_DIR="$AI_STACK/openshell/fleet-souls"
