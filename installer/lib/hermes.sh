@@ -19,7 +19,8 @@ HERMES_GW_LOG="${HERMES_GW_LOG:-/sandbox/.hermes-gateway.log}"   # in-sandbox pa
 hermes_strip() { LC_ALL=C tr -d '\000' | LC_ALL=C sed $'s/\x1b\\[[0-9;]*m//g'; }
 
 hermes_resolve_openshell() {
-  if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
+  if [[ -n "${HERMES_OPEN_SHELL_BIN:-}" && -x "$HERMES_OPEN_SHELL_BIN" ]]; then echo "$HERMES_OPEN_SHELL_BIN"
+  elif [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
   elif command -v openshell >/dev/null 2>&1; then command -v openshell; else echo ""; fi
 }
 

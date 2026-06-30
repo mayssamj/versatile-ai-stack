@@ -637,7 +637,7 @@ bash ~/ai-stack/bin/start-hermes-telegram.sh
 
 ## "The Slack bot doesn't reply" (Phase 38)
 
-By far the most common cause: **the bot is LOCKED.** The gateway is secure-by-default
+By far the most common cause: **the bot is LOCKED.** Slack is secure-by-default
 — with no allowlist it connects to Slack but **denies every user**, so your DMs and
 `@`-mentions get no response. `doctor` shows check 67 passing with a "**running but
 LOCKED**" note, and Phase 38 prints a loud "SLACK BOT IS LOCKED" banner. Fix:
@@ -646,21 +646,23 @@ LOCKED**" note, and Phase 38 prints a loud "SLACK BOT IS LOCKED" banner. Fix:
 # 1. Get your Slack member id — Slack profile → ⋮ (More) → Copy member ID (U…).
 # 2. Add it to .env (mode 0600):
 echo 'HERMES_SLACK_ALLOWED_USERS=U0123ABCD' >> ~/ai-stack/.env   # your member id
-# 3. Re-apply (restarts the gateway with the new allowlist):
+# 3. Re-apply (restarts the Slack role router with the new allowlist):
 bash ~/ai-stack/vz-ai-stack.sh install 38
 ```
 
-Open access (anyone in the workspace) is `HERMES_SLACK_ALLOW_ALL=true` in `.env`
-— **not advised**, since the bot can drive all 9 agent profiles.
+`HERMES_SLACK_ALLOW_ALL=true` does **not** grant operator authority in the default
+role-router mode. Use explicit `HERMES_SLACK_ALLOWED_USERS=<your_member_id>` for
+any Slack user who may drive Hermes. `ALLOW_ALL` is only honored if
+`HERMES_SLACK_ROLE_ROUTER=false` rolls back to upstream-native Slack.
 
 Other causes:
 
 ```bash
 OSH=/opt/homebrew/bin/openshell
-# Is the gateway actually running inside the sandbox?
-$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status      # expect "running (PID …)"
-# Read the gateway log (auth errors, blocked egress, the Socket-Mode hello):
-$OSH sandbox exec -n hermes-fleet-v1 -- tail -40 /sandbox/.hermes-gateway.log
+# Is the role router actually running inside the sandbox?
+$OSH sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack-role-router.pid
+# Read the role-router log (auth errors, blocked egress, Socket-Mode connect):
+$OSH sandbox exec -n hermes-fleet-v1 -- tail -80 /sandbox/.hermes-slack-role-router.log
 # Restart it:
 bash ~/ai-stack/bin/start-hermes-slack.sh
 ```
@@ -678,7 +680,16 @@ bash ~/ai-stack/bin/start-hermes-slack.sh
 - **Only one token configured** → a missing app token means no Socket Mode connection
   at all (check 67 fails with "not both in sandbox"). Set both in `.env` and re-run
   `install 38`.
-- **Gateway not running after a relay outage** → the Socket-Mode WebSocket dials
+- **Role syntax not working** → Phase 38 defaults to ai-stack's virtual role router.
+  DM the app with `techlead: ...`, `backend: ...`, `qa: ...`, or `delivery: ...`.
+  If you set `HERMES_SLACK_ROLE_ROUTER=false`, you are using upstream Hermes'
+  native Slack adapter instead, so role prefixes/mission threads are not active.
+- **Connected but no events arrive** → in the Slack app settings, enable Socket Mode,
+  subscribe to bot events `app_mention`, `message.channels`, `message.groups`,
+  `message.im`, and `message.mpim`, add bot scopes `app_mentions:read`,
+  `channels:history`, `groups:history`, `im:history`, `mpim:history`, and
+  `chat:write`, reinstall the app, then re-run `install 38`.
+- **Role router not running after a relay outage** → the Socket-Mode WebSocket dials
   slack.com *directly* (not through the relay), so it survives relay idle-timeouts;
   but if the sandbox was recreated (`reset … hard` + `install`), re-run `install 38`.
   If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).

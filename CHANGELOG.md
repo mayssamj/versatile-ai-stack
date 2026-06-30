@@ -4,6 +4,52 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-29 — Phase 38 Slack role router: virtual Hermes roles + mission threads
+
+Phase 38 now starts an ai-stack-owned Slack role router inside `hermes-fleet-v1`
+by default. The Slack app still uses Socket Mode (outbound-only, no public URL),
+but Slack messages now route to Hermes profiles by virtual role target:
+`manager`, `techlead`, `frontend`, `backend`, `ml`, `qa`, `reviewer`, `sre`,
+and `incident`. Allowlisted Slack users are treated as Hermes operators, so
+`release` can run its configured manager → qa → sre → incident mission thread.
+
+- **New router module** `installer/lib/hermes_slack_role_router.py`: testable
+  stdlib routing/state layer plus a Slack Socket Mode runtime that shells out to
+  `hermes --profile <role> --yolo -z <prompt>`. It preserves Slack `thread_ts`,
+  suppresses bot loops/duplicate events with durable SQLite-backed event state,
+  audits route metadata without storing full message bodies by default, denies
+  non-DM channel replies unless the channel is allowlisted or is
+  `HERMES_SLACK_HOME_CHANNEL`, scrubs Slack tokens from subprocess environments,
+  redacts obvious secrets from posted outputs, queues work outside the Slack event
+  handler, and persists human interjections for the next Hermes turn or follow-up.
+- **Startup behavior** `bin/start-hermes-slack.sh`: uploads the router into the
+  sandbox, disables upstream Hermes' native Slack adapter with
+  `platforms.slack.enabled=false` to prevent duplicate Socket Mode consumers,
+  keeps the native Hermes gateway available for Telegram/other channels, and
+  starts `/sandbox/.hermes-slack-role-router.log` + pid-file based liveness.
+- **Phase 38 config surface**: `HERMES_SLACK_ROLE_ROUTER` defaults true;
+  set it to `false` to roll back to upstream-native Hermes Slack. New optional
+  keys: `HERMES_SLACK_ALLOWED_CHANNELS`, `HERMES_SLACK_ROLE_GROUPS` (JSON), and
+  `HERMES_SLACK_DEFAULT_ROLE`. `HERMES_SLACK_HOME_CHANNEL=C0BDEMEM19R` allows
+  `hermes_notification` to host mission threads; proactive broadcasts are still
+  out of scope.
+- **Doctor check 67** now validates the role-router pid and structured health
+  file when the router is enabled, and its fix path re-runs the idempotent Phase 38
+  converge then returns success only when diagnose passes.
+- **Tests**: `installer/tests/test_hermes_slack_role_router.py` covers DM/default
+  manager routing, role prefixes, channel mentions, active thread interjections,
+  follow-up context, durable dedupe/recovery, atomic queue claims, failed job
+  persistence, health writes, `HERMES_SLACK_ALLOW_ALL` non-authority, and
+  bot-message suppression. `installer/tests/test_hermes_slack_start.sh` covers
+  router start, health failure cleanup, handshake failure cleanup, and native
+  Slack rollback.
+- **Rollback**: set `HERMES_SLACK_ROLE_ROUTER=false` in `.env`, re-run
+  `vz-ai-stack.sh install 38`, and Phase 38 will use upstream Hermes native Slack
+  again. To stop only the router, kill the pid in
+  `/sandbox/.hermes-slack-role-router.pid`.
+
+---
+
 ## 2026-06-29 — `ingress add` writes to a gitignored `aliases.local.tsv` (local override)
 
 **Personal hostnames no longer dirty the tracked public `aliases.tsv`.** `ingress add`/`remove`
@@ -322,7 +368,6 @@ direct egress works — both block a live Slack DM E2E and are tracked as follow
 doctor sub-check for `fallback_model`, and `fleet new` parity).
 
 ---
-
 ## 2026-06-27 — Phase 38 NEW: Hermes Slack gateway (two-way, Socket Mode)
 
 Opt-in companion to the Telegram gateway (Phase 20): adds Slack as a NATIVE

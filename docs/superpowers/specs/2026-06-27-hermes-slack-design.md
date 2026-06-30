@@ -1,9 +1,40 @@
 # Hermes ↔ Slack integration — design spec
 
 **Date:** 2026-06-27
-**Branch:** `worktree-feat+hermes-slack`
-**Status:** design approved by §24 council; awaiting user-created Slack tokens to implement.
+**Branch:** `codex/slack-role-missions`
+**Status:** Milestones 1/2 implemented in the Slack role-router branch; live Slack E2E still requires a healthy OpenShell runtime and an explicit Slack test.
 **Decisions (user):** personal Slack workspace · two-way (drive-the-fleet).
+
+## Revised decision — virtual roles + mission threads
+
+After the native Slack channel landed, the user explicitly chose Milestones 1 and
+2 from the follow-up Slack UX design: keep one Slack app, expose the Hermes fleet
+as virtual addressable roles, and make multi-role work visible in Slack mission
+threads. This supersedes the v1 "Slack is only a native Hermes gateway channel"
+implementation detail for Slack traffic while preserving its security posture:
+Socket Mode remains outbound-only from `hermes-fleet-v1`, no public URL is added,
+and the same allowlist gates every incoming Slack request.
+
+**New default:** Phase 38 disables Hermes' native Slack adapter
+(`platforms.slack.enabled=false`) and starts ai-stack's in-sandbox Slack role
+router. The upstream Hermes gateway still serves Telegram and any other native
+Hermes channels. The role router owns Slack Socket Mode and shells each routed
+turn to the real Hermes profile (`hermes --profile hermes_<role>`), preserving
+Slack `thread_ts` and local audit metadata.
+
+**Rollback:** set `HERMES_SLACK_ROLE_ROUTER=false` and re-run Phase 38. The start
+script must stop the ai-stack role router before enabling upstream-native Slack,
+so there is never an intentional duplicate Slack Socket Mode consumer.
+
+**Acceptance additions:** role prefixes (`techlead:`, `backend:`, `qa:`, `sre:`),
+built-in groups (`delivery`, `review`, `release`), active-thread human
+interjections, bot-message suppression, durable event/job/interjection state,
+strict config validation, channel whitelist/home-channel gating for non-DM posts,
+and doctor 67 asserting the router process plus structured health. Allowlisted
+Slack users are Hermes operators; `HERMES_SLACK_ALLOW_ALL` does not grant operator
+authority in role-router mode. `HERMES_SLACK_HOME_CHANNEL=C0BDEMEM19R` allows
+`hermes_notification` to host mission threads; proactive notification broadcasts
+remain out of scope for Milestones 1/2.
 
 ## Problem
 The ai-stack runs Nous Research `hermes-agent` as a 9-role fleet ("hermes-fleet-v1")
@@ -11,11 +42,13 @@ inside an OpenShell sandbox. The fleet is already reachable from **Telegram** (P
 `@vz_hermes_controller_bot`). The user wants the same fleet reachable from **Slack**:
 DM (or @mention) a bot and a fleet profile answers.
 
-## Chosen approach — Option A: a new channel on the existing gateway
+## Base v1 approach — native channel, superseded for Slack traffic by the role router
 Nous Hermes' messaging gateway runs **one process, many channels**. Slack is a *native*
 channel via **Socket Mode** (outbound WebSocket → no inbound webhook / public URL — ideal
-for a laptop behind NAT). So Slack is **not** a new service: it is a new channel + secret +
-egress rule on the gateway already running inside `hermes-fleet-v1`.
+for a laptop behind NAT). The first Slack landing used that native channel model.
+Milestones 1/2 keep the same Socket Mode and egress/security foundation, but Slack
+traffic is now owned by the ai-stack role router so one app can address multiple
+Hermes role targets.
 
 Mirrors the proven **Phase 20 (Telegram)** template: secrets piped via STDIN into the
 sandbox `~/.hermes/.env`; channel config + allowlist in `~/.hermes/config.yaml`;
@@ -65,7 +98,7 @@ health check; `services.yml` entry; full doc sweep.
 ## What the user creates (two-way, personal workspace)
 A Slack app (from the provided manifest) → **bot token `xoxb-…`** + **app-level token `xapp-…`**
 (scope `connections:write`, Socket Mode) + their **member ID `U…`** (allowlist) + optional
-**channel ID `C…`** (notifications). Host `.env` keys: `HERMES_SLACK_BOT_TOKEN`,
+**channel ID `C…`** (mission-room mentions/threads). Host `.env` keys: `HERMES_SLACK_BOT_TOKEN`,
 `HERMES_SLACK_APP_TOKEN`, `HERMES_SLACK_ALLOWED_USERS` (+ optional `HERMES_SLACK_HOME_CHANNEL`,
 `HERMES_SLACK_ALLOW_ALL`).
 

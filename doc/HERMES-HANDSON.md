@@ -438,45 +438,90 @@ profile answers.
 ### Slack — pre-wired by ai-stack (opt-in Phase 38)
 
 Slack is now wired as an **opt-in install phase**, two-way, over **Socket Mode**
-(an OUTBOUND WebSocket to slack.com — no inbound webhook, no public URL). It runs on
-the **same in-sandbox gateway** Phase 20 points at Telegram (one `hermes gateway run`
-process serves both channels), so there's no host daemon and no exposed port. The
-simple path is **tokens in `.env` + `install 38`**.
+(an OUTBOUND WebSocket to slack.com — no inbound webhook, no public URL). By
+default ai-stack starts an in-sandbox **Hermes Slack role router**: one Slack app,
+many virtual Hermes roles. Telegram and other native channels still use Hermes'
+native gateway; Slack is owned by the role router unless you opt out with
+`HERMES_SLACK_ROLE_ROUTER=false`.
 
 You need a Slack app — create one at <https://api.slack.com/apps> (the
 `hermes slack manifest` command can print a ready-to-paste manifest, see *Advanced*
 below) — with a **bot token** (`xoxb-…`) and an **app-level token** (`xapp-…`, with
-the `connections:write` scope for Socket Mode). Put both in `~/ai-stack/.env`, then
-install:
+the `connections:write` scope for Socket Mode).
+
+In the Slack app settings:
+
+- **Socket Mode:** enabled.
+- **App-Level Tokens:** create an `xapp-…` token with `connections:write`.
+- **OAuth & Permissions → Bot Token Scopes:** add `app_mentions:read`,
+  `channels:history`, `groups:history`, `im:history`, `mpim:history`, and
+  `chat:write`, then reinstall the app to the workspace.
+- **Event Subscriptions → Subscribe to bot events:** add `app_mention`,
+  `message.channels`, `message.groups`, `message.im`, and `message.mpim`.
+- **Channels:** invite the app to any channel where you want `@hermes-fleet ...`
+  mentions to work.
+
+Put the tokens in `~/ai-stack/.env`, then install:
 
 ```bash
 # in ~/ai-stack/.env:
 HERMES_SLACK_BOT_TOKEN=xoxb-…
 HERMES_SLACK_APP_TOKEN=xapp-…
 HERMES_SLACK_ALLOWED_USERS=<your Slack member id>   # U… — see secure-by-default below
+HERMES_SLACK_HOME_CHANNEL=C0BDEMEM19R               # optional mission-room, e.g. hermes_notification
 # then:
 vz-ai-stack.sh install 38            # alias: install slack
 ```
 
 `install 38` writes the tokens into the sandbox, applies Phase 04's `slack` egress
 policy (`slack.com`, `api.slack.com`, the `wss-*.slack.com` Socket-Mode endpoints,
-`files.slack.com`), and (re)starts the gateway.
+`files.slack.com`), disables Hermes' native Slack adapter, uploads the ai-stack role
+router, and starts it inside `hermes-fleet-v1`.
 
 **Secure-by-default.** Exactly like Telegram: with **no allowlist** the bot connects
 but **denies every user** — it stays silent. Set `HERMES_SLACK_ALLOWED_USERS` to your
 Slack **member id** (Slack profile → ⋮ *More* → *Copy member ID*, a `U…` value) and
-re-run `install 38`. `HERMES_SLACK_ALLOW_ALL=true` opens it to the whole workspace —
-not advised (the bot drives all nine profiles).
+re-run `install 38`. In role-router/operator mode, `HERMES_SLACK_ALLOW_ALL=true`
+does not grant operator authority; use explicit member IDs for anyone allowed to
+drive state-changing Hermes work.
 
-**Status / stop** (same in-sandbox gateway lifecycle as Telegram):
+**Role UX.** Treat the app as the fleet front door:
+
+```text
+DM hermes-fleet: what needs my attention?          # routes to manager
+DM hermes-fleet: techlead: pick the architecture   # routes to hermes_techlead
+@hermes-fleet backend sketch the endpoint          # replies in the same Slack thread
+@hermes-fleet delivery: build rate limiting        # manager -> techlead -> backend -> qa -> reviewer
+```
+
+Supported direct targets: `manager`/`cos`, `techlead`, `frontend`, `backend`,
+`ml`, `qa`, `reviewer`, `sre`, and `incident`. For an allowlisted owner/operator,
+Slack is an authenticated Hermes transport with the same authority model as direct
+Hermes use; role policies still govern destructive, irreversible, credential,
+permission, production, secret, and external-send actions. Built-in groups are
+`delivery`, `review`, and `release`. Override groups with
+`HERMES_SLACK_ROLE_GROUPS` as JSON.
+
+Channel mentions are denied unless the channel is listed in
+`HERMES_SLACK_ALLOWED_CHANNELS` or configured as `HERMES_SLACK_HOME_CHANNEL`. For
+`hermes_notification` (`C0BDEMEM19R`), that means the channel can host mission
+threads after you mention the app there; Milestones 1/2 do **not** add proactive
+notification broadcasts to that channel yet. Reply inside an active mission thread
+to interject; the router acknowledges it and feeds the interjection into the next
+Hermes turn. Slack sees concise role-labeled summaries; local audit logs keep the
+route metadata without storing full message bodies by default.
+
+**Status / stop:**
 
 ```bash
-openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway status
-openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
+openshell sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack-role-router.pid
+openshell sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack/health.json
+openshell sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-slack-role-router.log
+openshell sandbox exec -n hermes-fleet-v1 -- bash -c 'kill "$(cat /sandbox/.hermes-slack-role-router.pid)"'
 ```
 
 Once you're allowlisted, **DM your Hermes app** in Slack (or `@`-mention it in a
-channel it's in) and a profile answers. Liveness is `doctor` check 67; if it doesn't
+channel it's in) and a role answers. Liveness is `doctor` check 67; if it doesn't
 reply, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 > **Heads up:** pointing a repo/shell-capable fleet at a **corporate** Slack
@@ -511,8 +556,10 @@ hermes gateway run             # run the gateway (now serving Slack)
 ```
 
 > **Summary:** Telegram = `install 20` + your allowlist id. Slack = both tokens in
-> `.env` + `install 38` + your allowlist member id (two-way, Socket Mode). Advanced:
-> `hermes send` for one-way push, or `hermes slack manifest` for a custom app.
+> `.env` + `install 38` + your allowlist member id (two-way, Socket Mode, virtual
+> roles + mission threads by default). Advanced: `hermes send` for one-way push,
+> `HERMES_SLACK_ROLE_ROUTER=false` for upstream-native Slack, or `hermes slack
+> manifest` for a custom app.
 
 ---
 

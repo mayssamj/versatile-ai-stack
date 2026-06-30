@@ -296,35 +296,41 @@ services:
         "source": explore-seed
         "reviewed": true
   hermes_slack:
-    enabled: true # Phase 38 (opt-in) — native hermes gateway → Slack (Socket Mode)
+    enabled: true # Phase 38 (opt-in) — ai-stack Slack role router → Hermes fleet
     type: sandbox-daemon
-    desc: "Hermes gateway inside the sandbox bridging the fleet to Slack (Socket Mode)"
+    desc: "Hermes Slack role router inside the sandbox (Socket Mode, virtual roles + mission threads)"
     phase: "38"
     sandbox: hermes-fleet-v1
     network: openshell
-    # Same in-sandbox gateway as Telegram (ONE process, many channels). Slack uses
-    # SOCKET MODE — an OUTBOUND WebSocket to slack.com (Phase 04 `slack` egress
-    # policy), so no inbound webhook/public URL. Lifecycle = hermes' own
-    # `gateway status/stop`; liveness is doctor check 67. Started by
-    # bin/start-hermes-slack.sh. Secure-by-default: with no allowlist it DENIES all
-    # users until HERMES_SLACK_ALLOWED_USERS is set. OPT-IN (needs a Slack app you
-    # create at api.slack.com). NOTE: pointing a repo/shell-capable fleet at a
-    # CORPORATE workspace is a data-governance decision — prefer a personal one.
+    # Slack uses SOCKET MODE — an OUTBOUND WebSocket to slack.com (Phase 04
+    # `slack` egress policy), so no inbound webhook/public URL. By default Phase 38
+    # disables Hermes' native Slack adapter and starts ai-stack's role router in
+    # the sandbox: `techlead: ...`, `backend: ...`, `delivery: ...`, same-thread
+    # replies, and human interjections. Secure-by-default: with no allowlist it
+    # DENIES all users until HERMES_SLACK_ALLOWED_USERS is set. OPT-IN (needs a
+    # Slack app you create at api.slack.com). NOTE: pointing a repo/shell-capable
+    # fleet at a CORPORATE workspace is a data-governance decision — prefer a
+    # personal one.
     consumes_env:
       - HERMES_SLACK_BOT_TOKEN
       - HERMES_SLACK_APP_TOKEN
       - HERMES_SLACK_ALLOWED_USERS
       - HERMES_SLACK_ALLOW_ALL
       - HERMES_SLACK_HOME_CHANNEL
+      - HERMES_SLACK_ROLE_ROUTER
+      - HERMES_SLACK_ALLOWED_CHANNELS
+      - HERMES_SLACK_ROLE_GROUPS
+      - HERMES_SLACK_DEFAULT_ROLE
     help:
-      "what": A native hermes gateway running INSIDE the hermes-fleet-v1 sandbox that connects to Slack over Socket Mode (outbound WebSocket) and bridges the fleet to a Slack app — DM it or @mention it and a profile answers.
-      "why": Reach for it to drive the Hermes fleet from Slack — desktop-native, team-visible threads and #channel routing, with no inbound port exposed on your machine.
+      "what": An ai-stack Slack role router running INSIDE the hermes-fleet-v1 sandbox that connects over Socket Mode and maps one Slack app to the nine Hermes profiles with virtual role prefixes and mission threads.
+      "why": Reach for it to drive the Hermes fleet from Slack — DM the app for manager, use `techlead:` / `backend:` / `qa:` / `sre:` for individual role targets, or `delivery:` / `review:` / `release:` for visible multi-role mission threads.
       "usage":
         - bash ~/ai-stack/bin/start-hermes-slack.sh
-        - openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway status
-        - openshell sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
-        - openshell sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-gateway.log
-      "config_notes": 'Secure-by-default: with NO allowlist the bot DENIES all users — set HERMES_SLACK_ALLOWED_USERS=<your_member_id> (Slack profile → ⋮ → Copy member ID) and re-run install 38. Needs BOTH HERMES_SLACK_BOT_TOKEN (xoxb-) and HERMES_SLACK_APP_TOKEN (xapp-, with connections:write for Socket Mode). Create the app at https://api.slack.com/apps. If the bot never replies, check the gateway log for policy_denied (a Slack egress host missing from Phase 04) or an auth error (token/scope).'
+        - openshell sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack-role-router.pid
+        - openshell sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack/health.json
+        - openshell sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-slack-role-router.log
+        - openshell sandbox exec -n hermes-fleet-v1 -- bash -c 'kill "$(cat /sandbox/.hermes-slack-role-router.pid)"'
+      "config_notes": 'Secure-by-default: with NO allowlist the bot DENIES all users — set HERMES_SLACK_ALLOWED_USERS=<your_member_id> (Slack profile → ⋮ → Copy member ID) and re-run install 38. In role-router mode HERMES_SLACK_ALLOW_ALL does not grant operator authority. Needs BOTH HERMES_SLACK_BOT_TOKEN (xoxb-) and HERMES_SLACK_APP_TOKEN (xapp-, with connections:write for Socket Mode). Channel mentions are denied unless the channel is HERMES_SLACK_HOME_CHANNEL or in HERMES_SLACK_ALLOWED_CHANNELS; set HERMES_SLACK_HOME_CHANNEL=C0BDEMEM19R to allow hermes_notification as a mission room. This does not create proactive notification broadcasts yet. HERMES_SLACK_ROLE_ROUTER defaults true; set false to return to upstream Hermes native Slack. If the bot never replies, check /sandbox/.hermes-slack/health.json and /sandbox/.hermes-slack-role-router.log for blocked egress or auth/scope errors.'
       "_gen":
         "at": "2026-06-27T00:00:00Z"
         "source": phase-38-slack

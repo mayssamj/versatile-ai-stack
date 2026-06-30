@@ -836,11 +836,11 @@ Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `in
 
 | | |
 |---|---|
-| Asserts | the native hermes gateway is running INSIDE `hermes-fleet-v1` (via `hermes gateway status`) and BOTH `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` are present in the sandbox's `~/.hermes/.env`. |
-| Fails when | the gateway isn't running, either token isn't configured in the sandbox, the gateway log shows a genuine Slack auth error (`invalid_auth` / `token_revoked` / `token_expired` / `missing_scope` / `not_allowed_token_type`), or it shows blocked egress (`policy_denied`) — a Slack host missing from the Phase 04 `slack` policy. |
-| Auto-fix | restarts the gateway: `bash bin/start-hermes-slack.sh` (or re-run `vz-ai-stack.sh install 38`). |
+| Asserts | the Slack role router is running INSIDE `hermes-fleet-v1`, `/sandbox/.hermes-slack/health.json` is fresh with `connected=true` for the live pid, and BOTH `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` are present in the sandbox's `~/.hermes/.env`. |
+| Fails when | the router isn't running, health is missing/stale/pid-mismatched, either token isn't configured in the sandbox, the router log shows a genuine Slack auth/API error (`invalid_auth` / `token_revoked` / `token_expired` / `missing_scope` / `not_allowed_token_type`), or it shows blocked egress (`policy_denied`) — a Slack host missing from the Phase 04 `slack` policy. |
+| Auto-fix | self-heals by re-running Phase 38 converge, which re-writes config, restarts the router, and then re-diagnoses health. |
 
-Skips cleanly (passes) when `HERMES_SLACK_BOT_TOKEN` isn't set — the Slack gateway is an opt-in add-on (Phase 38). Makes **no external Slack API call** and never prints the tokens; it reads only the in-sandbox `hermes gateway status` and the gateway-log tail. Benign Socket-Mode churn (`reconnect` / `disconnect` / `ping` / `pong` / rate-limit / `429`) is filtered before matching auth errors so a healthy, reconnecting bot doesn't false-fail. A passing check may still note "**running but LOCKED**" (no allowlist → denies every user) — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) to set `HERMES_SLACK_ALLOWED_USERS`.
+Skips cleanly (passes) when `HERMES_SLACK_BOT_TOKEN` isn't set — Slack is an opt-in add-on (Phase 38). Makes **no external Slack API call** and never prints the tokens; it reads only in-sandbox pid, health, token-presence, and log files. Benign Socket-Mode churn (`reconnect` / `disconnect` / `ping` / `pong` / rate-limit / `429`) is filtered before matching auth errors so a healthy, reconnecting bot doesn't false-fail. A passing check may still note "**running but LOCKED**" (no allowlist → denies every user) — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) to set `HERMES_SLACK_ALLOWED_USERS`.
 
 ---
 

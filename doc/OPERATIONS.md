@@ -325,34 +325,38 @@ the real liveness probe is `doctor` check 33. See
 
 ## Hermes Slack gateway (Phase 38, opt-in)
 
-Opt-in companion to Telegram on the **same in-sandbox gateway** (one
-`hermes gateway run` process serves both channels). Slack uses **Socket Mode** — an
-OUTBOUND WebSocket to slack.com (Phase 04's `slack` egress policy) — so there is no
-inbound webhook and no exposed port. Tokens + allowlist live in `.env`; `install 38`
-writes them into the sandbox and (re)starts the gateway.
+Opt-in Slack role router for the Hermes fleet. By default ai-stack disables the
+upstream native Slack adapter and runs `/sandbox/fleet-boot/hermes_slack_role_router.py`
+inside `hermes-fleet-v1`. The router uses **Socket Mode** — an OUTBOUND WebSocket to
+slack.com (Phase 04's `slack` egress policy) — so there is no inbound webhook and no
+exposed port. Tokens + allowlist live in `.env`; `install 38` writes them into the
+sandbox and (re)starts the router.
 
 ```bash
 OSH=/opt/homebrew/bin/openshell
 
-# Start / restart (idempotent — one gateway, latest config; serves Slack + Telegram):
+# Start / restart (idempotent — latest Slack role-router config):
 bash ~/ai-stack/bin/start-hermes-slack.sh
 # or, to also (re)apply tokens + egress + allowlist from .env:
 bash ~/ai-stack/vz-ai-stack.sh install 38            # alias: install slack
 
 # Status / logs / stop:
-$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status
-$OSH sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-gateway.log
-$OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway stop
+$OSH sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack/health.json
+$OSH sandbox exec -n hermes-fleet-v1 -- tail -f /sandbox/.hermes-slack-role-router.log
+$OSH sandbox exec -n hermes-fleet-v1 -- bash -c 'kill "$(cat /sandbox/.hermes-slack-role-router.pid)"'
 ```
 
-**Access control (read this before expecting replies).** The gateway is
-secure-by-default: with no allowlist it DENIES every user. Set ONE in `.env`, then
-re-run `install 38`:
+**Access control (read this before expecting replies).** The role router is
+secure-by-default: with no allowlist it DENIES every user. Set your Slack member id
+in `.env`, then re-run `install 38`:
 
 - `HERMES_SLACK_ALLOWED_USERS=<U…>[,<U…>…]` — Slack member ids (Slack profile → ⋮
-  *More* → *Copy member ID*). **Recommended.**
-- `HERMES_SLACK_ALLOW_ALL=true` — open to the whole workspace. Not advised (the bot
-  drives 9 profiles).
+  *More* → *Copy member ID*). Allowlisted users have normal Hermes operator
+  authority through Slack: DMs, channel mentions, `sre:`, `incident:`, `release:`,
+  and custom role/group routes enqueue work for the corresponding Hermes profile.
+- `HERMES_SLACK_ALLOW_ALL=true` — does **not** grant role-router operator
+  authority. It is only honored when `HERMES_SLACK_ROLE_ROUTER=false` returns Slack
+  to the upstream native adapter.
 
 Needs BOTH `HERMES_SLACK_BOT_TOKEN` (`xoxb-…`) and `HERMES_SLACK_APP_TOKEN`
 (`xapp-…`, `connections:write` for Socket Mode); create the app at
