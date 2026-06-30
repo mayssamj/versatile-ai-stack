@@ -197,6 +197,11 @@ fi
 # corp_ca_bundle yields nothing (empty args = no-op) on a non-corporate box or when
 # AI_STACK_CORP_CA=off. LiteLLM is python (requests + httpx), so REQUESTS_CA_BUNDLE + SSL_CERT_FILE
 # point at the mounted public+corp PEM bundle. NEVER disables verification (that would trip DLP/EDR).
+# CAVEAT (verify under LIVE interception — OFF on the dev box): these env vars REPLACE certifi (not
+# additive; the bundle's public-root half covers public sites). An httpx/SDK that PINS certifi could
+# bypass them — if a litellm->cloud call still SSL-fails when interception is active, add
+# `litellm_settings: ssl_verify: /etc/ssl/corp-ca.pem`. Check what the container trusts:
+#   docker exec litellm python3 -c "import ssl; print(ssl.get_default_verify_paths())"
 CORP_CA_ARGS=()
 if declare -F corp_ca_bundle >/dev/null 2>&1; then
   _corp_ca="$(corp_ca_bundle 2>/dev/null || true)"

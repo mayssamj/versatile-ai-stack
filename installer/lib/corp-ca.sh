@@ -17,6 +17,16 @@
 # security agents. The generated bundle holds ONLY certificates (no private keys — `-a -p` does
 # not emit keys; asserted below) at mode 0644.
 #
+# SCOPE (round-2b): wires the three RUNTIME cloud-egress callers (LiteLLM container + the Meridian
+# / codex-bridge node daemons). The INSTALL-TIME tier (brew/pip/npm/git) is a tracked follow-up;
+# those HOST tools largely trust the corp root already via macOS Secure Transport.
+# CAVEAT (architect, unverifiable while interception is OFF): REQUESTS_CA_BUNDLE/SSL_CERT_FILE
+# REPLACE the runtime's CA store (not additive) — the bundle's public-root half covers that. A
+# python httpx/SDK that PINS certifi explicitly could bypass these env vars; if a LiteLLM->cloud
+# call still SSL-fails under LIVE interception, the fallback is `litellm_settings: ssl_verify:
+# /etc/ssl/corp-ca.pem`. The operator MUST confirm one real cloud call returns 200 (not
+# CERTIFICATE_VERIFY_FAILED) when interception is ACTIVE — that's the live validation I can't do.
+#
 # CONTRACT: functions only, no top-level side effects, bash-3.2-safe — safe to source anywhere.
 
 [[ -n "${_CORP_CA_SH:-}" ]] && return 0 2>/dev/null || true
@@ -49,7 +59,7 @@ _corp_ca_out() { printf '%s' "${AI_STACK:-$HOME/ai-stack}/installer/state/corp-c
 # AI_STACK_CORP_CA. rc 1 when nothing should be injected (off / no corp root in auto / bad path).
 # Idempotent: regenerate only when missing or older than the System keychain.
 corp_ca_bundle() {
-  local mode out tmp kc="/Library/Keychains/System.keychain"
+  local mode out tmp kc="/Library/Keychains/System.keychain" pkc="/System/Library/Keychains/SystemRootCertificates.keychain"
   mode="$(corp_ca_mode)"
   case "$mode" in
     off)  return 1 ;;
@@ -59,7 +69,9 @@ corp_ca_bundle() {
   command -v security >/dev/null 2>&1 || return 1
   out="$(_corp_ca_out)"
   mkdir -p "$(dirname "$out")" 2>/dev/null || return 1
-  if [[ -f "$out" && -s "$out" && ! "$kc" -nt "$out" ]]; then printf '%s' "$out"; return 0; fi
+  # Regenerate when EITHER keychain is newer than the bundle (it embeds BOTH the public roots from
+  # SystemRootCertificates AND the corp roots from System.keychain — an update to either matters).
+  if [[ -f "$out" && -s "$out" && ! "$kc" -nt "$out" && ! "$pkc" -nt "$out" ]]; then printf '%s' "$out"; return 0; fi
   tmp="$(mktemp "${out}.XXXXXX" 2>/dev/null)" || return 1
   {
     security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain 2>/dev/null
@@ -74,15 +86,33 @@ corp_ca_bundle() {
   printf '%s' "$out"
 }
 
+# _corp_bounded <secs> <cmd...> — run cmd with a hard wall-clock budget; echo its stdout, return
+# its rc, or 124 on timeout. macOS ships NO `timeout`/`gtimeout`, so this is the proven
+# background+poll+kill pattern (mirrors storm-detect.sh::_storm_bounded). Used to cap the deep
+# probe's openssl s_client, which on a SWG that silently DROPs SYN would otherwise hang on the
+# OS TCP-connect timeout (~75-120s) — a 2-minute silent doctor hang in exactly the target env.
+_corp_bounded() {
+  local s="$1" p w=0; shift
+  "$@" & p=$!
+  while (( w < s*2 )); do
+    kill -0 "$p" 2>/dev/null || { wait "$p" 2>/dev/null; return $?; }
+    sleep 0.5; w=$((w+1))
+  done
+  kill -TERM "$p" 2>/dev/null || true; sleep 1; kill -KILL "$p" 2>/dev/null || true
+  wait "$p" 2>/dev/null || true
+  return 124
+}
+
 # corp_ca_intercepted [host] — rc 0 iff TLS to <host> (default api.anthropic.com) is CURRENTLY
 # MITM'd (the served cert's issuer matches a corp vendor), rc 1 if it's a real public CA, rc 2 if
-# undetermined (no openssl / no egress). ONE benign read-only handshake (no HTTP request, no
-# quota). Bounded by the caller. Used by the doctor check's opt-in deep probe.
+# undetermined (no openssl / no egress / timed out). ONE benign read-only handshake (no HTTP
+# request, no quota). BOUNDED here (AI_STACK_CA_PROBE_TIMEOUT, default 10s) so it can never hang
+# the doctor. Used only by the doctor check's OPT-IN deep probe.
 corp_ca_intercepted() {
-  local host="${1:-api.anthropic.com}" issuer ossl
+  local host="${1:-api.anthropic.com}" issuer ossl raw
   ossl="$(command -v openssl 2>/dev/null || true)"; [[ -n "$ossl" ]] || return 2
-  issuer="$(echo | "$ossl" s_client -connect "$host:443" -servername "$host" 2>/dev/null \
-            | "$ossl" x509 -noout -issuer 2>/dev/null)"
+  raw="$(echo | _corp_bounded "${AI_STACK_CA_PROBE_TIMEOUT:-10}" "$ossl" s_client -connect "$host:443" -servername "$host" 2>/dev/null || true)"
+  issuer="$(printf '%s' "$raw" | "$ossl" x509 -noout -issuer 2>/dev/null || true)"
   [[ -n "$issuer" ]] || return 2
   grep -qiE "$_CORP_CA_VENDORS" <<<"$issuer" && return 0 || return 1
 }

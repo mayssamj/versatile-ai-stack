@@ -4,6 +4,43 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-30 — Fleet resilience round 2: corporate security-agent collision hardening (CR-4 + CA-1..CA-5)
+
+The host is an employer-managed Mac with inline, IT-pushed, IMMOVABLE security agents
+(CrowdStrike Falcon, Zscaler, Netwrix Endpoint Protector, CyberArk EPM, Tenable Nessus,
+Jamf) — and no scan-exclusion/allowlist is grantable, so all adaptation is stack-side:
+the stack must be a polite guest that never misdiagnoses an external (agent-induced)
+failure as an internal fault and triggers a destructive heal. A 2-agent collision audit
+found 14 risks; round 2 lands the box-savers (each §24 3-reviewer-approved):
+
+- **CR-4 (round-2a) — the #1 collision→down fix.** A Nessus/CrowdStrike full-FS scan
+  makes the in-sandbox relay flap (reconnect-spam) on a perfectly VALID token; the
+  detector flagged that as a token storm → re-mint + restart CHURN *during the scan* =
+  the cascade that can tip the box. Now a reconnect-flood with no token-rejection line is
+  SUSPECTED (not a storm) and `storm_confirmed` corroborates it against real token expiry
+  (minter `--exp-only`); a valid token under a flood = external pressure → defer, no
+  churn. The corroboration is bounded so it can't hang the watchdog under EDR thrash.
+- **CA-3 (round-2a)** lo0 alias binding defers sudo when uncached + unattended so a
+  CyberArk EPM elevation prompt can't HANG an install (fast-fail with the prepare-sudo
+  remedy). **CA-5 (round-2a)** Meridian gains ThrottleInterval so a Zscaler-blocked OAuth
+  refresh can't crash-loop with no backoff (EDR-flaggable churn).
+- **CA-1 (round-2b) — keep the cloud tier WORKING under Zscaler TLS interception.** New
+  `installer/lib/corp-ca.sh` auto-detects the corporate root in the System keychain and
+  builds a public+corp PEM bundle (0644, certs-only — no private keys), wired into the
+  runtime cloud callers: the LiteLLM container (REQUESTS_CA_BUNDLE/SSL_CERT_FILE) and the
+  Meridian/codex-bridge node daemons (NODE_EXTRA_CA_CERTS). Opt-in/auto (`AI_STACK_CORP_CA`)
+  — a no-op on a non-corporate box; NEVER disables TLS verification. **CA-2** doctor check
+  70 reports detected/injected status (+ an opt-in, bounded deep probe of whether
+  interception is active). Caught + fixed a flaky `corp_ca_detected` (SIGPIPE under
+  pipefail) and the deep probe's unbounded `openssl s_client` (could 2-min-hang the doctor
+  on a SWG that drops SYN). LIVE VALIDATION (cloud actually works under active interception)
+  is the operator's — interception is OFF on the dev box, so this was offline-tested.
+
+Verified that the litellm cloud→local fallback an audit flagged as an OOM path is ALREADY
+empty (a Zscaler failure returns a visible 503, never loads a local model); corrected the
+stale comment. Tests: `test_storm_detect.sh` (25), `test_corp_ca.sh` (14), `test_jwt_mint_skew.sh`
+(6), `test_openshell_heal.sh` (8) — all offline. Doctor checks 70→71 (corp_ca); docs swept.
+
 ## 2026-06-30 — Fleet resilience hardening (round 1): 9 fixes from a 71-incident review + 17-risk future-inspection
 
 A standalone resilience initiative (§24): mined 71 prior fleet/hermes/sandbox/openshell
