@@ -126,15 +126,24 @@ storm_detect() {
 # minter's --exp-only (no openssl needed). Used to CORROBORATE an ambiguous reconnect-flood
 # against ACTUAL expiry. Overridable in tests.
 _storm_token_secs_left() {
-  local docker_bin="$1" cid="$2" uuid base m tok py mint
+  local docker_bin="$1" cid="$2" uuid base m tok py mint found=()
   py="$(command -v python3 2>/dev/null || true)"; [[ -n "$py" ]] || return 1
   mint="${AI_STACK:-$HOME/ai-stack}/bin/openshell-jwt-mint.py"; [[ -f "$mint" ]] || return 1
-  uuid="$("$docker_bin" inspect "$cid" --format '{{.Name}}' 2>/dev/null | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
+  # BOUNDED (§24 must-fix): both external calls run in the watchdog HOT PATH on an EDR-managed
+  # Mac where a docker-API intercept (CrowdStrike) or a hung python can block FOREVER — a hang
+  # would never reach storm_confirmed's INDETERMINATE->healthy return and would stall the cycle.
+  # _storm_bounded caps each (on timeout -> empty output -> indeterminate -> defer, no stall).
+  # Budgets are env-overridable so tests can exercise the bound quickly.
+  uuid="$(_storm_bounded "${_STORM_INSPECT_BUDGET:-5}" "$docker_bin" inspect "$cid" --format '{{.Name}}' 2>/dev/null | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
   [[ -n "$uuid" ]] || return 1
-  base="$HOME/.local/state/openshell/docker-sandbox-tokens"; tok=""
-  for m in "$base"/*/"$uuid"/sandbox.jwt; do [[ -f "$m" ]] && { tok="$m"; break; }; done
-  [[ -n "$tok" ]] || return 1
-  "$py" "$mint" --token "$tok" --exp-only 2>/dev/null
+  # STRICT match (mirror the G5 siblings _osh_token_path / watchdog _token_path): require EXACTLY
+  # one token; on >1 (near-impossible — uuid is unique per sandbox) FAIL rather than silently read
+  # a stale token under an ambiguous glob.
+  base="$HOME/.local/state/openshell/docker-sandbox-tokens"
+  for m in "$base"/*/"$uuid"/sandbox.jwt; do [[ -f "$m" ]] && found+=("$m"); done
+  (( ${#found[@]} == 1 )) || return 1
+  tok="${found[0]}"
+  _storm_bounded "${_STORM_EXP_BUDGET:-8}" "$py" "$mint" --token "$tok" --exp-only 2>/dev/null
 }
 
 # storm_confirmed <docker_bin> <cid> — storm_detect + CR-4 corroboration of the ambiguous
@@ -149,10 +158,15 @@ storm_confirmed() {
     0|1|2) return "$rc" ;;   # confirmed token-rejection / healthy / unknown — pass through
     3)
       left="$(_storm_token_secs_left "$docker_bin" "$cid" 2>/dev/null || true)"
+      # Threshold 120s (not 0): the gateway starts REJECTING a token slightly before its exact exp
+      # (and a reconnect-flood is storm ONSET), so <=120s-to-expiry under a flood is a real storm;
+      # a token with minutes left under a flood is external pressure (scan), not expiry. A valid
+      # token at 119s under a benign flap costs at most one non-destructive re-mint+restart — far
+      # cheaper than mis-healing every scan or missing a real onset.
       if [[ "$left" =~ ^-?[0-9]+$ ]]; then
         (( left <= 120 )) && return 0 || return 1   # near/expired => real storm ; valid => external flap
       fi
-      return 1   # INDETERMINATE (no python3/minter/token) -> do NOT churn a heal on a maybe-flap
+      return 1   # INDETERMINATE (no python3/minter/token, OR a bounded read timed out) -> do NOT churn a heal on a maybe-flap
       ;;
   esac
   return 1

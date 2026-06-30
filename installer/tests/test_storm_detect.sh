@@ -94,6 +94,9 @@ storm_confirmed "$FAKE" cid; (( $? == 0 )) && ok "confirmed ExpiredSignature -> 
 unset FAKE_STORM_AT
 export FAKE_LOG_MODE=clean FAKE_STARTEDAT="$(iso_at -3600)"
 storm_confirmed "$FAKE" cid; (( $? == 1 )) && ok "clean -> healthy (pass-through)" || bad "clean pass-through failed"
+storm_detect(){ return 2; }   # force UNKNOWN (wedged read)
+storm_confirmed "$FAKE" cid; (( $? == 2 )) && ok "UNKNOWN (rc2) -> storm_confirmed rc2 (pass-through, maps to not-storming in wrappers)" || bad "UNKNOWN pass-through wrong"
+unset -f storm_detect; unset _STORM_DETECT_SH; source "$LIB"   # restore the real storm_detect/storm_confirmed
 
 echo "== storm_detect / _storm_bounded: UNKNOWN tri-state on a wedged read (G9) =="
 _storm_bounded 1 sleep 5; rc=$?
@@ -104,6 +107,39 @@ export FAKE_LOG_MODE=clean FAKE_STARTEDAT="$(iso_at -3600)"
 export ERRMARK="$TMP/errfire"; : > "$ERRMARK"
 ( set -Eeuo pipefail; trap 'echo x >>"$ERRMARK"' ERR; storm_detect "$FAKE" cid || true ) >/dev/null 2>&1 || true
 [[ ! -s "$ERRMARK" ]] && ok "healthy path fires NO ERR trap (grep -c exit-1 neutralized)" || bad "ERR trap fired $(wc -l <"$ERRMARK" | tr -d ' ')x"
+
+echo "== _storm_token_secs_left: real UUID-glob + BOUNDED minter (CR-4 corroboration source) =="
+# Exercise the real resolver (every storm_confirmed test above stubbed it): a fake docker whose
+# inspect returns a Name with a uuid, a token under the glob, and a fake minter at
+# ${AI_STACK}/bin/openshell-jwt-mint.py. Placed LAST so the AI_STACK/HOME overrides don't affect
+# earlier tests.
+export AI_STACK="$TMP" HOME="$TMP"; mkdir -p "$TMP/bin"
+UUID="22222222-3333-4444-5555-666666666666"
+TOKD="$TMP/.local/state/openshell/docker-sandbox-tokens/gw1/$UUID"; mkdir -p "$TOKD"; echo jwt > "$TOKD/sandbox.jwt"
+cat > "$TMP/docker2" <<EOF
+#!/usr/bin/env bash
+[[ "\$1" == inspect ]] && echo "/openshell-hermes-fleet-v1-$UUID"
+EOF
+chmod +x "$TMP/docker2"
+cat > "$TMP/bin/openshell-jwt-mint.py" <<'PYEOF'
+#!/usr/bin/env python3
+import os,sys,time
+if os.environ.get("FAKE_MINT_SLEEP"): time.sleep(int(os.environ["FAKE_MINT_SLEEP"]))
+print(os.environ.get("FAKE_EXP","999"))
+PYEOF
+chmod +x "$TMP/bin/openshell-jwt-mint.py"
+export FAKE_EXP=777
+got="$(_storm_token_secs_left "$TMP/docker2" cid)"
+[[ "$got" == "777" ]] && ok "resolves UUID-glob + returns minter --exp-only (got 777)" || bad "_storm_token_secs_left got='$got' want 777"
+# >1 matching slug -> strict-match fail (no stale read)
+mkdir -p "$TMP/.local/state/openshell/docker-sandbox-tokens/gw2/$UUID"; echo jwt > "$TMP/.local/state/openshell/docker-sandbox-tokens/gw2/$UUID/sandbox.jwt"
+_storm_token_secs_left "$TMP/docker2" cid >/dev/null 2>&1; (( $? == 1 )) && ok ">1 matching token slug -> rc1 (strict, no stale read)" || bad ">1 glob not rejected"
+rm -rf "$TMP/.local/state/openshell/docker-sandbox-tokens/gw2"
+# BOUNDED: a hung minter must not stall (the §24 must-fix)
+export FAKE_MINT_SLEEP=5 _STORM_EXP_BUDGET=1
+t0=$SECONDS; got="$(_storm_token_secs_left "$TMP/docker2" cid)"; dt=$(( SECONDS - t0 ))
+{ [[ -z "$got" ]] && (( dt <= 3 )); } && ok "hung minter BOUNDED to ~1s (took ${dt}s, empty -> indeterminate -> no stall)" || bad "minter not bounded: got='$got' dt=${dt}s"
+unset FAKE_MINT_SLEEP _STORM_EXP_BUDGET FAKE_EXP
 
 echo
 echo "RESULT: $PASS passed, $FAIL failed"

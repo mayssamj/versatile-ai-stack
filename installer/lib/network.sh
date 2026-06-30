@@ -202,9 +202,11 @@ lo0_ensure_aliases() {
     return 0
   fi
   # CA-3 (CyberArk EPM): never call interactive sudo UNATTENDED — an EPM elevation prompt would
-  # HANG the install with no tty to answer it. If sudo isn't already cached AND there's no tty,
-  # DEFER (the aliases bind at the next `prepare-sudo` / interactive run) — exactly like the
-  # hosts_*_block (network.sh:369/467) and lo0_install_persistence_plist (:285) siblings.
+  # HANG the install with no tty to answer it. If sudo isn't cached AND there's no tty, DEFER —
+  # the SAME EUID/sudo-n/tty guard the hosts_ensure_block / hosts_remove_block siblings use
+  # (network.sh:369/467). The aliases bind at the next `prepare-sudo` / interactive run; the
+  # unattended 00n caller's verify gate then fails FAST with the prepare-sudo remedy (a clean,
+  # actionable exit) instead of hanging on an EPM sudo prompt.
   if (( EUID != 0 )) && ! sudo -n true 2>/dev/null && [[ ! -t 0 ]]; then
     warn "loopback aliases need sudo but none is cached and this is unattended (no tty) — DEFERRING ${#missing[@]} alias(es) so an EPM elevation prompt can't hang the install."
     note "Bind them later:  sudo bash vz-ai-stack.sh prepare-sudo   (or re-run interactively)."

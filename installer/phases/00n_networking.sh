@@ -137,7 +137,14 @@ nc -l 127.0.10.1 0 &  # may not work on every macOS netcat; soft-fail
 nc_pid=$!
 sleep 0.5
 if ! ifconfig lo0 | grep -q "127.0.10.1"; then
-  err "127.0.10.1 not bound to lo0. lo0_ensure_aliases failed silently."
+  if (( EUID != 0 )) && ! sudo -n true 2>/dev/null && [[ ! -t 0 ]]; then
+    # CA-3: the bind was deliberately DEFERRED (no cached sudo + unattended) to avoid hanging on a
+    # CyberArk EPM elevation prompt — a clean fast-fail, NOT a silent failure. Give the remedy.
+    err "127.0.10.1 not bound: lo0 alias binding was DEFERRED (no cached sudo + unattended — avoided an EPM elevation hang)."
+    err "  Bind them now:  sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo   (or re-run this install interactively)."
+  else
+    err "127.0.10.1 not bound to lo0. lo0_ensure_aliases failed silently."
+  fi
   exit 1
 fi
 ok "127.0.10.1 is routable on lo0"
