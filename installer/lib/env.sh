@@ -78,7 +78,14 @@ set_env() {
       print
     }
     END { if (!found) print k "=" v }
-  ' "$ENV_FILE" > "$tmp" && mv -f "$tmp" "$ENV_FILE"
+  ' "$ENV_FILE" > "$tmp" && mv -f "$tmp" "$ENV_FILE" && return 0
+  # CA-4 (Netwrix DLP): a write/mv of this SECRET-bearing file can be silently QUARANTINED/blocked
+  # by an endpoint DLP agent. Do NOT swallow it — a stale/partial .env (missing the just-set key)
+  # silently breaks the stack later, and callers that `|| true` set_env would never know. Fail LOUD
+  # (name the file + the likely cause, NEVER the value), clean up the temp, and return non-zero.
+  rm -f "$tmp" 2>/dev/null || true
+  err "set_env: FAILED to persist $key to $ENV_FILE (awk/mv error). An endpoint DLP agent (e.g. Netwrix) may have blocked/quarantined the write — the value was NOT saved. Check the agent's quarantine, then retry."
+  return 1
 }
 
 # require_env KEY [default]

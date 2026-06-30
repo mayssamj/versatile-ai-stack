@@ -227,8 +227,17 @@ _gateway_config_heal() {  # <cid> <name> -> rc 0 ONLY if it RESTORED a gutted co
   live="$(_wd_bounded 10 "$DOCKER" exec "$cid" sh -c "cat $GW_CONFIG_IN 2>/dev/null" || true)"
   # PROMOTE: refresh the host snapshot ONLY from a healthy CLOUD config (0600 — it holds the scoped key).
   if _config_promotable "$live"; then
-    { printf '%s' "$live" > "$GW_CONFIG_SNAP.tmp" && chmod 600 "$GW_CONFIG_SNAP.tmp" && mv -f "$GW_CONFIG_SNAP.tmp" "$GW_CONFIG_SNAP"; } 2>/dev/null || true
-    return 1   # healthy — nothing to heal (snapshot refreshed)
+    # CA-4 (Netwrix DLP): this 0600 snapshot holds the scoped cloud key — a DLP agent can quarantine
+    # the write. Don't swallow it: a silently-failed snapshot means the W5 RESTORE safety net is GONE,
+    # so a later config-gut goes UN-healed despite W5 being "on". Surface the block.
+    if { printf '%s' "$live" > "$GW_CONFIG_SNAP.tmp" && chmod 600 "$GW_CONFIG_SNAP.tmp" && mv -f "$GW_CONFIG_SNAP.tmp" "$GW_CONFIG_SNAP"; } 2>>"$LOG"; then
+      :
+    else
+      rm -f "$GW_CONFIG_SNAP.tmp" 2>/dev/null || true
+      log "W5: $name gateway-config snapshot WRITE FAILED (DLP/Netwrix may have blocked the 0600 secret write) — the W5 restore safety net is UNAVAILABLE until this succeeds."
+      notify "$name gateway-config snapshot blocked (DLP?) — W5 restore unavailable"
+    fi
+    return 1   # healthy live config — nothing to heal (snapshot refresh attempted)
   fi
   # RESTORE only a TRUE gut; leave a complete-but-local config OR a large restructure alone.
   _config_gutted "$live" || return 1
