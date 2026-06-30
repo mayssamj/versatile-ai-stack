@@ -308,6 +308,19 @@ fi
 # host holds the gateway Ed25519 key so the token CAN be refreshed without a recreate),
 # or no-ops a healthy one. Recreate stays opt-in (OPENSHELL_FORCE_RECREATE=1). So
 # `install 04f` ALONE heals-and-completes — no dependence on Phase 04 or the watchdog.
+#
+# REVIVE-ONLY (council §24 architect): 04f must NOT become a CREATE path for hermes-fleet-v1.
+# Phase 04 owns create + the deny-by-default NETWORK POLICY (04_openshell.sh:475), which
+# ensure's create arm does NOT apply — so a FORCE_RECREATE via a standalone `install 04f`
+# would mint a POLICYLESS, egress-uncontained sandbox. Refuse it and route the destructive
+# recreate through Phase 04, which re-applies the policy. (Without the flag, ensure only
+# revives an existing container or no-ops a healthy one — it never creates here.)
+if [[ "${OPENSHELL_FORCE_RECREATE:-0}" == "1" ]]; then
+  err "OPENSHELL_FORCE_RECREATE=1 with a standalone 'install 04f' would (re)create hermes-fleet-v1"
+  err "WITHOUT its network policy (Phase 04 owns create + policy). Run the recreate through Phase 04:"
+  err "    OPENSHELL_FORCE_RECREATE=1 bash $AI_STACK/vz-ai-stack.sh install 04 04f"
+  exit 1
+fi
 if ! openshell_sandbox_ensure "$OSH" "$SANDBOX" base; then
   err "Sandbox '$SANDBOX' is present but could NOT be made healthy (in-place revive failed; diagnosis above)."
   err "It is LEFT AS-IS for inspection — NOT deleted/recreated (its /sandbox state is preserved)."

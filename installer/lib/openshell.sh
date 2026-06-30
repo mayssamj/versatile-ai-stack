@@ -76,7 +76,9 @@ openshell_token_storm() {
   cid="$("$docker_bin" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
   [[ -n "$cid" ]] || return 1
   storm_detect "$docker_bin" "$cid" || rc=$?
-  (( rc == 0 ))
+  # Explicit return (NOT a bare `(( rc == 0 ))` whose set -e side-effect is the result) so a
+  # future non-conditional caller can't be killed by set -e. rc 2 (UNKNOWN) maps to 1.
+  [[ $rc -eq 0 ]] && return 0 || return 1
 }
 
 # openshell_sandbox_phase <OSH> <name>
@@ -228,7 +230,7 @@ _osh_relaunch_gateway() {
   [[ -n "$docker_bin" && -n "$cid" ]] || return 0
   if _osh_bounded 15 "$docker_bin" exec -d "$cid" sh -c \
        'export HOME=/sandbox; cd /sandbox; nohup /sandbox/.venv/bin/hermes gateway run --replace >/sandbox/.hermes-gateway.log 2>&1'; then
-    log "  revive '$name': relaunched hermes gateway (docker exec -d, --replace)"
+    log "  revive '$name': requested hermes gateway relaunch (exec -d accepted; W2 supervises real liveness next cycle)"
   else
     warn "  revive '$name': gateway relaunch returned non-zero (watchdog W2 retries next cycle)"
   fi

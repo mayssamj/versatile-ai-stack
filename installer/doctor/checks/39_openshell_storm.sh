@@ -59,6 +59,7 @@ openshell_storm_diagnose() {
 
   if [[ -n "$storming" ]]; then
     echo "STORM: sandbox(es) [${storming% }] are in an expired-token retry loop (high CPU)."
+    [[ -n "$unknown" ]] && echo "  note: also could NOT read logs for [${unknown% }] (docker wedged/timeout) — their storm status is UNKNOWN, re-check when responsive"
     echo "  Heal now (HALT-by-default, non-destructive): bash $AI_STACK/bin/openshell-watchdog.sh run   (watchdog: $wd)"
     return 1
   fi

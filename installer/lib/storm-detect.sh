@@ -50,7 +50,7 @@ _storm_bounded() {
     kill -0 "$p" 2>/dev/null || { wait "$p" 2>/dev/null; return $?; }
     sleep 0.5; w=$((w+1))
   done
-  kill -TERM "$p" 2>/dev/null; sleep 1; kill -KILL "$p" 2>/dev/null || true
+  kill -TERM "$p" 2>/dev/null || true; sleep 1; kill -KILL "$p" 2>/dev/null || true
   wait "$p" 2>/dev/null || true
   return 124
 }

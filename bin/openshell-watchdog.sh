@@ -536,7 +536,9 @@ _is_storming() {
   local cid="$1" rc=0
   if declare -F storm_detect >/dev/null 2>&1; then
     storm_detect "$DOCKER" "$cid" || rc=$?
-    (( rc == 0 )); return
+    # Explicit return (the bare `(( rc == 0 )); return` relied on a set -e side-effect — dead
+    # `return` + a non-`&&` caller would kill the cycle). rc 2 (UNKNOWN) maps to 1.
+    [[ $rc -eq 0 ]] && return 0 || return 1
   fi
   local logs
   logs="$(_wd_bounded 10 "$DOCKER" logs "$cid" --since 3m --tail 60 2>&1 || true)"

@@ -4,6 +4,47 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-06-30 — Hermes install resilience: 04f self-heals the token storm + unify/StartedAt-gate the detector
+
+Root-caused a recurring `install 04f` failure ("gateway token EXPIRED … must be
+RECREATED") that persisted despite the auto-heal watchdog being installed and
+working. It was a 3-way gap, not a broken heal — closed by a §24-reviewed set of
+guards (3-lens cartography → synthesis → adversarial-verify → 3-reviewer
+implementation review):
+
+- **G1 — 04f self-heals.** Phase 04f was the lone storm-gated phase that *detected*
+  the expired-1h-token storm and *aborted* (telling the user to run a different
+  phase); only Phase 04 actually revived, and the watchdog defers under the install
+  lock — so a standalone `install 04f` could never heal. 04f now calls the same
+  non-destructive `openshell_sandbox_ensure` (in-place host re-mint + restart; never
+  recreate) that Phase 04/15 use. It is REVIVE-ONLY: a `OPENSHELL_FORCE_RECREATE=1`
+  via 04f is refused and routed to Phase 04 (which owns create + network policy), so
+  04f can never mint a policyless sandbox.
+- **G2 — detector StartedAt gate.** New side-effect-free `installer/lib/storm-detect.sh`
+  counts the storm signature only in logs emitted AFTER the container's last restart
+  (window = max(StartedAt, now-180s)). Docker retains pre-restart logs across a
+  restart, so the old `--since 3m` grep returned a FALSE storm for ~3 min after every
+  heal (a co-cause of the incident, and false-RED doctor reports).
+- **G3 — one detector, no drift.** `openshell_token_storm`, the watchdog `_is_storming`,
+  and doctor check 39 are now thin wrappers over the shared detector, matching all
+  three signatures (ExpiredSignature, RefreshSandboxToken…Unauthenticated, ≥8
+  reconnects). Previously a low-CPU RefreshSandboxToken storm failed the installer but
+  was invisible to the watchdog+doctor, so it never auto-healed.
+- **G4** the install-path revive relaunches the in-sandbox `hermes gateway` (a restart
+  kills it). **G5** the sandbox token is located by UUID glob, not the `/default/`
+  gateway slug (silent no-op re-mint under any other gateway name). **G6** revive
+  refuses to restart a CONFIRMED-expired token when re-mint was skipped (a guaranteed
+  re-storm). **G7** removed the fossil "must be RECREATED" guidance. **G8** Phase 27
+  MCP wiring is storm-CHECK-gated. **G9 (partial)** the detector returns a third
+  UNKNOWN state on a wedged-docker read; doctor 39 surfaces it. **G10** a watchdog
+  per-cycle daemon-health gate skips a wedged cycle. **G13** a yq precheck in 04f.
+- Also fixed a latent `grep -c` exit-1 fragility that fired a spurious `ERR line …`
+  on every healthy install under the inherited `set -E` trap.
+- **Offline tests:** `installer/tests/test_storm_detect.sh` (12) +
+  `test_openshell_heal.sh` (8) cover the window math, signature coverage, the UNKNOWN
+  tri-state, the ERR-trap safety, the G5 glob (incl. >1-match), and G4 name-scoping —
+  no live stack, no model load.
+
 ## 2026-06-29 — Phase 38 Slack role router: virtual Hermes roles + mission threads
 
 Phase 38 now starts an ai-stack-owned Slack role router inside `hermes-fleet-v1`
