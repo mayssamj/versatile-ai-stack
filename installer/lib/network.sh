@@ -201,6 +201,15 @@ lo0_ensure_aliases() {
   if (( ${#missing[@]} == 0 )); then
     return 0
   fi
+  # CA-3 (CyberArk EPM): never call interactive sudo UNATTENDED — an EPM elevation prompt would
+  # HANG the install with no tty to answer it. If sudo isn't already cached AND there's no tty,
+  # DEFER (the aliases bind at the next `prepare-sudo` / interactive run) — exactly like the
+  # hosts_*_block (network.sh:369/467) and lo0_install_persistence_plist (:285) siblings.
+  if (( EUID != 0 )) && ! sudo -n true 2>/dev/null && [[ ! -t 0 ]]; then
+    warn "loopback aliases need sudo but none is cached and this is unattended (no tty) — DEFERRING ${#missing[@]} alias(es) so an EPM elevation prompt can't hang the install."
+    note "Bind them later:  sudo bash vz-ai-stack.sh prepare-sudo   (or re-run interactively)."
+    return 0
+  fi
   log "Binding ${#missing[@]} loopback aliases to lo0 (sudo required)..."
   for ip in "${missing[@]}"; do
     sudo ifconfig lo0 alias "$ip" up >/dev/null 2>&1 || warn "failed to bind $ip"

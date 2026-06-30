@@ -135,6 +135,10 @@ case "${1:-run}" in
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <!-- CA-5 (CrowdStrike EDR politeness): cap crash-loop churn so a startup/egress failure
+       (e.g. a Zscaler-blocked OAuth refresh) can't respawn with no backoff and draw EDR
+       anomalous-process-churn attention. Matches the codex-bridge sibling. -->
+  <key>ThrottleInterval</key><integer>10</integer>
   <key>EnvironmentVariables</key><dict>
     <key>AI_STACK</key><string>$AI_STACK</string>
     <key>MERIDIAN_PORT</key><string>$PORT</string>
