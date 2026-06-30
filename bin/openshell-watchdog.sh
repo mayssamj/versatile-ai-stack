@@ -35,6 +35,12 @@
 set -Eeuo pipefail
 
 AI_STACK="${AI_STACK:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+# Shared, side-effect-free token-storm detector — one source of truth with the
+# installer (installer/lib/openshell.sh) + doctor check 39, so _is_storming below can
+# never drift from the installer's detector again (the divergence that let a low-CPU
+# RefreshSandboxToken storm fail every install while the watchdog reported healthy).
+# Functions-only; safe to source before the tool-resolution below.
+[[ -f "$AI_STACK/installer/lib/storm-detect.sh" ]] && source "$AI_STACK/installer/lib/storm-detect.sh"
 STATE="$AI_STACK/installer/state"
 LOG="$STATE/openshell-watchdog.log"
 LOCK="$STATE/openshell-watchdog.lock"
@@ -496,14 +502,25 @@ _throttled() {  # _throttled <key> — true if <key> was acted on within THROTTL
 }
 _mark() { local key="$1"; { grep -vE "^$key " "$THROTTLE_FILE" 2>/dev/null || true; echo "$key $(date +%s)"; } > "$THROTTLE_FILE.tmp" && mv -f "$THROTTLE_FILE.tmp" "$THROTTLE_FILE"; }
 
-# Storm signature for a sandbox container id: expired-token retry storm.
+# Storm signature for a sandbox container id: expired-token retry storm. Thin wrapper
+# over the shared StartedAt-gated detector (installer/lib/storm-detect.sh) — same logic
+# as the installer + doctor 39, so it can't drift. storm_detect bounds its own read
+# (W3-style background+poll+kill) and gates on the container's last restart, so a
+# freshly re-minted+restarted sandbox is NOT flagged on its stale pre-restart logs.
+# UNKNOWN (rc 2, wedged-docker read) maps to "not storming" here: the per-cycle daemon
+# -health gate (G10) + W3 bounds own the wedged-daemon case at the cycle level — a lone
+# UNKNOWN read must not trigger a heal. Fallback to the legacy inline grep only if
+# storm-detect.sh is somehow unavailable (shared-repo safety).
 _is_storming() {
-  local cid="$1" logs
-  # W3: bound the docker logs read — it hangs hardest under host memory pressure,
-  # the exact condition a storm coincides with; a wedged read would block the cycle.
+  local cid="$1" rc=0
+  if declare -F storm_detect >/dev/null 2>&1; then
+    storm_detect "$DOCKER" "$cid" || rc=$?
+    (( rc == 0 )); return
+  fi
+  local logs
   logs="$(_wd_bounded 10 "$DOCKER" logs "$cid" --since 3m --tail 60 2>&1 || true)"
   grep -q 'ExpiredSignature' <<<"$logs" && return 0
-  # >=8 reconnect lines in the last 3 min = a no-backoff storm (not a one-off blip)
+  grep -q 'RefreshSandboxToken.*Unauthenticated' <<<"$logs" && return 0
   (( $(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs") >= 8 )) && return 0
   return 1
 }

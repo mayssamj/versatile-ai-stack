@@ -281,23 +281,34 @@ fi
 # silently misinterpreted: the name slot becomes the command, so we'd see
 # "<name>: command not found" inside the sandbox. CHANGELOG 2026-05-29.
 
-# --- Expired-token gate (run BEFORE any sandbox exec) ------------------------
+# --- Ensure the sandbox is HEALTHY before any exec (SELF-HEALING) ------------
 # `sandbox list` showed the sandbox above, but Phase=Ready / list-present is
-# CONTROL-PLANE only: a sandbox whose gateway token EXPIRED still lists present
-# while every exec fails "relay open timed out". Detect that via the in-container
-# LOG signature (reliable + NON-INVASIVE — an exec probe is fragile under version
-# skew/contention and the old one MISreported this as a pip/PyPI 403). During
-# `install all`, Phase 04 self-heals this before 04f runs; this gate catches a
-# standalone `install 04f` against a token-expired sandbox. (Every exec below uses
-# "$OSH" = the gateway-matching brew binary, so a healthy sandbox won't trip here.)
-if openshell_token_storm "$SANDBOX"; then
-  err "Sandbox '$SANDBOX' is present but its gateway token EXPIRED (ExpiredSignature in container logs)."
-  err "Its exec relay is dead and the token cannot self-refresh — the sandbox must be RECREATED."
-  err "Heal (recreates the sandbox WITH its network policy, then re-bootstraps the fleet):"
-  err "    bash $AI_STACK/vz-ai-stack.sh install 04 04f"
-  err "(This is NOT a PyPI/pip problem — do not pre-stage hermes-agent for this.)"
+# CONTROL-PLANE only: a sandbox whose 1h gateway token EXPIRED still lists present
+# while every exec fails "relay open timed out".
+#
+# 04f USED to merely DETECT that and ABORT, telling the user to run a DIFFERENT phase
+# string (`install 04 04f`) — but only Phase 04 revived, so a standalone `install 04f`
+# (the natural re-run of the failed phase) could NEVER heal, and the launchd watchdog
+# DEFERS while an install holds the lock. Result: the identical error every time
+# (incident 2026-06-30). 04f was the LONE storm-gated phase that didn't self-heal —
+# Phase 04 (04_openshell.sh) and Phase 15 (15_pi.sh) both call openshell_sandbox_ensure.
+#
+# Now 04f calls the SAME shared primitive: openshell_sandbox_ensure REVIVES a storming/
+# down sandbox IN PLACE (host token re-mint + docker restart — NON-destructive; the
+# host holds the gateway Ed25519 key so the token CAN be refreshed without a recreate),
+# or no-ops a healthy one. Recreate stays opt-in (OPENSHELL_FORCE_RECREATE=1). So
+# `install 04f` ALONE heals-and-completes — no dependence on Phase 04 or the watchdog.
+if ! openshell_sandbox_ensure "$OSH" "$SANDBOX" base; then
+  err "Sandbox '$SANDBOX' is present but could NOT be made healthy (in-place revive failed; diagnosis above)."
+  err "It is LEFT AS-IS for inspection — NOT deleted/recreated (its /sandbox state is preserved)."
+  err "If its container is GONE or genuinely unrecoverable, an EXPLICIT destructive recreate"
+  err "(checkpoint-first; Phase 04 re-applies the network policy) is:"
+  err "    OPENSHELL_FORCE_RECREATE=1 bash $AI_STACK/vz-ai-stack.sh install 04 04f"
   exit 1
 fi
+# NB: do NOT re-check openshell_token_storm here — ensure already confirmed Phase=Ready,
+# and storm_detect's StartedAt gate keeps a just-restarted sandbox from false-tripping
+# on its stale pre-restart logs.
 
 # Pre-flight: is Hermes installed inside the sandbox?
 #
@@ -323,8 +334,10 @@ if ! "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'command -v hermes >/
   else
     printf '%s\n' "$_pip_out" | tail -10
     if grep -qE 'relay open timed out|DeadlineExceeded' <<<"$_pip_out"; then
-      err "Sandbox exec relay died during install ('relay open timed out') — recreate the sandbox:"
-      err "    bash $AI_STACK/vz-ai-stack.sh install 04 04f"
+      err "Sandbox exec relay died MID-INSTALL ('relay open timed out') — the 1h gateway token"
+      err "likely expired during the phase. Just RE-RUN 'install 04f': the health gate at the top"
+      err "now revives the sandbox IN PLACE (host re-mint + restart, non-destructive) before retrying."
+      err "    bash $AI_STACK/vz-ai-stack.sh install 04f"
     else
       err "Hermes install inside sandbox failed (pip install hermes-agent)."
       err "If PyPI is 403'd through the proxy, pre-stage hermes-agent like Phase 15 does for Pi (tarball upload)."

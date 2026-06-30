@@ -23,14 +23,26 @@ openshell_storm_diagnose() {
   local wd="not loaded"
   launchctl print "gui/$(id -u)/com.ai-stack.openshell-watchdog" >/dev/null 2>&1 && wd="loaded"
 
-  local storming="" cid logs
+  # Shared, StartedAt-gated detector (one source of truth with the installer +
+  # watchdog). The legacy inline `--since 3m` grep here counted PRE-restart logs too,
+  # so doctor reported a FALSE STORM for ~3 min after a watchdog heal; storm_detect
+  # gates on the container's last restart so a just-healed sandbox reads green.
+  [[ -f "$AI_STACK/installer/lib/storm-detect.sh" ]] && source "$AI_STACK/installer/lib/storm-detect.sh"
+  local storming="" unknown="" cid rc
   for name in hermes-fleet-v1 pi-v1; do
     cid="$("$docker" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
     [[ -n "$cid" ]] || continue
-    logs="$("$docker" logs "$cid" --since 3m --tail 60 2>&1 || true)"
-    if grep -q 'ExpiredSignature' <<<"$logs" \
-       || (( $(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs") >= 8 )); then
-      storming="${storming}${name} "
+    if declare -F storm_detect >/dev/null 2>&1; then
+      rc=0; storm_detect "$docker" "$cid" || rc=$?
+      case "$rc" in
+        0) storming="${storming}${name} ";;
+        2) unknown="${unknown}${name} ";;   # wedged-docker read — UNKNOWN, not green
+      esac
+    else
+      local logs; logs="$("$docker" logs "$cid" --since 3m --tail 60 2>&1 || true)"
+      { grep -q 'ExpiredSignature' <<<"$logs" \
+        || (( $(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs") >= 8 )); } \
+        && storming="${storming}${name} "
     fi
   done
 
@@ -51,6 +63,7 @@ openshell_storm_diagnose() {
     return 1
   fi
   echo "  (no token-storm on the sandboxes; auto-healing watchdog: $wd)"
+  [[ -n "$unknown" ]] && echo "  note: could not read logs for [${unknown% }] (docker wedged/timeout) — storm status UNKNOWN, re-check when the daemon is responsive"
   [[ "${stopped:-0}" != "0" ]] && echo "  note: $stopped stopped OpenShell container(s) on disk — checkpoint before any 'docker container prune': bash $AI_STACK/bin/openshell-checkpoint.sh <name>"
   [[ -n "$stale_plist" ]] && echo "  note: watchdog plist is STALE (no HALT env) → runs warn-only. Refresh: bash $AI_STACK/bin/openshell-watchdog.sh install"
   return 0

@@ -35,6 +35,10 @@
 [[ -n "${AI_STACK:-}" ]] || { echo "openshell.sh: AI_STACK unset (source common.sh first)" >&2; return 1 2>/dev/null || exit 1; }
 declare -F log >/dev/null 2>&1            || source "$AI_STACK/installer/lib/common.sh"
 declare -F port_listening >/dev/null 2>&1 || source "$AI_STACK/installer/lib/validate.sh"
+# Shared, side-effect-free token-storm detector (StartedAt-gated; the ONE source of
+# truth shared with bin/openshell-watchdog.sh + doctor check 39 so the signatures can
+# never drift). Functions-only, safe to source unconditionally.
+source "$AI_STACK/installer/lib/storm-detect.sh"
 
 _osh_strip_ansi() { sed $'s/\x1b\\[[0-9;]*m//g'; }
 
@@ -48,32 +52,31 @@ _osh_strip_ansi() { sed $'s/\x1b\\[[0-9;]*m//g'; }
 # it is reliable and NON-INVASIVE — and always drive sandbox exec through
 # osh_bin/resolve_openshell so the CLI matches the gateway it created.
 
-# openshell_token_storm <name> — true (0) iff the sandbox container shows the
-# expired-token signature in its recent logs: the in-sandbox agent's
-# RefreshSandboxToken returns Unauthenticated / `invalid token: ExpiredSignature`.
-# The token CANNOT self-refresh ("static token sources cannot rebootstrap
-# automatically", verified upstream) — only RECREATING the sandbox mints a fresh
-# one. Mirrors bin/openshell-watchdog.sh::_is_storming, but matches ONLY the LOG
-# signature (never CPU): a low-CPU manifestation exists where the agent retries on
-# a ~5s cadence (0.2% CPU) rather than a no-backoff storm — the relay is just as
-# dead, so a CPU threshold would miss it. Returns 1 if docker / container /
-# signature is absent (caller treats that as "unknown cause", still recreates).
+# openshell_token_storm <name> — true (0) iff sandbox <name>'s container shows the
+# expired-token storm signature in logs emitted AFTER its last restart. Thin wrapper
+# over the shared, StartedAt-gated detector in installer/lib/storm-detect.sh (one
+# source of truth with bin/openshell-watchdog.sh::_is_storming + doctor check 39).
+#
+# The legacy inline `docker logs --since 3m` grep counted PRE-restart signatures too:
+# docker retains logs across `docker restart`, so for ~3 min after a heal (re-mint +
+# restart) it returned a FALSE storm on an already-healed sandbox (a co-cause of the
+# 2026-06-30 install-04f failure). storm_detect clamps the window to
+# max(StartedAt, now-180s) so that can't happen, and matches all three signatures
+# (ExpiredSignature | RefreshSandboxToken…Unauthenticated | >=8 reconnect lines).
+#
+# Returns 1 when docker / the container is absent. NOTE: storm_detect rc 2 (UNKNOWN:
+# a wedged-docker log-read timeout) is mapped to 1 here to preserve the boolean
+# contract of existing callers; threading UNKNOWN→defer through ensure/precheck is the
+# tracked G9 follow-up. NB: the in-place host re-mint (_osh_revive) is the
+# NON-destructive cure — recreation is NOT required to clear a storm.
 openshell_token_storm() {
-  local name="$1" docker_bin cid logs to=""
+  local name="$1" docker_bin cid rc=0
   docker_bin="$(command -v docker 2>/dev/null || true)"
   [[ -n "$docker_bin" ]] || return 1
   cid="$("$docker_bin" ps -q --filter "name=openshell-${name}-" 2>/dev/null | head -1)"
   [[ -n "$cid" ]] || return 1
-  # Bound the log read: a wedged docker daemon must not hang the installer.
-  # Prefer coreutils timeout/gtimeout; killing a `docker logs` reader is harmless
-  # (unlike killing an openshell exec, which degrades the gateway). Fall back to
-  # plain if neither is present (the watchdog has run this unbounded in prod).
-  if   command -v timeout  >/dev/null 2>&1; then to="timeout 10"
-  elif command -v gtimeout >/dev/null 2>&1; then to="gtimeout 10"; fi
-  logs="$($to "$docker_bin" logs "$cid" --since 3m --tail 200 2>&1 || true)"
-  grep -q 'ExpiredSignature' <<<"$logs" && return 0
-  grep -q 'RefreshSandboxToken.*Unauthenticated' <<<"$logs" && return 0
-  return 1
+  storm_detect "$docker_bin" "$cid" || rc=$?
+  (( rc == 0 ))
 }
 
 # openshell_sandbox_phase <OSH> <name>

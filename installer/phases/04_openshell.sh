@@ -479,10 +479,11 @@ else
 fi
 
 # --- Auto-healing watchdog (guards the expired-token CPU storm; see §2.x) -----
-# A sandbox's gateway token expires after ~8h; the in-sandbox agent then retries
-# log-push with no backoff (hundreds/sec) → ~36% CPU per sandbox. Install a
-# launchd timer that detects that exact signature + delete/recreates the dead
-# sandbox. Idempotent; safe to re-run. Detection-only via AI_STACK_WATCHDOG_RECREATE=0.
+# A sandbox's gateway token expires after ~1h (verified 2026-06-19, NOT ~8h); the
+# in-sandbox agent then retries log-push with no backoff (hundreds/sec) → ~36% CPU per
+# sandbox. Install a launchd timer that detects that exact signature and HEALS it
+# NON-destructively: in-place host token re-mint + restart when REMINT=1, else
+# HALT-by-default — it never auto-deletes (recreate stays opt-in). Idempotent; safe to re-run.
 if [[ -x "$AI_STACK/bin/openshell-watchdog.sh" ]]; then
   bash "$AI_STACK/bin/openshell-watchdog.sh" install 2>&1 | tail -1 || warn "watchdog install returned non-zero (non-fatal)"
 fi
