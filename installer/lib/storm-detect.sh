@@ -55,16 +55,23 @@ _storm_bounded() {
   return 124
 }
 
-# _storm_window_secs <docker_bin> <cid> — echo the log window in seconds:
-#   max(0, min(180, now - StartedAt))
-# i.e. "since the container last started, but never more than 3 minutes". If
-# StartedAt cannot be read/parsed, fall back to 180 (the legacy 3m window — never
-# worse than today). The number is applied by the docker daemon as a RELATIVE
-# `--since`, so the window BOUNDARY is computed in the daemon's own clock against
-# the daemon's own log timestamps — no host/VM clock-skew in the comparison
-# (only the window LENGTH derives from the host clock, and it is clamped).
-_storm_window_secs() {
-  local docker_bin="$1" cid="$2" started s started_epoch now_epoch since
+# _storm_since_arg <docker_bin> <cid> — echo the `docker logs --since` argument as an ABSOLUTE
+# Unix epoch (or the literal "3m" fallback). This is SKEW-PROOF, which a relative duration is NOT:
+# `docker logs --since <duration>` is computed on the CLIENT (host) clock, while the log lines are
+# stamped in the DAEMON clock — so under a host↔VM clock skew a relative window mis-selects lines
+# (the R4 regression: a future StartedAt made `now_host - StartedAt_daemon < 0`). An ABSOLUTE
+# timestamp is compared directly against the daemon's own log clock, so StartedAt (also daemon
+# clock) lines up exactly. Window = max(StartedAt, now-180s):
+#   • just-restarted  -> StartedAt  : post-restart lines ONLY (excludes pre-restart stale = G2),
+#     and skew-proof because StartedAt and the log timestamps share the daemon clock;
+#   • long-running    -> now-180    : bounded ~180s, never replays hours of a quiet container;
+#   • future StartedAt (host behind daemon, the sleep/wake skew) -> StartedAt (in the future) ->
+#     `--since <future>` shows NOTHING -> healthy. CORRECT: a container restarted seconds ago has
+#     no post-restart storm yet, and a GENUINE storm has a PAST StartedAt -> positive window ->
+#     detected. (Resolves both R4-blinding and the architect's R4 false-positive-on-stale.)
+# Falls back to the literal "3m" (relative) only when StartedAt/now can't be parsed.
+_storm_since_arg() {
+  local docker_bin="$1" cid="$2" started s started_epoch now_epoch floor since
   started="$("$docker_bin" inspect -f '{{.State.StartedAt}}' "$cid" 2>/dev/null || true)"
   # StartedAt e.g. 2026-06-30T13:32:28.566596845Z (UTC). Strip trailing Z + fractional.
   s="${started%Z}"; s="${s%%.*}"
@@ -72,21 +79,12 @@ _storm_window_secs() {
   started_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%S' "$s" '+%s' 2>/dev/null \
                   || date -u -d "$s" '+%s' 2>/dev/null || echo 0)"
   now_epoch="$(date -u '+%s' 2>/dev/null || echo 0)"
-  if [[ "$started_epoch" =~ ^[0-9]+$ ]] && (( started_epoch > 0 )) \
-     && [[ "$now_epoch" =~ ^[0-9]+$ ]] && (( now_epoch > 0 )); then
-    since=$(( now_epoch - started_epoch ))
-  else
-    since=180   # parse failed -> legacy 3m window (degrade safe, never worse)
+  if ! [[ "$started_epoch" =~ ^[0-9]+$ ]] || (( started_epoch <= 0 )) \
+     || ! [[ "$now_epoch" =~ ^[0-9]+$ ]] || (( now_epoch <= 0 )); then
+    printf '3m'; return 0   # StartedAt/now unparseable -> legacy relative 3m window (degrade safe)
   fi
-  # A NEGATIVE interval = StartedAt in the FUTURE (host clock behind the daemon clock — e.g.
-  # post-sleep/wake or OrbStack-VM-restart skew). `--since 0s` would show NOTHING and BLIND the
-  # detector on a genuinely storming sandbox until the clocks reconverge, so treat future-
-  # StartedAt the SAME as a parse failure: fall back to the legacy 180s window, never to 0.
-  # (since==0 — a container restarted this very second — legitimately stays 0: a just-restarted
-  # container has no post-restart storm yet, and a 180s window there would re-admit the stale
-  # pre-restart logs the StartedAt gate exists to exclude.) (R4)
-  (( since < 0 )) && since=180
-  (( since > 180 )) && since=180
+  floor=$(( now_epoch - 180 ))
+  since=$(( started_epoch > floor ? started_epoch : floor ))
   printf '%s' "$since"
 }
 
@@ -97,10 +95,10 @@ _storm_window_secs() {
 # Matches any of: ExpiredSignature | RefreshSandboxToken … Unauthenticated |
 # >=8 reconnect lines (a no-backoff storm, not a one-off blip).
 storm_detect() {
-  local docker_bin="$1" cid="$2" win logs rc=0
+  local docker_bin="$1" cid="$2" since logs rc=0
   [[ -n "$docker_bin" && -n "$cid" ]] || return 1
-  win="$(_storm_window_secs "$docker_bin" "$cid")"
-  logs="$(_storm_bounded 10 "$docker_bin" logs "$cid" --since "${win}s" --tail 200 2>&1)"; rc=$?
+  since="$(_storm_since_arg "$docker_bin" "$cid")"
+  logs="$(_storm_bounded 10 "$docker_bin" logs "$cid" --since "$since" --tail 200 2>&1)"; rc=$?
   (( rc == 124 )) && return 2   # wedged read -> UNKNOWN, NOT "healthy" (G9)
   # The `grep -q … && return 0` form is exempt from set -e / the ERR trap (non-final command
   # of an AND-OR list), so a no-match here is safe.

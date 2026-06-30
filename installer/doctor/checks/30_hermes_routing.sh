@@ -80,9 +80,13 @@ hermes_routing_diagnose() {
   # two sources of truth — L9). Read the ACTUAL bound model from the live hermes_manager config
   # (no availability-gate guesswork) and, when it is a CLOUD model, assert the key covers it.
   local bound kmodels
+  # Read the bound model.default from the live config. Require the `default:` be INDENTED (so a
+  # stray top-level `default:` can't match — it's nested under `model:`), and STRIP YAML quotes on
+  # the host side (a quoted `default: "claude-opus-sub-max"` would otherwise keep the quotes and
+  # never match the bare model id in the key allow-list -> a false-positive doctor failure).
   bound="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- /bin/sh -c \
-    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; sed -n "s/^[[:space:]]*default:[[:space:]]*//p" "$f" 2>/dev/null | head -1' \
-    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; sed -n "s/^[[:space:]][[:space:]]*default:[[:space:]]*//p" "$f" 2>/dev/null | head -1' \
+    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]' | sed 's/["'\'']//g')"
   if [[ -n "$bound" && "$bound" != local && "$bound" != local-* ]]; then
     kmodels="$(litellm_scoped_curl "$hk" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null \
       | python3 -c 'import sys,json

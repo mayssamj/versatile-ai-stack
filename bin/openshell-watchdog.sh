@@ -616,7 +616,10 @@ _remint_heal() {  # _remint_heal <name> <cid> -> 0 healed
   local name="$1" cid="$2" tok relaunch cpath
   tok="$(_token_path "$cid")" || { log "  re-mint($name): no token file"; return 1; }
   _remint_file "$name" "$tok" || return 1
-  "$DOCKER" restart "$cid" >>"$LOG" 2>&1 || { log "  re-mint($name): docker restart failed"; return 1; }
+  # BOUNDED (review): docker restart can hang indefinitely under the host-memory thrash a storm
+  # coincides with — the exact condition this heal must survive — and an unbounded restart would
+  # hold the watchdog lock until the 600s reclaim. _wd_bounded 30 matches _verify_ready's cadence.
+  _wd_bounded 30 "$DOCKER" restart "$cid" >>"$LOG" 2>&1 || { log "  re-mint($name): docker restart timed-out/failed"; return 1; }
   # rc 2 = minted + restarted but not Ready YET. Caller must NOT fall through to the
   # destructive halt/recreate (that would discard the fresh-token state); next cycle re-checks.
   _verify_ready "$name" || { log "  re-mint($name): minted+restarted, not Ready yet — leaving it for the next cycle"; return 2; }
@@ -634,7 +637,12 @@ _remint_heal() {  # _remint_heal <name> <cid> -> 0 healed
   # STILL storming, the fresh token was REJECTED (clock skew / kid rotation / a jti pin), so
   # this re-mint did NOT heal. Returning 3 (not 0) stops handle_storm from a false-green
   # "HEALED" that clears the alert and throttles re-detection for 1800s while CPU burns.
-  sleep 3   # let the relay reconnect + read the fresh token before judging
+  # Settle before judging: a REJECTED fresh token makes the relay re-emit ExpiredSignature within
+  # ~1-2s of its first post-restart gRPC call; 5s gives margin even when host thrash slows relay
+  # startup, so a still-rejected token isn't missed (a false-heal would clear the alert + notify,
+  # then re-storm next cycle). storm_detect's absolute --since gate means this re-check can't
+  # false-POSITIVE on stale pre-restart logs (the skew case the architect flagged).
+  sleep 5
   if _is_storming "$cid"; then
     log "  re-mint($name): re-minted+restarted+Ready but STILL storming — fresh token REJECTED; NOT declaring healed (rc3)"
     return 3
