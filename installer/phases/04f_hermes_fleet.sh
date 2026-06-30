@@ -436,15 +436,18 @@ HERMES_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-
 # the always-published loopback (the `-p 127.0.0.1:4000` publish) is the robust default — without
 # this the mint/validate/served-slug probes below would fail the whole phase even with LiteLLM up.
 HERMES_LB="http://litellm:4000"
-for _hb in "http://127.0.0.1:4000" "${LITELLM_BASE_URL:-http://litellm:4000}"; do
+# Probe order: an EXPLICIT LITELLM_BASE_URL override FIRST (honor it, like litellm.sh:85 /
+# common.sh:356), THEN loopback (the always-published 127.0.0.1:4000 — the cold-machine ground
+# truth), THEN the litellm:4000 ingress alias. ${VAR:+...} contributes the override only when set.
+for _hb in ${LITELLM_BASE_URL:+"$LITELLM_BASE_URL"} "http://127.0.0.1:4000" "http://litellm:4000"; do
   if curl -sf -o /dev/null --max-time 3 "$_hb/health/readiness" 2>/dev/null; then HERMES_LB="$_hb"; break; fi
 done
 HERMES_KEY="$(get_env HERMES_LITELLM_KEY '')"
 if [[ -z "$HERMES_KEY" ]] \
-   || ! litellm_scoped_curl "$HERMES_KEY" -sf --max-time 5 $HERMES_LB/v1/models >/dev/null 2>&1; then
+   || ! litellm_scoped_curl "$HERMES_KEY" -sf --max-time 5 "$HERMES_LB/v1/models" >/dev/null 2>&1; then
   log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
   HERMES_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
-    -X POST $HERMES_LB/key/generate \
+    -X POST "$HERMES_LB/key/generate" \
     -d "{\"models\":${HERMES_SUPERSET_JSON},\"key_alias\":\"hermes-fleet\",\"metadata\":{\"owner\":\"hermes\",\"purpose\":\"phase04f\"}}" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$HERMES_KEY_NEW" ]] || { err "Failed to mint HERMES_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
@@ -483,7 +486,7 @@ resolve_profile_model() {
     lmstudio)
       # LM Studio: render the MLX slug only when the server is up AND registered AND served.
       if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
-         && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 $HERMES_LB/v1/models 2>/dev/null \
+         && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 "$HERMES_LB/v1/models" 2>/dev/null \
             | grep -qF "\"$declared\""; then
         echo "$declared"; return
       fi ;;
@@ -559,7 +562,7 @@ if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
     case "$(yq -r ".models.\"$_pdef\".runtime" "$MODELS_YML" 2>/dev/null || true)" in
       lmstudio)
         if _lms_up && grep -qF "model_name: ${_pdef}" "$LITELLM_CFG" 2>/dev/null \
-           && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 $HERMES_LB/v1/models 2>/dev/null | grep -qF "\"$_pdef\""; then
+           && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 "$HERMES_LB/v1/models" 2>/dev/null | grep -qF "\"$_pdef\""; then
           HERMES_DEFAULT_MODEL="$_pdef"
         fi ;;
       meridian)
