@@ -28,6 +28,7 @@ source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/docker-engine.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/network.sh"
+source "$AI_STACK/installer/lib/corp-ca.sh"   # CA-1: corporate root-CA trust (Zscaler-safe; opt-in/auto)
 aliases_load
 
 NAME=litellm
@@ -191,6 +192,22 @@ if declare -F engine_addhost_args >/dev/null 2>&1 && _engine_valid "$_litellm_en
   [[ -n "$_litellm_ah" ]] && HDI_ADDHOST=("$_litellm_ah")
 fi
 
+# CA-1 (corporate TLS): trust the corporate root CA INSIDE the container so outbound HTTPS to
+# Anthropic/OpenAI/OpenRouter/Google keeps working under Zscaler TLS interception. OPT-IN/auto:
+# corp_ca_bundle yields nothing (empty args = no-op) on a non-corporate box or when
+# AI_STACK_CORP_CA=off. LiteLLM is python (requests + httpx), so REQUESTS_CA_BUNDLE + SSL_CERT_FILE
+# point at the mounted public+corp PEM bundle. NEVER disables verification (that would trip DLP/EDR).
+CORP_CA_ARGS=()
+if declare -F corp_ca_bundle >/dev/null 2>&1; then
+  _corp_ca="$(corp_ca_bundle 2>/dev/null || true)"
+  if [[ -n "$_corp_ca" && -f "$_corp_ca" ]]; then
+    CORP_CA_ARGS=( -v "$_corp_ca:/etc/ssl/corp-ca.pem:ro"
+                   -e REQUESTS_CA_BUNDLE=/etc/ssl/corp-ca.pem
+                   -e SSL_CERT_FILE=/etc/ssl/corp-ca.pem )
+    log "corp CA: trusting $(basename "$_corp_ca") inside litellm (cloud HTTPS stays up under TLS interception)"
+  fi
+fi
+
 # Canonical flag order: --network/--add-host, then -e..., then -p, then -v, then --restart, then IMAGE, then CMD.
 # NOTE: litellm/ mount is RO (Reviewer Y-8). Container cannot tamper with
 # config.yaml or the custom callbacks at runtime.
@@ -203,6 +220,7 @@ docker run -d \
   --network ai-stack \
   --add-host=ollama:host-gateway \
   "${HDI_ADDHOST[@]}" \
+  "${CORP_CA_ARGS[@]}" \
   -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
   -e OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \

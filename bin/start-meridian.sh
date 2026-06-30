@@ -37,6 +37,10 @@ if (( BASH_VERSINFO[0] < 5 )); then
 fi
 
 AI_STACK="${AI_STACK:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+# CA-1: corporate root-CA trust — Meridian (node) ignores the macOS keychain, so under Zscaler
+# TLS interception its hop to Anthropic fails cert-verify unless NODE_EXTRA_CA_CERTS points at the
+# corp bundle. Sourced here; the plist below sets the env when a corp root is detected (opt-in/auto).
+[[ -f "$AI_STACK/installer/lib/corp-ca.sh" ]] && source "$AI_STACK/installer/lib/corp-ca.sh"
 STATE="$AI_STACK/installer/state"
 LOG="$STATE/meridian.launchd.log"
 PLIST="$HOME/Library/LaunchAgents/com.ai-stack.meridian.plist"
@@ -125,6 +129,13 @@ _stop() {
 case "${1:-run}" in
   install)
     [[ -n "$MERIDIAN_BIN" ]] || { echo "meridian not found — run: npm install -g @rynfar/meridian" >&2; exit 1; }
+    # CA-1: when a corporate root CA is detected, set NODE_EXTRA_CA_CERTS in the plist so node
+    # trusts the corp MITM cert (opt-in/auto; empty -> no env line on a non-corporate box).
+    MER_CA_LINE=""
+    if declare -F corp_ca_bundle >/dev/null 2>&1; then
+      _mca="$(corp_ca_bundle 2>/dev/null || true)"
+      [[ -n "$_mca" && -f "$_mca" ]] && MER_CA_LINE="    <key>NODE_EXTRA_CA_CERTS</key><string>$_mca</string>"
+    fi
     cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -141,6 +152,7 @@ case "${1:-run}" in
   <key>ThrottleInterval</key><integer>10</integer>
   <key>EnvironmentVariables</key><dict>
     <key>AI_STACK</key><string>$AI_STACK</string>
+$MER_CA_LINE
     <key>MERIDIAN_PORT</key><string>$PORT</string>
     <key>MERIDIAN_HOST</key><string>$HOST_BIND</string>
     <key>MERIDIAN_DEFAULT_OPUS_MODEL</key><string>$MERIDIAN_DEFAULT_OPUS_MODEL</string>
