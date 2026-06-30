@@ -74,6 +74,27 @@ hermes_routing_diagnose() {
     echo "HERMES_LITELLM_KEY present but rejected by LiteLLM /v1/models (key revoked?)"
     return 1
   fi
+  # GW-3: a key that LISTS /v1/models can still be LOCAL-ONLY while the profiles route to CLOUD —
+  # LiteLLM enforces the allow-list SERVER-SIDE, so the bot would 403 every DM (the drift a
+  # standalone `install 04f` self-heal could leave; the minted allow-list and the bound model are
+  # two sources of truth — L9). Read the ACTUAL bound model from the live hermes_manager config
+  # (no availability-gate guesswork) and, when it is a CLOUD model, assert the key covers it.
+  local bound kmodels
+  bound="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- /bin/sh -c \
+    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; sed -n "s/^[[:space:]]*default:[[:space:]]*//p" "$f" 2>/dev/null | head -1' \
+    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+  if [[ -n "$bound" && "$bound" != local && "$bound" != local-* ]]; then
+    kmodels="$(litellm_scoped_curl "$hk" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin); m=(d.get("info") or {}).get("models") or []
+except Exception: sys.exit(0)
+print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
+    if [[ -n "$kmodels" ]] && ! grep -qxF '__wildcard__' <<<"$kmodels" && ! grep -qxF "$bound" <<<"$kmodels"; then
+      echo "HERMES_LITELLM_KEY does NOT cover the bound cloud model '$bound' (key is local-scoped) — gateway DMs would 403 server-side"
+      echo "  Heal: vz-ai-stack.sh install 04f  (now reconciles the key to the bound models)"
+      return 1
+    fi
+  fi
   return 0
 }
 

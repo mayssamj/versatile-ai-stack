@@ -562,14 +562,30 @@ if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
     esac
   fi
 fi
+HERMES_BOUND_MODELS=()
 configure_hermes_profile "" "$HERMES_DEFAULT_MODEL"   # root/default = platform default (.primary), gated exactly like resolve_profile_model (+ cloud fallback folded in)
+HERMES_BOUND_MODELS+=("$HERMES_DEFAULT_MODEL")
 for entry in "${PROFILES[@]}"; do
   _prof="${entry%%|*}"
   _model="$(resolve_profile_model "$_prof")"
   note "  $_prof -> $_model"
   configure_hermes_profile "--profile $_prof" "$_model"
+  HERMES_BOUND_MODELS+=("$_model")
 done
 ok "configured default + ${#PROFILES[@]} profiles (+ openai-gpt-sub fallback on cloud profiles where available)"
+
+# GW-1: the key was minted to a LOCAL-ONLY superset (HERMES_SUPERSET_JSON above), but the
+# profiles just resolved to the platform CLOUD default (e.g. claude-opus-sub-max) + the
+# openai-gpt-sub fallback when available — and LiteLLM enforces the allow-list SERVER-SIDE, so
+# WITHOUT this every gateway DM 403s after the recommended standalone `install 04f` self-heal
+# (the minted allow-list and the bound model are two sources of truth that drift — L9). Reconcile
+# the Hermes key to the actually-bound models: UNION (never narrows the local superset), off-argv,
+# loopback-fallback base, lock-free + idempotent — the same litellm_reconcile_key pattern phases
+# 26/29/32/33 use. openai-gpt-sub is added only when its codex-bridge route exists in config.yaml.
+_HERMES_DESIRED=( "${HERMES_BOUND_MODELS[@]}" )
+grep -qE 'model_name: openai-gpt-sub[[:space:]]*$' "$LITELLM_CFG" 2>/dev/null && _HERMES_DESIRED+=( openai-gpt-sub )
+litellm_reconcile_key HERMES_LITELLM_KEY "${_HERMES_DESIRED[@]}" \
+  || warn "Hermes key reconcile returned non-zero — cloud DMs may 403 until LiteLLM is reachable; re-run 'install 04f'"
 
 # --- Verify the config landed (without printing the api_key) --------------
 # Grep the rendered config.yaml for the provider wiring; never cat it (it holds

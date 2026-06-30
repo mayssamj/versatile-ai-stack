@@ -51,6 +51,12 @@ w="$(_storm_window_secs "$FAKE" cid)"
 export FAKE_STARTEDAT="not-a-timestamp"
 w="$(_storm_window_secs "$FAKE" cid)"
 (( w == 180 )) && ok "unparseable StartedAt -> legacy 180 fallback (got $w)" || bad "unparseable StartedAt -> legacy 180 (got $w)"
+# R4: a FUTURE StartedAt (host clock behind the daemon clock — sleep/VM-restart skew) must
+# fall back to 180, NOT clamp to 0 (which would --since 0s -> blind the detector on a real storm).
+_future=$(( $(date -u +%s) + 50 ))
+export FAKE_STARTEDAT="$(date -u -r "$_future" '+%Y-%m-%dT%H:%M:%S.0Z' 2>/dev/null || date -u -d "@$_future" '+%Y-%m-%dT%H:%M:%S.0Z' 2>/dev/null)"
+w="$(_storm_window_secs "$FAKE" cid)"
+(( w == 180 )) && ok "FUTURE StartedAt (clock skew) -> 180, never 0/blind (R4)" || bad "future StartedAt -> 180 (got $w)"
 
 echo "== storm_detect: StartedAt gate flips a STALE post-heal verdict (G2, the BLOCKER) =="
 export FAKE_LOG_MODE=stale

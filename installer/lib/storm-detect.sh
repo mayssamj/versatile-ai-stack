@@ -78,7 +78,14 @@ _storm_window_secs() {
   else
     since=180   # parse failed -> legacy 3m window (degrade safe, never worse)
   fi
-  (( since < 0 )) && since=0
+  # A NEGATIVE interval = StartedAt in the FUTURE (host clock behind the daemon clock — e.g.
+  # post-sleep/wake or OrbStack-VM-restart skew). `--since 0s` would show NOTHING and BLIND the
+  # detector on a genuinely storming sandbox until the clocks reconverge, so treat future-
+  # StartedAt the SAME as a parse failure: fall back to the legacy 180s window, never to 0.
+  # (since==0 — a container restarted this very second — legitimately stays 0: a just-restarted
+  # container has no post-restart storm yet, and a 180s window there would re-admit the stale
+  # pre-restart logs the StartedAt gate exists to exclude.) (R4)
+  (( since < 0 )) && since=180
   (( since > 180 )) && since=180
   printf '%s' "$since"
 }

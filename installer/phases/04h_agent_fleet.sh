@@ -174,13 +174,13 @@ widen_keys() {
   for kenv in HERMES_LITELLM_KEY PI_LITELLM_KEY; do
     k="$(get_env "$kenv" '')"
     [[ -n "$k" ]] || { note "$kenv not set yet — skip (its phase mints it)"; continue; }
-    if litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
-         -X POST http://litellm:4000/key/update \
-         -d "{\"key\":\"$k\",\"models\":$superset}" >/dev/null 2>&1; then
-      ok "widened $kenv allowlist to all models.yml models (incl. claude-*-sub-*)"
-    else
-      warn "could not widen $kenv via /key/update — run 'vz-ai-stack.sh model sync' to finalize"
-    fi
+    # GW-2: reconcile OFF-ARGV — litellm_reconcile_key writes the scoped-key body to a 0600 temp
+    # file and POSTs `--data @file` (loopback-fallback base, UNION semantics), instead of the old
+    # inline `-d "{…\"key\":\"$k\"…}"` which leaked the SCOPED key into argv (ps / docker inspect /
+    # /proc/PID/cmdline on this shared box — the secrets-never-in-argv rule the codebase enforces
+    # everywhere else). It covers the same superset and logs its own ok/warn.
+    litellm_reconcile_key "$kenv" "$superset" \
+      || warn "could not widen $kenv allow-list — run 'vz-ai-stack.sh model sync' to finalize"
   done
 }
 log "Widening fleet key allowlists to cover the subscription models..."

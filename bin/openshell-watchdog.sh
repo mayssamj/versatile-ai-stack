@@ -447,8 +447,13 @@ PL
     # Persist the EFFECTIVE modes so a later BARE `install` (Phase 04 / manual heal) inherits
     # them instead of resetting to the committed defaults (the regression vector). An explicit
     # env var on a future call still overrides + updates this file.
+    # R6: ATOMIC write (tmp + mv -f) — this file exists specifically to survive the
+    # 'idempotent install silently resets auto-heal to OFF' regression, so a torn/short write
+    # (disk full, or a SIGKILL/reboot mid-install) that left a partial conf would re-open that
+    # exact failure mode (next bare install inherits REMINT/PERSIST=OFF). mv is atomic.
     { printf 'AI_STACK_WATCHDOG_REMINT=%s\nAI_STACK_SANDBOX_PERSIST=%s\nAI_STACK_WATCHDOG_RECREATE=%s\nAI_STACK_WATCHDOG_HALT=%s\nAI_STACK_WATCHDOG_GATEWAY_SUPERVISE=%s\nAI_STACK_WATCHDOG_REVIVE_EXITED=%s\nAI_STACK_WATCHDOG_CRASHLOOP_BREAK=%s\nAI_STACK_WATCHDOG_CONFIG_HEAL=%s\n' \
-        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE" "$W4_REVIVE" "$CRASHLOOP_BREAK" "$CONFIG_HEAL"; } > "$CONF" 2>/dev/null || true
+        "$REMINT" "$PERSIST" "$RECREATE" "$HALT" "$W2_SUPERVISE" "$W4_REVIVE" "$CRASHLOOP_BREAK" "$CONFIG_HEAL" > "$CONF.tmp" \
+        && mv -f "$CONF.tmp" "$CONF"; } 2>/dev/null || true
     echo "openshell-watchdog launchd job installed ($LABEL, every ${INTERVAL}s; RunAtLoad=$([[ "$PERSIST" == 1 ]] && echo true || echo false); modes persisted -> watchdog.conf)"; exit 0 ;;
   uninstall)
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
@@ -623,6 +628,17 @@ _remint_heal() {  # _remint_heal <name> <cid> -> 0 healed
   if [[ "$name" == "hermes-fleet-v1" ]]; then
     _gateway_relaunch "$cid" "$name" || log "  re-mint($name): gateway relaunch had issues"
   fi
+  # R2: verify the ARTIFACT (storm STOPPED), not just the control-plane Ready signal — an
+  # expired/rejected token reports Ready while the relay is dead (the very premise of the
+  # storm gate). Re-check against the container's NEW post-restart StartedAt window; if it is
+  # STILL storming, the fresh token was REJECTED (clock skew / kid rotation / a jti pin), so
+  # this re-mint did NOT heal. Returning 3 (not 0) stops handle_storm from a false-green
+  # "HEALED" that clears the alert and throttles re-detection for 1800s while CPU burns.
+  sleep 3   # let the relay reconnect + read the fresh token before judging
+  if _is_storming "$cid"; then
+    log "  re-mint($name): re-minted+restarted+Ready but STILL storming — fresh token REJECTED; NOT declaring healed (rc3)"
+    return 3
+  fi
   return 0
 }
 
@@ -649,7 +665,10 @@ handle_storm() {  # handle_storm <name> <cid>
       log "  $name re-minted + restarted, awaiting Ready — NOT halting/recreating (fresh-token state preserved; re-checked next cycle)"
       return 0
     fi
-    log "  re-mint heal FAILED for $name (mint/restart error, rc=$_rc) — falling back to the halt/recreate path"
+    case "$_rc" in
+      3) log "  re-mint of $name did NOT clear the storm (fresh token REJECTED — clock skew / kid rotation / jti pin?) — escalating to HALT, NOT looping a no-op re-mint (R2)" ;;
+      *) log "  re-mint heal FAILED for $name (mint/restart error, rc=$_rc) — falling back to the halt/recreate path" ;;
+    esac
   fi
 
   # DEFAULT (RECREATE!=1): NEVER auto-destroy. With HALT=1 (now default) cap + stop the
@@ -666,9 +685,9 @@ handle_storm() {  # handle_storm <name> <cid>
         && log "  capped storming container to 0.5cpu/2g (bounds the burn)" || true
       # Best-effort checkpoint before halting (halt is non-destructive; this also
       # protects the state as a keep-labeled image against a later prune). Never blocks.
-      bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" storm-halt >>"$LOG" 2>&1 \
+      _wd_bounded 60 bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" storm-halt >>"$LOG" 2>&1 \
         && log "  checkpointed $name before halt (keep-labeled image)" \
-        || log "  (pre-halt checkpoint skipped/failed — halt is still non-destructive)"
+        || log "  (pre-halt checkpoint skipped/failed/timed-out — halt is still non-destructive) (R7)"
       "$DOCKER" stop "$cid" >>"$LOG" 2>&1 \
         && log "  halted the container to stop the CPU burn (record preserved; restart/recreate to use it)" \
         || log "  (docker stop failed)"
@@ -694,8 +713,11 @@ handle_storm() {  # handle_storm <name> <cid>
   # before we delete. rc 2 = commit/verify failed → REFUSE to delete (this is exactly
   # the 2026-06-03 'destroy-before-verify → rebuild fails → data lost' vector).
   local _ck_rc=0
-  bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" recreate >>"$LOG" 2>&1 || _ck_rc=$?
-  if (( _ck_rc == 2 )); then
+  # R7: bound the commit — under the thrash a storm coincides with, `docker commit` of a
+  # multi-GB writable layer can hang the cycle. A TIMEOUT (124) is treated as checkpoint
+  # FAILURE → fail-closed REFUSE to delete (never delete without a verified backup).
+  _wd_bounded 120 bash "$AI_STACK/bin/openshell-checkpoint.sh" "$name" recreate >>"$LOG" 2>&1 || _ck_rc=$?
+  if (( _ck_rc == 2 || _ck_rc == 124 )); then
     log "  REFUSING to recreate $name: pre-delete checkpoint FAILED — sandbox LEFT INTACT (never delete without a verified backup)."
     _failmark_set "$name" "$(printf '%s auto-recreate ABORTED: checkpoint failed at %s — sandbox left intact, needs manual repair' "$name" "$(date '+%F %T')")"
     notify "⚠ $name recreate aborted — checkpoint failed; left intact"
@@ -808,17 +830,26 @@ _w1_crashloop_scan || true
 # sandbox persistence loop above is the critical path and is bash-3.2-safe; only this
 # secondary non-sandbox CPU net is skipped on old bash. (The plist now prefers brew bash.)
 if (( BASH_VERSINFO[0] >= 4 )); then
+  # R1: `docker stats` is THE call documented to hang hardest under host-memory thrash
+  # (openshell.sh:'NEVER docker stats'), and it was the only per-cycle docker call left
+  # UNBOUNDED — under thrash it blocked the whole cycle (holding the EXIT-trap lock) until
+  # the 600s stale-lock reclaim, darkening W1/W2/W4/W5 + storm heal for 10-min windows
+  # exactly when a storm is active. Capture each sample through _wd_bounded; on timeout the
+  # var is empty and this secondary CPU net simply SKIPS this cycle (bound-or-skip, never block).
   declare -A s1
-  while IFS=$'\t' read -r nm cpu; do s1["$nm"]="${cpu%\%}"; done < <("$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)
+  _stats1="$(_wd_bounded 15 "$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)" || _stats1=""
+  while IFS=$'\t' read -r nm cpu; do [[ -n "$nm" ]] && s1["$nm"]="${cpu%\%}"; done <<< "$_stats1"
   sleep 3
+  _stats2="$(_wd_bounded 15 "$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)" || _stats2=""
   while IFS=$'\t' read -r nm cpu; do
+    [[ -n "$nm" ]] || continue
     c2="${cpu%\%}"; c1="${s1[$nm]:-0}"
     # integer compare (strip decimals)
     if (( ${c1%.*} > CPU_WARN )) && (( ${c2%.*} > CPU_WARN )); then
       # sandboxes self-heal above; here we just surface non-sandbox runaways.
       [[ "$nm" == openshell-* ]] || log "RUNAWAY: container '$nm' sustained CPU ${c1}%/${c2}% (> ${CPU_WARN}%) — investigate ('docker logs $nm')"
     fi
-  done < <("$DOCKER" stats --no-stream --format '{{.Names}}\t{{.CPUPerc}}' 2>/dev/null)
+  done <<< "$_stats2"
 else
   log "note: generic CPU-runaway net skipped (bash ${BASH_VERSINFO[0]} < 4; sandbox persistence ran above)"
 fi

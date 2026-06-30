@@ -86,6 +86,9 @@ def main() -> int:
     ap.add_argument("--pubkey", default=os.path.expanduser(
         "~/.local/state/openshell/homebrew/tls/jwt/public.pem"), help="Ed25519 public key (PEM) for self-verify")
     ap.add_argument("--ttl", type=int, default=3600, help="new token TTL in seconds (default 3600)")
+    ap.add_argument("--skew", type=int, default=300, help="clock-skew leeway seconds: backdate iat/nbf so a "
+                    "gateway/VM clock running AHEAD of the host does not see a freshly-minted token as "
+                    "not-yet-valid / born-expired (default 300; R3)")
     ap.add_argument("--now", type=int, default=None, help="override 'now' epoch (testing only)")
     ap.add_argument("--exp-only", action="store_true",
                     help="print seconds-until-expiry (exp - now) of the EXISTING token and exit (no mint)")
@@ -116,10 +119,15 @@ def main() -> int:
         print(int(payload.get("exp", 0)) - now)
         return 0
     new_payload = dict(payload)              # mirror ALL claims verbatim
-    new_payload["iat"] = now
+    # R3: backdate iat/nbf by a clock-skew leeway so a gateway/VM clock running AHEAD of the host
+    # (the post-sleep/wake / OrbStack-VM-restart case) does not reject a just-minted token as
+    # not-yet-valid (nbf in its future) or born-near-expired. exp stays now+ttl (full life from
+    # the host's now). skew is clamped >=0 and < ttl so we never mint an already-expired token.
+    skew = max(0, min(args.skew, args.ttl - 1))
+    new_payload["iat"] = now - skew
     new_payload["exp"] = now + args.ttl
     if "nbf" in new_payload:
-        new_payload["nbf"] = now
+        new_payload["nbf"] = now - skew
 
     signing_input = (b64url_encode(json.dumps(header, separators=(",", ":")).encode())
                      + "." + b64url_encode(json.dumps(new_payload, separators=(",", ":")).encode()))
