@@ -32,11 +32,11 @@ services:
   litellm: {type: docker, enabled: true}
 YML
 cat > "$TMP/installer/models.yml" <<'YML'
-primary: local-gemma4
+primary: local
 models:
-  local-gemma4: {runtime: ollama, served: gemma4:e4b}
+  local: {runtime: ollama, served: nemotron-3-nano:4b}
 assignments:
-  pi: local-gemma4
+  pi: local
 YML
 [[ "$(_run_cv)" == "0" ]] && ok "valid configs -> pass" || { err "valid configs wrongly REJECTED"; exit 1; }
 
@@ -47,7 +47,7 @@ printf '  local-x: {runtime: ollama, served: foo, note: "2.84G""}\n' >> "$TMP/in
 # 3. missing colon (a mapping key with no ':') -> non-zero
 cat > "$TMP/installer/models.yml" <<'YML'
 models:
-  local-gemma4: {runtime: ollama, served: gemma4:e4b}
+  local: {runtime: ollama, served: nemotron-3-nano:4b}
   local-broken
     runtime: ollama
 YML
@@ -55,7 +55,7 @@ YML
 
 # 4. structural: services.yml without a .services map -> non-zero
 cat > "$TMP/installer/models.yml" <<'YML'
-models: {local-gemma4: {runtime: ollama, served: gemma4:e4b}}
+models: {local: {runtime: ollama, served: nemotron-3-nano:4b}}
 YML
 cat > "$TMP/services.yml" <<'YML'
 version: 2

@@ -1,22 +1,20 @@
 model_list:
   # ============================================================
-  # LOCAL — via Ollama. Three tiers:
-  #   local       (default) → Gemma 4 E4B, 9.6GB. Fast, fits comfortably.
-  #   local-heavy           → Qwen 3.6 27B, 17GB. Frontier-class but RAM-tight.
-  #   local-lfm2            → Liquid LFM2.5-8B-A1B Q4_K_M, 5.16GB. MoE
-  #                            (8.3B total / 1.5B active) — long-context
-  #                            (131K) and very fast on Apple Silicon.
-  # Fleet profiles point at `local` by default — swap individual
-  # profiles to `local-heavy` or `local-lfm2` when you need either
-  # 27B reasoning or long-context fast inference.
+  # LOCAL — via Ollama. Single model: nemotron-3-nano:4b (~2.8GB, very light).
+  #   local        (default) → nemotron-3-nano:4b
+  #   local-heavy            → nemotron-3-nano:4b (back-compat alias — there is NO
+  #                            separate heavy local model; both names map here)
+  # Operator directive (2026-07-01): nemotron-3-nano:4b is the ONLY local chat
+  # model; no gemma4/qwen local model remains. These rows are the hand-authored
+  # canonical routes; `model sync` re-renders them from installer/models.yml.
   # ============================================================
-  - model_name: local-gemma4
+  - model_name: local
     litellm_params:
-      model: ollama_chat/gemma4:e4b-mlx
+      model: ollama_chat/nemotron-3-nano:4b
       api_base: http://ollama:11434
-  - model_name: local-qwen3
+  - model_name: local-heavy
     litellm_params:
-      model: ollama_chat/qwen3:8b
+      model: ollama_chat/nemotron-3-nano:4b
       api_base: http://ollama:11434
   # ============================================================
   # CLOUD CHAT — OpenAI (direct API)
@@ -38,8 +36,8 @@ model_list:
   # `api_key` is a DUMMY (the bridge holds the OAuth, not LiteLLM). The
   # `-sub` suffix = SUBSCRIPTION (your ChatGPT plan, NOT OPENAI_API_KEY).
   # These answer ONLY when the bridge is up (`npx @openai/codex login` +
-  # `bin/start-codex-bridge.sh install`); otherwise they fail over to
-  # local-gemma4 (NOT to the metered key — never silently bills your card).
+  # `bin/start-codex-bridge.sh install`); otherwise they return a visible 503
+  # (NO cloud->local auto-fallback; never silently bills your metered card).
   # Rate-limited by your ChatGPT plan (Plus ≈ 15–80 GPT-5.5 msgs / 5h); the
   # rpm/tpm below are a soft burst-guard (for a hard cap add router_settings:
   # optional_pre_call_checks: [enforce_model_rate_limits]). NOTE: the served
@@ -141,7 +139,7 @@ model_list:
   # / LM Studio routes (model: openai/<id> + api_base + api_key). METERED
   # (subscription $20–200/mo OR pay-as-you-go on Ultra); needs SAKANA_API_KEY in
   # .env (generate at console.sakana.ai). Like the metered openai-* routes it
-  # fails over to local-qwen3 — never a silent bill. `fugu` = balanced latency;
+  # returns a visible 503 when keyless/down — never a silent bill. `fugu` = balanced latency;
   # `fugu-ultra` = max accuracy (coordinates more agents, slower, ~1M ctx).
   # ============================================================
   - model_name: sakana-fugu
@@ -285,21 +283,6 @@ model_list:
   #    extra_body:
   #      effort: medium
   - model_name: claude-opus-sub-high
-    #  - model_name: local-gemma4
-    #    litellm_params:
-    #      model: ollama_chat/gemma4:e4b
-    #      api_base: http://ollama:11434
-    #  - model_name: local-qwen3.6
-    #    litellm_params:
-    #      model: openai/qwen/qwen3.6-27b
-    #      api_base: http://host.docker.internal:1234/v1
-    #      api_key: lm-studio
-    #  - model_name: local-qwen3-coder
-    #    litellm_params:
-    #      model: openai/qwen3-coder-30b-a3b-instruct-mlx
-    #      api_base: http://host.docker.internal:1234/v1
-    #      api_key: lm-studio
-
     litellm_params:
       model: openai/claude-opus-4-8
       api_base: http://host.docker.internal:3456/v1
@@ -349,10 +332,9 @@ model_list:
       api_key: meridian
       extra_body:
         effort: ultracode
-  #- model_name: local-gemma4-mlx
-  #  litellm_params:
-  #    model: ollama_chat/gemma4:e4b-mlx
-  #    api_base: http://ollama:11434
+  # LOCAL nemotron routes. `local` / `local-heavy` (top of file) are the canonical
+  # Ollama entries; these explicit-name aliases are kept for back-compat + the opt-in
+  # LM Studio MLX variant (Phase 25). nemotron-3-nano:4b is the ONLY local chat model.
   - model_name: local-nemotron3-nano-4b
     litellm_params:
       model: ollama_chat/nemotron-3-nano:4b
@@ -360,21 +342,6 @@ model_list:
   - model_name: local-nemotron3-nano-4b-mlx
     litellm_params:
       model: openai/nvidia/nemotron-3-nano-4b
-      api_base: http://host.docker.internal:1234/v1
-      api_key: lm-studio
-  - model_name: local-gemma4-12b
-    litellm_params:
-      model: openai/gemma-4-12b-it
-      api_base: http://host.docker.internal:1234/v1
-      api_key: lm-studio
-  - model_name: local-nemotron3-heavy
-    litellm_params:
-      model: openai/nvidia-nemotron-3-nano-30b-a3b-mlx
-      api_base: http://host.docker.internal:1234/v1
-      api_key: lm-studio
-  - model_name: local-qwen-heavy-fast
-    litellm_params:
-      model: openai/qwen3.6-27b-mtplx-optimized-speed
       api_base: http://host.docker.internal:1234/v1
       api_key: lm-studio
 litellm_settings:
@@ -396,12 +363,9 @@ litellm_settings:
     # NEVER fails over to a local model. DELIBERATE: on the M4/24GB box a reactive local-model
     # load would risk an OOM/swap-thrash (the hard no-local directive), and a Zscaler TLS hiccup
     # must NOT silently degrade the whole platform onto a weak 8B local model. DO NOT add a
-    # cloud->local fallback here. (The prose below describing a local-qwen3 / local-gemma4
-    # failover is STALE — that policy was removed; ignore it.)
-    # Codex bridge (ChatGPT subscription). Fail over to local-gemma4 ONLY —
-    # never to the metered openai-gpt-5.* (no surprise card billing). If both
-    # the bridge AND Ollama are down the caller gets a 503 (same as Meridian).
-    # Sakana Fugu (metered) — fail over to local, never a silent bill.
+    # cloud->local fallback here. There is NO cloud->local failover: a Meridian /
+    # codex-bridge / Sakana / cloud failure returns a VISIBLE LiteLLM 503 rather
+    # than silently degrading onto the local model (deliberate — see the note above).
       # Cross-model cloud chains (commented, for reference). The openrouter-* /
       # openai-gpt* targets need provider API keys, so those hops dangle until a
       # key is set. local / local-heavy / claude-opus-4.7 are no longer in the

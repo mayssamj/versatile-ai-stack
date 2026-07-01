@@ -228,7 +228,7 @@ _doctor_assert_key_allowlist() {
   fi
   local want
   want="$(yq -r ".assignments.${yq_key} // \"\"" "$AI_STACK/installer/models.yml" 2>/dev/null || true)"
-  [[ -n "$want" && "$want" != "null" ]] || want="local-gemma4"
+  [[ -n "$want" && "$want" != "null" ]] || want="local"
   local allow
   allow="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/key/info 2>/dev/null || litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/key/info 2>/dev/null || true)"
   [[ -n "$_xt" ]] && set -x

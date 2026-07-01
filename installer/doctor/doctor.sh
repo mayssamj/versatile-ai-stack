@@ -89,8 +89,8 @@ for __check in "${CHECKS[@]}"; do
         # Non-interactive shell (piped / </dev/null / cron / spawned as a subprocess): NEVER
         # auto-apply a PROMPTED fix here. `confirm … Y` reads its answer from stdin and, on EOF,
         # returns the DEFAULT (yes) — so a headless `doctor` would silently run a heavy or
-        # destructive fix. That bit us: check 08's fix is `ollama pull gemma4:e4b` (~9.6 GB),
-        # which a piped run auto-triggered — also violating the no-local-model policy. AUTOHEAL
+        # destructive fix. That bit us: a piped run auto-triggered check 08's `ollama pull`
+        # (now `nemotron-3-nano:4b` ~2.8 GB) — violating the no-local-model policy. AUTOHEAL
         # fixes (checked above) are the ONLY ones safe to run headless; everything else waits for
         # a human in a real terminal. Report + skip.
         note "    (auto-fix available; non-interactive shell — skipping; re-run \`doctor\` in a terminal to apply)"

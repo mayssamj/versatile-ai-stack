@@ -1,15 +1,15 @@
 # Required Ollama models are pulled.
 #
-# LAZY-OLLAMA policy (2026-05-31): only gemma4:e4b (the `local`/`local-gemma4`
-# default) + nomic-embed-text (embeddings) are eager-pulled. qwen3.6 moved to
-# LM Studio MLX (local-qwen3.6, opt-in via 'install lmstudio' / 'model sync'),
-# and the LFM2.5 GGUF is no longer pre-pulled. This keeps a fresh install light
-# on a 24GB box. See installer/models.yml.
+# LOCAL-MODEL policy (operator directive 2026-07-01): nemotron-3-nano:4b is the
+# ONLY local chat model (the `local`/`local-heavy` default, ~2.8GB) + nomic-embed-text
+# (embeddings) are the only eager-pulled models. No gemma4/qwen model is pulled by
+# install OR doctor. This keeps a fresh install light on a 24GB box. See
+# installer/models.yml.
 CHECKS+=(ollama_models)
-CHECK_TITLE[ollama_models]="Ollama running + required models pulled (gemma4:e4b, nomic-embed-text)"
+CHECK_TITLE[ollama_models]="Ollama running + required models pulled (nemotron-3-nano:4b, nomic-embed-text)"
 
 _OLLAMA_REQUIRED=(
-  gemma4:e4b
+  nemotron-3-nano:4b
   nomic-embed-text
 )
 

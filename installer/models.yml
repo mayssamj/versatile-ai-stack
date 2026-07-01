@@ -13,46 +13,37 @@
 # openrouter-*, google-gemini-*) have no `runtime` here and aren't `model`-assignable.
 version: 1
 models:
-  local-gemma4:
+  # LOCAL CHAT = nemotron-3-nano:4b ONLY (operator directive 2026-07-01). `local`
+  # and `local-heavy` BOTH resolve to it — there is NO separate heavy local model;
+  # `local-heavy` is kept purely as a back-compat alias so profiles/keys/docs that
+  # name it still resolve. No gemma4/qwen local chat model remains anywhere, so
+  # install + doctor pull ONLY nemotron-3-nano:4b (+ the embedders below). The
+  # EMBEDDING plane (further down) is intentionally unchanged (kept per directive).
+  local:
     runtime: ollama
-    served: gemma4:e4b-mlx
+    served: nemotron-3-nano:4b
     big: false
-    note: "Default for any unassigned agent. ~9.6GB MLX (mac GPU), stays on Ollama."
-  local-qwen3:
+    note: "DEFAULT local chat model — nemotron-3-nano:4b, ~2.8GB, very light on RAM. On Ollama."
+  local-heavy:
     runtime: ollama
-    served: qwen3:8b
+    served: nemotron-3-nano:4b
     big: false
-    note: "~5.2GB on Ollama. The LiteLLM OFFLINE FALLBACK target for the *-sub-* routes."
+    note: "Back-compat alias of `local` (nemotron-3-nano:4b). No separate heavy local model exists."
   local-nemotron3-nano-4b:
     runtime: ollama
     served: nemotron-3-nano:4b
     big: false
-    note: "2.8G -- tiny, on Ollama."
+    note: "2.8G -- tiny, on Ollama. Explicit-name alias of `local`."
   local-nemotron3-nano-4b-mlx:
     runtime: lmstudio
     served: nvidia/nemotron-3-nano-4b
     big: false
-    note: "3G -- nemotron-3-nano-4b on LM Studio (MLX variant of the Ollama local-nemotron3-nano-4b)."
-  local-gemma4-12b:
-    runtime: lmstudio
-    served: gemma-4-12b-it
-    big: false
-    note: "7.56G - params: 12B (LM Studio)."
-  local-nemotron3-heavy:
-    runtime: lmstudio
-    served: nvidia-nemotron-3-nano-30b-a3b-mlx
-    big: true
-    note: "params: 30B -- 17.79G (LM Studio)."
-  local-qwen-heavy-fast:
-    runtime: lmstudio
-    served: qwen3.6-27b-mtplx-optimized-speed
-    big: true
-    note: "params 27B -- 16.42G (LM Studio)."
+    note: "3G -- nemotron-3-nano-4b on LM Studio (MLX variant of the Ollama nemotron). Opt-in (Phase 25)."
   # Claude SUBSCRIPTION via the Meridian host daemon (no API key). runtime:
   # meridian renders openai/<served> @ host.docker.internal:3456 + effort in
   # extra_body. One entry per effort level (output_config.effort; budget_tokens
-  # is rejected on 4.7+). Availability-gates to `default` (local-gemma4) when
-  # Meridian is down. NOT big (no local RAM). Sonnet has no xhigh (≡ high).
+  # is rejected on 4.7+). Availability-gates to `default` (local = nemotron-3-nano:4b)
+  # when Meridian is down. NOT big (no local RAM). Sonnet has no xhigh (≡ high).
   claude-opus-sub-high: {runtime: meridian, served: claude-opus-4-8, effort: high, big: false, note: "Claude subscription (Opus 4.8), high effort."}
   claude-opus-sub-xhigh: {runtime: meridian, served: claude-opus-4-8, effort: xhigh, big: false, note: "Claude subscription (Opus 4.8), xhigh effort. Tier for the opt-in agent-sims (Phases 32-37), HALO, honcho, and MemPalace — NOT the platform default (see claude-opus-sub-max)."}
   claude-opus-sub-max: {runtime: meridian, served: claude-opus-4-8, effort: max, big: false, note: "Claude subscription (Opus 4.8), max effort. PLATFORM DEFAULT — primary, unassigned agents, and the engineering fleet."}
@@ -69,7 +60,7 @@ models:
   # The metered `openai` route is the VERIFIED max-reasoning path; effort passthrough on
   # the `codex-bridge` route is UNVERIFIED (the Codex backend may ignore it). `openai`
   # gates to `default` when OPENAI_API_KEY is absent; `codex-bridge` gates when the
-  # bridge daemon is down (both render local-gemma4 + a pending line, never a hard fail).
+  # bridge daemon is down (both render local + a pending line, never a hard fail).
   openai-gpt: {runtime: openai, served: gpt-5.5, effort: xhigh, big: false, note: "OpenAI GPT-5.5 — metered API key, MAX reasoning (xhigh)."}
   openai-gpt-pro: {runtime: openai, served: gpt-5.5-pro, big: false, note: "OpenAI GPT-5.5 Pro — metered. Inherently max-accuracy; no reasoning_effort knob set."}
   openai-gpt-sub: {runtime: codex-bridge, served: gpt-5.5, effort: xhigh, big: false, note: "GPT-5.5 on your ChatGPT SUBSCRIPTION (codex-bridge :3457), no metered cost. effort passthrough UNVERIFIED on this route. Gates to default when the bridge is down."}
@@ -80,8 +71,9 @@ models:
   # are DATA, so any OpenAI-compatible vendor is declarable + assignable this way.
   # METERED ($20–200/mo sub OR Ultra PAYG), so each carries an `rpm` runaway-backstop
   # (tune to your plan — NOT a usage quota; tpm omitted so a full ~1M-ctx Ultra request
-  # isn't capped). Availability-gates to `default` (local-gemma4) when SAKANA_API_KEY is
-  # absent; litellm/config.yaml ALSO fails it over to local-qwen3 — never a silent bill.
+  # isn't capped). Availability-gates to `default` (local = nemotron-3-nano:4b) when SAKANA_API_KEY is
+  # absent — never a silent bill (there is no cloud->local auto-fallback; a keyless/down
+  # route surfaces a visible 503).
   # Key must be in .env (console.sakana.ai) AND start-litellm.sh's -e allowlist (--recreate).
   sakana-fugu: {runtime: openai-compat, served: fugu, api_base: 'https://api.sakana.ai/v1', key_env: SAKANA_API_KEY, rpm: 10, big: false, note: "Sakana Fugu — balanced latency. METERED (sub or Ultra PAYG)."}
   sakana-fugu-ultra: {runtime: openai-compat, served: fugu-ultra, api_base: 'https://api.sakana.ai/v1', key_env: SAKANA_API_KEY, rpm: 6, big: false, note: "Sakana Fugu Ultra — max accuracy (more agents, slower, ~1M ctx). METERED."}
@@ -120,7 +112,7 @@ embedding_assignments:
   lumen: embed-jina-code
   mempalace: embed-minilm
   honcho: embed-openai-small
-default: local-gemma4
+default: local
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) ONLY when its
 # runtime is fully down — the keyless/offline safety net, NOT a routine path.
@@ -128,10 +120,10 @@ primary: claude-opus-sub-max
 assignments:
   # AI software-engineering team + agents. Platform policy (operator pref 2026-06-26):
   # the single platform default is claude-opus-sub-max. No model SILENTLY uses a
-  # local one — the LiteLLM cloud→local-qwen3 fallback was removed, so a Meridian
-  # outage surfaces a visible 503 rather than a quiet local degrade. local-gemma4
-  # is used ONLY when explicitly chosen (an assignment / a sim's `-m local-gemma4`)
-  # or as the last-resort keyless availability-gate when a runtime is fully down.
+  # local one — the LiteLLM cloud→local fallback was removed, so a Meridian
+  # outage surfaces a visible 503 rather than a quiet local degrade. `local`
+  # (nemotron-3-nano:4b) is used ONLY when explicitly chosen (an assignment / a
+  # sim's `-m local`) or as the last-resort keyless availability-gate when a runtime is fully down.
   hermes_manager: claude-opus-sub-max
   hermes_techlead: claude-opus-sub-max   # platform default (operator dropped the sakana-fugu exception 2026-06-27)
   hermes_ml_engineer: claude-opus-sub-max

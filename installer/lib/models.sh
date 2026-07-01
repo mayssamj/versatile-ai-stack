@@ -12,7 +12,7 @@
 #   1. FRESH-INSTALL SAFE — never auto-run by `install all`; phases keep their
 #      legacy `local` fallback when models.yml is absent.
 #   2. AVAILABILITY-GATED — an lmstudio model whose server is down / id not served
-#      renders the agent to the Ollama default (local-gemma4) + records a pending
+#      renders the agent to the Ollama default (local = nemotron-3-nano:4b) + records a pending
 #      line. We NEVER render an MLX slug that LiteLLM can't serve.
 #   3. SUPERSET-BEFORE-MINT — the 3 canonical IDs are registered in config.yaml
 #      BEFORE any key is minted. Scoped keys always carry the fixed SUPERSET so
@@ -49,10 +49,11 @@ LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
 
 # The scoped-key allowlist is ALWAYS the DERIVED superset (sorted-unique), so
 # `assign`/`add` never need a re-mint (constraint 3). It is the union of the
-# legacy names {local local-heavy local-lfm2} and EVERY model declared in
-# models.yml (so a `model add`-ed slug is automatically covered). If models.yml
-# is absent/unparseable we fall back to the legacy 6-name list.
-LEGACY_SUPERSET=(local local-gemma4 local-heavy local-lfm2 local-qwen3)
+# legacy names {local local-heavy} and EVERY model declared in models.yml (so a
+# `model add`-ed slug is automatically covered). If models.yml is absent/unparseable
+# we fall back to this legacy list. nemotron-3-nano:4b is the only local chat model,
+# so `local`/`local-heavy`/`local-nemotron3-nano-4b` all resolve to it.
+LEGACY_SUPERSET=(local local-heavy local-nemotron3-nano-4b)
 
 # superset_members — print the sorted-unique union of the legacy names and every
 # models.yml model key, one per line. Errexit/pipefail-safe.
@@ -63,7 +64,7 @@ superset_members() {
     printf '%s\n' "${LEGACY_SUPERSET[@]}" | LC_ALL=C sort -u
     return 0
   fi
-  { printf '%s\n' local local-heavy local-lfm2; printf '%s\n' "$names"; } \
+  { printf '%s\n' local local-heavy; printf '%s\n' "$names"; } \
     | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u
 }
 
@@ -91,34 +92,24 @@ seed_if_missing() {
 # Seeded by vz-ai-stack.sh model (models.yml was missing). Edit + re-run `model sync`.
 version: 1
 models:
-  local-gemma4:
+  local:
     runtime: ollama
-    served: gemma4:e4b
+    served: nemotron-3-nano:4b
     big: false
-    note: "Default for any unassigned agent."
-  local-qwen3.6:
-    runtime: lmstudio
-    served: qwen/qwen3.6-27b
-    big: true
-    ttl: 1800
-  local-qwen3-coder:
-    runtime: lmstudio
-    served: qwen3-coder-30b-a3b-instruct-mlx
-    big: true
-    ttl: 1800
-default: local-gemma4
+    note: "Only local chat model (nemotron-3-nano:4b) — default for any unassigned agent."
+default: local
 assignments:
-  hermes_cos:               local-qwen3.6
-  hermes_software_engineer: local-qwen3-coder
-  hermes_researcher:        local-qwen3.6
-  hermes_creator:           local-gemma4
-  hermes_reviewer:          local-qwen3-coder
-  hermes_data_analyst:      local-qwen3.6
-  hermes_ops:               local-gemma4
-  pi:                       local-qwen3-coder
-  deerflow:                 local-qwen3.6
-  ace:                      local-gemma4
-  rlm:                      local-gemma4
+  hermes_cos:               local
+  hermes_software_engineer: local
+  hermes_researcher:        local
+  hermes_creator:           local
+  hermes_reviewer:          local
+  hermes_data_analyst:      local
+  hermes_ops:               local
+  pi:                       local
+  deerflow:                 local
+  ace:                      local
+  rlm:                      local
 kinds:
   hermes_cos:               { kind: hermes-profile, profile: hermes_cos,               key_env: HERMES_LITELLM_KEY }
   hermes_software_engineer: { kind: hermes-profile, profile: hermes_software_engineer, key_env: HERMES_LITELLM_KEY }
@@ -176,10 +167,10 @@ validate() {
 
     # F09: validate model_name against a CONSERVATIVE charset BEFORE it reaches
     # yq strenv or any shell interpolation. Allowed: a-z0-9 + - . _ / @ (covers
-    # all real names in models.yml: 'local-gemma4', 'nvidia/nemotron-3-nano-4b',
+    # all real names in models.yml: 'local', 'nvidia/nemotron-3-nano-4b',
     # 'ordis/jina-embeddings-v2-base-code', 'qwen3.6-27b-mtplx-optimized-speed',
     # 'claude-opus-4-8', 'fugu-ultra', 'sakana-fugu-ultra', etc.). Colons (:)
-    # appear in ollama tags (e.g. 'gemma4:e4b-mlx') which live in `served`, not
+    # appear in ollama tags (e.g. 'nemotron-3-nano:4b') which live in `served`, not
     # the model NAME key — so the NAME charset stays colon-free. The charset was
     # verified against every .models key in installer/models.yml; widen only if a
     # real new name fails (note the failure so the charset rationale stays honest).
@@ -189,7 +180,7 @@ validate() {
     fi
 
     # Validate `served` similarly (the wire id sent to yq + the LiteLLM slug).
-    # Served ids may include colons for ollama tags (e.g. 'gemma4:e4b-mlx').
+    # Served ids may include colons for ollama tags (e.g. 'nemotron-3-nano:4b').
     if [[ -n "$sv" && "$sv" != "null" && ! "$sv" =~ ^[a-zA-Z0-9_./:-]+$ ]]; then
       err "models.yml: model '$m' served id '$sv' contains characters outside the safe charset [a-zA-Z0-9_./:-]"
       return 2
@@ -492,24 +483,20 @@ register_model_list() {
   return 0
 }
 
-# preflight_superset_in_config — assert every SUPERSET slug that is one of the 3
-# canonical IDs is present in config.yaml before any key mint (constraint 3).
-# Legacy slugs (local/local-heavy/local-lfm2) are assumed pre-existing; we only
-# hard-require the canonical IDs we just registered.
+# preflight_superset_in_config — assert the canonical local IDs are present in
+# config.yaml before any key mint (constraint 3). nemotron-3-nano:4b is the ONLY
+# local chat model; `local`/`local-heavy` are its always-present canonical aliases.
 preflight_superset_in_config() {
   local s missing=()
-  for s in local-gemma4 local-qwen3; do
+  for s in local local-heavy; do
     config_has_slug "$s" || missing+=("$s")
   done
-  # Beyond the 3 canonical IDs, every superset member that is a REAL models.yml
-  # model (ollama/lmstudio runtime) must also be registered before we mint. The
-  # legacy aliases (local/local-heavy/local-lfm2) are pre-existing config entries
-  # not declared in models.yml, so they stay WARN-tolerant (never hard-fail here).
+  # Beyond the canonical aliases, every superset member that is a REAL models.yml
+  # model (ollama/lmstudio runtime) must also be registered before we mint.
   local mem rt
   while IFS= read -r mem; do
     [[ -z "$mem" ]] && continue
-    case "$mem" in local|local-heavy|local-lfm2) continue ;; esac
-    case "$mem" in local-gemma4|local-qwen3) continue ;; esac  # already checked above
+    case "$mem" in local|local-heavy) continue ;; esac  # canonical aliases, hard-checked above
     model_exists "$mem" || continue
     rt="$(model_runtime "$mem")"
     case "$rt" in ollama|lmstudio) : ;; *) continue ;; esac
@@ -672,7 +659,7 @@ render_pi() {
 # render_deerflow <effective_reasoning_model> — rewrite the two-tier models: block
 # in deer-flow/config.yaml between the markers. Platform policy (2026-06-25):
 # basic->primary (claude-opus-sub-xhigh), reasoning-><effective>. NO silent local
-# fallback — the LiteLLM cloud->local-qwen3 chain was removed, so a Meridian outage
+# fallback — the LiteLLM cloud->local chain was removed, so a Meridian outage
 # surfaces a 503. Restart deerflow only if the block changed.
 render_deerflow() {
   local reasoning="$1" basic
@@ -1123,7 +1110,7 @@ cmd_add_remote() {
         name="local-$(printf '%s' "$served" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9.]+/-/g; s/-+/-/g; s/^[.-]+//; s/[.-]+$//')"
       fi
       [[ "$name" =~ ^local-[a-z0-9]([a-z0-9._-]*[a-z0-9])?$ ]] || { err "ollama add: name '$name' invalid (use \`as local-<name>\`)"; exit 2; }
-      case "$name" in local|local-heavy|local-lfm2) err "name '$name' is reserved"; exit 2 ;; esac
+      case "$name" in local|local-heavy) err "name '$name' is reserved"; exit 2 ;; esac
       model_exists "$name" && { err "name '$name' already declared"; exit 2; }
       [[ -n "$big" ]] || big=false
       case "$big" in true|false) : ;; *) err "--big must be true|false (got '$big')"; exit 2 ;; esac
@@ -1276,7 +1263,7 @@ for m in (d if isinstance(d,list) else []):
     exit 2
   fi
   case "$name" in
-    local|local-heavy|local-lfm2)
+    local|local-heavy)
       err "name '$name' is a reserved alias; choose a different \`as local-<name>\`"; exit 2 ;;
   esac
 
@@ -1497,7 +1484,7 @@ cmd_remove() {
 # 6e. park / unpark — disable / re-enable an agent (renders the default sentinel)
 # ---------------------------------------------------------------------------
 # `model park <agent>` disables an agent WITHOUT losing its assignment: it sets
-# .parked[agent]=true and the agent renders the always-on `default` (local-gemma4)
+# .parked[agent]=true and the agent renders the always-on `default` (local = nemotron-3-nano:4b)
 # sentinel until unparked. `model unpark <agent>` clears it. (assign also auto-
 # unparks.) Reversible; doctor stays green because rendered==effective==default
 # for a parked agent (resolve_effective short-circuits to the sentinel).

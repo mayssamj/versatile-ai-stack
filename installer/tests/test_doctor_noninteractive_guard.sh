@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test_doctor_noninteractive_guard.sh — a NON-INTERACTIVE `doctor` (piped / </dev/null / cron /
 # subprocess) must NEVER auto-apply a PROMPTED fix: `confirm … Y` takes its yes-default on EOF, so
-# a headless run would silently run e.g. check 08's `ollama pull gemma4:e4b` (~9.6 GB) — violating
+# a headless run would silently run e.g. check 08's `ollama pull nemotron-3-nano:4b` — violating
 # the no-local-model policy. AUTOHEAL (safe idempotent) fixes must STILL run headless. NO network.
 set -uo pipefail
 DOC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../doctor/doctor.sh"

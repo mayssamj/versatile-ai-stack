@@ -251,8 +251,8 @@ print("\n".join(m.get("id","") for m in d.get("data",[])))' 2>/dev/null || true 
       advisory="${advisory}    (advisory) lmstudio model '$m' not servable — LM Studio :1234 down (ping skipped)\n"
       continue
     fi
-    # ollama is a LAZY local runtime: a chat_ping COLD-LOADS the weights (9.6GB
-    # gemma here → 20-150s/model with the old warm-retry). Directive: doctor must
+    # ollama is a LAZY local runtime: a chat_ping COLD-LOADS the weights
+    # (nemotron-3-nano:4b ~2.8GB here → seconds, but still a load). Directive: doctor must
     # NOT cold-start models. So routine "servable" = PULLED (`ollama list`) +
     # present in config.yaml (checked above); we chat_ping ONLY when the model is
     # already RESIDENT (`ollama ps`) — a warm ping is ~free and gives the real

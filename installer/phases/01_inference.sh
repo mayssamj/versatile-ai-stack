@@ -24,14 +24,12 @@ source "$AI_STACK/installer/lib/deps.sh"        # ensure_ollama (install + env-p
 
 PHASE=01
 
-# LAZY-OLLAMA policy (2026-05-31): eager-pull ONLY the default chat model
-# (gemma4:e4b = `local`/`local-gemma4`) + the embedding model. qwen3.6 moved to
-# LM Studio MLX (local-qwen3.6, opt-in) and the LFM2.5 GGUF is no longer
-# pre-pulled — both keep a fresh install light on a 24GB box. See
-# installer/models.yml + 'vz-ai-stack.sh model'. (local-heavy/local-lfm2 stay in
-# litellm/config.yaml as ADD-ONLY legacy slugs; they just 404 until pulled.)
+# LOCAL-MODEL policy (operator directive 2026-07-01): nemotron-3-nano:4b is the
+# ONLY local chat model. Eager-pull ONLY it (`local`/`local-heavy` both map to it,
+# ~2.8GB, very light on a 24GB box) + the embedding model. No gemma4/qwen model is
+# pulled by install OR doctor. See installer/models.yml + 'vz-ai-stack.sh model'.
 REQUIRED_MODELS=(
-  gemma4:e4b
+  nemotron-3-nano:4b
   nomic-embed-text
 )
 
@@ -72,11 +70,11 @@ hdr "Phase 01 — inference plane"
 ensure_ollama || { err "Ollama could not be ensured"; exit 1; }
 
 # --- Work out which default models still need pulling -------------------------
-# The default lazy-Ollama set is small: gemma4:e4b (~9.6GB) + nomic-embed-text
-# (~0.3GB) ≈ 10GB. The heavy 17GB+ models (qwen3.6:27b etc.) moved to LM Studio
-# and are NOT pulled here (see installer/models.yml). So an already-pulled machine
-# needs ZERO new disk and must never be blocked — the space requirement below is
-# gated on what is ACTUALLY missing.
+# The local-model set is tiny: nemotron-3-nano:4b (~2.8GB) + nomic-embed-text
+# (~0.3GB) ≈ 3GB. No heavy local model is pulled here (nemotron is the only local
+# chat model; see installer/models.yml). So an already-pulled machine needs ZERO
+# new disk and must never be blocked — the space requirement below is gated on
+# what is ACTUALLY missing.
 INSTALLED_MODELS="$(ollama list 2>/dev/null | awk 'NR>1{print $1}')"
 MISSING_MODELS=()
 for m in "${REQUIRED_MODELS[@]}"; do
@@ -88,11 +86,11 @@ for m in "${REQUIRED_MODELS[@]}"; do
 done
 
 # --- Disk-space precheck — ONLY for models we actually need to download --------
-# ~10GB of models + download/extract headroom = ~15GB. (Previously a flat,
-# unconditional 30GB — stale, sized for the old qwen3.6:27b-era pull policy — which
-# blocked re-installs on a fully-provisioned box that needed nothing.)
+# ~3GB of models (nemotron-3-nano:4b + nomic-embed-text) + download/extract
+# headroom = ~8GB. (Previously 30GB then 15GB — both stale, sized for the old
+# gemma4/qwen3.6-era pull policy — which blocked re-installs on a full box.)
 if (( ${#MISSING_MODELS[@]} )); then
-  require_disk_free 15 "$HOME" || { err "Need ~15GB free to pull missing models: ${MISSING_MODELS[*]}"; exit 1; }
+  require_disk_free 8 "$HOME" || { err "Need ~8GB free to pull missing models: ${MISSING_MODELS[*]}"; exit 1; }
   for m in "${MISSING_MODELS[@]}"; do
     log "Pulling $m (this may take several minutes)..."
     if ! ollama pull "$m"; then
@@ -122,15 +120,13 @@ yq -e '.model_list[0]' "$AI_STACK/litellm/config.yaml" >/dev/null || {
   exit 1
 }
 
-# --- Register the 3 canonical model IDs in config.yaml (ADD-ONLY) ----------
+# --- Register the canonical model IDs in config.yaml (ADD-ONLY) ----------
 # So they exist BEFORE any scoped key is minted (constraint: superset-before-mint):
-#   local-gemma4      -> Ollama gemma4:e4b   (works immediately)
-#   local-qwen3.6     -> LM Studio MLX       (row exists but 503s until 'install lmstudio')
-#   local-qwen3-coder -> LM Studio MLX       (idem)
+#   local / local-heavy / local-nemotron3-nano-4b -> Ollama nemotron-3-nano:4b (works immediately)
 # We register straight from installer/models.yml when present (the canonical
-# source of truth), else fall back to the hardcoded triple. lms_register_model
-# is ADD-ONLY + atomic (temp+mv) + idempotent — legacy slugs are untouched and
-# no model is loaded/inferenced here (lazy-Ollama).
+# source of truth), else fall back to the hardcoded local pair. lms_register_model
+# is ADD-ONLY + atomic (temp+mv) + idempotent — existing rows are untouched and
+# no model is loaded/inferenced here.
 MODELS_YML="$AI_STACK/installer/models.yml"
 if [[ -f "$MODELS_YML" ]]; then
   while IFS= read -r _mn; do
@@ -161,10 +157,10 @@ if [[ -f "$MODELS_YML" ]]; then
   done < <(yq -r '.models | keys | .[]' "$MODELS_YML" 2>/dev/null)
 else
   # models.yml absent (partial checkout): register the canonical always-on Ollama
-  # pair directly (matches models.sh:387 / config.yaml). LM Studio models are
-  # opt-in and registered from models.yml, never from this fallback.
-  lms_register_model local-gemma4 gemma4:e4b-mlx ollama >/dev/null
-  lms_register_model local-qwen3  qwen3:8b       ollama >/dev/null
+  # nemotron aliases directly (matches lib/models.sh LEGACY_SUPERSET / config.yaml).
+  # LM Studio models are opt-in and registered from models.yml, never here.
+  lms_register_model local       nemotron-3-nano:4b ollama >/dev/null
+  lms_register_model local-heavy nemotron-3-nano:4b ollama >/dev/null
   ok "registered 2 canonical model IDs in litellm/config.yaml (models.yml absent — used defaults)"
 fi
 
