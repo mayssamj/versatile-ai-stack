@@ -56,7 +56,12 @@ vz-ai-stack.sh upgrade --check --all               include non-checkable (manual
 vz-ai-stack.sh upgrade --check --json              machine-readable availability report
 
   Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
-  brew→brew upgrade, openshell→in-sandbox update + phase re-assert.
+  brew→brew upgrade, openshell→in-sandbox update + phase re-assert. Every other
+  service is EXHAUSTIVE now: a declared `upgrade:` block version-bumps it directly
+  (npm-global / uv-venv / git-pull / rebuild), else its install phase is re-run
+  (AI_STACK_UPGRADE=1) to re-assert/upgrade — nothing is a silent no-op. Bare
+  `upgrade all` also upgrades the host npm globals (meridian, claude-code; codex is
+  npx-always-latest). `upgrade <meridian|claude-code>` upgrades one host global.
 
   --check is non-mutating and downloads nothing: docker/compose are compared by
   registry manifest DIGEST, ollama by `brew outdated`. Sandbox/CLI/npm/pip
@@ -619,6 +624,120 @@ up_openshell() {
   esac
 }
 
+# --- exhaustive upgrade: direct version-bump + phase-rerun (Part B) -----------
+# Every manual-typed service now DOES something on upgrade instead of a no-op note:
+# a service with a declared services.yml `upgrade:` block is version-bumped by its
+# method handler; anything else re-runs its install phase (the phase owns the real
+# mechanism — no duplicated per-service upgrade logic) with AI_STACK_UPGRADE=1 so a
+# version-fetching phase can force-latest. Config/pinned/pattern services simply
+# re-assert. NOTHING silently falls through to "manual note".
+
+# up_phase_rerun <svc> — re-run the service's install phase DIRECTLY (lock-free,
+# like up_openshell) with AI_STACK_UPGRADE=1. Honest fallback: re-asserts/upgrades
+# via the phase's OWN logic. If no phase resolves, degrade to the note.
+up_phase_rerun() {
+  local svc="$1" phase script
+  phase="$(svc_phase "$svc")"
+  STRATEGY=phase-rerun
+  if [[ "$phase" == "-" || -z "$phase" ]]; then up_manual_note "$svc"; return 0; fi
+  script="$(resolve_phase_script_inline "$phase")"
+  if [[ -z "$script" ]]; then err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0; fi
+  if (( DRY )); then
+    note "PLAN $svc phase-rerun: AI_STACK_UPGRADE=1 bash installer/phases/${phase}_*.sh (re-assert/upgrade via its own installer)"
+    RESULT="planned"; return 0
+  fi
+  note "$svc: re-running phase $phase to re-assert/upgrade (AI_STACK_UPGRADE=1)…"
+  if AI_STACK_UPGRADE=1 bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
+}
+
+# up_npm_global <svc> — npm install -g <upgrade.target>@latest (+ optional restart).
+up_npm_global() {
+  local svc="$1" pkg restart
+  pkg="$(svc_upgrade "$svc" target)"; restart="$(svc_upgrade "$svc" restart)"
+  STRATEGY=npm-global
+  [[ "$pkg" == "-" || -z "$pkg" ]] && { err "$svc: upgrade.method npm-global needs upgrade.target (npm pkg)"; RESULT=FAILED; return 0; }
+  if (( DRY )); then note "PLAN $svc npm-global: npm install -g ${pkg}@latest$([[ "$restart" != "-" ]] && echo "  (then restart $restart)")"; RESULT="planned"; return 0; fi
+  command -v npm >/dev/null 2>&1 || { warn "$svc: npm not on PATH — skipping"; RESULT="skipped (no npm)"; return 0; }
+  if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else err "$svc: npm install -g ${pkg}@latest failed"; RESULT=FAILED; return 0; fi
+  [[ "$restart" != "-" && -n "$restart" ]] && { note "$svc: restarting $restart"; recreate_via_start_script "$restart" || warn "$svc: restart of $restart returned non-zero (non-fatal)"; }
+}
+
+# up_uv_venv <svc> — uv pip install --python <upgrade.venv>/bin/python -U <upgrade.pkg>.
+# For UNPINNED libs only (a version-pinned service should use phase-rerun instead).
+up_uv_venv() {
+  local svc="$1" venv pkg py
+  venv="$(svc_upgrade "$svc" venv)"; pkg="$(svc_upgrade "$svc" pkg)"
+  STRATEGY=uv-venv
+  { [[ "$venv" == "-" || -z "$venv" ]] || [[ "$pkg" == "-" || -z "$pkg" ]]; } && { err "$svc: uv-venv needs upgrade.venv + upgrade.pkg"; RESULT=FAILED; return 0; }
+  py="$AI_STACK/$venv/bin/python"
+  if (( DRY )); then note "PLAN $svc uv-venv: uv pip install --python $venv/bin/python -U $pkg"; RESULT="planned"; return 0; fi
+  command -v uv >/dev/null 2>&1 || { warn "$svc: uv not on PATH — skipping"; RESULT="skipped (no uv)"; return 0; }
+  [[ -x "$py" ]] || { warn "$svc: venv missing ($py) — run its install phase first"; RESULT="skipped (no venv)"; return 0; }
+  # shellcheck disable=SC2086 -- pkg may carry pip specifiers; intentional word-split.
+  if uv pip install --python "$py" -U $pkg 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; return 0; fi
+}
+
+# up_git_pull <svc> — git -C <upgrade.dir|target> pull --ff-only (clone-only artifacts).
+up_git_pull() {
+  local svc="$1" dir abs
+  dir="$(svc_upgrade "$svc" dir)"; [[ "$dir" == "-" ]] && dir="$(svc_upgrade "$svc" target)"
+  STRATEGY=git-pull
+  [[ "$dir" == "-" || -z "$dir" ]] && { err "$svc: git-pull needs upgrade.dir (or upgrade.target)"; RESULT=FAILED; return 0; }
+  abs="$AI_STACK/$dir"
+  if (( DRY )); then note "PLAN $svc git-pull: git -C $dir pull --ff-only"; RESULT="planned"; return 0; fi
+  [[ -d "$abs/.git" ]] || { warn "$svc: $abs is not a git clone — run its install phase first"; RESULT="skipped (no clone)"; return 0; }
+  if git -C "$abs" pull --ff-only 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; return 0; fi
+}
+
+# up_by_method <svc> — dispatch on services.yml `upgrade.method`; no block → phase re-run.
+up_by_method() {
+  local svc="$1" method
+  svc_has_upgrade "$svc" || { up_phase_rerun "$svc"; return 0; }
+  method="$(svc_upgrade "$svc" method)"
+  case "$method" in
+    npm-global)  up_npm_global "$svc" ;;
+    uv-venv)     up_uv_venv "$svc" ;;
+    git-pull)    up_git_pull "$svc" ;;
+    rebuild)
+      STRATEGY=rebuild
+      if (( DRY )); then note "PLAN $svc rebuild: bash bin/start-$svc.sh --recreate"; RESULT="planned"; return 0; fi
+      if (( DOCKER_OK == 0 )); then RESULT="skipped (docker unavailable)"; return 0; fi
+      if recreate_via_start_script "$svc"; then RESULT="upgraded"; else RESULT=FAILED; fi ;;
+    phase-rerun) up_phase_rerun "$svc" ;;
+    *) warn "$svc: unknown upgrade.method '$method' — falling back to phase re-run"; up_phase_rerun "$svc" ;;
+  esac
+}
+
+# --- host npm globals not modeled as services.yml services -------------------
+# Meridian (Claude subscription daemon) + Claude Code CLI are host `npm i -g`
+# packages, so `upgrade all` covers them too (operator asked for them explicitly).
+# Codex is invoked via `npx --yes @openai/codex` = ALWAYS-latest, so it needs no
+# upgrade step. name:pkg pairs.
+HOST_NPM_GLOBALS=( "meridian:@rynfar/meridian" "claude-code:@anthropic-ai/claude-code" )
+
+# is_host_global returns 1 for a non-member ON PURPOSE (it gates an `if`); codex is
+# a valid host-global NAME (handled specially) even though it's not npm-installed.
+is_host_global() { local n="$1"; [[ "$n" == codex ]] && return 0; local p; for p in "${HOST_NPM_GLOBALS[@]}"; do [[ "${p%%:*}" == "$n" ]] && return 0; done; return 1; }
+# host_global_pkg ALWAYS exits 0 (echoes "" if not found) — it's called in $(...)
+# under set -e + the ERR trap, so a bare non-zero from the loop would abort the run.
+host_global_pkg() { local n="$1" p; for p in "${HOST_NPM_GLOBALS[@]}"; do [[ "${p%%:*}" == "$n" ]] && { printf '%s' "${p#*:}"; return 0; }; done; return 0; }
+
+# up_host_npm_global <name> — npm install -g <pkg>@latest; records its own summary row.
+up_host_npm_global() {
+  local name="$1" pkg
+  STRATEGY=npm-global; RESULT=""
+  # codex is npx-always-latest — no install step. Short-circuit BEFORE the pkg lookup.
+  if [[ "$name" == codex ]]; then
+    note "codex: invoked via 'npx --yes @openai/codex' (always fetches latest) — nothing to upgrade"
+    record_row codex npm-global "auto-latest (npx)" "-"; return 0
+  fi
+  pkg="$(host_global_pkg "$name")"
+  if (( DRY )); then note "PLAN $name npm-global (host): npm install -g ${pkg}@latest"; record_row "$name" npm-global "planned" "-"; return 0; fi
+  if ! command -v npm >/dev/null 2>&1; then record_row "$name" npm-global "skipped (no npm)" "-"; return 0; fi
+  if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; err "$name: npm install -g ${pkg}@latest failed"; fi
+  record_row "$name" npm-global "$RESULT" "-"
+}
+
 up_manual_note() {
   local svc="$1" phase
   phase="$(svc_phase "$svc")"
@@ -645,12 +764,12 @@ upgrade_one() {
     openshell|hermes-profiles)               up_openshell "$svc" ;;
     sandbox-daemon)                          up_openshell "$svc" ;;
     cli-only|clone-only|npm-global|pip-package|litellm-feature|agent-pattern|paperclip-plugin|litellm-virtual-key)
-                                             up_manual_note "$svc" ;;
+                                             up_by_method "$svc" ;;
     # python-bg / node-bg are host background daemons (docs_mcp, paperclip, claw3d,
-    # unsloth, aionui, openwork, understand). They have no pullable artifact and no
-    # compose stack; "upgrade" = re-run their install phase to re-assert config +
-    # restart the daemon. Treat like the other manual types (note, don't auto-mutate).
-    python-bg|node-bg)                       up_manual_note "$svc" ;;
+    # unsloth, aionui, openwork, understand). No pullable artifact / compose stack;
+    # "upgrade" = version-bump via a declared upgrade: block, else re-run the install
+    # phase (AI_STACK_UPGRADE=1) to re-assert config + restart. up_by_method routes both.
+    python-bg|node-bg)                       up_by_method "$svc" ;;
     *)
       STRATEGY="$type"
       RESULT="skipped (unknown type)"
@@ -662,7 +781,7 @@ upgrade_one() {
   local rev="-"
   if (( DRY == 0 )); then
     case "$RESULT" in
-      upgraded|up-to-date)
+      upgraded|up-to-date|re-asserted)
         rev="$(reverify "$svc" "$STRATEGY")"
         ;;
       *)
@@ -719,6 +838,17 @@ upgrade_main() {
 
   # --- build the list to upgrade ---------------------------------------------
   local -a targets=()
+  local -a hg_targets=()   # host npm globals (meridian/claude-code/codex)
+  # A named host-global target (e.g. `upgrade meridian`) is handled standalone.
+  if [[ -n "$target" && "$target" != "all" ]] && is_host_global "$target"; then
+    lock_acquire
+    hdr "Upgrade plan ($([[ $DRY == 1 ]] && echo dry-run || echo live))"
+    up_host_npm_global "$target"
+    print_summary
+    local row res
+    for row in "${SUMMARY[@]}"; do res="$(printf '%s' "$row" | cut -f3)"; [[ "$res" == "FAILED" ]] && { err "Upgrade FAILED."; exit 1; }; done
+    return 0
+  fi
   if (( OUTDATED )); then
     # Run the same read-only check across all enabled, then upgrade only the
     # ones that came back 'update-available'.
@@ -746,6 +876,7 @@ upgrade_main() {
     fi
     if [[ "$target" == "all" ]]; then
       collect_targets targets all
+      hg_targets=(meridian claude-code codex)   # exhaustive: host npm globals too
     else
       if [[ "$(svc_type "$target")" == "unknown" ]]; then
         err "Unknown service: $target"
@@ -769,6 +900,11 @@ upgrade_main() {
   local svc
   for svc in "${targets[@]}"; do
     upgrade_one "$svc"
+  done
+  # Exhaustive: host npm globals not modeled as services (bare `upgrade all`).
+  local hg
+  for hg in "${hg_targets[@]}"; do
+    up_host_npm_global "$hg"
   done
 
   print_summary

@@ -55,6 +55,14 @@ svc_sandbox() { yq -r ".services.$1.sandbox // \"-\"" "$SERVICES_YML"; }
 # Health URL if declared, else "-".
 svc_health() { yq -r ".services.$1.health // \"-\"" "$SERVICES_YML"; }
 
+# Structured upgrade field. `svc_upgrade <svc> <field>` reads .upgrade.<field>
+# ("-" if absent). Fields: method (npm-global|uv-venv|git-pull|rebuild|phase-rerun),
+# target (npm pkg / dir), venv (venv path for uv-venv), pkg (pip pkg for uv-venv),
+# restart (svc to restart after). Lets `upgrade` version-bump a service directly
+# instead of the no-op "manual note"; absent → the driver falls back to a phase re-run.
+svc_upgrade() { yq -r ".services.$1.upgrade.$2 // \"-\"" "$SERVICES_YML"; }
+svc_has_upgrade() { [[ "$(yq -r ".services.$1.upgrade // \"-\"" "$SERVICES_YML")" != "-" ]]; }
+
 # Declared network mode (host, ai-stack, none, …). Default "-".
 svc_network() { yq -r ".services.$1.network // \"-\"" "$SERVICES_YML"; }
 

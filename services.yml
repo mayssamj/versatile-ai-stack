@@ -627,6 +627,10 @@ services:
     desc: "Alternative agent-memory Python library; installed-disabled candidate"
     phase: "09"
     network: none
+    upgrade:
+      method: uv-venv
+      venv: alt-memory/.venv
+      pkg: remnic-hermes
     help:
       "what": An alternative agent-memory Python LIBRARY (PyPI remnic-hermes, from joshuaswarren/remnic) pip-installed into a dedicated venv at ~/ai-stack/alt-memory/.venv; it has no CLI entry points and is installed-disabled by default as a candidate to swap in for Honcho.
       "why": Reach for it only when evaluating an alternative to Honcho's memory model — it's importable from the alt-memory venv so a downstream tool/experiment can wire it in; it is not active in any service path out of the box.
@@ -645,6 +649,9 @@ services:
     desc: "Host npm-global Node CLI for a local, curatable context-tree memory"
     phase: "09"
     network: host
+    upgrade:
+      method: npm-global
+      target: byterover-cli
     help:
       "what": A host-side, npm-global Node CLI (byterover-cli, exposing the `brv` binary, v3.16.1 from campfirein/byterover-cli) that maintains a local 'context tree' memory you can curate, query, and search; installed-disabled and works fully locally without ByteRover cloud login.
       "why": Reach for it as an alternative, CLI-driven memory layer — capture knowledge into a project's context tree and recall it later (`brv query`/`brv search`), or wire it into agent connectors; it's a candidate alternative to Honcho, not part of the default agent path.
@@ -740,6 +747,9 @@ services:
     desc: "Clone-only research artifact: an A/B/AB self-refinement tournament"
     phase: "11"
     network: none
+    upgrade:
+      method: git-pull
+      dir: halo/autoreason
     help:
       "what": A clone-only research artifact (NousResearch/autoreason) — a self-refinement method that runs an incumbent A / adversarial revision B / synthesis AB tournament judged by blind Borda count, where "do nothing" is always an option.
       "why": Reach for it as reference material when designing self-refinement / iterative-improvement loops — it documents why naive critique-and-revise degrades weak models and how a 3-version blind tournament fixes prompt bias, scope creep, and lack of restraint. It is reading/experiments only, not a wired service.

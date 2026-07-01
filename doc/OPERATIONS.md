@@ -519,6 +519,18 @@ compose → `pull && up -d`, brew (ollama) → `brew upgrade`, openshell (hermes
 → in-sandbox update + phase re-assert. It registers no doctor checks and pulls
 no models.
 
+**`upgrade all` is EXHAUSTIVE (2026-07-01).** Every *other* service now does real
+work too — no more silent "manual note" no-ops. A service with a declared
+`upgrade:` block in `services.yml` is version-bumped directly by its method
+(`npm-global` → `npm i -g <pkg>@latest`, `uv-venv` → `uv pip install -U`,
+`git-pull` → `git pull --ff-only`, `rebuild` → its start script); everything else
+re-runs its install phase with `AI_STACK_UPGRADE=1` to re-assert/upgrade via the
+phase's own logic. Bare `upgrade all` **also** upgrades the host npm globals that
+aren't stack services — **Meridian** (`@rynfar/meridian`) and **Claude Code**
+(`@anthropic-ai/claude-code`); **Codex** is invoked via `npx --yes @openai/codex`
+(always latest), so it needs no step. Upgrade one host global directly with
+`stack upgrade meridian` / `stack upgrade claude-code`.
+
 ### 1. See what has an update available (read-only)
 
 ```bash
@@ -535,7 +547,7 @@ How it decides — **no image is downloaded**:
 | `docker` | local image `RepoDigest` vs the registry **index digest** (`docker buildx imagetools inspect`). Both resolve to the manifest-list digest, so the compare is sound on multi-arch images. |
 | `compose`/`docker-compose` | every image from `docker compose config --images` is digest-checked; any newer → `update-available`; locally-built/uncheckable images → `rebuild`. |
 | `brew-service` (ollama) | `brew outdated` (version compare). |
-| everything else (sandbox/CLI/npm/pip) | no cheap version oracle → reported `manual` (hidden unless `--all`). |
+| everything else (sandbox/CLI/npm/pip) | no cheap version oracle for `--check`/`--outdated` → reported `manual` here (hidden unless `--all`). **NOTE:** bare `upgrade all` still upgrades them (via their `upgrade:` block or a phase re-run) — see the exhaustive note above. |
 
 Status legend: `update-available` · `up-to-date` · `pinned` (fixed tag, no
 rolling updates) · `rebuild` (compose stack with locally-built/uncheckable

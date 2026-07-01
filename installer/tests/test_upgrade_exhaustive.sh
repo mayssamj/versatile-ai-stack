@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# test_upgrade_exhaustive.sh — `upgrade all` must be EXHAUSTIVE: every enabled
+# service resolves to a REAL upgrade action, never the no-op "manual note" that
+# up_manual_note used to print (operator directive 2026-07-01). Pure-STATIC check:
+# mirrors upgrade.sh's dispatch (type → handler; manual-types → up_by_method →
+# `upgrade:` block method, else phase-rerun if a phase exists) against services.yml.
+# No docker/openshell/network — safe in CI. Also asserts the host-global coverage
+# (meridian/claude-code/codex) and the declared `upgrade:` blocks parse to valid methods.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SVC="$ROOT/services.yml"
+UPG="$ROOT/installer/lib/upgrade.sh"
+PASS=0; FAIL=0
+ok(){ PASS=$((PASS+1)); echo "  ok   $1"; }
+bad(){ FAIL=$((FAIL+1)); echo "  FAIL $1"; }
+command -v yq >/dev/null 2>&1 || { echo "yq not on PATH — skipping (not a failure)"; exit 0; }
+
+# Handler-backed types (docker/compose/brew/openshell) always do real work.
+REAL_TYPES=" docker compose docker-compose brew-service openshell hermes-profiles sandbox-daemon "
+# Manual-dispatch types: routed to up_by_method (upgrade-block method OR phase-rerun).
+MANUAL_TYPES=" cli-only clone-only npm-global pip-package litellm-feature agent-pattern paperclip-plugin litellm-virtual-key python-bg node-bg "
+
+echo "== every enabled service resolves to a NON-manual upgrade strategy =="
+mapfile -t svcs < <(yq -r '.services | to_entries | .[] | select(.value.enabled == true) | .key' "$SVC")
+gap=0
+for s in "${svcs[@]}"; do
+  t="$(yq -r ".services.\"$s\".type // \"unknown\"" "$SVC")"
+  if [[ "$REAL_TYPES" == *" $t "* ]]; then continue; fi
+  if [[ "$MANUAL_TYPES" == *" $t "* ]]; then
+    has_up="$(yq -r ".services.\"$s\".upgrade // \"-\"" "$SVC")"
+    phase="$(yq -r ".services.\"$s\".phase // \"-\"" "$SVC")"
+    if [[ "$has_up" != "-" || "$phase" != "-" ]]; then continue; fi
+    bad "$s ($t): no upgrade: block AND no phase → would hit the manual no-op"; gap=1
+  else
+    bad "$s: unknown type '$t' → upgrade would skip it"; gap=1
+  fi
+done
+(( gap == 0 )) && ok "all ${#svcs[@]} enabled services map to a real upgrade action (method or phase-rerun)"
+
+echo "== declared upgrade: blocks parse to a supported method =="
+VALID=" npm-global uv-venv git-pull rebuild phase-rerun "
+mapfile -t withup < <(yq -r '.services | to_entries | .[] | select(.value.upgrade) | .key' "$SVC")
+for s in "${withup[@]}"; do
+  m="$(yq -r ".services.\"$s\".upgrade.method // \"-\"" "$SVC")"
+  if [[ "$VALID" == *" $m "* ]]; then ok "$s → upgrade.method=$m (supported)"; else bad "$s → upgrade.method='$m' not supported"; fi
+done
+# The three we ship must be present + correct.
+[[ "$(yq -r '.services.byterover_cli.upgrade.method' "$SVC")" == "npm-global" ]] && ok "byterover_cli → npm-global" || bad "byterover_cli upgrade block wrong"
+[[ "$(yq -r '.services.remnic_hermes.upgrade.method' "$SVC")" == "uv-venv" ]] && ok "remnic_hermes → uv-venv" || bad "remnic_hermes upgrade block wrong"
+[[ "$(yq -r '.services.autoreason.upgrade.method' "$SVC")" == "git-pull" ]] && ok "autoreason → git-pull" || bad "autoreason upgrade block wrong"
+
+echo "== host npm globals (not services.yml) are covered by upgrade all =="
+grep -q 'HOST_NPM_GLOBALS=(' "$UPG" && ok "HOST_NPM_GLOBALS defined in upgrade.sh" || bad "HOST_NPM_GLOBALS missing"
+grep -q '@rynfar/meridian' "$UPG" && ok "meridian (@rynfar/meridian) covered" || bad "meridian not covered"
+grep -q '@anthropic-ai/claude-code' "$UPG" && ok "claude-code (@anthropic-ai/claude-code) covered" || bad "claude-code not covered"
+grep -qE 'hg_targets=\(meridian claude-code codex\)' "$UPG" && ok "bare 'upgrade all' includes host globals" || bad "'upgrade all' does not add host globals"
+
+echo "== up_by_method dispatch + no silent manual fallthrough in upgrade_one =="
+grep -q 'up_by_method' "$UPG" && ok "up_by_method present" || bad "up_by_method missing"
+# The manual-type case arms must route to up_by_method (the case pattern + its
+# body are on separate lines, so match the pattern line + the following line).
+if grep -A1 -E 'cli-only\|clone-only\|npm-global\|pip-package' "$UPG" | grep -q 'up_by_method'; then
+  ok "manual-type dispatch routes to up_by_method"
+else bad "manual-type dispatch still routes to up_manual_note"; fi
+# up_manual_note must survive ONLY as the last-resort fallback (called from up_phase_rerun).
+if grep -q 'up_manual_note "\$svc"; return 0' "$UPG"; then
+  ok "up_manual_note retained only as the phase-rerun last-resort fallback"
+else bad "up_manual_note no longer reachable as a safe fallback"; fi
+
+echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))
