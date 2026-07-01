@@ -85,6 +85,15 @@ for __check in "${CHECKS[@]}"; do
         else
           err "    auto-heal attempt failed."
         fi
+      elif ! [[ -t 0 ]]; then
+        # Non-interactive shell (piped / </dev/null / cron / spawned as a subprocess): NEVER
+        # auto-apply a PROMPTED fix here. `confirm … Y` reads its answer from stdin and, on EOF,
+        # returns the DEFAULT (yes) — so a headless `doctor` would silently run a heavy or
+        # destructive fix. That bit us: check 08's fix is `ollama pull gemma4:e4b` (~9.6 GB),
+        # which a piped run auto-triggered — also violating the no-local-model policy. AUTOHEAL
+        # fixes (checked above) are the ONLY ones safe to run headless; everything else waits for
+        # a human in a real terminal. Report + skip.
+        note "    (auto-fix available; non-interactive shell — skipping; re-run \`doctor\` in a terminal to apply)"
       elif confirm "    Auto-fix available. Apply?" Y; then
         if ( "${__check}_fix" </dev/null ); then
           ok   "    fixed."
