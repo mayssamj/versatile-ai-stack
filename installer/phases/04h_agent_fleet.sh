@@ -166,10 +166,10 @@ widen_keys() {
   master="$(get_env LITELLM_MASTER_KEY '')"
   [[ -n "$master" ]] || { warn "LITELLM_MASTER_KEY absent — skip key widening (run 'vz-ai-stack.sh model sync')"; return; }
   command -v yq >/dev/null 2>&1 || { warn "yq absent — skip key widening"; return; }
-  # Union the legacy aliases (local/local-heavy/local-lfm2) with every models.yml
+  # Union the legacy aliases (local/local-heavy) with every models.yml
   # id — mirrors lib/models.sh::superset_members. The legacy `local` is the
   # availability-gated fallback, so dropping it would 403 the fallback path.
-  superset="$(yq -o=json -I=0 '(["local","local-heavy","local-lfm2"] + (.models | keys)) | unique' "$MODELS_YML" 2>/dev/null || true)"
+  superset="$(yq -o=json -I=0 '(["local","local-heavy"] + (.models | keys)) | unique' "$MODELS_YML" 2>/dev/null || true)"
   [[ "$superset" == \[*\] ]] || { warn "could not build model superset — skip key widening"; return; }
   for kenv in HERMES_LITELLM_KEY PI_LITELLM_KEY; do
     k="$(get_env "$kenv" '')"

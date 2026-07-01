@@ -152,14 +152,14 @@ honcho_set_env LLM_OPENAI_API_KEY  "$LITELLM_KEY"
 # `litellm` could collide with a name on the default network. Per D28.
 honcho_set_env LLM_OPENAI_BASE_URL "http://litellm.ai-stack:4000/v1"
 # Purge the legacy/ignored pre-v3 keys so honcho/.env never shows a stale base
-# or a stale (local-gemma4) model.
+# or a stale (local) model.
 honcho_unset_env LLM_OPENAI_API_BASE
 honcho_unset_env LLM_OPENAI_MODEL
 # Platform model policy: every text-generation role (deriver, all 5 dialectic
 # reasoning levels, summary, both dream specialists) uses the platform default
 # claude-opus-sub-xhigh (Claude subscription via Meridian). transport stays
 # the default "openai", so calls route through LiteLLM via LLM_OPENAI_BASE_URL
-# above; LiteLLM falls back to local-gemma4 only if Meridian is down. Embeddings
+# above; LiteLLM falls back to local only if Meridian is down. Embeddings
 # stay on text-embedding-3-small (not a chat model). Override per-deploy with
 # HONCHO_MODEL in the stack .env.
 HONCHO_MODEL="$(get_env HONCHO_MODEL "claude-opus-sub-xhigh")"

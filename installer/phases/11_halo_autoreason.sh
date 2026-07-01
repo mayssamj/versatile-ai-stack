@@ -19,7 +19,7 @@ source "$AI_STACK/installer/lib/env.sh"   # get_env/set_env for HALO_LITELLM_KEY
 
 PHASE=11
 HALO_WRAPPER="$AI_STACK/bin/halo"
-HALO_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default (Claude sub). Override to on-device with -m local-gemma4.
+HALO_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default (Claude sub). Override to on-device with -m local.
 
 precheck() {
   # HALO is CLI-only; consider installed if either pip install succeeded or
@@ -67,10 +67,10 @@ if (( HALO_OK )); then
     HALO_KEY_CURRENT="$(get_env HALO_LITELLM_KEY '')"
     if [[ -z "$HALO_KEY_CURRENT" ]] \
        || ! litellm_scoped_curl "$HALO_KEY_CURRENT" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
-      log "Minting LiteLLM virtual key for HALO (models=[claude-opus-sub-xhigh, local-gemma4, local-qwen3])..."
+      log "Minting LiteLLM virtual key for HALO (models=[claude-opus-sub-xhigh, local])..."
       HALO_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
         -X POST http://litellm:4000/key/generate \
-        -d '{"models":["claude-opus-sub-xhigh","local-gemma4","local-qwen3"],"key_alias":"halo-trace-engine","metadata":{"owner":"halo","purpose":"phase11"}}' \
+        -d '{"models":["claude-opus-sub-xhigh","local"],"key_alias":"halo-trace-engine","metadata":{"owner":"halo","purpose":"phase11"}}' \
         | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
       if [[ -n "$HALO_KEY_NEW" ]]; then
         set_env HALO_LITELLM_KEY "$HALO_KEY_NEW"
@@ -84,7 +84,7 @@ if (( HALO_OK )); then
 
     # bin/halo wrapper: route through LiteLLM by default. HALO's own default model
     # is gpt-5.4-mini (cloud) — we inject the platform default (claude-opus-sub-xhigh)
-    # via the virtual key (also scoped for the local-gemma4 override) unless the user
+    # via the virtual key (also scoped for the local override) unless the user
     # gives one. base_url + key come from OPENAI_BASE_URL / OPENAI_API_KEY env.
     cat > "$HALO_WRAPPER" <<WRAPEOF
 #!/usr/bin/env bash

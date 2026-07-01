@@ -137,11 +137,11 @@ ok "LM Studio server up on $LMS_URL"
 
 # --- 3. ASSIGNMENT-DRIVEN MLX load (the default) ---------------------------
 # Load ONLY models that an agent is actually assigned in installer/models.yml
-# (the canonical MLX slugs local-qwen-heavy-fast / local-gemma4-12b). If nothing is
+# (the canonical MLX slug local-nemotron3-nano-4b-mlx). If nothing is
 # assigned, NOTHING is loaded — LM Studio does not auto-load a model. Best-effort,
 # non-fatal: the canonical config.yaml rows already exist (Phase 01); here we make
 # the running LM Studio actually serve an assigned id so `model sync` can promote
-# the agents off the gemma4 fallback. (To also disable LM Studio's OWN auto-load,
+# the agents off the nemotron-3-nano:4b fallback. (To also disable LM Studio's OWN auto-load,
 # turn off "JIT model loading" + "load last model on launch" in its app settings.)
 MODELS_YML="$AI_STACK/installer/models.yml"
 _lms_registered=0   # config.yaml actually CHANGED -> LiteLLM needs a reload
@@ -187,7 +187,7 @@ if [[ "${LMS_LOAD_LFM2:-0}" != "1" ]]; then
     note "Assigned MLX model(s) are already registered or not loadable right now — no LiteLLM restart needed; run 'vz-ai-stack.sh model sync' once they load."
   else
     note "No agent is assigned an LM Studio MLX model — nothing loaded (LM Studio does NOT auto-load a model)."
-    note "Assign one, then re-run:  vz-ai-stack.sh model assign <agent> local-qwen-heavy-fast   (or local-gemma4-12b)"
+    note "Assign one, then re-run:  vz-ai-stack.sh model assign <agent> local-nemotron3-nano-4b-mlx"
   fi
   note "LFM2.5 demo is opt-in: set LMS_LOAD_LFM2=1 to download + load it (~5GB)."
   stamp_mark "$PHASE"
@@ -270,7 +270,7 @@ ok "Phase 25 — LM Studio (MLX) — complete"
 note "New model behind LiteLLM:  $LITELLM_SLUG  (LFM2.5 MLX — has working tool-calling, unlike the Ollama GGUF build)"
 note "A/B vs Ollama: point a Hermes profile at it, e.g. (relay must be up):"
 note "  openshell sandbox exec -n hermes-fleet-v1 -- hermes --profile hermes_software_engineer config set providers.litellm.model $LITELLM_SLUG"
-note "  then run the same task on local-lfm2 (Ollama) vs $LITELLM_SLUG (MLX) and compare tok/s + tool-calls in Phoenix (http://phoenix:6006)."
+note "  then run the same task on local (Ollama) vs $LITELLM_SLUG (MLX) and compare tok/s + tool-calls in Phoenix (http://phoenix:6006)."
 note "NOTE: to let SCOPED virtual keys (Pi/ACE/Hermes/RLM) use this model, add '$LITELLM_SLUG' to their allowlists (re-mint, or 'litellm key update'). The master key already works."
 note "Server: $LMS  |  lms ps (loaded) |  lms server status  |  Ollama is untouched (still the default)."
 warn "WHEN DONE: quit LM Studio to reclaim CPU →  $LMS server stop  + quit the LM Studio app."

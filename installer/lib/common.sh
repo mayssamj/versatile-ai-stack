@@ -189,7 +189,7 @@ litellm_scoped_curl() {
 # already proved the scoped key lists SOME model, this verifies the key actually ALLOWS
 # the specific model the sim is bound to: a key still scoped to an OLD alias after a model
 # rename/re-assign passes /v1/models yet SILENT-403s the model the sim calls. Resolves the
-# bound model the way the phase does (models.yml `.assignments.<key>`, else local-gemma4)
+# bound model the way the phase does (models.yml `.assignments.<key>`, else local)
 # and self-looks-up the scoped key's allow-list via /key/info (Bearer = the scoped key via
 # litellm_scoped_curl, no ?key= in the URL; metadata read only — never cold-starts).
 #

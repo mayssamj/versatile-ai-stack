@@ -25,7 +25,7 @@
 # at opus xhigh-effort the gate would exceed its timeout (~8-13 min). sonnet-sub-high
 # proves the wiring fast (~3 min, spike 2026-06-25, llm_calls=26); the user-facing default
 # stays the capable opus-xhigh. (The fast reachability curl still pings the real default.)
-# local-gemma4 is selectable but TIMES OUT (a single local Ollama model serializes the
+# local is selectable but TIMES OUT (a single local Ollama model serializes the
 # concurrent calls; spike-verified). Routed via LiteLLM scoped key → traced in Phoenix.
 #
 # Constitution honored: OPT-IN (not in install_all_phase_order); scoped key
@@ -143,10 +143,10 @@ CC_KEY_CURRENT="$(get_env CONCORDIA_LITELLM_KEY '')"
 _cc_models=""
 [[ -n "$CC_KEY_CURRENT" ]] && _cc_models="$(litellm_scoped_curl "$CC_KEY_CURRENT" -s --max-time 5 "$CC_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$CC_KEY_CURRENT" ]] || ! printf '%s' "$_cc_models" | grep -q '"id"'; then
-  log "Minting scoped LiteLLM key for Concordia (sonnet-sub default + opus-sub + local-gemma4)…"
+  log "Minting scoped LiteLLM key for Concordia (sonnet-sub default + opus-sub + local)…"
   CC_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$CC_LLM_BASE/key/generate" \
-    -d '{"models":["claude-sonnet-sub-high","claude-opus-sub-xhigh","local-gemma4"],"key_alias":"concordia","metadata":{"owner":"concordia","purpose":"phase37"}}' \
+    -d '{"models":["claude-sonnet-sub-high","claude-opus-sub-xhigh","local"],"key_alias":"concordia","metadata":{"owner":"concordia","purpose":"phase37"}}' \
     | "$CC_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$CC_KEY_NEW" ]] || { err "Failed to mint CONCORDIA_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env CONCORDIA_LITELLM_KEY "$CC_KEY_NEW"
@@ -164,7 +164,7 @@ fi
 ok "Concordia model = $CC_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
 # Self-heal the key's allow-list against the model the app ACTUALLY calls plus fallbacks
 # (a rename/re-assign otherwise leaves a stale key silent-403ing the bound model).
-litellm_reconcile_key CONCORDIA_LITELLM_KEY "$CC_MODEL" claude-sonnet-sub-high claude-opus-sub-xhigh local-gemma4
+litellm_reconcile_key CONCORDIA_LITELLM_KEY "$CC_MODEL" claude-sonnet-sub-high claude-opus-sub-xhigh local
 
 # --- 4. bin/concordia wrapper (injects key from .env at RUNTIME) ---
 cat > "$CC_WRAPPER" <<WRAPEOF
@@ -212,7 +212,7 @@ construction drift; 6=sim runtime drift; 7=wall-clock alarm.
 
 DEFAULT MODEL (bin/concordia) = claude-opus-sub-xhigh (platform default); this seeded
 smoke is invoked with the faster claude-sonnet-sub-high because Concordia fires ~26
-concurrent calls/step and opus xhigh-effort would blow the gate timeout. local-gemma4
+concurrent calls/step and opus xhigh-effort would blow the gate timeout. local
 serializes the concurrent calls → times out (spike-verified 2026-06-25)."""
 import os, sys, signal
 
@@ -329,5 +329,5 @@ note "Prove the sim:    vz-ai-stack.sh test 37     # a 1-step GABM sim runs via 
 note "Run the demo:     bin/concordia concordia/sims/smoke_sim.py"
 note "Watch it:         Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Write your own:   concordia/sims/<your_sim>.py  then  bin/concordia concordia/sims/<your_sim>.py"
-note "Model note:       default $CC_MODEL (platform default); the install gate runs $CC_SMOKE_MODEL (faster). local-gemma4 TIMES OUT — Concordia fans out concurrent calls; Ollama serializes"
+note "Model note:       default $CC_MODEL (platform default); the install gate runs $CC_SMOKE_MODEL (faster). local TIMES OUT — Concordia fans out concurrent calls; Ollama serializes"
 note "Reversible:       rm -rf $CC_VENV && rm -f $AI_STACK/installer/state/phase_37.done"

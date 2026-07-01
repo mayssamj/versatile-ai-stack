@@ -15,7 +15,7 @@
 # see SECURITY note) is opt-in via AGENTSCOPE_STUDIO=1; the lib-only install skips it.
 #
 # Constitution honored: OPT-IN (not in install_all_phase_order); scoped key
-# (AGENTSCOPE_LITELLM_KEY), never master; default model local-gemma4; calls traced in
+# (AGENTSCOPE_LITELLM_KEY), never master; default model local; calls traced in
 # Phoenix. Reversible: rm -rf agentscope/.venv + unstamp; agentscope/sims is DATA.
 #
 # VERIFIED LIVE (2026-06-23, agentscope 2.0.2) before this phase was written — the API is
@@ -24,7 +24,7 @@
 #            stream=False, formatter=OpenAIChatFormatter(), parameters=Parameters(max_tokens=))
 #   * agents + model calls are ASYNC (asyncio.run; await agent.reply/observe)
 #   * Msg.content is a LIST of TextBlocks; read replies with Msg.get_text_content()
-#   * local-gemma4 is a REASONING model → its reply carries a ThinkingBlock alongside the
+#   * local is a REASONING model → its reply carries a ThinkingBlock alongside the
 #     TextBlock, and observe() REJECTS thinking blocks across agent boundaries → the sim
 #     reconstructs a clean text-only Msg before handing one agent's reply to the next.
 #
@@ -41,7 +41,7 @@ AS_VENV="$AS_DIR/.venv"
 AS_PY="$AS_VENV/bin/python"
 AS_WRAPPER="$AI_STACK/bin/agentscope"
 AS_SIMS="$AS_DIR/sims"
-AS_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: AS_MODEL=local-gemma4
+AS_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: AS_MODEL=local
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell);
 # the container DNS name litellm:4000 also works once core Phase 00n writes the
 # /etc/hosts alias, so install-time probes try litellm first then fall back.
@@ -145,12 +145,12 @@ AS_KEY_CURRENT="$(get_env AGENTSCOPE_LITELLM_KEY '')"
 _as_models=""
 [[ -n "$AS_KEY_CURRENT" ]] && _as_models="$(litellm_scoped_curl "$AS_KEY_CURRENT" -s --max-time 5 "$AS_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$AS_KEY_CURRENT" ]] || ! printf '%s' "$_as_models" | grep -q '"id"'; then
-  log "Minting scoped LiteLLM key for AgentScope (local-gemma4 + *-sub fallbacks)…"
+  log "Minting scoped LiteLLM key for AgentScope (local + *-sub fallbacks)…"
   # Parse the key with the venv python ($AS_PY, built + import-verified above) rather
   # than assuming a host python3 (§24 council nit, 2026-06-23).
   AS_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$AS_LLM_BASE/key/generate" \
-    -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"agentscope","metadata":{"owner":"agentscope","purpose":"phase33"}}' \
+    -d '{"models":["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"agentscope","metadata":{"owner":"agentscope","purpose":"phase33"}}' \
     | "$AS_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$AS_KEY_NEW" ]] || { err "Failed to mint AGENTSCOPE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env AGENTSCOPE_LITELLM_KEY "$AS_KEY_NEW"
@@ -159,7 +159,7 @@ else
   ok "AGENTSCOPE_LITELLM_KEY already present + valid"
 fi
 
-# --- 3. Resolve bound model (default local-gemma4) ---
+# --- 3. Resolve bound model (default local) ---
 AS_MODEL="$AS_MODEL_DEFAULT"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _am="$(yq -r '.assignments.agentscope // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -170,7 +170,7 @@ ok "AgentScope model = $AS_MODEL (routed via LiteLLM → Phoenix project ai-stac
 # which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
 # when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
 # bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
-litellm_reconcile_key AGENTSCOPE_LITELLM_KEY "$AS_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
+litellm_reconcile_key AGENTSCOPE_LITELLM_KEY "$AS_MODEL" local claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 4. bin/agentscope wrapper (injects key from .env at RUNTIME) ---
 # The wrapper points at 127.0.0.1:4000 — the host-shell route that always resolves
@@ -211,7 +211,7 @@ ok "wrote $AS_WRAPPER"
 
 # --- 5. Seed a tiny AgentScope→LiteLLM multi-agent sim (the routing proof; smoke runs it) ---
 # Verified against agentscope 2.0.2 (2026-06-23). The model/agent API is async; the
-# OpenAI-compatible base_url lives on OpenAICredential; local-gemma4 reasons before it
+# OpenAI-compatible base_url lives on OpenAICredential; local reasons before it
 # answers (max_tokens=512) and emits a ThinkingBlock that observe() rejects across
 # agents → reconstruct a clean text-only Msg between turns.
 cat > "$AS_SIMS/smoke_sim.py" <<'PY'
@@ -223,7 +223,7 @@ exits 0 only when BOTH agents replied with visible text.
 Verified against agentscope 2.0.2 (2026-06-23). Distinct exit codes let the caller tell
 an API drift (4/5) from an auth/routing failure (3): 0=both replied, 3=an agent did not
 reply (placeholder/401 key, or empty model output), 4=import drift, 5=AgentScope model/
-agent API drift. local-gemma4 reasons before it answers, hence max_tokens=512; its reply
+agent API drift. local reasons before it answers, hence max_tokens=512; its reply
 carries a ThinkingBlock that observe() rejects, so we hand the next agent a clean
 text-only Msg built from get_text_content()."""
 import asyncio, os, signal, sys

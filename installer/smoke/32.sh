@@ -35,7 +35,7 @@ grep -q 'base_url: "http://127.0.0.1:4000/v1"' "$CFG" \
 # Prove the scoped key in that config actually reaches a model through LiteLLM.
 KEY="$(get_env METAGPT_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "METAGPT_LITELLM_KEY absent from .env"; exit 1; }
-MODEL="${METAGPT_MODEL:-local-gemma4}"
+MODEL="${METAGPT_MODEL:-local}"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _mm="$(yq -r '.assignments.metagpt // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"; [[ -n "$_mm" && "$_mm" != "null" ]] && MODEL="$_mm"
 fi

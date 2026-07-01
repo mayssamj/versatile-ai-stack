@@ -7,7 +7,7 @@
 # exit codes: 0=both replied, 3=an agent failed (placeholder/401 key, or empty model
 # output), 4=agentscope import drift, 5=AgentScope model/agent API drift. agents-replied
 # is the routing proof (a placeholder/401 key yields no replies), which is a stronger,
-# direct signal than a spend delta (the default local-gemma4 bills $0).
+# direct signal than a spend delta (the default local bills $0).
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"

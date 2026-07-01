@@ -13,7 +13,7 @@
 # uses distinct exit codes: 0=agent produced non-empty output, 3=agent failed (401 key,
 # empty content, or no output), 4=ChatDev SDK import drift, 5=run_workflow API drift.
 # A non-empty agent reply is the routing proof (a placeholder/401 key yields nothing),
-# stronger than a spend delta (default local-gemma4 bills $0).
+# stronger than a spend delta (default local bills $0).
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -65,7 +65,7 @@ signal.alarm(180)
 
 BASE  = os.environ.get("BASE_URL", "http://litellm:4000/v1")
 KEY   = os.environ.get("API_KEY", "")
-MODEL = os.environ.get("MODEL", "local-gemma4")
+MODEL = os.environ.get("MODEL", "local")
 
 # Resolve the ChatDev SDK entrypoint. ChatDev 2.0 exposes a runtime with an SDK that
 # runs a workflow YAML; the exact module path is probed defensively so a minor

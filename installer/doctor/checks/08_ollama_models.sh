@@ -2,7 +2,7 @@
 #
 # LOCAL-MODEL policy (operator directive 2026-07-01): nemotron-3-nano:4b is the
 # ONLY local chat model (the `local`/`local-heavy` default, ~2.8GB) + nomic-embed-text
-# (embeddings) are the only eager-pulled models. No gemma4/qwen model is pulled by
+# (embeddings) are the only eager-pulled models. No other local model is pulled by
 # install OR doctor. This keeps a fresh install light on a 24GB box. See
 # installer/models.yml.
 CHECKS+=(ollama_models)

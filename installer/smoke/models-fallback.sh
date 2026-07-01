@@ -40,14 +40,14 @@ run list --json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert is
   && yes_ "C1 list --json returns a non-empty JSON array" || no_ "C1 list --json invalid"
 
 # C2 set replace -> entry updated
-run set claude-opus-sub-max local-gemma4 >/dev/null 2>&1
-[[ "$(tgt claude-opus-sub-max "$SB")" == "local-gemma4" ]] && yes_ "C2 set replace updates the chain" || no_ "C2 set failed"
+run set claude-opus-sub-max local >/dev/null 2>&1
+[[ "$(tgt claude-opus-sub-max "$SB")" == "local" ]] && yes_ "C2 set replace updates the chain" || no_ "C2 set failed"
 
 # C3 comments preserved byte-for-byte (content+order; line numbers may shift on insert)
 diff <(comments "$ORIG") <(comments "$SB") >/dev/null && yes_ "C3 all comment lines preserved byte-for-byte" || no_ "C3 comments mutated"
 
 # C4 unknown model -> exit 2
-[[ "$(rc_of run set no-such-model local-qwen3)" == "2" ]] && yes_ "C4 unknown model -> exit 2" || no_ "C4 wrong rc"
+[[ "$(rc_of run set no-such-model local-heavy)" == "2" ]] && yes_ "C4 unknown model -> exit 2" || no_ "C4 wrong rc"
 
 # C5 non-local (metered/sub) target without --allow-non-local -> exit 2
 [[ "$(rc_of run set sakana-fugu claude-opus-sub-high)" == "2" ]] && yes_ "C5 non-local target refused (no flag) -> exit 2" || no_ "C5 wrong rc"
@@ -68,17 +68,17 @@ diff <(comments "$ORIG") <(comments "$SB") >/dev/null && yes_ "C7b comments pres
 [[ "$(rc_of run remove no-such-model)" == "0" ]] && yes_ "C8 remove non-existent -> graceful exit 0" || no_ "C8 wrong rc"
 
 # C9 substring safety: set openai-gpt; openai-gpt-pro/-sub untouched
-run set openai-gpt local-qwen3 >/dev/null 2>&1
+run set openai-gpt local-heavy >/dev/null 2>&1
 { [[ "$(cnt openai-gpt-pro "$SB")" == "1" ]] && [[ "$(cnt openai-gpt-sub "$SB")" == "1" ]] && [[ "$(cnt openai-gpt-pro-sub "$SB")" == "1" ]]; } \
   && yes_ "C9 substring-named siblings untouched by set openai-gpt" || no_ "C9 substring collision"
 
 # C10 multi-target set
-run set sakana-fugu-ultra local-qwen3 local-gemma4 >/dev/null 2>&1
-[[ "$(tgt sakana-fugu-ultra "$SB")" == "local-qwen3,local-gemma4" ]] && yes_ "C10 multi-target chain set" || no_ "C10 multi-target failed"
+run set sakana-fugu-ultra local-heavy local >/dev/null 2>&1
+[[ "$(tgt sakana-fugu-ultra "$SB")" == "local-heavy,local" ]] && yes_ "C10 multi-target chain set" || no_ "C10 multi-target failed"
 
 # C11 dry-run does not mutate
 sha0=$(shasum "$SB" | awk '{print $1}')
-run set openai-gpt-pro local-gemma4 --dry-run >/dev/null 2>&1
+run set openai-gpt-pro local --dry-run >/dev/null 2>&1
 [[ "$sha0" == "$(shasum "$SB" | awk '{print $1}')" ]] && yes_ "C11 dry-run leaves config.yaml byte-identical" || no_ "C11 dry-run mutated"
 
 # C12 still parses
@@ -86,38 +86,38 @@ yq -e '.' "$SB" >/dev/null 2>&1 && yes_ "C12 edited config.yaml still parses" ||
 
 # C13 CRLF in the fallbacks block -> exit 2 (no silent whole-file rewrite)
 crlf="$tmp/crlf.yaml"; awk '{sub(/\r$/,""); printf "%s\r\n",$0}' "$ORIG" > "$crlf"
-[[ "$(rc_of env CONFIG="$crlf" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-qwen3)" == "2" ]] \
+[[ "$(rc_of env CONFIG="$crlf" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-heavy)" == "2" ]] \
   && yes_ "C13 CRLF fallbacks block -> exit 2" || no_ "C13 CRLF not refused"
 
 # C14 DUPLICATE entry -> abort exit 2 (don't guess which line)
 dup="$tmp/dup.yaml"; awk '/^    - sakana-fugu: /{print; print; next} {print}' "$ORIG" > "$dup"
-[[ "$(rc_of env CONFIG="$dup" LOCK_FORCE=1 bash "$MS" fallback set sakana-fugu local-gemma4)" == "2" ]] \
+[[ "$(rc_of env CONFIG="$dup" LOCK_FORCE=1 bash "$MS" fallback set sakana-fugu local)" == "2" ]] \
   && yes_ "C14 duplicate entry -> abort exit 2" || no_ "C14 duplicate not aborted"
 
 # C15 fallbacks key ABSENT -> set aborts with guidance (exit 2; never a risky yq -i on the live file)
 absent="$tmp/absent.yaml"; cp "$ORIG" "$absent"; yq -i 'del(.litellm_settings.fallbacks)' "$absent"
-[[ "$(rc_of env CONFIG="$absent" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-qwen3)" == "2" ]] \
+[[ "$(rc_of env CONFIG="$absent" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-heavy)" == "2" ]] \
   && yes_ "C15 absent fallbacks key -> safe abort exit 2" || no_ "C15 absent-key not handled"
 
 # C16 bare-empty 'fallbacks:' (the post-remove-all state) -> set CREATES the first entry
 bare="$tmp/bare.yaml"
 cat > "$bare" <<'YAML'
 model_list:
-  - model_name: local-gemma4
+  - model_name: local
     litellm_params: {model: ollama/gemma}
-  - model_name: local-qwen3
+  - model_name: local-heavy
     litellm_params: {model: ollama/qwen}
 litellm_settings:
   drop_params: true
   fallbacks:
 guardrails: []
 YAML
-CONFIG="$bare" LOCK_FORCE=1 bash "$MS" fallback set local-gemma4 local-qwen3 >/dev/null 2>&1
-[[ "$(tgt local-gemma4 "$bare")" == "local-qwen3" ]] && yes_ "C16 bare-empty fallbacks: -> first entry created" || no_ "C16 bare-empty create failed"
+CONFIG="$bare" LOCK_FORCE=1 bash "$MS" fallback set local local-heavy >/dev/null 2>&1
+[[ "$(tgt local "$bare")" == "local-heavy" ]] && yes_ "C16 bare-empty fallbacks: -> first entry created" || no_ "C16 bare-empty create failed"
 
 # C17 write into a read-only location fails SAFE: non-zero exit + CONFIG byte-identical (no partial write)
 mkdir -p "$tmp/ro"; roc="$tmp/ro/config.yaml"; cp "$ORIG" "$roc"; ro_sha="$(shasum "$roc"|awk '{print $1}')"; chmod 555 "$tmp/ro"
-rc=0; CONFIG="$roc" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-qwen3 >/dev/null 2>&1 || rc=$?
+rc=0; CONFIG="$roc" LOCK_FORCE=1 bash "$MS" fallback set openai-gpt local-heavy >/dev/null 2>&1 || rc=$?
 chmod 755 "$tmp/ro"
 { [[ "$rc" != "0" ]] && [[ "$ro_sha" == "$(shasum "$roc"|awk '{print $1}')" ]]; } \
   && yes_ "C17 write to read-only dir fails safe (non-zero exit, config byte-identical)" || no_ "C17 unsafe on write failure (rc=$rc)"
@@ -148,33 +148,33 @@ else
   boot 0 && yes_ "P0 proxy booted (read/write)" || { no_ "P0 proxy did not boot"; cat "$tmp/proxy.log"; }
 
   # P1 no confirm -> 409 needs_confirm
-  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"sakana-fugu","targets":["local-gemma4"]}' || true)"
+  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"sakana-fugu","targets":["local"]}' || true)"
   [[ "$code" == "409" ]] && yes_ "P1 no confirm -> 409 needs_confirm" || no_ "P1 expected 409, got $code"
 
   # P2 bad model (not in model_list) -> 400
-  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"no-such","targets":["local-qwen3"],"confirm_restart":true}' || true)"
+  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"no-such","targets":["local-heavy"],"confirm_restart":true}' || true)"
   [[ "$code" == "400" ]] && yes_ "P2 unknown model -> 400" || no_ "P2 expected 400, got $code"
 
   # P3 cross-origin -> 403 (CSRF)
-  code="$(curl -s $H -H 'Origin: http://evil.example.com' -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"sakana-fugu","targets":["local-gemma4"]}' || true)"
+  code="$(curl -s $H -H 'Origin: http://evil.example.com' -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"sakana-fugu","targets":["local"]}' || true)"
   [[ "$code" == "403" ]] && yes_ "P3 cross-origin -> 403 (CSRF)" || no_ "P3 expected 403, got $code"
 
   # P4 argv-smuggle: model starts with '-' -> 400 (_posarg guard)
-  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"--dry-run","targets":["local-qwen3"],"confirm_restart":true}' || true)"
+  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"--dry-run","targets":["local-heavy"],"confirm_restart":true}' || true)"
   [[ "$code" == "400" ]] && yes_ "P4 argv-smuggle model='--dry-run' -> 400" || no_ "P4 expected 400, got $code"
 
   # P5 confirm set -> 200, stub docker called, sandbox config edited, pre-edit backup made
-  curl -s $H -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"sakana-fugu","targets":["local-gemma4"],"confirm_restart":true}' | python3 -c 'import sys,json
+  curl -s $H -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"sakana-fugu","targets":["local"],"confirm_restart":true}' | python3 -c 'import sys,json
 d=json.load(sys.stdin); assert d.get("ok") is True, d; assert d.get("op")=="set" and d.get("model")=="sakana-fugu", d' \
     2>/dev/null && yes_ "P5 confirm set -> 200 ok" || no_ "P5 set failed: $(tail -2 "$tmp/proxy.log")"
-  [[ "$(tgt sakana-fugu "$SB")" == "local-gemma4" ]] && yes_ "P5b live (sandbox) config.yaml carries the edit" || no_ "P5b edit not applied"
+  [[ "$(tgt sakana-fugu "$SB")" == "local" ]] && yes_ "P5b live (sandbox) config.yaml carries the edit" || no_ "P5b edit not applied"
   [[ -f "$tmp/docker_called" ]] && yes_ "P5c restart used the STUBBED docker (real daemon untouched)" || no_ "P5c stub docker not invoked"
   ls "$BK"/config.yaml.* >/dev/null 2>&1 && yes_ "P5d pre-edit config.yaml backup written to backup dir" || no_ "P5d no pre-edit backup"
 
   # P6 GET /api/state reflects the edit
   curl -s $H "http://127.0.0.1:$PORT/api/state" | python3 -c 'import sys,json
 d=json.load(sys.stdin); fb=d.get("fallbacks",[])
-assert any(isinstance(e,dict) and e.get("sakana-fugu")==["local-gemma4"] for e in fb), fb' \
+assert any(isinstance(e,dict) and e.get("sakana-fugu")==["local"] for e in fb), fb' \
     2>/dev/null && yes_ "P6 /api/state reflects the new chain" || no_ "P6 state stale"
 
   # P7 op=remove confirm -> 200 + entry gone
@@ -185,7 +185,7 @@ d=json.load(sys.stdin); assert d.get("ok") is True, d' 2>/dev/null \
 
   # P8 read-only -> 403
   boot 1 && : || { no_ "P8 proxy (read-only) did not boot"; }
-  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"openai-gpt","targets":["local-qwen3"],"confirm_restart":true}' || true)"
+  code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"openai-gpt","targets":["local-heavy"],"confirm_restart":true}' || true)"
   [[ "$code" == "403" ]] && yes_ "P8 read-only mode -> 403" || no_ "P8 expected 403, got $code"
   stop
 
@@ -203,7 +203,7 @@ PY
   for _ in $(seq 1 20); do curl -s -o /dev/null "http://127.0.0.1:$HPORT/health/readiness" 2>/dev/null && break; sleep 0.2; done
   cp "$ORIG" "$SB"
   BOOT_WAIT=3 BOOT_LITELLM="http://127.0.0.1:$HPORT" boot 0 && : || no_ "P9 proxy (with wait) did not boot"
-  curl -s $H -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"openai-gpt","targets":["local-gemma4"],"confirm_restart":true}' | python3 -c 'import sys,json
+  curl -s $H -X POST "http://127.0.0.1:$PORT/api/fallback" -d '{"fb_op":"set","model":"openai-gpt","targets":["local"],"confirm_restart":true}' | python3 -c 'import sys,json
 d=json.load(sys.stdin)
 assert d.get("ok") is True, d
 assert d.get("ready") is True, ("ready should be True", d)

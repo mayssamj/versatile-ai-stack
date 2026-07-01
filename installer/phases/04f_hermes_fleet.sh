@@ -41,12 +41,12 @@ resolve_openshell() {
 OSH="$(resolve_openshell)"
 # Hermes routes LLM calls through LiteLLM (OpenAI-compatible) via a virtual key,
 # reached from inside the sandbox at host.docker.internal:4000 (allowlisted in
-# hermes-fleet-v1.yaml). Default model is `local` = gemma4:e4b — LIGHT + FAST
+# hermes-fleet-v1.yaml). Default model is `local` = nemotron-3-nano:4b — LIGHT + FAST
 # (~9.6GB), workable for interactive chat / claw3d / the Telegram gateway on a
 # 24GB box. (local-heavy = qwen3.6:27b ~22GB thrashes 24GB → slow; still available
 # as an explicit alias for heavy reasoning, just not the default.) All-local, no cloud.
 LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
-# Availability-gating fallback target = models.yml .default (local-gemma4), so a
+# Availability-gating fallback target = models.yml .default (local), so a
 # fresh install (LM Studio down) renders gated profiles to the SAME id that doctor
 # check 40 + `model sync` expect — no false-positive DRIFT. Falls back to the
 # literal `local` only when models.yml is absent (partial checkout).
@@ -427,10 +427,10 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
 fi
 # Scoped key is minted against the fixed SUPERSET (legacy IDs UNION the 3
 # canonical model<->agent slugs) so a later `vz-ai-stack.sh model assign/sync` never
-# needs to re-mint when a profile is pointed at local-qwen3.6 / local-qwen3-coder.
+# needs to re-mint when a profile is pointed at local / local.
 # These canonical IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM still enforces the allowlist server-side.
-HERMES_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"]'
+HERMES_SUPERSET_JSON='["local","local-heavy"]'
 # GW-5: resolve a reachable LiteLLM base ONCE (LOOPBACK-FIRST, matching common.sh's standard). On a
 # cold/second machine the `litellm:4000` ingress alias (Phase 00n /etc/hosts) may not exist yet, so
 # the always-published loopback (the `-p 127.0.0.1:4000` publish) is the robust default — without
@@ -445,7 +445,7 @@ done
 HERMES_KEY="$(get_env HERMES_LITELLM_KEY '')"
 if [[ -z "$HERMES_KEY" ]] \
    || ! litellm_scoped_curl "$HERMES_KEY" -sf --max-time 5 "$HERMES_LB/v1/models" >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
+  log "Minting LiteLLM virtual key for Hermes (models=superset[local,local-heavy])..."
   HERMES_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST "$HERMES_LB/key/generate" \
     -d "{\"models\":${HERMES_SUPERSET_JSON},\"key_alias\":\"hermes-fleet\",\"metadata\":{\"owner\":\"hermes\",\"purpose\":\"phase04f\"}}" \
@@ -501,7 +501,7 @@ resolve_profile_model() {
     *)
       echo "$declared"; return ;;
   esac
-  echo "$HERMES_MODEL"   # gated fallback (= models.yml .default = local-gemma4)
+  echo "$HERMES_MODEL"   # gated fallback (= models.yml .default = local)
 }
 
 # configure_hermes_profile <pflag> <model>

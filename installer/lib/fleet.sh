@@ -15,7 +15,7 @@
 #                      with its own deny-by-default policy + starter profile set.
 #
 # Design notes (load-bearing):
-#   * NEVER loads a model. New/added profiles default to the gemma4 ollama
+#   * NEVER loads a model. New/added profiles default to the nemotron-3-nano:4b ollama
 #     `.default` so they are servable on a fresh box; availability-gating
 #     handles a down runtime.
 #   * NEVER echoes a key value (HERMES_LITELLM_KEY / FLEET_*_LITELLM_KEY).
@@ -180,7 +180,7 @@ cmd_fleet_add() {
 
   validate_models
 
-  # Resolve model: --model or models.yml .default (gemma4, ollama -> servable).
+  # Resolve model: --model or models.yml .default (nemotron-3-nano:4b, ollama -> servable).
   local model; model="${arg_model:-$(my_q '.default')}"
   if [[ -n "$arg_model" ]] && ! model_exists "$model"; then
     err "fleet add: unknown model '$model'. Valid models:"
@@ -530,7 +530,7 @@ cmd_fleet_new() {
   local sb="${name}-v1"
   local osh; osh="$(osh_bin)"
 
-  # Resolve the gemma4 default (servable on a fresh box). Model is hard-pinned to
+  # Resolve the nemotron-3-nano:4b default (servable on a fresh box). Model is hard-pinned to
   # local unless --allow-mlx un-pins it to the availability-gated assignment.
   local HERMES_MODEL="local"
   if [[ -f "$MODELS_YML" ]] && command -v yq >/dev/null 2>&1; then
@@ -559,7 +559,7 @@ cmd_fleet_new() {
     note "new sandbox:   $sb (--from base)"
     note "policy:        $POLICY (minimal: litellm_proxy + package_registries)"
     note "profiles:      ${PROFILES[*]}"
-    note "model bind:    $([[ $allow_mlx == 1 ]] && echo 'availability-gated (--allow-mlx un-pins gemma4)' || echo "$HERMES_MODEL (hard pin)")"
+    note "model bind:    $([[ $allow_mlx == 1 ]] && echo 'availability-gated (--allow-mlx un-pins nemotron-3-nano:4b)' || echo "$HERMES_MODEL (hard pin)")"
     if (( mint )); then
       local fkey; fkey="FLEET_$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')_LITELLM_KEY"
       note "key:           mint $fkey scoped to the LiteLLM superset (value masked)"

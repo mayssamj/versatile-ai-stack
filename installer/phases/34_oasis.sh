@@ -12,7 +12,7 @@
 #   * NO container/port/hostname. Run sims via: bin/oasis oasis/sims/<file>.py
 #
 # Constitution honored: OPT-IN (not in install_all_phase_order); scoped key
-# (OASIS_LITELLM_KEY), never master; default model local-gemma4; calls traced in
+# (OASIS_LITELLM_KEY), never master; default model local; calls traced in
 # Phoenix. Reversible: rm -rf oasis/.venv + unstamp; oasis/sims is DATA.
 #
 # SCALE REALITY: the 1M-agent figure is upstream — on the M4/24GB box local
@@ -32,7 +32,7 @@ OA_VENV="$OA_DIR/.venv"
 OA_PY="$OA_VENV/bin/python"
 OA_WRAPPER="$AI_STACK/bin/oasis"
 OA_SIMS="$OA_DIR/sims"
-OA_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: OA_MODEL=local-gemma4
+OA_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: OA_MODEL=local
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell);
 # the container DNS name litellm:4000 also works once core Phase 00n writes the
 # /etc/hosts alias, so install-time probes try litellm first then fall back.
@@ -106,10 +106,10 @@ OA_KEY_CURRENT="$(get_env OASIS_LITELLM_KEY '')"
 _oa_models=""
 [[ -n "$OA_KEY_CURRENT" ]] && _oa_models="$(litellm_scoped_curl "$OA_KEY_CURRENT" -s --max-time 5 "$OA_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$OA_KEY_CURRENT" ]] || ! printf '%s' "$_oa_models" | grep -q '"id"'; then
-  log "Minting scoped LiteLLM key for OASIS (local-gemma4 + *-sub fallbacks)…"
+  log "Minting scoped LiteLLM key for OASIS (local + *-sub fallbacks)…"
   OA_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$OA_LLM_BASE/key/generate" \
-    -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"oasis","metadata":{"owner":"oasis","purpose":"phase34"}}' \
+    -d '{"models":["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"oasis","metadata":{"owner":"oasis","purpose":"phase34"}}' \
     | "$OA_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$OA_KEY_NEW" ]] || { err "Failed to mint OASIS_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env OASIS_LITELLM_KEY "$OA_KEY_NEW"
@@ -118,7 +118,7 @@ else
   ok "OASIS_LITELLM_KEY already present + valid"
 fi
 
-# --- 3. Resolve bound model (default local-gemma4) ---
+# --- 3. Resolve bound model (default local) ---
 OA_MODEL="$OA_MODEL_DEFAULT"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _om="$(yq -r '.assignments.oasis // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -129,7 +129,7 @@ ok "OASIS model = $OA_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
 # which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
 # when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
 # bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
-litellm_reconcile_key OASIS_LITELLM_KEY "$OA_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
+litellm_reconcile_key OASIS_LITELLM_KEY "$OA_MODEL" local claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 4. bin/oasis wrapper (injects key from .env at RUNTIME) ---
 # The wrapper points at 127.0.0.1:4000 — the host-shell route that always resolves
@@ -161,7 +161,7 @@ ok "wrote $OA_WRAPPER"
 # --- 5. Seed a tiny CAMEL→LiteLLM multi-agent sim (the routing proof; smoke runs it) ---
 # Verified against camel 0.2.78 (2026-06-23): the OpenAI-compatible platform enum is
 # OPENAI_COMPATIBLE_MODEL; model_type takes a plain LiteLLM model-id string; create()
-# uses url= + api_key=. local-gemma4 is a *reasoning* model — a small max_tokens is
+# uses url= + api_key=. local is a *reasoning* model — a small max_tokens is
 # spent entirely 'thinking' and returns EMPTY content, so max_tokens is 512.
 cat > "$OA_SIMS/smoke_sim.py" <<'PY'
 """OASIS smoke: prove camel-oasis is installed AND a CAMEL OpenAI-compatible model
@@ -172,7 +172,7 @@ OPENAI_API_KEY / OASIS_MODEL from env (injected by bin/oasis). Prints
 Verified against camel 0.2.78 (2026-06-23). Distinct exit codes let the caller tell
 an API drift (4/5) from an auth/routing failure (3): 0=all replied, 3=some agent did
 not reply (placeholder/401 key, or empty model output), 4=import drift, 5=ModelFactory
-API drift. local-gemma4 reasons before it answers, hence max_tokens=512."""
+API drift. local reasons before it answers, hence max_tokens=512."""
 import os, sys, signal
 
 # Hard wall-clock guard so a hung/queued model can't block `test 34` forever

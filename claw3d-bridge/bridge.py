@@ -41,18 +41,16 @@ AI_STACK = os.path.expanduser("~/ai-stack")
 # otherwise _safe_model() would strip a forwarded canonical model back to the
 # default and the agent's bound model would be silently ignored.
 LITELLM_MODELS = [
-    "local", "local-heavy", "local-lfm2",
-    "local-gemma4", "local-qwen3.6", "local-qwen3-coder",
+    "local", "local-heavy", "local-nemotron3-nano-4b",
 ]
 # LM Studio MLX slugs among the above (used for best-effort pre-warm).
-LMSTUDIO_MODELS = {"local-qwen3.6": "qwen/qwen3.6-27b",
-                   "local-qwen3-coder": "qwen3-coder-30b-a3b-instruct-mlx"}
+LMSTUDIO_MODELS = {"local-nemotron3-nano-4b-mlx": "nvidia/nemotron-3-nano-4b"}
 HERMES_SANDBOX = "hermes-fleet-v1"
 PI_SANDBOX = "pi-v1"
 DEERFLOW_URL = os.environ.get("DEERFLOW_URL", "http://localhost:2026")
 DEERFLOW_AUTH = os.environ.get("DEER_FLOW_INTERNAL_AUTH_TOKEN", "")
 HERMES_TIMEOUT = int(os.environ.get("CLAW3D_HERMES_TIMEOUT", "120"))
-# Pi on a big MLX coder model (local-qwen3-coder) is much slower than gemma4;
+# Pi on an MLX model via LM Studio can be slower to first token than the ollama default;
 # raised 180 -> 600 so a real coder turn doesn't get cut off.
 PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "600"))
 DEERFLOW_TIMEOUT = int(os.environ.get("CLAW3D_DEERFLOW_TIMEOUT", "600"))
@@ -193,7 +191,7 @@ def run_pi(prompt: str, model: str) -> str:
         raise RuntimeError("pi-v1 not reachable (OpenShell relay down? `brew services restart openshell`)")
     pi_key = _get_env("PI_LITELLM_KEY")
     # Use the PASSED-THROUGH model (allowlisted via _safe_model), NOT a hardcoded
-    # 'local'. This is what lets Pi run on its bound model (local-qwen3-coder when
+    # 'local'. This is what lets Pi run on its bound model (local when
     # LM Studio is up). _safe_model already strips anything not in LITELLM_MODELS
     # back to DEFAULT_MODEL (CWE-88: no leading '-' reaching argv).
     model = _safe_model(model)
@@ -346,7 +344,7 @@ class Handler(BaseHTTPRequestHandler):
         agent = AGENTS_BY_ID.get(agent_id) or AGENTS_BY_ID.get("hermes_manager")
         # Honor each agent's BOUND model (installer/models.yml, rendered into .env
         # by `model sync`). Pi reads PI_DEFAULT_MODEL (already availability-gated:
-        # local-qwen3-coder when LM Studio is up, else `local`). Other backends keep
+        # local when LM Studio is up, else `local`). Other backends keep
         # the bridge default. _safe_model() (in the adapters) re-allowlists it.
         model = DEFAULT_MODEL
         if agent.get("backend") == "pi":

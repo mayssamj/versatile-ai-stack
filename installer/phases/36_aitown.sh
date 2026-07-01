@@ -32,7 +32,7 @@
 # Constitution honored:
 #   * OPT-IN: not in install_all_phase_order() — install by name/id.
 #   * Scoped LiteLLM key (AITOWN_LITELLM_KEY), never the master; default model
-#     local-gemma4 (+ *-sub fallbacks). Calls show in Phoenix (ai-stack) for free.
+#     local (+ *-sub fallbacks). Calls show in Phoenix (ai-stack) for free.
 #   * Reversible + data-safe: teardown default is `down` (PRESERVES the SQLite world);
 #     only `--nuke` does `down -v` + removes the data dir (backup-first checkpoint).
 #   * Caps on EVERY container (deploy.resources.limits in the override + a post-up
@@ -40,7 +40,7 @@
 #
 # THROUGHPUT REALITY (M4/24GB): local inference is the limiter. We pin
 # NUM_MEMORIES_TO_SEARCH=1 (convex/constants.ts, default 3) and the town runs a small
-# cast on local-gemma4. Route to a cloud model (metered) for a bigger/livelier town.
+# cast on local. Route to a cloud model (metered) for a bigger/livelier town.
 #
 # Standalone: bash vz-ai-stack.sh install 36   (alias: aitown)
 set -Eeuo pipefail
@@ -61,7 +61,7 @@ AT_FE_CTR_PORT="5173"
 AT_BE_PORT="3210"
 AT_DASH_PORT="6791"
 AT_IP="${ALIAS_IP[aitown]:-127.0.10.19}"
-AT_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: AITOWN_MODEL=local-gemma4 (heavy multi-agent town — see note)
+AT_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: AITOWN_MODEL=local (heavy multi-agent town — see note)
 AT_EMBED_MODEL="embed-local"
 # Host-shell route always resolves (127.0.0.1); the container alias litellm:4000 only
 # resolves after core Phase 00n writes /etc/hosts, so probe litellm first then fall back.
@@ -250,10 +250,10 @@ AT_KEY_CURRENT="$(get_env AITOWN_LITELLM_KEY '')"
 _at_models=""
 [[ -n "$AT_KEY_CURRENT" ]] && _at_models="$(litellm_scoped_curl "$AT_KEY_CURRENT" -s --max-time 5 "$AT_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$AT_KEY_CURRENT" ]] || ! printf '%s' "$_at_models" | grep -q '"id"'; then
-  log "Minting scoped LiteLLM key for AI Town (chat + embeddings; local-gemma4 + *-sub fallbacks)…"
+  log "Minting scoped LiteLLM key for AI Town (chat + embeddings; local + *-sub fallbacks)…"
   # Scope to the town's chat models AND embed-local (the town needs BOTH /v1/chat and
   # /v1/embeddings; a chat-only key would 401 every memory write).
-  _gen_body="$(python3 -c 'import json; print(json.dumps({"models":["local-gemma4","embed-local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"aitown","metadata":{"owner":"aitown","purpose":"phase36"}}))')"
+  _gen_body="$(python3 -c 'import json; print(json.dumps({"models":["local","embed-local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"aitown","metadata":{"owner":"aitown","purpose":"phase36"}}))')"
   AT_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$AT_LLM_BASE/key/generate" -d "$_gen_body" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
@@ -265,7 +265,7 @@ else
 fi
 AT_KEY="$(get_env AITOWN_LITELLM_KEY '')"
 
-# --- 4. Resolve bound model (default local-gemma4) ---------------------------
+# --- 4. Resolve bound model (default local) ---------------------------
 AT_MODEL="$AT_MODEL_DEFAULT"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _am="$(yq -r '.assignments.aitown // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -276,7 +276,7 @@ ok "AI Town model = $AT_MODEL (chat via LiteLLM → Phoenix project ai-stack); e
 # which an operator may have re-assigned) PLUS embed-local + the mint fallbacks. The mint
 # only re-mints when the key is fully dead, so a rename/re-assign leaves a stale key
 # SILENT-403ing the bound model (`model sync` never touches this key). See common.sh.
-litellm_reconcile_key AITOWN_LITELLM_KEY "$AT_MODEL" "$AT_EMBED_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
+litellm_reconcile_key AITOWN_LITELLM_KEY "$AT_MODEL" "$AT_EMBED_MODEL" local claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 5. Dedicated bind-mounted data dir + the docker-compose.override.yml -----
 # DATA SAFETY: a BIND mount (not a named volume) means an accidental `down -v` cannot
@@ -561,7 +561,7 @@ ok "Phase 36 — AI Town — complete"
 note "Watch the town: open http://aitown:$AT_FE_HOST_PORT/   (or http://$AT_IP:$AT_FE_HOST_PORT/)"
 note "Convex dashboard (admin): http://$AT_IP:$AT_DASH_PORT/   (loopback-only)"
 note "Trace every character's LLM call: Phoenix → http://phoenix:6006 (project ai-stack)"
-note "Model: default is claude-opus-sub-xhigh. Cheap on-box: (cd $AT_DIR && npx convex env set LLM_MODEL local-gemma4) then restart"
+note "Model: default is claude-opus-sub-xhigh. Cheap on-box: (cd $AT_DIR && npx convex env set LLM_MODEL local) then restart"
 note "Manage:    vz-ai-stack.sh start aitown | stop aitown | status | doctor aitown | test 36"
 note "Data:      the town world is SQLite at $AT_DATA/convex (bind-mount; survives 'down')"
 note "Teardown:  bash $AI_STACK/bin/start-aitown.sh uninstall          # 'down' — PRESERVES the world"

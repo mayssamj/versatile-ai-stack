@@ -156,11 +156,11 @@ MP_KEY_CURRENT="$(get_env MEMPALACE_LITELLM_KEY '')"
 # not in models.yml `kinds:`), so this phase is the only thing that re-mints it.
 _mp_models="$(litellm_scoped_curl "$MP_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)"
 if [[ -z "$MP_KEY_CURRENT" ]] || ! printf '%s' "$_mp_models" | grep -q '"id"'; then
-  log "Minting LiteLLM virtual key for MemPalace (claude-opus-sub-xhigh + local-gemma4 fallback)..."
+  log "Minting LiteLLM virtual key for MemPalace (claude-opus-sub-xhigh + local fallback)..."
   MP_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["claude-opus-sub-xhigh","local-gemma4"],"key_alias":"mempalace-memory","metadata":{"owner":"mempalace","purpose":"phase26"}}' \
+    -d '{"models":["claude-opus-sub-xhigh","local"],"key_alias":"mempalace-memory","metadata":{"owner":"mempalace","purpose":"phase26"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$MP_KEY_NEW" ]] || { err "Failed to mint MEMPALACE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env MEMPALACE_LITELLM_KEY "$MP_KEY_NEW"
@@ -172,7 +172,7 @@ fi
 # --- 3. Resolve bound model (availability-gated; default claude-opus-sub-xhigh) ---
 # MemPalace's LLM is OPTIONAL (entity refinement / --extract general). Platform
 # policy (2026-06-20): default to claude-opus-sub-xhigh (Claude subscription
-# via Meridian; LiteLLM falls back to local-gemma4 if Meridian is down). If
+# via Meridian; LiteLLM falls back to local if Meridian is down). If
 # models.yml binds an lmstudio slug that isn't up, gate to `.primary` so a cold
 # install never pins MemPalace to an unreachable model.
 MP_MODEL="claude-opus-sub-xhigh"
@@ -193,12 +193,12 @@ ok "MemPalace LLM model (entity refinement) = $MP_MODEL (embeddings stay on-devi
 
 # --- 3b. Self-heal the key's allow-list against the bound model --------------
 # Step 2 only re-mints when the key is fully dead (can't list ANY model), so a key
-# that still allows the local-gemma4 fallback survives a model RENAME with only the
+# that still allows the local fallback survives a model RENAME with only the
 # OLD alias -> the wrapper's $MP_MODEL call SILENT-403s (`model sync` never touches
-# this key). Idempotently widen the key in place to allow {$MP_MODEL, local-gemma4}.
+# this key). Idempotently widen the key in place to allow {$MP_MODEL, local}.
 # See litellm_reconcile_key in lib/common.sh (self-lookup read, wildcard-safe,
 # union/never-narrow, WARN-non-fatal).
-litellm_reconcile_key MEMPALACE_LITELLM_KEY "$MP_MODEL" local-gemma4
+litellm_reconcile_key MEMPALACE_LITELLM_KEY "$MP_MODEL" local
 
 # --- 4. bin/mempalace wrapper (injects LiteLLM + embedding env) ---
 cat > "$MP_WRAPPER" <<WRAPEOF

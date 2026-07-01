@@ -15,7 +15,7 @@
 # Constitution honored:
 #   * OPT-IN: not in install_all_phase_order() — install by name/id.
 #   * Scoped LiteLLM key (METAGPT_LITELLM_KEY), never the master; default model
-#     local-gemma4 (+ *-sub fallbacks). Calls show up in Phoenix (ai-stack) for free.
+#     local (+ *-sub fallbacks). Calls show up in Phoenix (ai-stack) for free.
 #   * Reversible: rm -rf metagpt/.venv + unstamp; workspace (sim output) is DATA.
 #
 # Standalone: bash vz-ai-stack.sh install 32   (alias: metagpt)
@@ -34,7 +34,7 @@ MG_WRAPPER="$AI_STACK/bin/metagpt"
 MG_WORKSPACE="$MG_DIR/workspace"
 # Default LLM (entity work routes through LiteLLM). Overridable via models.yml
 # .assignments.metagpt or MG_MODEL env; otherwise the platform default
-# claude-opus-sub-xhigh. For cheap on-box runs: MG_MODEL=local-gemma4 (key-scoped).
+# claude-opus-sub-xhigh. For cheap on-box runs: MG_MODEL=local (key-scoped).
 MG_MODEL_DEFAULT="claude-opus-sub-xhigh"
 # Host-venv tools route to 127.0.0.1:4000 (always reachable from the host shell);
 # the container DNS name litellm:4000 also works once core Phase 00n writes the
@@ -120,10 +120,10 @@ MG_KEY_CURRENT="$(get_env METAGPT_LITELLM_KEY '')"
 _mg_models=""
 [[ -n "$MG_KEY_CURRENT" ]] && _mg_models="$(litellm_scoped_curl "$MG_KEY_CURRENT" -s --max-time 5 "$MG_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$MG_KEY_CURRENT" ]] || ! printf '%s' "$_mg_models" | grep -q '"id"'; then
-  log "Minting scoped LiteLLM key for MetaGPT (local-gemma4 + *-sub fallbacks)…"
+  log "Minting scoped LiteLLM key for MetaGPT (local + *-sub fallbacks)…"
   MG_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$MG_LLM_BASE/key/generate" \
-    -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"metagpt","metadata":{"owner":"metagpt","purpose":"phase32"}}' \
+    -d '{"models":["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"metagpt","metadata":{"owner":"metagpt","purpose":"phase32"}}' \
     | "$MG_PY" -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$MG_KEY_NEW" ]] || { err "Failed to mint METAGPT_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env METAGPT_LITELLM_KEY "$MG_KEY_NEW"
@@ -132,7 +132,7 @@ else
   ok "METAGPT_LITELLM_KEY already present + valid"
 fi
 
-# --- 3. Resolve bound model (availability-gated; default local-gemma4) ---
+# --- 3. Resolve bound model (availability-gated; default local) ---
 MG_MODEL="$MG_MODEL_DEFAULT"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _mm="$(yq -r '.assignments.metagpt // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -143,7 +143,7 @@ ok "MetaGPT LLM model = $MG_MODEL (routed via LiteLLM → Phoenix project ai-sta
 # which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
 # when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
 # bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
-litellm_reconcile_key METAGPT_LITELLM_KEY "$MG_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high
+litellm_reconcile_key METAGPT_LITELLM_KEY "$MG_MODEL" local claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 4. bin/metagpt wrapper (injects key from .env at RUNTIME; writes ~/.metagpt/config2.yaml) ---
 # The wrapper writes config2.yaml each run from the .env key (0600, in $HOME — never
@@ -211,5 +211,5 @@ ok "Phase 32 — MetaGPT — complete"
 note "Prove the wrapper: vz-ai-stack.sh test 32     # runs bin/metagpt end-to-end"
 note "Run a swarm:   bin/metagpt \"create a CLI 2048 game in python\"   # output → metagpt/workspace/"
 note "Watch it:      Phoenix → http://phoenix:6006 (project ai-stack) traces every agent's LLM call"
-note "Model:         default is claude-opus-sub-xhigh. Cheap on-box: METAGPT_MODEL=local-gemma4 bin/metagpt \"…\""
+note "Model:         default is claude-opus-sub-xhigh. Cheap on-box: METAGPT_MODEL=local bin/metagpt \"…\""
 note "Reversible:    rm -rf $MG_VENV && rm -f $AI_STACK/installer/state/phase_32.done"

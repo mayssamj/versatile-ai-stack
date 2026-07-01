@@ -288,7 +288,7 @@ lms_ram_preflight() {
   local _g; _g() { awk -v b="$1" 'BEGIN{printf "%.1f", b/1073741824}'; }
   if (( cap + padded + head > total )); then
     warn "RAM preflight: refusing to load $served — OrbStack cap $(_g "$cap")GiB + model $(_g "$padded")GiB (padded) + headroom $(_g "$head")GiB exceeds total $(_g "$total")GiB RAM."
-    warn "Lower OrbStack's memory cap (~/.orbstack/vmconfig.json) or pick a smaller model; the agent falls back to the ollama default (local-gemma4). Override: LMS_SKIP_RAM_PREFLIGHT=1."
+    warn "Lower OrbStack's memory cap (~/.orbstack/vmconfig.json) or pick a smaller model; the agent falls back to the ollama default (local). Override: LMS_SKIP_RAM_PREFLIGHT=1."
     return 1
   fi
   note "RAM preflight OK for $served (cap+model+headroom within $(_g "$total")GiB)."
@@ -352,8 +352,8 @@ print_inference_hint() {
   if lms_server_up; then lm="up"; fi
   cli="$(lms_cli 2>/dev/null || true)"; [[ -n "$cli" ]] || cli="$HOME/.lmstudio/bin/lms"
   printf '\nInference runtimes (activate at least one — local models route through LiteLLM :4000):\n'
-  printf '  Ollama    [%s]  default = local-gemma4.  start: brew services start ollama\n' "$ol"
-  printf '  LM Studio [%s]  opt-in MLX = local-qwen-heavy-fast / local-gemma4-12b.  start: vz-ai-stack.sh start lmstudio\n' "$lm"
+  printf '  Ollama    [%s]  default = local (nemotron-3-nano:4b).  start: brew services start ollama\n' "$ol"
+  printf '  LM Studio [%s]  opt-in MLX = local-nemotron3-nano-4b-mlx.  start: vz-ai-stack.sh start lmstudio\n' "$lm"
   if [[ "$lm" == "down" ]]; then
     printf '            (LM Studio-bound agents fall back to the ollama default until it is up)\n'
   fi

@@ -71,7 +71,7 @@ assert d["read_only"] is True, "read_only flag not propagated"
 
 # 2. /api/stage edit -> real models.yml diff, no live mutation.
 stg="$(curl -s $H -X POST "http://127.0.0.1:$PORT/api/stage" \
-  -d '{"op":"edit","args":{"name":"local-gemma4","field":"note","value":"SMOKE-CONSOLE-NOTE"}}')"
+  -d '{"op":"edit","args":{"name":"local","field":"note","value":"SMOKE-CONSOLE-NOTE"}}')"
 echo "$stg" | python3 -c 'import sys,json
 d=json.load(sys.stdin)
 assert d.get("ok") is True, d
@@ -81,7 +81,7 @@ assert d.get("needs_recreate") is False, "edit should not need recreate"
 
 # 3. refused change (remove .default) -> CLEAN 400, not a 500/crash.
 code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/stage" \
-  -d '{"op":"remove","args":{"name":"local-gemma4"}}')"
+  -d '{"op":"remove","args":{"name":"local"}}')"
 [[ "$code" == "400" ]] && yes_ "removing the default model -> clean 400 (guard surfaced, no crash)" || no_ "remove-default expected 400, got $code"
 
 # 4. non-loopback Host -> 403 (DNS-rebinding guard).
@@ -90,7 +90,7 @@ code="$(curl -s -H 'Host: evil.example.com' -o /dev/null -w '%{http_code}' -X PO
 
 # 5. apply refused in read-only.
 code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/apply" \
-  -d '{"op":"edit","args":{"name":"local-gemma4","field":"note","value":"x"}}')"
+  -d '{"op":"edit","args":{"name":"local","field":"note","value":"x"}}')"
 [[ "$code" == "403" ]] && yes_ "POST /api/apply -> 403 in --read-only mode" || no_ "read-only apply expected 403, got $code"
 
 # 6. sandbox source files untouched (no write leaked out of stage's own temp).
@@ -101,12 +101,12 @@ a_config="$(shasum "$tmp/config.yaml" | awk '{print $1}')"
 
 # 7. cross-origin POST -> 403 (CSRF guard: Origin host not loopback). Complements no-CORS.
 code="$(curl -s $H -H 'Origin: http://evil.example.com' -o /dev/null -w '%{http_code}' \
-  -X POST "http://127.0.0.1:$PORT/api/stage" -d '{"op":"edit","args":{"name":"local-gemma4","field":"note","value":"x"}}')"
+  -X POST "http://127.0.0.1:$PORT/api/stage" -d '{"op":"edit","args":{"name":"local","field":"note","value":"x"}}')"
 [[ "$code" == "403" ]] && yes_ "cross-origin POST (foreign Origin) -> 403 (CSRF guard)" || no_ "cross-origin POST expected 403, got $code"
 
 # 8. argv leading-dash smuggling -> clean 400 (a value/name starting with '-' is rejected).
 code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/stage" \
-  -d '{"op":"assign","args":{"agent":"--dry-run","model":"local-gemma4"}}')"
+  -d '{"op":"assign","args":{"agent":"--dry-run","model":"local"}}')"
 [[ "$code" == "400" ]] && yes_ "leading-dash arg ('--dry-run') -> clean 400 (argv-smuggling guard)" || no_ "dash-arg expected 400, got $code"
 
 # 9. add op (ollama) stages a true diff in the sandbox (or 400 if already declared — both OK).
@@ -131,7 +131,7 @@ assert "widening plan" not in cd and "render plan" not in cd, "config_diff over-
 ' 2>/dev/null && yes_ "/api/stage add(openai-compat new key) -> needs_recreate=true + clean render-plan (no P3/P4 bleed)" || no_ "add(openai-compat) stage failed: $stg"
 
 # 11. /api/test -> 503 when no key minted (LiteLLM best-effort degraded).
-code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/test" -d '{"model":"local-gemma4"}')"
+code="$(curl -s $H -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/test" -d '{"model":"local"}')"
 [[ "$code" == "503" ]] && yes_ "/api/test -> 503 when no test key (best-effort degrade)" || no_ "no-key test expected 503, got $code"
 
 echo

@@ -19,7 +19,7 @@
 #   - bin/rlm wrapper + rlm/run_rlm.py runner (no upstream CLI — it's a library).
 #
 # Verified 2026-05-31: `bin/rlm "compute 2**10 in the REPL"` → 1024, model
-# local (gemma4:e4b) via LiteLLM, code executed in a Docker sandbox. Unlike HALO,
+# local (nemotron-3-nano:4b) via LiteLLM, code executed in a Docker sandbox. Unlike HALO,
 # RLM uses chat-completions so it works with ollama-via-LiteLLM.
 #
 # Standalone install: `bash vz-ai-stack.sh install 18`.
@@ -84,10 +84,10 @@ if [[ -z "$RLM_KEY_CURRENT" ]] \
   # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
   # RLM without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
-  log "Minting LiteLLM virtual key for RLM (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
+  log "Minting LiteLLM virtual key for RLM (models=superset[local,local-heavy])..."
   RLM_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
+    -d '{"models":["local","local-heavy"],"key_alias":"rlm-recursive","metadata":{"owner":"rlm","purpose":"phase18"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$RLM_KEY_NEW" ]] || { err "Failed to mint RLM_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env RLM_LITELLM_KEY "$RLM_KEY_NEW"
@@ -101,7 +101,7 @@ RLM_KEY_NOW="$(get_env RLM_LITELLM_KEY '')"
 # RLM's bound model from installer/models.yml (availability-gated). RLM is now
 # assigned claude-opus-sub-xhigh; the bare "local" below is ONLY the degraded
 # fallback when models.yml is unreadable (the always-servable keyless net), and the
-# gate drops to `.default` (local-gemma4) only for a down lmstudio assignment. run_rlm.py reads $RLM_MODEL.
+# gate drops to `.default` (local) only for a down lmstudio assignment. run_rlm.py reads $RLM_MODEL.
 RLM_MODEL_VAL="local"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _rm="$(yq -r '.assignments.rlm // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -140,7 +140,7 @@ def main() -> int:
         description="Recursive Language Model — routed through LiteLLM, REPL sandboxed in Docker.")
     ap.add_argument("prompt", nargs="?", help="The task / prompt for the recursive LM.")
     ap.add_argument("-m", "--model", default=os.environ.get("RLM_MODEL", "local"),
-                    help="LiteLLM model (default: local=gemma4:e4b). Try local-heavy / local-lfm2.")
+                    help="LiteLLM model (default: local=nemotron-3-nano:4b). Try local-heavy or a cloud model.")
     ap.add_argument("--env", default=os.environ.get("RLM_ENV", "docker"),
                     choices=["docker", "local", "ipython"],
                     help="REPL backend (default: docker — sandboxed; 'local' runs generated code on the HOST).")

@@ -16,7 +16,7 @@ models:
   # LOCAL CHAT = nemotron-3-nano:4b ONLY (operator directive 2026-07-01). `local`
   # and `local-heavy` BOTH resolve to it — there is NO separate heavy local model;
   # `local-heavy` is kept purely as a back-compat alias so profiles/keys/docs that
-  # name it still resolve. No gemma4/qwen local chat model remains anywhere, so
+  # name it still resolve. No other local chat model remains anywhere, so
   # install + doctor pull ONLY nemotron-3-nano:4b (+ the embedders below). The
   # EMBEDDING plane (further down) is intentionally unchanged (kept per directive).
   local:

@@ -37,7 +37,7 @@ CONFIG="$AI_STACK/litellm/config.yaml"
 # Test-route allowlist = EVERY chat model wired into LiteLLM (minus embeddings), so a
 # freshly-added model can be smoke-tested. Mirrors tutorial-serve's derivation. The
 # $0.50 budget cap + short TTL bound any cloud/subscription spend from the test button.
-TEST_MODELS='["local","local-gemma4"]'
+TEST_MODELS='["local","local-heavy"]'
 if command -v yq >/dev/null 2>&1 && [[ -f "$CONFIG" ]]; then
   _chat_csv="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null \
     | grep -vE '^embed-' | awk 'NF' | sort -u | paste -sd, -)"

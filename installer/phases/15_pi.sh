@@ -106,14 +106,14 @@ fi
 
 # Scoped key minted against the fixed SUPERSET (legacy IDs UNION the 3 canonical
 # model<->agent slugs) so `vz-ai-stack.sh model assign/sync` can point Pi at
-# local-qwen3-coder (its declared default) without ever re-minting. The canonical
+# local (its declared default) without ever re-minting. The canonical
 # IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM enforces the allowlist server-side (cloud => 403).
-PI_SUPERSET_JSON='["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"]'
+PI_SUPERSET_JSON='["local","local-heavy"]'
 PI_KEY_CURRENT="$(get_env PI_LITELLM_KEY '')"
 if [[ -z "$PI_KEY_CURRENT" ]] \
    || ! litellm_scoped_curl "$PI_KEY_CURRENT" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
-  log "Minting LiteLLM virtual key for Pi (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
+  log "Minting LiteLLM virtual key for Pi (models=superset[local,local-heavy])..."
   PI_KEY_NEW="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
     -d "{\"models\":${PI_SUPERSET_JSON},\"key_alias\":\"pi-coding-agent\",\"metadata\":{\"owner\":\"pi\",\"purpose\":\"phase15\"}}" \
@@ -131,11 +131,11 @@ fi
 
 # --- Pi default model: pi's models.yml assignment, AVAILABILITY-GATED ------
 # PI_DEFAULT_MODEL = the model assigned to `pi` in installer/models.yml, gated to
-# the local default (local-gemma4) when its runtime backend is down — never write
+# the local default (local) when its runtime backend is down — never write
 # a slug Pi/LiteLLM can't reach. lmstudio gates on LM Studio (:1234); meridian
 # (Claude subscription) gates on the Meridian daemon (:3456). Mirrors 04f +
 # lib/models.sh::resolve_effective so a fresh install shows no false doctor-40 DRIFT.
-# (Was hardcoded to probe only local-qwen3-coder; pi is now assigned a subscription
+# (Was hardcoded to probe only local; pi is now assigned a subscription
 # model, so the gate must follow the assignment's runtime.)
 PI_KEY_PROBE="$(get_env PI_LITELLM_KEY '')"
 MODELS_YML="$AI_STACK/installer/models.yml"
@@ -306,4 +306,4 @@ ok "Phase 15 — Pi — complete"
 note "Run:    bin/pi    (launches Pi TUI inside $SANDBOX)"
 note "Kill:   bin/pi-kill"
 note "Shell:  openshell sandbox connect $SANDBOX   (full sandbox shell)"
-note "Models: pi defaults to claude-opus-sub-xhigh (platform default). On-box override: \`pi --model local-gemma4 | local-heavy | local-lfm2\`"
+note "Models: pi defaults to claude-opus-sub-xhigh (platform default). On-box override: \`pi --model local | local-heavy | local\`"

@@ -46,7 +46,7 @@ if _KEY_FILE and os.path.isfile(_KEY_FILE):
         pass
 HTML     = os.environ.get("TUT_HTML", "")
 ROOT     = os.path.realpath(os.environ.get("TUT_ROOT", "")) if os.environ.get("TUT_ROOT") else ""
-MODELS   = [m for m in os.environ.get("TUT_MODELS", "local-gemma4").split(",") if m]
+MODELS   = [m for m in os.environ.get("TUT_MODELS", "local").split(",") if m]
 EMBED    = os.environ.get("TUT_EMBED", "")   # embedding model id for the /api/embed demo (echoed by /api/health)
 # Two READ-ONLY 'Try it live' upstreams beyond LiteLLM (empty -> that demo is disabled and
 # its route degrades to {available:false}). Set by tutorial-serve.sh from .env. The proxy only

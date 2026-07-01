@@ -35,8 +35,8 @@ CONFIG="$AI_STACK/litellm/config.yaml"
 # loads nothing into memory (Ollama is lazy, LM Studio is opt-in, cloud/sub are
 # remote); the $0.50 budget cap + short TTL below bound any cloud/subscription
 # spend. Falls back to a minimal local set if config.yaml / yq is unavailable.
-DEMO_MODELS='["local","local-gemma4"]'
-DEMO_MODELS_DISPLAY="local,local-gemma4"
+DEMO_MODELS='["local","local-heavy"]'
+DEMO_MODELS_DISPLAY="local,local-heavy"
 EMBED_MODEL=""   # local embedding model for the /api/embed demo (added to the key allowlist only)
 if command -v yq >/dev/null 2>&1 && [[ -f "$CONFIG" ]]; then
   _chat_csv="$(yq -r '.model_list[].model_name' "$CONFIG" 2>/dev/null \

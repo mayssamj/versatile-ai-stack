@@ -67,7 +67,7 @@ chatdev_diagnose() {
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
   # common.sh): the /v1/models probe above only proves the key lists SOME model; this
   # verifies it ALLOWS the model ChatDev is bound to (models.yml .assignments.chatdev, else
-  # local-gemma4). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-down;
+  # local). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-down;
   # FAILs (with its own message) only on a genuine stale-key miss.
   _doctor_assert_key_allowlist "$key" CHATDEV_LITELLM_KEY chatdev "the model ChatDev calls" 35 || return 1
   echo "ChatDev ready (image + both containers + frontend 200 + scoped key lists models); prove the swarm: vz-ai-stack.sh test 35"

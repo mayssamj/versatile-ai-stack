@@ -26,7 +26,7 @@ PHASE=01
 
 # LOCAL-MODEL policy (operator directive 2026-07-01): nemotron-3-nano:4b is the
 # ONLY local chat model. Eager-pull ONLY it (`local`/`local-heavy` both map to it,
-# ~2.8GB, very light on a 24GB box) + the embedding model. No gemma4/qwen model is
+# ~2.8GB, very light on a 24GB box) + the embedding model. No other local model is
 # pulled by install OR doctor. See installer/models.yml + 'vz-ai-stack.sh model'.
 REQUIRED_MODELS=(
   nemotron-3-nano:4b
@@ -88,7 +88,7 @@ done
 # --- Disk-space precheck — ONLY for models we actually need to download --------
 # ~3GB of models (nemotron-3-nano:4b + nomic-embed-text) + download/extract
 # headroom = ~8GB. (Previously 30GB then 15GB — both stale, sized for the old
-# gemma4/qwen3.6-era pull policy — which blocked re-installs on a full box.)
+# heavy-model-era pull policy — which blocked re-installs on a full box.)
 if (( ${#MISSING_MODELS[@]} )); then
   require_disk_free 8 "$HOME" || { err "Need ~8GB free to pull missing models: ${MISSING_MODELS[*]}"; exit 1; }
   for m in "${MISSING_MODELS[@]}"; do

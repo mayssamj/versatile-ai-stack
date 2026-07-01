@@ -126,11 +126,11 @@ if [[ -z "$ACE_KEY_CURRENT" ]] \
   # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
   # ACE without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
-  log "Minting LiteLLM virtual key for ACE (models=superset[local,local-gemma4,local-heavy,local-lfm2,local-qwen3])..."
+  log "Minting LiteLLM virtual key for ACE (models=superset[local,local-heavy])..."
   ACE_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' \
     -X POST http://litellm:4000/key/generate \
-    -d '{"models":["local","local-gemma4","local-heavy","local-lfm2","local-qwen3"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \
+    -d '{"models":["local","local-heavy"],"key_alias":"ace-context-engineering","metadata":{"owner":"ace","purpose":"phase17"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   if [[ -z "$ACE_KEY_NEW" ]]; then
     err "Failed to mint ACE_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"
@@ -147,7 +147,7 @@ ACE_KEY_NOW="$(get_env ACE_LITELLM_KEY '')"
 # ACE's bound model from installer/models.yml (availability-gated). ACE is now
 # assigned claude-opus-sub-xhigh; the bare "local" below is ONLY the degraded
 # fallback when models.yml is unreadable (the always-servable keyless net), and
-# the gate drops to `.default` (local-gemma4) only for a down lmstudio assignment. If
+# the gate drops to `.default` (local) only for a down lmstudio assignment. If
 # ACE upstream IGNORES OPENAI_MODEL/ACE_DEFAULT_MODEL, the binding is
 # allowlist-only — `vz-ai-stack.sh model list` flags ACE as "(allowlist-only)" so it
 # never falsely reads as model-bound.

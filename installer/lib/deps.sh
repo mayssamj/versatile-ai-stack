@@ -247,7 +247,7 @@ ensure_ollama() {
 # (OLLAMA_HOST=0.0.0.0 + OLLAMA_ORIGINS=*) and keep the default model warm during a
 # work session (OLLAMA_KEEP_ALIVE=30m). KEEP_ALIVE=0 was previously used to avoid
 # pinning RAM on a 24GB box, but it forced a ~17s cold-load on EVERY call — and the
-# default model (gemma4:e4b) is only ~3.3GB resident, so a 30m idle window is cheap.
+# default model (nemotron-3-nano:4b) is only ~2.8GB resident, so a 30m idle window is cheap.
 # The real RAM lever on a constrained box is the OrbStack VM cap, not this.
 # Re-patches only if a key is MISSING *or set to a stale value* (e.g. a prior
 # install's KEEP_ALIVE=0) — a presence-only check would silently leave an old

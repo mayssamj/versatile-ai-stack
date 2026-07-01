@@ -4,9 +4,9 @@
 # Asserts:
 #   1. PI_LITELLM_KEY exists in .env (Phase 15 minted it).
 #   2. GET /v1/models with the virtual key returns exactly the DERIVED allowlist:
-#      the legacy IDs (local, local-heavy, local-lfm2) UNION Pi's models.yml slug
+#      the legacy IDs (local, local-heavy) UNION Pi's models.yml slug
 #      — i.e. the fixed SUPERSET that `model sync` widens every scoped key to.
-#      Falls back to the legacy literal 'local,local-heavy,local-lfm2' when
+#      Falls back to the legacy literal 'local,local-heavy,local' when
 #      models.yml is absent. (See _pi_expected_allowlist below.)
 #   3. POST /v1/chat/completions with model=claude-opus is rejected with
 #      a "key not allowed" 4xx error — proves the allowlist is server-side
@@ -23,14 +23,14 @@ _pi_litellm_litellm_up() {
 }
 
 # Expected allowlist, sorted-comma. DERIVED from models.yml when present:
-#   legacy IDs (local, local-heavy, local-lfm2) UNION Pi's assigned slug, and —
+#   legacy IDs (local, local-heavy, local) UNION Pi's assigned slug, and —
 #   because `model sync` widens every scoped key to the full fixed SUPERSET so
 #   `assign` never re-mints — we expect the full superset. Fall back to the
 #   pre-models.yml literal when models.yml is absent.
 _pi_expected_allowlist() {
   local yml="$AI_STACK/installer/models.yml"
   if [[ ! -f "$yml" ]] || ! command -v yq >/dev/null 2>&1; then
-    echo "local,local-heavy,local-lfm2"
+    echo "local,local-heavy"
     return 0
   fi
   # The DERIVED superset is the single source of truth (lib/models.sh superset):
@@ -39,7 +39,7 @@ _pi_expected_allowlist() {
   # canonical-3 list, so the check stays correct as models.yml grows.
   local sup
   sup="$(bash "$AI_STACK/installer/lib/models.sh" superset 2>/dev/null | sed '/^$/d' | LC_ALL=C sort -u | paste -sd, -)"
-  [[ -n "$sup" ]] && echo "$sup" || echo "local,local-heavy,local-lfm2"
+  [[ -n "$sup" ]] && echo "$sup" || echo "local,local-heavy"
 }
 
 pi_litellm_key_allowlist_diagnose() {

@@ -6,7 +6,7 @@
 #   1. the compose stack is up (≥3 running members under project `aitown`)
 #   2. the frontend serves HTTP 200 on the loopback alias :5273
 #   3. the scoped AITOWN_LITELLM_KEY lists models AND completes 1 token through LiteLLM
-#      (model local-gemma4) — the exact chat path the town's characters use
+#      (model local) — the exact chat path the town's characters use
 #   4. the Convex backend is WIRED: LLM_API_URL is set to host.docker.internal:4000
 #      (via container env OR `convex env get`) — so the town routes, not silent-defaults
 #
@@ -33,7 +33,7 @@ AT_BE_PORT="3210"
 # "TypeError: fetch failed"). Mirrors the phase's AT_CONVEX_URL.
 AT_CONVEX_URL="http://${AT_IP}:${AT_BE_PORT}"
 AT_CONVEX_LLM_URL="http://host.docker.internal:4000"
-AT_MODEL_DEFAULT="local-gemma4"
+AT_MODEL_DEFAULT="local"
 
 hdr "Smoke 36 — AI Town (Convex compose stack → LiteLLM)"
 

@@ -242,7 +242,7 @@ ai-stack-installer — usage:
                                         NOTE: `vz-ai-stack.sh install fleet|hermes` runs the PHASE (04f
                                         re-render); `vz-ai-stack.sh fleet <add|remove|list|new|destroy>`
                                         is the fleet MANAGER. (add/remove default new profiles to the
-                                        gemma4 default; nothing loads a model.)
+                                        nemotron-3-nano:4b default; nothing loads a model.)
     vz-ai-stack.sh docker-engine status     show the selected Docker engine + resolved socket
                                         + CLI/gateway consistency
     vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
@@ -1138,7 +1138,7 @@ cmd_stop() {
   # Brew-managed service (ollama/openshell)? Stop it via brew services.
   if _is_brew_service "$svc"; then
     if [[ "$svc" == ollama ]]; then
-      warn "Ollama is the DEFAULT local inference + every agent's availability-gating fallback (local-gemma4)."
+      warn "Ollama is the DEFAULT local inference + every agent's availability-gating fallback (local)."
       warn "Stopping it breaks any agent on the fallback. Note: 'vz-ai-stack.sh deps' and an interactive 'doctor' fix may restart it."
     elif [[ "$svc" == openshell ]]; then
       warn "Note: this stops only the OpenShell GATEWAY daemon; sandbox containers keep running but lose their gateway (orphaned). The watchdog/relay expect the gateway up."

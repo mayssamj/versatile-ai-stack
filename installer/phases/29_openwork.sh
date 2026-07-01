@@ -42,7 +42,7 @@ OW_OPENCODE_JSON="$OW_WORKDIR/opencode.json"
 
 # Models the OpenWork LiteLLM key may reach (a curated chat set — NOT the master
 # key, NOT "all"). Widen by editing this list + re-running 'install 29'.
-OPENWORK_KEY_MODELS='["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-sub-high","local-gemma4","local-qwen3"]'
+OPENWORK_KEY_MODELS='["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-sub-high","local"]'
 
 # Resolve the `openwork` binary (npm global bin is not always on a non-login PATH).
 _ow_bin() {
@@ -202,7 +202,7 @@ stamp_mark "$PHASE"
 record "phase 29 complete: openwork-orchestrator daemon + scoped LiteLLM key + seeded opencode.json"
 ok "Phase 29 — OpenWork — complete"
 note "WebUI:    'vz-ai-stack.sh start openwork' opens it PRE-AUTHED (no token to type) at http://openwork:$OW_PORT/ui — run 'sudo vz-ai-stack.sh prepare-sudo' once for the openwork hostname (until then it opens http://127.0.0.1:$OW_PORT/ui). Minimal 'Toy UI' harness; the polished Cowork UI is the optional desktop app."
-note "Models:   pre-seeded via $OW_OPENCODE_JSON → LiteLLM (claude-opus-sub-xhigh, local-gemma4, …)"
+note "Models:   pre-seeded via $OW_OPENCODE_JSON → LiteLLM (claude-opus-sub-xhigh, local, …)"
 note "Workspace: $OW_WORKDIR   (per-stack; separate from your personal ~/.config/opencode)"
 note "Heads-up (24GB): the orchestrator + its OpenCode sidecars stay resident — 'stop openwork' when done, especially alongside AionUi or heavy local models."
 note "Desktop app (optional alternate UI): download from https://github.com/different-ai/openwork/releases — point its OpenCode at the same opencode.json."

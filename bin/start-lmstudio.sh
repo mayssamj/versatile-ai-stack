@@ -78,4 +78,4 @@ ok "LM Studio server up on :${LMS_PORT} (http://127.0.0.1:${LMS_PORT})"
 # --- g. Reminders -------------------------------------------------------------
 warn "LM Studio's app idle-spins ~0.8 core; quit it when done: \`lms server stop\` + quit the app"
 note "No model auto-loads — assign one in models.yml + run \`vz-ai-stack.sh model sync\`"
-note "Endpoint:  http://127.0.0.1:${LMS_PORT}/v1  (OpenAI-compatible; LiteLLM routes local-qwen-heavy-fast / local-gemma4-12b through here)"
+note "Endpoint:  http://127.0.0.1:${LMS_PORT}/v1  (OpenAI-compatible; LiteLLM routes local-nemotron3-nano-4b-mlx through here)"

@@ -94,7 +94,7 @@ Pick a model — no default is assumed (so nothing loads by surprise). Examples:
   claude-litellm openrouter-claude-opus # real Claude Opus 4.8 (metered)
   claude-litellm sakana-fugu            # Sakana Fugu
 Full live menu:  claude-litellm --list
-Local models load into RAM and are opt-in:  CLAUDE_LITELLM_ALLOW_LOCAL=1 claude-litellm local-qwen3
+Local models load into RAM and are opt-in:  CLAUDE_LITELLM_ALLOW_LOCAL=1 claude-litellm local
 EOF
 }
 

@@ -78,7 +78,7 @@ aitown_diagnose() {
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
   # common.sh): the /v1/models probe above only proves the key lists SOME model; this
   # verifies it ALLOWS the chat model AI Town is bound to (models.yml .assignments.aitown,
-  # else local-gemma4). The helper probes /key/info LOOPBACK-FIRST (parity with this check's
+  # else local). The helper probes /key/info LOOPBACK-FIRST (parity with this check's
   # loopback-first /v1/models probe — the litellm:4000 alias only resolves with /etc/hosts).
   # Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-down; FAILs (with its
   # own message) only on a genuine stale-key miss.

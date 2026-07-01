@@ -43,7 +43,7 @@ agentscope_diagnose() {
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
   # common.sh): the /v1/models probe above only proves the key lists SOME model; this
   # verifies it ALLOWS the model AgentScope is bound to (models.yml .assignments.agentscope,
-  # else local-gemma4). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-
+  # else local). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-
   # down; FAILs (with its own message) only on a genuine stale-key miss. Runs before either
   # success path (lib-only or Studio).
   _doctor_assert_key_allowlist "$key" AGENTSCOPE_LITELLM_KEY agentscope "the model AgentScope calls" 33 || return 1

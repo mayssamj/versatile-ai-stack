@@ -27,7 +27,7 @@
 # at small budgets — the demo's 16 is too low).
 #
 # Constitution honored: OPT-IN (not in install_all_phase_order); scoped key, never
-# master; default model local-gemma4; calls traced in Phoenix. Reversible: the start
+# master; default model local; calls traced in Phoenix. Reversible: the start
 # script's uninstall + image rmi + rm -rf chatdev/ + unstamp.
 #
 # Standalone: bash vz-ai-stack.sh install 35   (alias: chatdev)
@@ -51,7 +51,7 @@ FE_IP="${ALIAS_IP[chatdev]:-127.0.10.18}"
 FE_HOST_PORT="${ALIAS_HOST_PORT[chatdev]:-5274}"
 FE_CTR_PORT="${ALIAS_CONTAINER_PORT[chatdev]:-5173}"
 BE_PORT="${CHATDEV_BACKEND_PORT:-6400}"
-CD_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: CHATDEV_MODEL=local-gemma4
+CD_MODEL_DEFAULT="claude-opus-sub-xhigh"   # platform default; cheap on-box override: CHATDEV_MODEL=local
 # Container DNS name for the LiteLLM mint/probe (install runs after core 00n writes
 # /etc/hosts); fall back to host loopback if the alias isn't resolvable yet.
 CD_LLM_HOST="http://litellm:4000"
@@ -174,10 +174,10 @@ CD_KEY_CURRENT="$(get_env CHATDEV_LITELLM_KEY '')"
 _cd_models=""
 [[ -n "$CD_KEY_CURRENT" ]] && _cd_models="$(litellm_scoped_curl "$CD_KEY_CURRENT" -s --max-time 5 "$CD_LLM_BASE/v1/models" 2>/dev/null)"
 if [[ -z "$CD_KEY_CURRENT" ]] || ! printf '%s' "$_cd_models" | grep -q '"id"'; then
-  log "Minting scoped LiteLLM key for ChatDev (local-gemma4 + *-sub fallbacks)…"
+  log "Minting scoped LiteLLM key for ChatDev (local + *-sub fallbacks)…"
   CD_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
     -H 'Content-Type: application/json' -X POST "$CD_LLM_BASE/key/generate" \
-    -d '{"models":["local-gemma4","claude-opus-sub-xhigh","claude-sonnet-sub-high","local-qwen3"],"key_alias":"chatdev","metadata":{"owner":"chatdev","purpose":"phase35"}}' \
+    -d '{"models":["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"],"key_alias":"chatdev","metadata":{"owner":"chatdev","purpose":"phase35"}}' \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("key",""))' 2>/dev/null)"
   [[ -n "$CD_KEY_NEW" ]] || { err "Failed to mint CHATDEV_LITELLM_KEY — is LiteLLM up with DATABASE_URL set?"; exit 1; }
   set_env CHATDEV_LITELLM_KEY "$CD_KEY_NEW"
@@ -187,7 +187,7 @@ else
 fi
 CD_KEY="$(get_env CHATDEV_LITELLM_KEY '')"
 
-# --- 3. Resolve bound model (default local-gemma4) ---------------------------
+# --- 3. Resolve bound model (default local) ---------------------------
 CD_MODEL="$CD_MODEL_DEFAULT"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
   _cm="$(yq -r '.assignments.chatdev // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
@@ -198,7 +198,7 @@ ok "ChatDev model = $CD_MODEL (routed via LiteLLM → Phoenix project ai-stack)"
 # which an operator may have re-assigned) PLUS the mint fallbacks. The mint only re-mints
 # when the key is fully dead, so a rename/re-assign leaves a stale key SILENT-403ing the
 # bound model (`model sync` never touches this key). See litellm_reconcile_key (common.sh).
-litellm_reconcile_key CHATDEV_LITELLM_KEY "$CD_MODEL" local-gemma4 claude-opus-sub-xhigh claude-sonnet-sub-high local-qwen3
+litellm_reconcile_key CHATDEV_LITELLM_KEY "$CD_MODEL" local claude-opus-sub-xhigh claude-sonnet-sub-high
 
 # --- 4. Write chatdev/repo/.env — the LiteLLM wiring the backend reads --------
 # Container-to-container: litellm:4000 over Docker DNS (NATIVE port, NOT the :80 alias).
@@ -326,6 +326,6 @@ note "Open the web app:  open http://chatdev:$FE_HOST_PORT     (or http://$FE_IP
 note "Backend API:       http://$FE_IP:$BE_PORT/docs"
 note "Prove the swarm:   vz-ai-stack.sh test 35   # headless 1-agent workflow → LiteLLM"
 note "Watch it:          Phoenix → http://phoenix:6006 (project ai-stack)"
-note "Model:             default is claude-opus-sub-xhigh. Cheap on-box: set a workflow YAML node's name: to local-gemma4"
+note "Model:             default is claude-opus-sub-xhigh. Cheap on-box: set a workflow YAML node's name: to local"
 note "Manage:            vz-ai-stack.sh start chatdev | stop chatdev | help chatdev | doctor chatdev"
 note "Reversible:        bash $AI_STACK/bin/start-chatdev.sh uninstall; docker rmi $IMAGE; rm -rf $CD_DIR; rm -f $AI_STACK/installer/state/phase_${PHASE}.done"

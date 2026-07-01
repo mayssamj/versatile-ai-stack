@@ -59,8 +59,9 @@ fi
 
 # Default-model injection: if the user did NOT pass -m/--model, prepend
 # `--model ${PI_DEFAULT_MODEL:-local}` so Pi runs on its bound model
-# (local-qwen3-coder when LM Studio is up + synced; `local` gemma4 otherwise —
-# the value in .env is already availability-gated by Phase 15 / `model sync`).
+# (its assigned subscription model when the runtime is up; the `local`
+# nemotron-3-nano:4b fallback otherwise — the value in .env is already
+# availability-gated by Phase 15 / `model sync`).
 # We scan the user's argv first so an explicit `bin/pi -m local-heavy ...`
 # always wins. PI_DEFAULT_MODEL is read from .env (get_env) above-equivalent
 # via the same source; fall back to `local` if unset.

@@ -122,7 +122,7 @@ fi
 # (2026-06-20): both tiers default to claude-opus-sub-xhigh — the "basic"
 # entry (name: local) tracks `.primary` and the "reasoning" entry (name:
 # local-heavy) tracks the deerflow assignment. lmstudio assignments still gate
-# DOWN to `.default` (local-gemma4, the offline net) when their runtime is down /
+# DOWN to `.default` (local, the offline net) when their runtime is down /
 # the slug isn't in config.yaml, so DeerFlow never gets a model_name LiteLLM
 # can't serve. We map BOTH tiers, never silently rewrite only one. DeerFlow uses
 # the MASTER key, so there is NO scoped-key allowlist to widen.

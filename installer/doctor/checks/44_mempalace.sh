@@ -67,7 +67,7 @@ mempalace_diagnose() {
     return 1
   fi
   # Allow-list assertion: /v1/models passing only proves the key lists SOME model —
-  # the local-gemma4 fallback survives a model RENAME, so a key still scoped to the
+  # the local fallback survives a model RENAME, so a key still scoped to the
   # OLD alias passes the probe yet SILENT-403s the model the wrapper actually calls.
   # Verify the key ALLOWS that model. Self-lookup (Bearer = the key, no ?key= in URL);
   # metadata read only — never cold-starts (routine-doctor safe).

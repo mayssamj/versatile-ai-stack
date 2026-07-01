@@ -39,8 +39,8 @@ litellm_scoped_curl "$key" -sf --max-time 6 http://litellm:4000/v1/models >/dev/
   || { err "AIONUI_LITELLM_KEY rejected by LiteLLM /v1/models"; exit 1; }
 chat_code="$(litellm_scoped_curl "$key" -s -o /dev/null -w '%{http_code}' --max-time 30 -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/v1/chat/completions \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || true)"
-[[ "$chat_code" == "200" ]] && ok "AIONUI_LITELLM_KEY completes a chat through LiteLLM (local-gemma4, HTTP 200)" \
+  -d '{"model":"local","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' 2>/dev/null || true)"
+[[ "$chat_code" == "200" ]] && ok "AIONUI_LITELLM_KEY completes a chat through LiteLLM (local, HTTP 200)" \
   || warn "chat completion returned HTTP $chat_code (key valid for /v1/models; the model may be down — advisory, not a hard fail)"
 
 ok "Phase 28 smoke: AionUi installed + WebUI healthy + LiteLLM key works"
