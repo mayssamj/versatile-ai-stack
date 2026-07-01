@@ -275,12 +275,12 @@ idle-spins **~0.8–1 core even with no model loaded and the server stopped**. O
 box that's a real liability. So:
 
 - Run LM Studio **only when you want its MLX models** — the two big agent models
-  `local-qwen3.6` + `local-qwen3-coder` (~17 GB each). Start the server with
+  `local-nemotron3-nano-4b-mlx` (the same nemotron on Apple MLX, opt-in). Start the server with
   `vz-ai-stack.sh start lmstudio` (idempotent). `install lmstudio` is the one-time
   **assignment-driven** setup: it loads only MLX models assigned to an agent in
   `models.yml`. (The retired `local-lfm2-mlx` demo, LFM2.5, is no longer wired by
   default; it stays an `LMS_LOAD_LFM2=1 bash vz-ai-stack.sh install lmstudio` opt-in.)
-  `local-gemma4` stays on Ollama, which remains the default runtime.
+  `local` stays on Ollama, which remains the default runtime.
 - **QUIT LM Studio when done:**
   ```bash
   vz-ai-stack.sh stop lmstudio        # stop the OpenAI server on :1234
@@ -296,7 +296,7 @@ lmstudio`) or remove the model from `litellm/config.yaml` while it's off.
 The same availability-gating protects subscription-assigned agents: the nine Hermes
 profiles (e.g. `hermes_backend_engineer` → `claude-opus-sub-max`), `pi`, and
 `deerflow` don't 404 when the Meridian host daemon is down — `vz-ai-stack.sh model sync`
-gates them back to `local-gemma4`. Re-run `model sync` once Meridian is up
+gates them back to `local`. Re-run `model sync` once Meridian is up
 (`bin/start-meridian.sh`) to promote them again (see [models.md](models.md)).
 
 ---

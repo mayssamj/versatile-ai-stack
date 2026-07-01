@@ -186,15 +186,16 @@ round-trip, no API key, no per-token bill.
 
 **Why is it here?** So you can answer "summarize this paragraph" or "fix
 this typo" without sending the text to a cloud provider. Also so the
-researcher Hermes profile can chew on long documents using `local-qwen3.6`
+researcher Hermes profile can chew on long documents using `local`
 (a 27B Qwen, served by LM Studio MLX) without burning credits.
 
 **What does it do for us?** Phase 01 now pins only two Ollama models:
-`gemma4:e4b` (small, fast, 9.6 GB) as `local-gemma4` — the always-on Ollama
-fallback agents gate to when their runtime is down — and `nomic-embed-text` for local embeddings. The heavy
-general-reasoning (`local-qwen3.6`) and coding (`local-qwen3-coder`) models
-moved to LM Studio MLX (~17 GB each, opt-in); the legacy Ollama `qwen3.6:27b`
-(`local-heavy`) is no longer auto-pulled. Which model each agent uses is now
+`nemotron-3-nano:4b` (small, fast, ~2.8 GB) as `local` — the ONLY local chat model +
+the always-on Ollama fallback agents gate to when their runtime is down — and
+`nomic-embed-text` for local embeddings. `local` and `local-heavy` both map to
+nemotron; there is no heavy 27B local model any more (operator directive
+2026-07-01). The opt-in LM Studio MLX slug `local-nemotron3-nano-4b-mlx` serves the
+same nemotron on Apple MLX. Which model each agent uses is now
 declared per-agent in `installer/models.yml` — see [models.md](models.md).
 Ollama keeps the default model warm for 30 min of inactivity
 (`OLLAMA_KEEP_ALIVE=30m`) so repeat calls are instant, then releases it.
@@ -538,7 +539,7 @@ Each profile's model is declared per-agent in `installer/models.yml` (the
 shipped defaults are below) and rendered by `vz-ai-stack.sh model sync` — see
 [models.md](models.md). All nine route to a **Claude subscription via Meridian**;
 when Meridian is down, `model sync` availability-gates every profile back to
-`local-gemma4`.
+`local`.
 
 | Profile | Role | Assigned model |
 |---|---|---|

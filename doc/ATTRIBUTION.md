@@ -139,9 +139,8 @@ ones most likely to have commercial conditions. Always confirm the exact model c
 
 | Model (stack alias) | Source | License | Notes |
 |---|---|---|---|
-| **Gemma** (`local` = `gemma4:e4b`) | https://ai.google.dev/gemma | Gemma Terms (1–3); **Apache-2.0 for Gemma 4+** | Gemma 1–3: prohibited-use policy + downstream flow-through. Terms: https://ai.google.dev/gemma/terms |
-| **Qwen** (`local-qwen3.6` = `qwen/qwen3.6-27b`, LM Studio MLX, opt-in; the old Ollama `local-heavy` = `qwen3.6:27b` is removed) | https://github.com/QwenLM/Qwen3 | Apache-2.0 (varies by model) | Qwen3 mostly Apache-2.0; some older/larger Qwen models use a custom license with an MAU threshold. Check the card. |
-| **LiquidAI LFM2** (`local-lfm2` — **deprecated**, manual `ollama pull` only) | https://www.liquid.ai/lfm-license | **LFM Open License v1.0** | Apache-2.0-based **with a $10M org-revenue commercial cap**. |
+| **NVIDIA Nemotron** (`local` / `local-heavy` / `local-nemotron3-nano-4b` = `nemotron-3-nano:4b`) | https://huggingface.co/nvidia | NVIDIA Open Model License | The stack's ONLY local chat model (Ollama, ~2.8GB) as of 2026-07-01; `local`/`local-heavy` both map to it. **Verify the exact license on the model card** (NVIDIA model-weight terms are version-specific). |
+| **LiquidAI LFM2** (`local-lfm2-mlx` — opt-in LM Studio MLX demo only, Phase 25; NOT installed by default) | https://www.liquid.ai/lfm-license | **LFM Open License v1.0** | Apache-2.0-based **with a $10M org-revenue commercial cap**. Only reached via `install lmstudio` + `LMS_LOAD_LFM2=1`. |
 | **nomic-embed-text** | https://huggingface.co/nomic-ai/nomic-embed-text-v1.5 | Apache-2.0 | Embeddings. |
 | **jina-embeddings-v2-base-code** | https://huggingface.co/jinaai/jina-embeddings-v2-base-code | Apache-2.0 | Code embeddings. |
 

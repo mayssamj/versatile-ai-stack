@@ -94,9 +94,9 @@ host-gateway / routing). See [TROUBLESHOOTING.md § Connection refused](TROUBLES
 All agents call local models through LiteLLM. Which model each agent uses is
 **declared per-agent** in `installer/models.yml` and rendered by `vz-ai-stack.sh model
 sync` (see [models.md](models.md)). Unassigned agents now render the primary `claude-opus-sub-max`, gated to
-`local-gemma4` (gemma4:e4b — the always-on Ollama fallback) when Meridian is down; the coder profiles + Pi use `local-qwen3-coder`
-and the reasoning-heavy profiles + DeerFlow use `local-qwen3.6` (both LM Studio MLX,
-opt-in). lmstudio-assigned agents fall back to `local-gemma4` automatically when LM
+`local` (nemotron-3-nano:4b — the always-on Ollama fallback) when Meridian is down; the coder profiles + Pi use `local`
+and the reasoning-heavy profiles + DeerFlow use `local` (both LM Studio MLX,
+opt-in). lmstudio-assigned agents fall back to `local` automatically when LM
 Studio is down, so a plain `install all` works with no LM Studio.
 
 | Agent | How to reach it | What it is |
@@ -114,7 +114,7 @@ Talk to LiteLLM directly to test the plumbing:
 KEY="$(grep ^LITELLM_MASTER_KEY= ~/ai-stack/.env | cut -d= -f2-)"
 curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hello"}]}' \
+  -d '{"model":"local","messages":[{"role":"user","content":"hello"}]}' \
   | jq -r '.choices[0].message.content'
 ```
 

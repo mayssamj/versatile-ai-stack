@@ -12,7 +12,7 @@ model assign accepts these valid GPT ids now: openai-gpt-5.5, openai-gpt-5.5-pro
 
 What made it seamless (the engine change)
 
-I taught the model-binding engine two new runtimes — openai (metered) and codex-bridge (your subscription) — so GPT-5.x is now first-class assignable (it was config-only/unassignable before). model assign registers the model, widens the scoped keys, and re-points the agent in one shot. A missing key or down bridge gates to local-gemma4 with a visible pending line — never a hard fail, never a surprise metered bill.
+I taught the model-binding engine two new runtimes — openai (metered) and codex-bridge (your subscription) — so GPT-5.x is now first-class assignable (it was config-only/unassignable before). model assign registers the model, widens the scoped keys, and re-points the agent in one shot. A missing key or down bridge gates to local with a visible pending line — never a hard fail, never a surprise metered bill.
 
 Verified live from main (not just merged)
 

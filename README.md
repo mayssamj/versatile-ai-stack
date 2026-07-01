@@ -14,7 +14,7 @@ ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: l
 - **Watch every thought your agents have** — every LLM call lands in Phoenix at `http://phoenix:6006`: prompts, responses, latency, and cost, all in one UI.
 - **A whole team in a box** — the Hermes 9-role engineering fleet (manager, techlead, frontend/backend/ML engineers, QA, reviewer, SRE, incident manager), a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
 - **Truly local-first** — models, memory, traces, and documents all stay on your machine; it works fully offline and only touches the cloud if you hand it keys.
-- **Three local models, sensible defaults** — `gemma4` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
+- **Three local models, sensible defaults** — `nemotron-3-nano:4b` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
 - **One installer, self-healing and reversible** — brings up all 51 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 68/71 doctor checks.
 - **See it before you run it** — [`doc/EXPLORE.html`](doc/EXPLORE.html) is a single self-contained page (just double-click, works offline) with a searchable card and copy-paste demo for every service.
 
@@ -153,9 +153,9 @@ A plain-language tour of the headline pieces (the full inventory is in the table
   same local model hub.
 - **Open WebUI — chat in your browser.** A familiar ChatGPT-style UI wired to your
   local models, at `http://openwebui:8080`.
-- **Three local models.** `local-gemma4` (Ollama `gemma4:e4b`, the always-on
-  fallback every agent gates to when its runtime is down), `local-qwen3.6` (LM Studio MLX, heavy
-  reasoning, opt-in), and `local-qwen3-coder` (LM Studio MLX, coding, opt-in). See [models.md](doc/models.md).
+- **Three local models.** `local` (Ollama `nemotron-3-nano:4b`, the always-on
+  fallback every agent gates to when its runtime is down), `local` (LM Studio MLX, heavy
+  reasoning, opt-in), and `local` (LM Studio MLX, coding, opt-in). See [models.md](doc/models.md).
 
 Plus storage (FalkorDB + Qdrant), cross-agent memory (Honcho), a docs RAG pipeline,
 security guardrails, fine-tuning (Unsloth), and more — all in the table below.
@@ -172,7 +172,7 @@ security guardrails, fine-tuning (Unsloth), and more — all in the table below.
 - **[Homebrew](https://brew.sh)** — the installer uses `brew` to install host tooling
   (Ollama, `yq`, etc.).
 - **Disk:** budget roughly **30–40 GB** for container images plus local model weights
-  (the default `gemma4:e4b` alone is ~9.6 GB; the optional MLX models add ~17 GB each).
+  (the default `nemotron-3-nano:4b` alone is ~2.8 GB; the optional MLX models add ~17 GB each).
 
 ### The happy path
 
@@ -243,8 +243,8 @@ Two flagship use-cases make the best on-ramp. Start with the 5-minute wow, then 
 *In a single chat round-trip you prove the whole stack is wired — proxy, local model, observability, and the host/container DNS — without writing a line of code.*
 
 1. Open the chat UI at `http://openwebui:8080`.
-2. Start a new chat, pick model **`local-gemma4`** (Gemma 4 E4B via Ollama, the default), and ask: *"What's the difference between LoRA and QLoRA?"*
-3. Open the observability UI at `http://phoenix:6006` in another tab and watch the single trace appear: an Open WebUI → LiteLLM span, a LiteLLM → Ollama child span, plus token counts, latency (~3–8s on M4), and the model field `gemma4:e4b`.
+2. Start a new chat, pick model **`local`** (Nemotron 3 Nano 4B via Ollama, the default), and ask: *"What's the difference between LoRA and QLoRA?"*
+3. Open the observability UI at `http://phoenix:6006` in another tab and watch the single trace appear: an Open WebUI → LiteLLM span, a LiteLLM → Ollama child span, plus token counts, latency (~3–8s on M4), and the model field `nemotron-3-nano:4b`.
 4. That one trace proves the alias chain (`openwebui` → `litellm:4000` → `ollama:11434`), LiteLLM auth, and Phoenix's OTLP exporter are all working.
 
 ```bash
@@ -354,7 +354,7 @@ sequenceDiagram
   participant R as hermes_ml_engineer (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as local-gemma4 (summarizer)
+  participant LH as local (summarizer)
   participant CL as Claude Opus (sub via Meridian)
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
@@ -631,12 +631,12 @@ snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
   asserts `doc/TUTORIAL.html` and `doc/DIAGRAMS.html` are self-contained and in sync with their markdown sources.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
   of truth) and rendered by `vz-ai-stack.sh model {list,assign,sync,superset}`. Three local
-  models: `local-gemma4` (Ollama gemma4:e4b — the always-on fallback agents gate to when their runtime is down),
-  `local-qwen3.6` (LM Studio MLX, heavy reasoning), `local-qwen3-coder` (LM Studio MLX,
-  coding). lmstudio-assigned agents auto-fall-back to `local-gemma4` when LM Studio (:1234)
+  models: `local` (Ollama nemotron-3-nano:4b — the always-on fallback agents gate to when their runtime is down),
+  `local` (LM Studio MLX, heavy reasoning), `local` (LM Studio MLX,
+  coding). lmstudio-assigned agents auto-fall-back to `local` when LM Studio (:1234)
   is down, so a plain `install all` works with no LM Studio. See [doc/models.md](doc/models.md).
   (`local-heavy` is a removed legacy Ollama alias — the heavy model now lives in
-  LM Studio as `local-qwen3.6`. `local-lfm2` is likewise no longer auto-pulled.)
+  LM Studio as `local`. `local` is likewise no longer auto-pulled.)
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.
   A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is caught by

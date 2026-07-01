@@ -246,21 +246,22 @@ Read [`ARCHITECTURE.md`](ARCHITECTURE.md); the essentials:
 - **`installer/models.yml` is the single source of truth** for which model each agent uses and what
   LiteLLM serves. Render it with `model sync` (opt-in — *not* run by `install all`).
 - **20 chat routes across 6 runtimes** (live: `model list`):
-  - **ollama** (3) — host brew; `local-gemma4` (`gemma4:e4b`) is the **default + always-on
-    fallback** every agent gates to when its runtime is down (+ `local-qwen3`,
-    `local-nemotron3-nano-4b`). `OLLAMA_KEEP_ALIVE` keeps the default warm.
-  - **lmstudio** (4) — opt-in MLX heavies (`local-nemotron3-heavy`, `local-qwen-heavy-fast`,
-    `local-gemma4-12b`, `local-nemotron3-nano-4b-mlx`) — big; only one fits in 24 GB at a time
-    (RAM preflight refuses otherwise). **Model names drift — `model list` is authoritative.**
+  - **ollama** (3 aliases, 1 model) — host brew; `local` (`nemotron-3-nano:4b`) is the
+    **default + always-on fallback** every agent gates to when its runtime is down.
+    `local`, `local-heavy`, and `local-nemotron3-nano-4b` all map to the same nemotron
+    model (the ONLY local chat model). `OLLAMA_KEEP_ALIVE` keeps it warm.
+  - **lmstudio** (1, opt-in) — `local-nemotron3-nano-4b-mlx` (the same nemotron on Apple
+    MLX, Phase 25) plus the opt-in `local-lfm2-mlx` LFM2.5 demo (`LMS_LOAD_LFM2=1`).
+    **Model names drift — `model list` is authoritative.**
   - **meridian** (7) — the **Claude subscription** via the host Meridian daemon (`:3456`): an
     effort ladder `claude-opus-sub-{low…max,ultracode}` + `claude-sonnet-sub-*`. **Availability-gated
-    to `local-gemma4` when Meridian is down** (doctor check 41 surfaces it).
+    to `local` when Meridian is down** (doctor check 41 surfaces it).
   - **openai-compat** (2) — declarative cloud routes (e.g. Sakana Fugu) whose endpoint+key are *data*
     in `models.yml`.
   - **openai** (2) + **codex-bridge** (2) — metered OpenAI / GPT-5.x via the ChatGPT-subscription
     OAuth bridge (opt-in).
 - **Naming convention:** version-less aliases (`claude-opus-sub-max`, `openai-gpt`, `sakana-fugu`).
-- **Fallback policy:** primary `claude-opus-sub-max`; offline fallback `local-gemma4`. Editable
+- **Fallback policy:** primary `claude-opus-sub-max`; offline fallback `local`. Editable
   fallback chains via `model fallback` (CLI) / the Model Console (`models-serve`).
 - **Scoped keys:** each agent (Hermes, Pi, ACE, RLM, MemPalace, …) mints its own LiteLLM virtual
   key allowlisted to a *derived superset* of models. **Gotcha:** add a model and the old keys
@@ -450,7 +451,7 @@ any flagged claim directly before acting on it.
 8. **Host-native bare-hostname ingress via loopback aliasing** — `127.0.10.x` + `/etc/hosts` + lo0
    + launchd; not LAN-exposed (127/8 is host-only).
 9. **Local-first (Ollama default + opt-in LM Studio MLX) + Claude-subscription via Meridian +
-   openai-compat** — sensible default (`local-gemma4`), opt-in heavy MLX, subscription for quality,
+   openai-compat** — sensible default (`local`), opt-in heavy MLX, subscription for quality,
    declarative cloud routes; always availability-gated to the local fallback.
 10. **9-role fleet, manager-as-main-agent** — single entrance; the other 8 are dispatched subagents;
     identical roster on Hermes/Pi/Claude Code.
@@ -483,13 +484,13 @@ any flagged claim directly before acting on it.
   `sudo prepare-sudo` + `verify`; `brew services restart ollama` also wipes `OLLAMA_HOST=0.0.0.0`.
 - **`model sync` is opt-in** — `install all` doesn't run it; new models aren't key-allowed (doctor
   40 RED) until you do.
-- **Meridian down → the fleet silently answers on `local-gemma4`** (availability-gating, by design —
+- **Meridian down → the fleet silently answers on `local`** (availability-gating, by design —
   not an error). If a Claude-sub agent seems "dumber," check Meridian (`:3456`) / doctor check 41,
   not the agent. `model list` shows the intended binding.
 - **Honcho's Postgres is shared with LiteLLM's key DB → a single point of failure.** If that
   Postgres is down, **every** LiteLLM virtual key 503s (not just Honcho). Check `05a_litellm_keystore`
   (self-heals the common cases) before chasing per-agent key bugs.
-- **24 GB RAM ceiling** — one big MLX model at a time; `qwen3.6:27b` thrashes. Quit LM Studio when
+- **24 GB RAM ceiling** — the local model is small (`nemotron-3-nano:4b`, ~2.8 GB); no heavy 27B local model exists any more. Quit LM Studio when
   idle (~1 core even stopped).
 - **New provider key** → add to `start-litellm.sh` `-e` allowlist **and** `--recreate` (not
   `restart`); detect config dups with `yq '.model_list[].model_name'`, not `grep`.
@@ -552,7 +553,7 @@ as authoritative** (verify there, don't trust this summary):
       not a skim — the mental model is the point).
 - [ ] `cd ~/ai-stack && stack status && stack doctor && stack phases && stack model list` — read
       all output; find one thing a doc got wrong (it drifts).
-- [ ] Do the 5-minute wow: chat in Open WebUI (`:8080`) on `local-gemma4`, watch the trace in
+- [ ] Do the 5-minute wow: chat in Open WebUI (`:8080`) on `local`, watch the trace in
       Phoenix (`:6006`).
 - [ ] Open one phase (`installer/phases/35_chatdev.sh`) + its doctor check + smoke test — trace the
       conventions end-to-end.
@@ -600,7 +601,7 @@ drift two copies would cause; this appendix used to inline it.
 - **Scoped / virtual key** — a per-agent LiteLLM key allowlisted to a subset of models.
 - **Superset** — the derived union of model ids a scoped key is widened to (so re-assigning a model
   doesn't require re-minting). `model sync` re-widens it.
-- **Availability-gating** — an agent falls back to `local-gemma4` when its assigned runtime
+- **Availability-gating** — an agent falls back to `local` when its assigned runtime
   (Meridian/LM Studio) is down.
 - **Worktree guard** — `installer/lib/worktree.sh`; refuses stack-operating commands from a git
   worktree.

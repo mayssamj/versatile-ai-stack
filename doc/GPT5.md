@@ -42,7 +42,7 @@ backend (unofficial automated use, **single personal account only**, real
 account-suspension risk — see [models.md](models.md) §"Codex bridge" and
 `bin/start-codex-bridge.sh`). It's **rate-limited by your plan** (Plus ≈ 15–80
 GPT-5.5 msgs / 5h), so treat it as a secondary route; the metered path stays the
-reliable default. If the bridge is down it **gates to `local-gemma4`** (never a
+reliable default. If the bridge is down it **gates to `local`** (never a
 hard fail, never a surprise metered bill).
 
 ## Make GPT-5.5 the default for *unassigned* agents
@@ -63,12 +63,12 @@ would write an assignment that fails `models.yml` validation (no `kinds:` entry)
 To point a sim at a different model, set its model in that phase's config and re-run
 `vz-ai-stack.sh install <NN>` for the sim; the phase reconciles the sim's scoped LiteLLM
 key allow-list automatically (so the rename doesn't silent-403). The sim doctor checks
-(57–61) read `.assignments.<sim>` defensively and default to `local-gemma4`, so an
-unassigned sim's key is verified against `local-gemma4` — exactly the model it calls.
+(57–61) read `.assignments.<sim>` defensively and default to `local`, so an
+unassigned sim's key is verified against `local` — exactly the model it calls.
 
 ## Cost / safety
 - Metered models spend your real OpenAI bill — there's no per-key `max_budget` cap
   yet (tracked follow-up), so prefer the `-sub` models for cost-conscious fleet use.
 - A missing `OPENAI_API_KEY` (metered) or a down bridge (subscription) gates the
-  agent to `local-gemma4` with a pending line — surfaced by `vz-ai-stack.sh model list`.
+  agent to `local` with a pending line — surfaced by `vz-ai-stack.sh model list`.
 - Health: `vz-ai-stack.sh doctor codex` (bridge), `vz-ai-stack.sh doctor 40` (binding).

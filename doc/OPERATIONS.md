@@ -138,7 +138,7 @@ KEY="$(grep ^LITELLM_MASTER_KEY= ~/ai-stack/.env | cut -d= -f2-)"
 curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"hello"}]}' \
+  -d '{"model":"local","messages":[{"role":"user","content":"hello"}]}' \
   | jq -r ".choices[0].message.content"
 ```
 
@@ -148,11 +148,11 @@ container port; see [CHANGELOG.md 2026-05-28 entry](../CHANGELOG.md) for
 why we don't use port 80 anymore).
 
 Use any model from `~/ai-stack/services.yml` (or `curl /v1/models | jq`).
-Verified models: `local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`,
+Verified models: `local`, `local`, `local`,
 `claude-sonnet`, `claude-opus`, `openai-gpt-5.5`, `openrouter-claude-opus-4.7`,
 `google-gemini-3.1-pro`, plus more (the retired `local` / `local-heavy` /
-`local-lfm2` slugs still resolve for old keys but aren't auto-pulled — use
-`local-gemma4`). Run `vz-ai-stack.sh model list` for the live per-agent matrix.
+`local` slugs still resolve for old keys but aren't auto-pulled — use
+`local`). Run `vz-ai-stack.sh model list` for the live per-agent matrix.
 
 ### Watch traces stream
 
@@ -370,37 +370,36 @@ sandbox-internal daemon); the real liveness probe is `doctor` check 67. See
 
 Each agent's LLM is **declared per-agent** in `installer/models.yml` (the single source
 of truth) and rendered into every agent's config by `vz-ai-stack.sh model {list,assign,sync,superset}`.
-See [models.md](models.md) for the full reference. Three local models:
+See [models.md](models.md) for the full reference. One local chat model (nemotron-only, 2026-07-01):
 
 | model | runtime | role |
 |---|---|---|
-| `local-gemma4` (`gemma4:e4b`, ~9.6 GB) | Ollama | the always-on fallback every agent gates to when its runtime is down; light + fast |
-| `local-qwen3.6` (`qwen/qwen3.6-27b`, ~17.5 GB) | LM Studio MLX | heavy general reasoning (opt-in) |
-| `local-qwen3-coder` (`qwen3-coder-30b-a3b-instruct-mlx`, ~17.2 GB) | LM Studio MLX | coding specialist (opt-in) |
+| `local` / `local-heavy` (`nemotron-3-nano:4b`, ~2.8 GB) | Ollama | the ONLY local chat model + always-on fallback every agent gates to when its runtime is down; light + fast. Both aliases map here. |
+| `local-nemotron3-nano-4b-mlx` (opt-in) | LM Studio MLX | the same nemotron model on Apple MLX (Phase 25, opt-in) |
 
 Shipped assignments: every agent routes to the **Claude Opus subscription via
 Meridian**, uniformly — all nine Hermes roles (`hermes_manager`, `hermes_techlead`,
 `hermes_ml_engineer`, `hermes_frontend_engineer`, `hermes_backend_engineer`,
 `hermes_qa_test_engineer`, `hermes_reviewing_engineer`, `hermes_sre_engineer`,
 `hermes_incident_manager`) plus `pi`, `deerflow`, `ace`, and `rlm` →
-`claude-opus-sub-max`. A subscription-assigned agent **auto-falls-back to `local-gemma4`** when
+`claude-opus-sub-max`. A subscription-assigned agent **auto-falls-back to `local`** when
 the Meridian host daemon is down, so a plain `install all` works with no Meridian. To
 activate the subscription models: bring Meridian up (`bin/start-meridian.sh`), then
 `vz-ai-stack.sh model sync`.
 
 ```bash
 vz-ai-stack.sh model list                 # read-only catalog + live per-agent matrix
-vz-ai-stack.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
-vz-ai-stack.sh model assign all local-gemma4       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
+vz-ai-stack.sh model assign pi local   # re-point one agent (then syncs it)
+vz-ai-stack.sh model assign all local       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
 vz-ai-stack.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
 vz-ai-stack.sh model superset             # print the canonical scoped-key allowlist
 ```
 
-The two big MLX models (~17 GB each) **cannot be resident together** on a 24 GB box;
-LM Studio JIT-loads with idle-unload (TTL) so only one is in RAM at a time. Ollama is
-kept lazy (`OLLAMA_KEEP_ALIVE=30m`, the default model stays warm for 30 min of inactivity, then unloads). The legacy
-`local-heavy` (Ollama `qwen3.6:27b`) is **no longer auto-pulled** and 503s unless you
-`ollama pull` it by hand — the heavy/coder models live on LM Studio now.
+Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=30m`, the default model stays warm for 30 min
+of inactivity, then unloads). `nemotron-3-nano:4b` is the ONLY local chat model (~2.8 GB,
+2026-07-01); `local` and `local-heavy` both map to it — there is no heavy 27B local
+model anymore. The opt-in LM Studio MLX slug (`local-nemotron3-nano-4b-mlx`) serves the
+same nemotron model on Apple MLX.
 
 ---
 
@@ -436,12 +435,12 @@ openshell` (check 39); a pending alert surfaces in check 43. Full failure write-
 ## LM Studio (opt-in, quit it when done)
 
 LM Studio (Phase 25) is a *second* local runtime behind LiteLLM (Apple MLX, home of
-`local-qwen3.6` / `local-qwen3-coder`) — Ollama stays the default. It is **opt-in**
+`local` / `local`) — Ollama stays the default. It is **opt-in**
 because the LM Studio desktop app idle-spins ~0.8–1 core **even with no model loaded
 and the server stopped**. Run it only when you need MLX, and quit it afterward.
 
 `install lmstudio` is **assignment-driven**: it loads ONLY the MLX models you've
-assigned to an agent in `models.yml` (`model assign <agent> local-qwen3.6`) — it does
+assigned to an agent in `models.yml` (`model assign <agent> local`) — it does
 **not** auto-load anything otherwise. (The retired LFM2.5 demo `local-lfm2-mlx` is no
 longer wired by default; it remains an `LMS_LOAD_LFM2=1` install-time opt-in.)
 

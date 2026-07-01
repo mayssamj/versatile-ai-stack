@@ -47,8 +47,8 @@ a trace "for free."
            │ ollama (host-gateway)          │ host.docker.internal:1234        │
 ┌──────────▼──────────┐         ┌───────────▼──────────┐        │ OTLP gRPC
 │  Ollama (brew :11434)│         │  LM Studio (:1234)    │        │
-│   gemma4:e4b default │         │   MLX: qwen3.6-27b,   │        │
-│   nomic-embed-text   │         │   qwen3-coder-30b     │        │
+│   nemotron-3-nano:4b │         │   MLX: nemotron-3-    │        │
+│   nomic-embed-text   │         │   nano-4b (opt-in)    │        │
 └─────────────────────┘         └──────────────────────┘        │
                                                                  │
 ┌──────────────────────────────────┐   ┌─────────────────────────▼─────────┐
@@ -101,7 +101,7 @@ server on `:1234`, reached via `host.docker.internal`, opt-in Phase 25).
   handoffs, review gate, escalation, turn budget). The **same team is realized
   on three platforms** — Hermes profiles here, **Pi personas** (`bin/pi-as
   <role>`), and **Claude Code** (the manager is the **main agent** via `~/.claude/CLAUDE.md`; the other 8 are subagents in `~/.claude/agents`). All nine route
-  to a Claude subscription via Meridian, availability-gated to `local-gemma4`
+  to a Claude subscription via Meridian, availability-gated to `local`
   when Meridian is down. The Hermes Telegram gateway (Phase 20) runs the
   gateway process *inside the same sandbox*.
 - **Pi (Earendil)** coding agent is isolated in its own OpenShell sandbox
@@ -170,7 +170,7 @@ What happens end-to-end when, say, Pi answers a coding prompt:
         key's allowlist (the derived superset — see binding below).
 4.  Guardrails callback runs (pre-call deny on the in-process regex/keyword
         rules + secret-leak blocker).
-5.  LiteLLM resolves Pi's bound model (local-qwen3-coder) and dispatches:
+5.  LiteLLM resolves Pi's bound model (local) and dispatches:
         · ollama runtime  → Ollama on the host (host-gateway)
         · lmstudio runtime → LM Studio :1234 (host.docker.internal)
 6.  Response streams back through LiteLLM; post-call redaction runs.
@@ -194,28 +194,28 @@ per-agent assignment table; `installer/lib/models.sh` is the `vz-ai-stack.sh
 model` implementation that reconciles declarations against what LiteLLM
 actually serves.
 
-### The 3 canonical models
+### The local models (nemotron-only, 2026-07-01)
+
+`nemotron-3-nano:4b` is the ONLY local chat model; `local` and `local-heavy` both map to it.
 
 | key | runtime | served id | notes |
 |---|---|---|---|
-| `local-gemma4` | ollama | `gemma4:e4b` | The always-on Ollama **fallback** (`default`) — what every agent gates to when its runtime is down; an unassigned agent renders the `primary` (`claude-opus-sub-max`) and gates to this (~9.6 GB, stays on Ollama). |
-| `local-qwen3.6` | lmstudio | `qwen/qwen3.6-27b` | ~17.5 GB MLX. Cannot coexist with `local-qwen3-coder` on 24 GB. |
-| `local-qwen3-coder` | lmstudio | `qwen3-coder-30b-a3b-instruct-mlx` | ~17.2 GB MLX. Cannot coexist with `local-qwen3.6` on 24 GB. |
+| `local` / `local-heavy` | ollama | `nemotron-3-nano:4b` | The ONLY local chat model + the always-on Ollama **fallback** (`default`) — what every agent gates to when its runtime is down; an unassigned agent renders the `primary` (`claude-opus-sub-max`) and gates to this. Both aliases map here. ~2.8 GB, stays on Ollama. |
+| `local-nemotron3-nano-4b-mlx` | lmstudio | `nvidia/nemotron-3-nano-4b` | Same nemotron model on Apple MLX via LM Studio (Phase 25, opt-in). |
 
-`default: local-gemma4`. (Phase 25 can optionally add the `local-lfm2-mlx` slug,
-but ONLY when opted in via `LMS_LOAD_LFM2=1` — by default `install lmstudio` is
-assignment-driven and wires only models.yml-assigned MLX slugs. The heavy
-Ollama model `local-heavy` (`qwen3.6:27b`) is **removed** — it now lives in LM
-Studio as `local-qwen3.6` (opt-in MLX). `local-heavy` / `local-lfm2` remain
-add-only legacy entries in `litellm/config.yaml` that 404 until manually pulled;
-neither is auto-pulled, and neither is in the canonical roster.)
+`default: local`. (Phase 25 can optionally add the `local-lfm2-mlx` LFM2.5 demo
+slug, but ONLY when opted in via `LMS_LOAD_LFM2=1` — by default `install lmstudio`
+is assignment-driven and wires only models.yml-assigned MLX slugs. There is no
+heavy 27B local model anymore: the old Ollama `local-heavy` (`qwen3.6:27b`) is
+**removed** and `local-heavy` now maps to nemotron. Embedders — `nomic-embed-text`,
+`jina-embeddings-v2-base-code` — are unchanged.)
 
-### Availability-gating — fallback to `local-gemma4`
+### Availability-gating — fallback to `local`
 
-The two big models are LM Studio MLX models that may not be loaded. If an
+An LM Studio MLX model may not be loaded. If an
 agent is assigned an `lmstudio` model that LiteLLM doesn't currently serve,
 `models.sh` does **not** fail — it renders that agent against an effective
-fallback (the default, `local-gemma4`) and warns:
+fallback (the default, `local`) and warns:
 
 ```
 <agent>: assigned '<model>' (lmstudio) not servable — rendering '<eff>' (availability-gated)
@@ -223,7 +223,7 @@ fallback (the default, `local-gemma4`) and warns:
 
 This is what keeps a fresh, light 24 GB install functional before any heavy
 MLX model is pulled (and it pairs with lazy-Ollama: Phase 01 eager-pulls only
-`gemma4:e4b` + `nomic-embed-text`, and `OLLAMA_KEEP_ALIVE=30m` keeps the
+`nemotron-3-nano:4b` + `nomic-embed-text`, and `OLLAMA_KEEP_ALIVE=30m` keeps the
 default model warm for 30 min of inactivity, then releases it).
 
 ### The superset allowlist
@@ -231,7 +231,7 @@ default model warm for 30 min of inactivity, then releases it).
 Every scoped virtual key (`HERMES_`, `PI_`, `ACE_`, `RLM_LITELLM_KEY`) is
 minted against a **DERIVED**, sorted-unique **superset** of model names
 (`vz-ai-stack.sh model superset` prints it — the union of the legacy
-`{local, local-heavy, local-lfm2}` plus every model key in `models.yml`, **not**
+`{local, local-heavy, local}` plus every model key in `models.yml`, **not**
 a hardcoded list; the `LEGACY_SUPERSET` array in `installer/lib/models.sh` is
 only the fallback when `models.yml` is absent). Because each key already allows
 the whole superset, `model assign <agent> <model>` (or `model assign all <model>` to
@@ -251,7 +251,7 @@ headroom **5 GiB** (`5368709120` B), unknown-size fallback **18 GiB**
 (`19327352832` B), resident pad **+15%**, `cap` from `~/.orbstack/vmconfig.json`
 `memory_mib` (fallback `max(8 GiB, total/2)`), `total` from `sysctl hw.memsize`.
 It **degrades OPEN** (allows, with a note) on any measurement failure — never
-fail-closed. A refusal makes the agent availability-gate to `local-gemma4`. The
+fail-closed. A refusal makes the agent availability-gate to `local`. The
 one-big-MLX policy unloads any other model before load; bypass with
 `LMS_SKIP_RAM_PREFLIGHT=1`. See `installer/lib/lmstudio.sh`.
 

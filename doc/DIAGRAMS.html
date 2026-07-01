@@ -237,7 +237,7 @@
 </div>
 <p>Key things to notice:</p>
 <ul><li>Every LLM call funnels through LiteLLM. It fronts two local runtimes —</li></ul>
-<p>Ollama (default, serves <code>local-gemma4</code>) and, when you opt into Phase 25, LM Studio's MLX server (<code>:1234</code>, serves the heavy <code>local-qwen3.6</code> / <code>local-qwen3-coder</code> MLX models) — plus the cloud APIs.</p>
+<p>Ollama (default, serves <code>local</code>) and, when you opt into Phase 25, LM Studio's MLX server (<code>:1234</code>, serves the heavy <code>local</code> / <code>local</code> MLX models) — plus the cloud APIs.</p>
 <ul><li>Phoenix only receives; it never sits in the request path.</li><li>Honcho and Qdrant are the long-term state. Everything else is</li></ul>
 <p>ephemeral.</p>
 <ul><li>MemPalace (Phase 26) is <strong>CLI-only</strong> verbatim conversation</li></ul>
@@ -390,7 +390,7 @@ sequenceDiagram
   participant R as hermes_ml_engineer (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as local-gemma4 (summarizer)
+  participant LH as local (summarizer)
   participant CL as Claude Opus (sub via Meridian)
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
@@ -439,7 +439,7 @@ sequenceDiagram
 
 <hr>
 <section id="sec-5-model--agent-binding-and-availability-gating"><h2>5. Model ↔ agent binding and availability-gating</h2>
-<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is the canonical source of truth for the binding; <code>vz-ai-stack.sh model sync</code> reconciles it into LiteLLM and re-renders each agent. The interesting wrinkle is <strong>availability-gating</strong>: if an agent is assigned an LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio is opt-in and may be off), the agent is rendered against the always-on fallback <code>local-gemma4</code> instead — never left pointing at a dead route.</p>
+<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is the canonical source of truth for the binding; <code>vz-ai-stack.sh model sync</code> reconciles it into LiteLLM and re-renders each agent. The interesting wrinkle is <strong>availability-gating</strong>: if an agent is assigned an LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio is opt-in and may be off), the agent is rendered against the always-on fallback <code>local</code> instead — never left pointing at a dead route.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-5" data-action="out" title="Zoom out">−</button>
@@ -455,9 +455,9 @@ sequenceDiagram
   end
 
   subgraph Models[Canonical models]
-    GM["local-gemma4 (ollama, default)"]
-    Q36["local-qwen3.6 (lmstudio, big)"]
-    QC["local-qwen3-coder (lmstudio, big)"]
+    GM["local (ollama, default)"]
+    Q36["local (lmstudio, big)"]
+    QC["local (lmstudio, big)"]
   end
 
   MY --> GM
@@ -474,7 +474,7 @@ sequenceDiagram
 
   P4 --> Gate{LiteLLM actually<br/>serving the model?}
   Gate -- "yes" --> Bind["render agent against assigned model"]
-  Gate -- "no (provider off)" --> Fall["availability-gated:<br/>render against local-gemma4 + warn"]
+  Gate -- "no (provider off)" --> Fall["availability-gated:<br/>render against local + warn"]
 
   Bind --> Agents["9 Hermes profiles · pi · deerflow · ace · rlm"]
   Fall --> Agents</div>
@@ -485,11 +485,11 @@ sequenceDiagram
 <p><code>primary</code>) — every assigned role: <code>hermes_manager</code>, <code>hermes_techlead</code>, <code>hermes_ml_engineer</code>, <code>hermes_frontend_engineer</code>, <code>hermes_backend_engineer</code>, <code>hermes_qa_test_engineer</code>, <code>hermes_reviewing_engineer</code>, <code>hermes_sre_engineer</code>, <code>hermes_incident_manager</code>, <code>pi</code>, <code>deerflow</code>, <code>ace</code>, <code>rlm</code>.</p>
 <ul><li><strong>sakana-fugu</strong> — an available LiteLLM route, currently <strong>unassigned</strong> (no</li></ul>
 <p>agent binds to it by default; <code>hermes_techlead</code> dropped it 2026-06-27 and is now on the <code>claude-opus-sub-max</code> default like every other role).</p>
-<ul><li><strong>local-gemma4</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
+<ul><li><strong>local</strong> (the always-on Ollama fallback) — what every subscription- or</li></ul>
 <p>LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime is down. An UNASSIGNED agent renders the <code>primary</code> (<code>claude-opus-sub-max</code>) and gates to this. (<code>default:</code> in models.yml names this fallback; it must be an Ollama model.)</p>
 <p>Notes:</p>
 <ul><li>The Hermes fleet now routes to a Claude subscription via the Meridian host</li></ul>
-<p>daemon; availability-gating means when <strong>Meridian is down</strong> all nine profiles render against <code>local-gemma4</code> and keep working. (The heavy MLX models <code>local-qwen3.6</code> ~17.5GB and <code>local-qwen3-coder</code> ~17.2GB still exist as legacy slugs and cannot coexist on a 24GB box, but no agent is bound to them by default any more.)</p>
+<p>daemon; availability-gating means when <strong>Meridian is down</strong> all nine profiles render against <code>local</code> (<code>nemotron-3-nano:4b</code>) and keep working. (<code>local</code> and <code>local-heavy</code> both map to nemotron — the ONLY local chat model; there is no heavy 27B local model any more.)</p>
 <ul><li><code>model sync</code> is opt-in and crash-safe; it is <strong>not</strong> run by</li></ul>
 <p><code>install all</code>. Phase 1 only ever adds to LiteLLM's <code>model_list</code> (ADD-ONLY), and LiteLLM is restarted at most once.</p>
 <ul><li>Because every scoped key (<code>HERMES_LITELLM_KEY</code>, <code>PI_LITELLM_KEY</code>,</li></ul>
@@ -497,7 +497,7 @@ sequenceDiagram
 <ul><li>The four diagrams below (§5a–§5e) zoom into this pipeline: §5a the</li></ul>
 <p>per-agent selection (assignment → gate → effective → rendered + drift), §5b the multi-engine topology, §5c the discover/add/sync lifecycle, §5d the RAM-budget preflight, §5e Honcho agent memory.</p>
 <h3 id="sec-5a">5a. Per-agent model selection pipeline (assignment -&gt; gate -&gt; effective -&gt; rendered)</h3>
-<p>Zooms into §5's per-agent step: the per-<code>kind</code> dispatch and the rendered-vs-effective <strong>drift</strong> readback that §5 omits. <code>render_deerflow</code> writes <strong>two tiers</strong> — <code>basic</code> is <strong>always</strong> <code>local-gemma4</code>, <code>reasoning</code> is the gated effective model — and uses the <strong>master key</strong>, so the P3 superset-widening does not apply to it (and its basic tier does not "flip" to gemma4 on gate-down, it already <em>is</em> gemma4).</p>
+<p>Zooms into §5's per-agent step: the per-<code>kind</code> dispatch and the rendered-vs-effective <strong>drift</strong> readback that §5 omits. <code>render_deerflow</code> writes <strong>two tiers</strong> — <code>basic</code> is <strong>always</strong> <code>local</code>, <code>reasoning</code> is the gated effective model — and uses the <strong>master key</strong>, so the P3 superset-widening does not apply to it (and its basic tier does not "flip" to nemotron-3-nano:4b on gate-down, it already <em>is</em> nemotron-3-nano:4b).</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-6" data-action="out" title="Zoom out">−</button>
@@ -528,7 +528,7 @@ sequenceDiagram
   M1 -- no --> FB
   M1 -- yes --> EFF
 
-  FB["availability-gated:<br/>effective = local-gemma4<br/>(the ollama fallback) + record pending"] --> EFF
+  FB["availability-gated:<br/>effective = local<br/>(the ollama fallback) + record pending"] --> EFF
 
   EFF --> DISP{dispatch by kind}
   DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]
@@ -577,8 +577,8 @@ sequenceDiagram
   HO -- "litellm.ai-stack:4000" --> HUB
 
   subgraph Runtimes[Runtimes]
-    OL["ollama :11434 (host, lazy, KEEP_ALIVE=30m)<br/>local-gemma4 = default"]
-    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local-qwen3.6 / local-qwen3-coder"]
+    OL["ollama :11434 (host, lazy, KEEP_ALIVE=30m)<br/>local = default"]
+    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local / local"]
     CLOUD["Cloud APIs - only if you pick a non-local model<br/>Anthropic / OpenAI / OpenRouter / Gemini"]
   end
 
@@ -650,7 +650,7 @@ sequenceDiagram
   OPEN --> LOAD
   FAIL -- no --> PAD["padded = size + 15%<br/>(size unknown -> 18 GiB fallback)<br/>headroom = 5 GiB"]
   PAD --> CHK{cap + padded + headroom<br/>> total RAM?}
-  CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local-gemma4<br/>fix: lower OrbStack cap or smaller model"]
+  CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local<br/>fix: lower OrbStack cap or smaller model"]
   CHK -- no --> LOAD["unload OTHER MLX models (one-big-at-a-time)<br/>lms load --ttl -> verify in /v1/models"]</div>
   </div>
 </div>
@@ -671,7 +671,7 @@ sequenceDiagram
   participant HO as honcho :8000 (api)
   participant DR as honcho deriver
   participant LL as litellm.ai-stack:4000
-  participant LH as local-gemma4 (Ollama gemma4:e4b, default)
+  participant LH as local (Ollama nemotron-3-nano:4b, default)
   participant PG as Postgres (data/honcho)
 
   AG->>HO: write message (session, peer-scoped)
@@ -679,7 +679,7 @@ sequenceDiagram
   HO->>DR: enqueue derivation
   DR->>LL: extract user representation (model=claude-opus-sub-xhigh, override via HONCHO_MODEL)
   LL->>LH: forward
-  Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
+  Note over LL,LH: default is auto-pulled (nemotron-3-nano:4b); local + local-heavy both map to it (the only local chat model) — no heavy 27B model any more
   LH-->>LL: derived facts
   LL-->>DR: derived facts (also traced to Phoenix)
   DR->>PG: persist derived representation (namespace-isolated)
@@ -997,7 +997,7 @@ sequenceDiagram
 <p>SQLite. Neither sink is internet-connected.</p>
 <ul><li><strong>Blaxel</strong> is the only piece that is cloud-by-design. The CLI is</li></ul>
 <p>installed but nothing deploys until you run <code>bl deploy</code>.</p>
-<p>If you want fully air-gapped operation: use the <code>paranoid</code> profile (<code>stack profile paranoid</code>), set every model to a <code>local-*</code> model (<code>local-gemma4</code>, or the LM Studio MLX models), disable cloud API keys in <code>.env</code>.</p>
+<p>If you want fully air-gapped operation: use the <code>paranoid</code> profile (<code>stack profile paranoid</code>), set every model to a <code>local-*</code> model (<code>local</code>, or the LM Studio MLX models), disable cloud API keys in <code>.env</code>.</p>
 </section>
 
 <hr>

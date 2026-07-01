@@ -200,7 +200,7 @@ Each entry: ports listened on, what calls in, healthcheck command.
 - **Listens**: `127.0.0.1:11434` (Mac brew). Reached from containers as `ollama:11434` via `--add-host=ollama:host-gateway`.
 - **Internal**: none (single-process; runs as the user's `ollama` daemon via `brew services start ollama`)
 - **Callers**:
-  - `litellm` → `http://ollama:11434` (api_base for the Ollama-served models — canonically `local-gemma4` → `gemma4:e4b` plus `nomic-embed-text` embeddings; see `installer/models.yml` for the canonical bindings and `litellm/config.yaml` for any legacy add-only slugs that 404 until pulled; container reaches host via host-gateway alias)
+  - `litellm` → `http://ollama:11434` (api_base for the Ollama-served models — canonically `local` → `nemotron-3-nano:4b` plus `nomic-embed-text` embeddings; see `installer/models.yml` for the canonical bindings and `litellm/config.yaml` for any legacy add-only slugs that 404 until pulled; container reaches host via host-gateway alias)
 - **Healthcheck**: `curl -s http://ollama:11434/api/tags` (Mac side, after `/etc/hosts` setup)
 - **Source**: `services.yml:18-24`, `installer/phases/01_inference.sh:60`
 
@@ -350,7 +350,7 @@ The compose stack publishes one host port via the new alias scheme and keeps thr
 
 - **Listens**: nothing on the host. Pi runs inside the `pi-v1` OpenShell sandbox; launch via `bin/pi` which `exec`s into the sandbox.
 - **Egress**: per `openshell/policies/pi-v1.yaml` — Pi can reach `host.docker.internal:4000` (LiteLLM), `:8000` (Honcho), `:8765` (docs-mcp), and npm/pypi/github for runtime fetches. All other destinations return HTTP 403 with body `{"error":"policy_denied"}` from the OpenShell egress proxy.
-- **Auth**: Pi calls LiteLLM with `PI_LITELLM_KEY` (a LiteLLM virtual key minted in Phase 15, allowlisted against the canonical scoped-key superset — see `vz-ai-stack.sh model superset`). Pi's assigned model is `local-qwen3-coder` (`installer/models.yml`). Lives in `.env` mode 0600. Pi never sees `LITELLM_MASTER_KEY`.
+- **Auth**: Pi calls LiteLLM with `PI_LITELLM_KEY` (a LiteLLM virtual key minted in Phase 15, allowlisted against the canonical scoped-key superset — see `vz-ai-stack.sh model superset`). Pi's assigned model is `local` (`installer/models.yml`). Lives in `.env` mode 0600. Pi never sees `LITELLM_MASTER_KEY`.
 - **Stop / kill**: `bin/pi-kill` (pkills the pi process inside the sandbox without removing the sandbox itself).
 - **Source**: `services.yml:308-323`, `installer/phases/15_pi.sh`, `bin/pi`, `bin/pi-kill`, `pi/inference-local.ts`, `openshell/policies/pi-v1.yaml`
 

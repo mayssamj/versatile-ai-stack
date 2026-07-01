@@ -164,9 +164,9 @@ bash vz-ai-stack.sh install 01h         # by id
 - **Honcho (Phase 03) comes before LiteLLM (Phase 01)** — LiteLLM's Prisma migration and virtual-key store need Honcho's Postgres at startup, or LiteLLM hangs.
 - Phase 00·V (verify) runs after the networking phase and before the first real container.
 
-The **opt-in extras (Phases 21–25 · 27–31 · 32 · 33 · 34 · 35 · 36 · 37 · 38: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia · slack)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `gemma4:e4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
+The **opt-in extras (Phases 21–25 · 27–31 · 32 · 33 · 34 · 35 · 36 · 37 · 38: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia · slack)** are *not* part of `install all` — install them **by name** only if you want them, e.g. `bash vz-ai-stack.sh install lmstudio`. **MemPalace (Phase 26) is now installed by `install all`** — but only the *tool*; its conversation-capture hooks stay **opt-in** (`bin/mempalace-hooks`), so a default install never records your sessions on its own (see L10½). First run is roughly **5–20 minutes** depending on what brew/Docker/Ollama already cached (≈5 min brew, ≈3 min model pulls of `nemotron-3-nano:4b` + `nomic-embed-text`, ≈5 min image pulls). The heavy/coder models live on LM Studio (opt-in) and are **not** auto-pulled. The install is idempotent — re-running on a healthy stack is a no-op of `✓ already complete` lines; on a partial install it resumes and tells you the exact `install <phase>` resume command if a phase fails.
 
-> **24 GB-Mac reality:** the default model `gemma4:e4b` is the right call for smoke-testing. The big local model (`qwen3.6:27b`) will thrash a 24 GB machine — it lives on LM Studio and is opt-in, so a plain `install all` never pulls it.
+> **24 GB-Mac reality:** the default model `nemotron-3-nano:4b` (~2.8 GB) is the right call for smoke-testing and is the ONLY local chat model — `local` and `local-heavy` both map to it. For heavier work, pick a Claude-subscription route (e.g. `claude-opus-sub-max`); nothing local ever thrashes a 24 GB box because `install all` only pulls the small nemotron model.
 
 **Lesson.** One re-runnable command, phases 00→20 plus 26 (MemPalace), extras by name. Ordering (Honcho before LiteLLM) is handled for you; if a phase fails it tells you how to resume.
 
@@ -222,7 +222,7 @@ Every chat and embedding call in the stack funnels through **one** gateway: Lite
 
 **Why.** LiteLLM is the spine: agents, UIs, and scripts all dial `http://litellm:4000/v1` so each call gets virtual-key auth, guardrails, budget caps, and a Phoenix trace. Direct provider calls bypass that audit trail. Learn the two endpoints — `/v1/models` (what's available) and `/v1/chat/completions` (talk to one) — and you can drive the whole stack from a terminal.
 
-**Prereqs.** Phase 01 complete (Ollama up, LiteLLM responding). `LITELLM_MASTER_KEY` present in `~/ai-stack/.env` (written by Phase 01). `local-gemma4` works immediately — it's the Ollama default (`gemma4:e4b`). Subscription models (`claude-*-sub-*`) only answer if Meridian is running (`bin/start-meridian.sh`); otherwise expect an error or a 503 from that route.
+**Prereqs.** Phase 01 complete (Ollama up, LiteLLM responding). `LITELLM_MASTER_KEY` present in `~/ai-stack/.env` (written by Phase 01). `local` works immediately — it's the Ollama default (`nemotron-3-nano:4b`). Subscription models (`claude-*-sub-*`) only answer if Meridian is running (`bin/start-meridian.sh`); otherwise expect an error or a 503 from that route.
 
 **Steps.**
 
@@ -241,7 +241,7 @@ source ~/ai-stack/.env
 curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"Reply with exactly: HUB-OK"}],"max_tokens":16}' \
+  -d '{"model":"local","messages":[{"role":"user","content":"Reply with exactly: HUB-OK"}],"max_tokens":16}' \
   | jq -r '.choices[0].message.content'
 ```
 
@@ -262,11 +262,11 @@ See the catalog from the stack's own point of view — runtime, served id, and l
 bash ~/ai-stack/vz-ai-stack.sh model list
 ```
 
-**Expected.** `/v1/models` prints a list of ids including `local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`, and the `claude-*-sub-*` ladder. The first chat prints `HUB-OK`. The subscription call returns a haiku **if Meridian is up**; if it isn't, you get an error from that route — that's the availability boundary, not a broken gateway. `model list` shows `local-gemma4` as the always-on default and the others as opt-in.
+**Expected.** `/v1/models` prints a list of ids including `local`, `local`, `local`, and the `claude-*-sub-*` ladder. The first chat prints `HUB-OK`. The subscription call returns a haiku **if Meridian is up**; if it isn't, you get an error from that route — that's the availability boundary, not a broken gateway. `model list` shows `local` as the always-on default and the others as opt-in.
 
-**Try it live.** The HTML page's **List models** (demo 1), **Chat** (demo 2), and **Model compare** (demo 3) panels — under *Interactive demos* — proxy through two server-side routes so the browser never holds a token: `GET /api/models` (forwarded to `/v1/models`) populates the model picker, and `POST /api/chat` (forwarded to `/v1/chat/completions`) sends your prompt. Pick `local-gemma4`, send "HUB-OK", then switch the picker to a `claude-*-sub-*` model and watch the same panel route to a different runtime; the **Model compare** panel sends one prompt to two models side by side — the one-endpoint payoff.
+**Try it live.** The HTML page's **List models** (demo 1), **Chat** (demo 2), and **Model compare** (demo 3) panels — under *Interactive demos* — proxy through two server-side routes so the browser never holds a token: `GET /api/models` (forwarded to `/v1/models`) populates the model picker, and `POST /api/chat` (forwarded to `/v1/chat/completions`) sends your prompt. Pick `local`, send "HUB-OK", then switch the picker to a `claude-*-sub-*` model and watch the same panel route to a different runtime; the **Model compare** panel sends one prompt to two models side by side — the one-endpoint payoff.
 
-**Lesson.** One endpoint, one auth header, every model — the `model` field is the only thing that changes between a 9.6GB local Gemma and a Claude subscription. The model strategy is deliberate: `local-gemma4` (Ollama, ~9.6GB) stays warm for 30 minutes after each call (`OLLAMA_KEEP_ALIVE=30m`, so a follow-up answers in well under a second) then unloads, and always answers; `local-qwen3.6` / `local-qwen3-coder` are big MLX models (~17GB each) on LM Studio that **cannot coexist on a 24GB box**; the `claude-*-sub-*` routes spend no local RAM at all (the work happens on Anthropic's side via Meridian). That RAM reality is why the default is the small local model and everything heavy is opt-in.
+**Lesson.** One endpoint, one auth header, every model — the `model` field is the only thing that changes between a ~2.8 GB local Nemotron and a Claude subscription. The model strategy is deliberate: `local` (Ollama, `nemotron-3-nano:4b`, ~2.8 GB) stays warm for 30 minutes after each call (`OLLAMA_KEEP_ALIVE=30m`, so a follow-up answers in well under a second) then unloads, and always answers; `local` and `local-heavy` both map to it (it's the ONLY local chat model); the `claude-*-sub-*` routes spend no local RAM at all (the work happens on Anthropic's side via Meridian). That RAM reality is why the local default is a small model and everything heavier is a cloud subscription route.
 
 **Go deeper.** For a *persistent* ChatGPT-style chat UI (not just this lesson's panel), bring up **Open WebUI**: `vz-ai-stack.sh start openwebui`, then open `http://openwebui:8080`. Its model picker lists the same `claude-*-sub-*` subscription routes (they need the Meridian daemon up — `bash bin/start-meridian.sh`) right alongside the local models. Also: [doc/models.md](../doc/models.md) (the four runtimes, the base-URL-by-caller table), [doc/OPERATIONS.md](../doc/OPERATIONS.md).
 
@@ -274,7 +274,7 @@ bash ~/ai-stack/vz-ai-stack.sh model list
 
 ### L6 · Declarative model↔agent binding · 🟡 · ~12 min
 
-**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-sub-max` and the `default` is `local-gemma4`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
+**Why.** You never hand-edit an agent's model. `installer/models.yml` is the single source of truth for **both** every agent's binding **and** the canonical LiteLLM `model_list` rows. One file declares that `hermes_manager` runs on `claude-opus-sub-max` and the `default` is `local`; `vz-ai-stack.sh model` renders all of it. Change the file, run `sync`, and every agent's config plus the gateway's routes are reconciled — crash-safe and idempotent.
 
 **Prereqs.** Phase 01 complete. `~/ai-stack/installer/models.yml` present (shipped in-repo). `yq` available. These commands are **read-mostly**: `list` and `superset` are read-only; `assign`/`sync` mutate `models.yml` / configs and may queue a LiteLLM restart — run those only when you mean to re-point something.
 
@@ -295,7 +295,7 @@ bash ~/ai-stack/vz-ai-stack.sh model superset
 Re-point one agent (writes `models.yml` via `yq -i`, then renders just that agent):
 
 ```bash
-bash ~/ai-stack/vz-ai-stack.sh model assign ace local-qwen3-coder
+bash ~/ai-stack/vz-ai-stack.sh model assign ace local
 ```
 
 Reconcile everything from `models.yml` — the crash-safe 6-phase pass (validate → register `model_list` → restart LiteLLM once if changed → widen key allowlists → render agents, availability-gated → verify):
@@ -304,13 +304,13 @@ Reconcile everything from `models.yml` — the crash-safe 6-phase pass (validate
 bash ~/ai-stack/vz-ai-stack.sh model sync
 ```
 
-**Expected.** `model list` shows the 13 agents (the 9 Hermes profiles plus `pi`, `deerflow`, `ace`, `rlm`), each with its assigned model and whether the render is **gated** (fell back to the default). By default the 9 Hermes profiles plus `pi`, `deerflow`, and `rlm` target Claude-subscription routes (Opus 4.8 via Meridian) — but you just re-pointed `ace` to `local-qwen3-coder`, so it now renders that (gated to `local-gemma4` if LM Studio is down). An UNASSIGNED agent now defaults to the `primary` (`claude-opus-sub-max`), which availability-gates to `local-gemma4` when Meridian is down; `local-gemma4` remains the always-on Ollama fallback (what everything gates to when its runtime is down). `superset` prints the sorted-unique allowlist (the legacy `local*` names plus every `models.yml` model). `assign` reports it re-pointed one agent; `sync` walks its phases and only restarts LiteLLM if `config.yaml` actually changed.
+**Expected.** `model list` shows the 13 agents (the 9 Hermes profiles plus `pi`, `deerflow`, `ace`, `rlm`), each with its assigned model and whether the render is **gated** (fell back to the default). By default the 9 Hermes profiles plus `pi`, `deerflow`, and `rlm` target Claude-subscription routes (Opus 4.8 via Meridian) — but you just re-pointed `ace` to `local`, so it now renders that (gated to `local` if LM Studio is down). An UNASSIGNED agent now defaults to the `primary` (`claude-opus-sub-max`), which availability-gates to `local` when Meridian is down; `local` remains the always-on Ollama fallback (what everything gates to when its runtime is down). `superset` prints the sorted-unique allowlist (the legacy `local*` names plus every `models.yml` model). `assign` reports it re-pointed one agent; `sync` walks its phases and only restarts LiteLLM if `config.yaml` actually changed.
 
-> **GPT-5.x is assignable the same way.** `vz-ai-stack.sh model assign all openai-gpt-5.5` puts the whole fleet on metered GPT-5.5 at max reasoning; `model assign … openai-gpt-5.5-sub` uses your **ChatGPT subscription** via the codex bridge — enable it once with `bash ~/ai-stack/bin/start-codex-bridge.sh enable`. Either route gates to `local-gemma4` when it's unavailable. Full how-to: [GPT5.md](GPT5.md).
+> **GPT-5.x is assignable the same way.** `vz-ai-stack.sh model assign all openai-gpt-5.5` puts the whole fleet on metered GPT-5.5 at max reasoning; `model assign … openai-gpt-5.5-sub` uses your **ChatGPT subscription** via the codex bridge — enable it once with `bash ~/ai-stack/bin/start-codex-bridge.sh enable`. Either route gates to `local` when it's unavailable. Full how-to: [GPT5.md](GPT5.md).
 
 **Try it live.** Read-only in *this* tutorial page — there is no button here that mutates `models.yml`. Treat the panel as a viewer for the binding matrix; run `assign`/`sync` from a terminal. Prefer a UI? `vz-ai-stack.sh models-serve` opens the **Model & Agent Console** to do all of this (add/edit/remove models, re-assign or park agents) with a staged `models.yml` + `config.yaml` diff shown before anything is written.
 
-**Lesson.** **Availability-gating** is the load-bearing safety net: an agent assigned an `lmstudio` model whose server is down (or a `meridian` model with Meridian down) renders to the Ollama default (`local-gemma4`) and records a *pending* line — the stack never emits a route LiteLLM can't actually serve. The default is required to be an Ollama model precisely so it's always servable on a fresh box. That's why the nine Hermes profiles "just work" even before you've started Meridian — they quietly answer on local Gemma until the subscription back end is up, then `model sync` promotes them.
+**Lesson.** **Availability-gating** is the load-bearing safety net: an agent assigned an `lmstudio` model whose server is down (or a `meridian` model with Meridian down) renders to the Ollama default (`local`) and records a *pending* line — the stack never emits a route LiteLLM can't actually serve. The default is required to be an Ollama model precisely so it's always servable on a fresh box. That's why the nine Hermes profiles "just work" even before you've started Meridian — they quietly answer on local Gemma until the subscription back end is up, then `model sync` promotes them.
 
 **Go deeper.** [doc/models.md](../doc/models.md) (the three canonical IDs, the 13-agent table, superset-before-mint), [doc/OPERATIONS.md](../doc/OPERATIONS.md).
 
@@ -376,7 +376,7 @@ curl -s http://litellm:4000/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
   -H 'x-trace-tag: act2-l7-demo' \
-  -d '{"model":"local-gemma4","messages":[{"role":"user","content":"tag me"}],"max_tokens":5}' >/dev/null
+  -d '{"model":"local","messages":[{"role":"user","content":"tag me"}],"max_tokens":5}' >/dev/null
 ```
 
 Mint a scoped, budget-capped virtual key — local models only, `$2.00` cap, 1-day window — so a script or teammate never touches the master key:
@@ -387,13 +387,13 @@ curl -s http://litellm:4000/key/generate \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
   -X POST \
-  -d '{"models":["local-gemma4","local-qwen3.6"],"max_budget":2.0,"budget_duration":"1d","key_alias":"act2-demo"}' \
+  -d '{"models":["local","local"],"max_budget":2.0,"budget_duration":"1d","key_alias":"act2-demo"}' \
   | jq '{key, models, max_budget}'
 ```
 
 That scoped key sees only its allowlist — and a request for a model outside it is rejected **server-side with HTTP 403**, even though the key is valid.
 
-**Expected.** Phoenix shows your L5 chat as a span on model `local-gemma4` with token counts, latency, and a cost figure; the tagged call surfaces under `act2-l7-demo`. `/key/generate` returns a fresh `sk-...` key whose `models` is exactly your allowlist and whose `max_budget` is `2.0`. Using that key against a cloud/subscription model not in its list returns `403`.
+**Expected.** Phoenix shows your L5 chat as a span on model `local` with token counts, latency, and a cost figure; the tagged call surfaces under `act2-l7-demo`. `/key/generate` returns a fresh `sk-...` key whose `models` is exactly your allowlist and whose `max_budget` is `2.0`. Using that key against a cloud/subscription model not in its list returns `403`.
 
 **Try it live.** The HTML page's **Recent traces** demo (demo 10, under *Interactive demos*) calls `GET /api/traces`, which reads the most recent Phoenix spans for project `ai-stack` (the last ~1 hour) server-side and shows each span's name, model, status, and latency — read-only; the browser sends nothing, and only those summary fields leave the box. Run the **Chat** demo first, then refresh **Recent traces** to watch your own call land as a span — the same forensics you'd open the Phoenix UI for, inline on the page. (For the full waterfall, open Phoenix directly; key minting stays a terminal/master-key operation, never a browser button.) The live, self-cleaning example of all this is **`vz-ai-stack.sh tutorial-serve`**: it mints an *ephemeral* key allowlisted to every chat model you've wired into LiteLLM (local + LM Studio + Claude-subscription + cloud, embeddings excluded), capped at `$0.50` with a 30-minute TTL, injects it **server-side** in a loopback proxy (the browser never holds a token), and auto-revokes it on exit — exactly the scoped-key pattern above, productized for this tutorial. The budget cap is what makes including cloud routes safe.
 
@@ -493,7 +493,7 @@ PY
 
 **Try it live.** The tutorial page ships a first-party read-only route for this: the **Agent memory** demo (demo 8, under *Interactive demos*) calls `POST /api/honcho/demo`, which reads this same `tutorial` session server-side and shows *what was said* (the messages) beside *what Honcho knows* (the derived representation — empty until the async deriver runs, exactly as above). It only ever reads one fixed, non-sensitive demo session with server-hardcoded identifiers; the browser sends nothing, so your private fleet memory is never reachable. You can also watch the derivation happen — every deriver call is an LLM call routed through LiteLLM, so it shows up as a trace in Phoenix (`http://phoenix:6006`); filter for the `claude-opus-sub-xhigh` model.
 
-**Lesson.** Honcho separates *what was said* (messages on a session) from *what is known* (the peer representation). Writing is cheap and synchronous; **derivation is async** — that 20s sleep is the deriver routing your messages through LiteLLM → the Claude subscription (`claude-opus-sub-xhigh` via Meridian; LiteLLM falls back to `local-gemma4` if Meridian is down) to update the representation. Peers are cross-agent and per-user: the same `mayssam` peer is visible to every agent in the `tutorial` workspace.
+**Lesson.** Honcho separates *what was said* (messages on a session) from *what is known* (the peer representation). Writing is cheap and synchronous; **derivation is async** — that 20s sleep is the deriver routing your messages through LiteLLM → the Claude subscription (`claude-opus-sub-xhigh` via Meridian; LiteLLM falls back to `local` if Meridian is down) to update the representation. Peers are cross-agent and per-user: the same `mayssam` peer is visible to every agent in the `tutorial` workspace.
 
 **Go deeper.** Honcho's LLM roles default to `claude-opus-sub-xhigh`; override the model via `HONCHO_MODEL` in `~/ai-stack/.env` (e.g. a local slug for offline work), then recreate Honcho (`docker compose up -d --force-recreate api deriver` from `honcho/` — a plain restart won't reload env). Read the peer/session model in `doc/STACK-GUIDE.md` (Honcho section) and the upstream SDK in `honcho/sdks/python/`.
 
@@ -772,7 +772,7 @@ The `sre-engineer` DEPLOY stage and the `incident-manager` are *not* exercised b
 
 Pi (`@earendil-works/pi-coding-agent`) is the stack's sandboxed coding agent — a TUI you drive from `bin/pi`, installed inside the **`pi-v1` OpenShell sandbox**. Two entry points:
 
-- `bin/pi` — plain Pi. It auto-injects `--model ${PI_DEFAULT_MODEL}` (your bound coder model — `local-qwen3-coder` when LM Studio is up + synced, `local` gemma4 otherwise) unless you pass an explicit `-m/--model`, so a bare `bin/pi` always runs on its proper model.
+- `bin/pi` — plain Pi. It auto-injects `--model ${PI_DEFAULT_MODEL}` (your bound coder model — `local` when LM Studio is up + synced, `local` nemotron-3-nano:4b otherwise) unless you pass an explicit `-m/--model`, so a bare `bin/pi` always runs on its proper model.
 - `bin/pi-as <role>` — Pi wearing one of the nine personas (L12), pinned to that role's tier.
 
 ```bash
@@ -887,7 +887,7 @@ docker ps --filter 'label=com.docker.compose.project=deer-flow' --filter 'status
 # 3. In the UI (opened by step 1, or reach it at http://localhost:2026),
 #    ask a research question; the LangGraph agent plans, searches, and
 #    produces a cited report. Calls route through LiteLLM
-#    (DeerFlow's reasoning tier is assigned claude-opus-sub-max, gated back to local-gemma4 when Meridian is down).
+#    (DeerFlow's reasoning tier is assigned claude-opus-sub-max, gated back to local when Meridian is down).
 
 # 4. The dual-LLM researcher pattern (no service — a prompting discipline):
 #    a summarizer reads the UNTRUSTED doc; the operator only ever sees the
@@ -908,7 +908,7 @@ vz-ai-stack.sh stop deerflow
 
 **Lesson.** Research is a *graph*, not a turn — DeerFlow makes that graph explicit. And whenever an agent ingests untrusted content, split the model in two: a cheap local summarizer absorbs the payload, the operator only sees sanitized facts. The fleet's RAG and security profiles (`hermes_ml_engineer`, `hermes_reviewing_engineer`) already apply this.
 
-**Go deeper.** `start deerflow` opens it at `http://localhost:2026`; it is now also aliased as `deerflow` — `start-deerflow.sh` binds nginx to BOTH `127.0.0.1:2026` and the loopback alias `127.0.10.17` (replacing the upstream `0.0.0.0` all-interfaces publish that exposed it to the LAN), so after `prepare-sudo` you can also reach it at `http://deerflow:2026` and, with `ingress up`, the port-free `http://deerflow/`. Its two-tier `models:` block (basic `local-gemma4` / reasoning `claude-opus-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local-gemma4` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
+**Go deeper.** `start deerflow` opens it at `http://localhost:2026`; it is now also aliased as `deerflow` — `start-deerflow.sh` binds nginx to BOTH `127.0.0.1:2026` and the loopback alias `127.0.10.17` (replacing the upstream `0.0.0.0` all-interfaces publish that exposed it to the LAN), so after `prepare-sudo` you can also reach it at `http://deerflow:2026` and, with `ingress up`, the port-free `http://deerflow/`. Its two-tier `models:` block (basic `local` / reasoning `claude-opus-sub-max`) is rendered from `installer/models.yml`; the reasoning tier gates back to `local` when the Meridian Claude-subscription daemon is down. Re-render with `vz-ai-stack.sh model sync`.
 
 ---
 
@@ -939,7 +939,7 @@ bin/rlm "Use the REPL to compute the 20th Fibonacci number."
 
 # Bigger task + deeper recursion + heavier model (opt-in LM Studio MLX —
 # start it first with `vz-ai-stack.sh start lmstudio`; ~22 GB, watch RAM).
-bin/rlm "Summarize this 500-page log into 5 bullets: <paste or path>" -m local-qwen3.6 --max-depth 2
+bin/rlm "Summarize this 500-page log into 5 bullets: <paste or path>" -m local --max-depth 2
 
 # Ready-to-copy examples:
 bash ~/ai-stack/bin/sample-rlm-usage.sh
@@ -997,9 +997,9 @@ bin/rlm "..." -m local-heavy --max-depth 2
 cat ~/ai-stack/bin/sample-rlm-usage.sh && bash ~/ai-stack/bin/sample-rlm-usage.sh
 ```
 
-**Expected.** Step 1 prints `6765`; step 2 prints `count=9592, largest=99991` — each after running generated Python inside a throwaway Docker container (~40 s on this box, where `rlm` is bound to `claude-opus-sub-max`; a keyless machine defaults to `local-gemma4` — slower, but it works and stays on-box). Open Phoenix (callback to Act II) and you'll see the shape of it: a *parent* call plus the *recursive sub-calls* it spawned — a tree of small prompts, not one oversized one. RLM fires many calls, so a one-off `APIConnectionError` is just a transient blip — re-run it.
+**Expected.** Step 1 prints `6765`; step 2 prints `count=9592, largest=99991` — each after running generated Python inside a throwaway Docker container (~40 s on this box, where `rlm` is bound to `claude-opus-sub-max`; a keyless machine defaults to `local` — slower, but it works and stays on-box). Open Phoenix (callback to Act II) and you'll see the shape of it: a *parent* call plus the *recursive sub-calls* it spawned — a tree of small prompts, not one oversized one. RLM fires many calls, so a one-off `APIConnectionError` is just a transient blip — re-run it.
 
-**Lesson.** RLM trades one impossible prompt for a tree of possible ones. Two dials matter most: `--max-depth` (default `1` = one level of recursion; raise it for bigger inputs) and `--env` — keep it on `docker` (the default sandbox), because the model writes and *executes* real code; `--env local` would run that code on your host. It runs fully local (the keyless default is `local-gemma4`); recursive fan-out just multiplies calls, so a deep run is *faster* on a subscription/cloud tier — which is why the `rlm` binding here defaults to `claude-opus-sub-max`. Re-point it anytime with `vz-ai-stack.sh model assign rlm <model>`.
+**Lesson.** RLM trades one impossible prompt for a tree of possible ones. Two dials matter most: `--max-depth` (default `1` = one level of recursion; raise it for bigger inputs) and `--env` — keep it on `docker` (the default sandbox), because the model writes and *executes* real code; `--env local` would run that code on your host. It runs fully local (the keyless default is `local`); recursive fan-out just multiplies calls, so a deep run is *faster* on a subscription/cloud tier — which is why the `rlm` binding here defaults to `claude-opus-sub-max`. Re-point it anytime with `vz-ai-stack.sh model assign rlm <model>`.
 
 **Go deeper.** This is exactly the engine L19's HALO stands on — recursive reasoning is what lets HALO chew through a large trace. The difference is who drives: here *you* prompt `bin/rlm`; HALO drives RLM over your traces automatically. Try the same task at `--max-depth 1` vs `--max-depth 2` and compare the sub-call tree in Phoenix.
 
@@ -1029,7 +1029,7 @@ bin/halo ~/ai-stack/traces/litellm.jsonl -p "Find the most common failure and pr
 
 # 3. Harder reasoning? Override the model (opt-in LM Studio MLX — start it
 #    first with `vz-ai-stack.sh start lmstudio`).
-bin/halo ~/ai-stack/traces/litellm.jsonl -p "..." -m local-qwen3.6
+bin/halo ~/ai-stack/traces/litellm.jsonl -p "..." -m local
 
 # Cameo — autoreason (Phase 11, clone-only research artifact): an A/B/AB
 # self-refinement tournament judged by blind Borda count. Reading only.
@@ -1096,7 +1096,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 | **AI Town** (36) | A **watchable** virtual town — AI characters live and chat in real time | `install aitown` | open http://aitown:5273/ |
 | **Concordia** (37) | Controlled **social-science experiments** — agents with beliefs/memory + a **Game Master** that enforces world rules (negotiation, governance, elections) | `install concordia` | `bin/concordia concordia/sims/smoke_sim.py` |
 
-**Reality check (M4 / 24 GB).** A "large swarm" on-box means *dozens* of agents on a small fast model (`local-gemma4`) with queuing — local inference throughput, not the orchestrator, is the ceiling. For hundreds–thousands, point the scoped key at a metered cloud model. And `local-gemma4` is a **reasoning** model: sims need `max_tokens ≥ 512` or agents spend the whole budget "thinking" and return empty content.
+**Reality check (M4 / 24 GB).** A "large swarm" on-box means *dozens* of agents on a small fast model (`local`) with queuing — local inference throughput, not the orchestrator, is the ceiling. For hundreds–thousands, point the scoped key at a metered cloud model. And `local` is a **reasoning** model: sims need `max_tokens ≥ 512` or agents spend the whole budget "thinking" and return empty content.
 
 **Prereqs.** A healthy stack with LiteLLM up (Act II); `uv` (installed by the core). Nothing here is load-bearing — skip freely.
 
@@ -1135,7 +1135,7 @@ def model():
     return OpenAIChatModel(
         credential=OpenAICredential(api_key=os.environ["OPENAI_API_KEY"],
                                     base_url=os.environ["OPENAI_BASE_URL"]),   # base_url is a CREDENTIAL field
-        model=os.environ.get("AGENTSCOPE_MODEL", "local-gemma4"),
+        model=os.environ.get("AGENTSCOPE_MODEL", "local"),
         stream=False, formatter=OpenAIChatFormatter(),
         parameters=OpenAIChatModel.Parameters(max_tokens=512),                 # reasoning model → keep generous
     )
@@ -1146,7 +1146,7 @@ async def main():
     seed = Msg(name="user", role="user", content=[TextBlock(type="text", text="Design a city on Mars.")])
     ada_says = (await ada.reply(seed)).get_text_content()
     print("Ada:", ada_says)
-    # GOTCHA: local-gemma4 emits a ThinkingBlock alongside the text, and observe() REJECTS
+    # GOTCHA: local emits a ThinkingBlock alongside the text, and observe() REJECTS
     # thinking blocks across agents — hand Ben a CLEAN text-only Msg, not Ada's raw reply.
     await ben.observe(Msg(name="Ada", role="assistant", content=[TextBlock(type="text", text=ada_says)]))
     print("Ben:", (await ben.reply(Msg(name="user", role="user",
@@ -1173,7 +1173,7 @@ ls metagpt/workspace/
 open http://phoenix:6006                    # project ai-stack
 ```
 
-**Expected.** The run prints each role taking its turn and lands code + docs under `metagpt/workspace/`. `vz-ai-stack.sh test 32` runs the wrapper end-to-end; `doctor metagpt` shows check 57 green. The default is the capable `claude-opus-sub-xhigh` (metered); for a free on-box pass, `METAGPT_MODEL=local-gemma4 bin/metagpt "…"`.
+**Expected.** The run prints each role taking its turn and lands code + docs under `metagpt/workspace/`. `vz-ai-stack.sh test 32` runs the wrapper end-to-end; `doctor metagpt` shows check 57 green. The default is the capable `claude-opus-sub-xhigh` (metered); for a free on-box pass, `METAGPT_MODEL=local bin/metagpt "…"`.
 
 **Run the OASIS social swarm.** CAMEL-backed agents that post / follow / react in a shared world (upstream scales to ~1M; on-box you run a small cast). Same host-venv shape as MetaGPT, driven by a sim script under `oasis/sims/`.
 
@@ -1212,7 +1212,7 @@ open http://phoenix:6006                     # project ai-stack
 
 **Expected.** The demo prints the scene, each entity's action, and the Game Master's *resolved event*, ending with `CONCORDIA_SMOKE_OK entities=2 steps=1 llm_calls=N`; `test 37` prints `Smoke 37 PASS`; `doctor concordia` shows check 66 green.
 
-**Model note — Concordia is different.** It fans out **many concurrent LLM calls per step** (the Game Master + every entity + every component), so its default is the capable **`claude-opus-sub-xhigh`** — *not* `local-gemma4`, which serializes on Ollama and times out. The install/`test` gate runs the faster `claude-sonnet-sub-high` to stay under its timeout. Override per run with `CONCORDIA_MODEL=…`, and keep on-box experiments small (a handful of entities, a few steps — even a 2-step run is several minutes).
+**Model note — Concordia is different.** It fans out **many concurrent LLM calls per step** (the Game Master + every entity + every component), so its default is the capable **`claude-opus-sub-xhigh`** — *not* `local`, which serializes on Ollama and times out. The install/`test` gate runs the faster `claude-sonnet-sub-high` to stay under its timeout. Override per run with `CONCORDIA_MODEL=…`, and keep on-box experiments small (a handful of entities, a few steps — even a 2-step run is several minutes).
 
 **Make it yours.** Drop a script in `concordia/sims/` and run it with `bin/concordia concordia/sims/<file>.py` — the wrapper injects the scoped key + `OPENAI_BASE_URL` (and the `CONCORDIA_MODEL`/`CONCORDIA_EMBEDDER` defaults) for you. A minimal GABM experiment is *entities + a Game Master + a premise*, assembled from prefabs:
 
@@ -1268,7 +1268,7 @@ vz-ai-stack.sh test 35                      # headless 1-agent workflow → Lite
 open http://phoenix:6006                    # project ai-stack
 ```
 
-**Expected.** `http://chatdev:5274/` renders the DevAll UI (the install patches Vite's `allowedHosts` so the alias doesn't 403 — fall back to the `127.0.10.18` IP if needed); the backend API docs live at `http://127.0.10.18:6400/docs`. `doctor chatdev` shows check 60 green. The default is `claude-opus-sub-xhigh` (metered); for a free on-box pass, point a workflow YAML node's `name:` at `local-gemma4`.
+**Expected.** `http://chatdev:5274/` renders the DevAll UI (the install patches Vite's `allowedHosts` so the alias doesn't 403 — fall back to the `127.0.10.18` IP if needed); the backend API docs live at `http://127.0.10.18:6400/docs`. `doctor chatdev` shows check 60 green. The default is `claude-opus-sub-xhigh` (metered); for a free on-box pass, point a workflow YAML node's `name:` at `local`.
 
 **Watch the AI Town.** The most *watchable* of the set — AI characters live, move, and chat in a virtual town in real time (alias `aitown` → host 5273 → container 5173; Convex admin dashboard on :6791). Three containers under the `aitown` compose project; the whole town world is a SQLite DB bind-mounted under `data/aitown/convex` so it survives a restart.
 
@@ -1285,7 +1285,7 @@ vz-ai-stack.sh start aitown                 # idempotent; stop aitown to reclaim
 open http://phoenix:6006                    # project ai-stack
 ```
 
-**Expected.** `http://aitown:5273/` shows the live town (the install patches Vite's `allowedHosts`; fall back to the `127.0.10.19` IP if it 403s); the Convex dashboard is at `http://127.0.10.19:6791/` (loopback-only). `vz-ai-stack.sh test 36` proves it; `doctor aitown` shows check 61 green. The default `claude-opus-sub-xhigh` is metered and good for a livelier town; for a free on-box pass keep the cast small and `(cd ai-town && npx convex env set LLM_MODEL local-gemma4)` then restart. The town world is **your data** — `stop aitown` and a teardown both preserve the SQLite world.
+**Expected.** `http://aitown:5273/` shows the live town (the install patches Vite's `allowedHosts`; fall back to the `127.0.10.19` IP if it 403s); the Convex dashboard is at `http://127.0.10.19:6791/` (loopback-only). `vz-ai-stack.sh test 36` proves it; `doctor aitown` shows check 61 green. The default `claude-opus-sub-xhigh` is metered and good for a livelier town; for a free on-box pass keep the cast small and `(cd ai-town && npx convex env set LLM_MODEL local)` then restart. The town world is **your data** — `stop aitown` and a teardown both preserve the SQLite world.
 
 **Try it live.** Serve this page with launch enabled — `vz-ai-stack.sh tutorial-serve --launch-enabled` — and the **Launch a service** panel can start **ChatDev** and **AI Town** for you and open them in a new tab. The buttons just run the same idempotent `start <svc>` shown above, server-side; it's opt-in and loopback-only (the proxy holds no key — see Act II's Try-it-live for why).
 
@@ -1310,7 +1310,7 @@ vz-ai-stack.sh tutorial-serve            # mints a $0.50-capped, ttl=30m key (al
 export LITELLM_KEY="sk-..."              # the scoped key from L22, or the demo key
 ```
 
-> **Model ids:** the gateway answers to *two* naming systems that both resolve locally — the `models.yml`-rendered ids you met in Act II (`local-gemma4`, `local-qwen3.6`, `local-qwen3-coder`) and the canonical `litellm/config.yaml` row `local` (= the same zero-config Ollama Gemma default). Either name works; the examples below use `local`, which is always available. (`local-qwen3.6` / `local-qwen3-coder` are the opt-in LM Studio MLX models — start LM Studio with `vz-ai-stack.sh start lmstudio` and assign one before calling them.)
+> **Model ids:** the gateway answers to *two* naming systems that both resolve locally — the `models.yml`-rendered ids (`local`, `local-heavy`, `local-nemotron3-nano-4b`) and the canonical `litellm/config.yaml` row `local` — **all of which map to the same zero-config Ollama nemotron default** (`nemotron-3-nano:4b`, the only local chat model). Either name works; the examples below use `local`, which is always available. (`local-nemotron3-nano-4b-mlx` is the opt-in LM Studio MLX build of the same model — start LM Studio with `vz-ai-stack.sh start lmstudio` before calling it.)
 
 **Python** (`call.py`) — chat, then stream, then swap models with one line:
 
@@ -1337,7 +1337,7 @@ for chunk in client.chat.completions.create(
 print()
 
 # 3) Model swap — change ONE string. local (zero-config) → a subscription
-#    route → a cloud route. (local-qwen3.6 also works once LM Studio is up.)
+#    route → a cloud route. (local also works once LM Studio is up.)
 for m in ("local", "claude-sonnet-sub-high", "openrouter-claude-opus-4.7-fast"):
     r = client.chat.completions.create(model=m, messages=[{"role": "user", "content": "hi in 3 words"}])
     print(m, "->", r.choices[0].message.content)
@@ -1386,7 +1386,7 @@ MASTER="$(grep '^LITELLM_MASTER_KEY=' ~/ai-stack/.env | cut -d= -f2-)"
 RESP=$(curl -s -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
   -X POST http://litellm:4000/key/generate \
   -d '{
-        "models":          ["local", "local-qwen3.6", "local-qwen3-coder"],
+        "models":          ["local", "local-heavy"],
         "max_budget":      0.50,
         "budget_duration": "1d",
         "duration":        "30m",
@@ -1402,7 +1402,7 @@ echo "minted: $KEY"
 
 ```bash
 export LITELLM_KEY="$KEY"
-python call.py          # now scoped: only local/local-qwen3.6/local-qwen3-coder, $0.50/day, 30-min life
+python call.py          # now scoped: only local/local-heavy, $0.50/day, 30-min life
 ```
 
 Ask for a model *outside* the allowlist (e.g. `openai-gpt-5.5`) and LiteLLM rejects the call — the scope is enforced server-side, not by your code.
@@ -1528,7 +1528,7 @@ Swap `"role": "architect"` for `"coding-agent"` (Pi) or `"researcher"` (DeerFlow
 
 **Why.** The last mile: shape a model to your data, then ship it. Unsloth Studio (`:8898`, `installer/phases/14_unsloth_studio.sh`) does local LoRA fine-tuning on Apple Silicon; Blaxel (`bl` CLI, `installer/phases/12_blaxel.sh`) deploys to the cloud on demand. Then the capstone ties five services into one run.
 
-> ⚠️ **RAM caution (M4 / 24 GB).** Training is the heaviest thing on this box. A LoRA on a small base is fine, but it competes with Ollama/LM Studio for memory. Before you train: `ollama stop <model>`, quit LM Studio, and keep the base small. Do *not* train and run `local-qwen3.6` (the opt-in LM Studio MLX heavy model) at the same time — you'll thrash.
+> ⚠️ **RAM caution (M4 / 24 GB).** Training is the heaviest thing on this box. A LoRA on a small base is fine, but it competes with Ollama/LM Studio for memory. Before you train: `ollama stop <model>`, quit LM Studio, and keep the base small. Do *not* train and run `local` (the opt-in LM Studio MLX heavy model) at the same time — you'll thrash.
 
 **(a) A LoRA, conceptually.** Open Unsloth Studio at `http://127.0.0.1:8898`, pick a small base model, point it at a JSONL of instruction/response pairs, and train a LoRA adapter — you're learning a thin set of weights on top of a frozen base, not retraining the whole model. Export the merged result as **GGUF** so Ollama can serve it. Then point it back at LiteLLM by adding a `model_list` entry in `litellm/config.yaml`:
 
@@ -1783,12 +1783,12 @@ vz-ai-stack.sh install concordia      # 37 — generative agent-based modeling (
 - **`portless` (21)** — global npm CLI on the host; maps stable `name.localhost` HTTPS URLs to local dev servers and ships a Claude Code skill so an agent finds the right URL instead of guessing ports. Advisory only if Node < 24.
 - **`cmux` (22)** — a native macOS **GUI app** (Homebrew cask from the upstream tap), not a container or daemon: there's nothing to start; you launch `cmux.app` yourself. Ships a `cmux notify` CLI for agent hooks.
 - **`openagents` (24)** — a **competing orchestration layer** ("Ollama for AI agents"). It overlaps OpenShell, the Hermes fleet, and the front-ends; we install it into its own `~/.openagents` prefix and wire it into *nothing*. Treat it as an evaluation sandbox.
-- **`lmstudio` (25)** — adds Apple's **MLX** engine as a second local runtime behind LiteLLM (home of the heavy MLX models `local-qwen3.6` / `local-qwen3-coder`). `install lmstudio` does the setup + model wiring; **`vz-ai-stack.sh start lmstudio`** starts the server when you want it (and `stop lmstudio` stops it) — no model auto-loads, so assign one in `models.yml` + `vz-ai-stack.sh model sync`. ⚠ **CPU/RAM gotchas:** LM Studio **idle-spins ~0.8 of a core** even when nothing is in flight — **quit it when you're done** (`mlx_lm.server` is a lighter alternative). On a 24 GB box, the heavy MLX slugs (`local-qwen3.6`, `local-qwen3-coder`, ~17 GB) thrash if you also have Ollama resident — load one runtime at a time. **Security:** LM Studio binds `0.0.0.0:1234` with **no auth** so the container can reach it via `host.docker.internal`, which exposes the LLM to your LAN — fine on a trusted network, otherwise firewall it.
+- **`lmstudio` (25)** — adds Apple's **MLX** engine as a second local runtime behind LiteLLM (serves `local-nemotron3-nano-4b-mlx` = the same nemotron model on Apple MLX, plus the opt-in `local-lfm2-mlx` LFM2.5 demo). `install lmstudio` does the setup + model wiring; **`vz-ai-stack.sh start lmstudio`** starts the server when you want it (and `stop lmstudio` stops it) — no model auto-loads, so assign one in `models.yml` + `vz-ai-stack.sh model sync`. ⚠ **CPU/RAM gotchas:** LM Studio **idle-spins ~0.8 of a core** even when nothing is in flight — **quit it when you're done** (`mlx_lm.server` is a lighter alternative). **Security:** LM Studio binds `0.0.0.0:1234` with **no auth** so the container can reach it via `host.docker.internal`, which exposes the LLM to your LAN — fine on a trusted network, otherwise firewall it.
 - **`mempalace` (26)** — *now part of `install all`* — it graduated from this opt-in list because it's a zero-cost CLI leaf (no daemon, on-device embeddings). Full coverage is in **L10½**. ⚠ **Security:** install only from PyPI (`mempalace`) or github.com/MemPalace/mempalace — `mempalace.tech` is a known malware squat.
 - **`aionui` (28)** — a local **Cowork workspace**: the desktop app (`brew --cask aionui`) plus a headless **WebUI server** (the prebuilt `aionui-web` binary, loopback `:25808`, managed by `start aionui`) that runs multiple agents side-by-side over your stack. `install aionui` adds the cask + the WebUI daemon + a model-scoped LiteLLM key + host `hermes-agent[acp]` (so AionUi auto-detects a built-in `hermes`). One-time UI wiring: Settings → Models → Add Model → **Custom** → Base URL `http://127.0.0.1:4000/v1` + the `AIONUI_LITELLM_KEY` from `.env` + your model IDs. ⚠ Loopback-only (auth is disabled in local mode — never expose `:25808` off-box); the desktop app is a GUI — **quit it when done**.
 - **`openwork` (29)** — a local **Cowork workspace built on the OpenCode engine** (the open-source alternative to Claude Cowork). The stack runs its **headless orchestrator** (the prebuilt `openwork-orchestrator` binary, `npm i -g`) as a loopback browser UI at `http://127.0.0.1:8787/ui`, managed by `start openwork`. It does file-centric agentic work with skills / opencode-plugins / MCP over your stack's models, **approval-gated**. `install openwork` npm-installs the binary + mints a model-scoped LiteLLM key + **pre-seeds** `~/.openwork-stack/opencode.json` with the LiteLLM provider — so unlike AionUi, **your models appear with no manual UI step** (the key is referenced as `{env:OPENWORK_LITELLM_KEY}`, never written literally to disk). The binary **self-manages OpenCode** (downloads its sidecars on first run → the stack adds *no* `opencode` dependency; first start may take ~a minute). ⚠ Loopback-only (never `--remote-access`); `--approval manual` so agentic file/shell actions need explicit approval. A **desktop app** exists too — a documented alternate UI (download from GitHub Releases), not managed by the stack; wiring the Hermes fleet / stack MCP servers in is a documented follow-up (Phase 29b).
 
-**Go deeper.** Phases `installer/phases/21_portless.sh` … `26_mempalace.sh` each carry a full rationale header. The model strategy (which slug runs where, why qwen3.6 moved off Ollama to LM Studio) is in `doc/models.md` and `doc/ALTERNATIVES.md`; MemPalace's place among the memory options is in `doc/ALTERNATIVES.md` and its attribution/license in `doc/ATTRIBUTION.md`.
+**Go deeper.** Phases `installer/phases/21_portless.sh` … `26_mempalace.sh` each carry a full rationale header. The model strategy (which slug runs where, why nemotron is the only local model) is in `doc/models.md` and `doc/ALTERNATIVES.md`; MemPalace's place among the memory options is in `doc/ALTERNATIVES.md` and its attribution/license in `doc/ATTRIBUTION.md`.
 
 ---
 
@@ -1828,7 +1828,7 @@ vz-ai-stack.sh model sync
 
 # 2. ADD A FLEET ROLE — give the Hermes fleet a new specialist profile.
 vz-ai-stack.sh fleet list
-vz-ai-stack.sh fleet add researcher2 --role "deep web research" --model local-qwen3.6
+vz-ai-stack.sh fleet add researcher2 --role "deep web research" --model local
 
 # 3. RUN CLAUDE CODE ON STACK MODELS — drive the Claude Code CLI itself through
 #    LiteLLM, on any served model (kimi / gpt / glm / your GPT-5 sub / fugu), not

@@ -1135,14 +1135,11 @@ brew services start ollama</pre></div>
         <div class="step">
           <input type="checkbox" data-step="1-2">
           <div class="step-body">
-            <p>Pull the local models. Two chat models (one frontier-grade, one edge-grade) and one embedding model. Sizes are real — make sure you have ~30 GB free.</p>
+            <p>Pull the local models. One chat model (nemotron-3-nano:4b, the only local chat model) and one embedding model. Small — you need only ~4 GB free.</p>
             <div class="code"><div class="code-head"><span>terminal</span><button class="code-copy">copy</button></div>
-<pre><span class="c"># 17 GB — Qwen 3.6 27B Q4_K_M. Frontier-class local model, vision + tools + thinking.</span>
-ollama pull qwen3.6:27b-q4_K_M
-
-<span class="c"># 9.6 GB — Gemma 4 E4B (Effective 4B). Multimodal: text + image + audio.</span>
-<span class="c"># Edge-optimized. Fast on M4 24 GB.</span>
-ollama pull gemma4:e4b
+<pre><span class="c"># ~2.8 GB — NVIDIA Nemotron 3 Nano 4B. The ONLY local chat model.</span>
+<span class="c"># Edge-optimized. Fast on M4 24 GB. `local` and `local-heavy` both map to it.</span>
+ollama pull nemotron-3-nano:4b
 
 <span class="c"># Embedding model — small, ~270 MB.</span>
 ollama pull nomic-embed-text
@@ -1170,19 +1167,17 @@ curl -s http://127.0.0.1:11434/api/tags | jq <span class="s">'.models[].name'</s
             <div class="code"><div class="code-head"><span>~/ai-stack/litellm/config.yaml</span><button class="code-copy">copy</button></div>
 <pre><span class="k">model_list:</span>
   <span class="c"># ============================================================</span>
-  <span class="c"># LOCAL — via Ollama. Two tiers:</span>
-  <span class="c">#   local       (default) → Gemma 4 E4B, 9.6GB. Fast, fits comfortably.</span>
-  <span class="c">#   local-heavy           → Qwen 3.6 27B, 17GB. Frontier-class but RAM-tight.</span>
-  <span class="c"># Fleet profiles point at `local` by default — swap individual</span>
-  <span class="c"># profiles to `local-heavy` only when you actually need 27B's reasoning.</span>
+  <span class="c"># LOCAL — via Ollama. Single model: nemotron-3-nano:4b (~2.8 GB).</span>
+  <span class="c">#   local       (default) → nemotron-3-nano:4b</span>
+  <span class="c">#   local-heavy           → nemotron-3-nano:4b (back-compat alias — same model)</span>
   <span class="c"># ============================================================</span>
   - <span class="k">model_name:</span> local
     <span class="k">litellm_params:</span>
-      <span class="k">model:</span> ollama_chat/gemma4:e4b
+      <span class="k">model:</span> ollama_chat/nemotron-3-nano:4b
       <span class="k">api_base:</span> http://host.docker.internal:11434
   - <span class="k">model_name:</span> local-heavy
     <span class="k">litellm_params:</span>
-      <span class="k">model:</span> ollama_chat/qwen3.6:27b-q4_K_M
+      <span class="k">model:</span> ollama_chat/nemotron-3-nano:4b
       <span class="k">api_base:</span> http://host.docker.internal:11434
 
   <span class="c"># ============================================================</span>
@@ -1392,7 +1387,7 @@ curl -s http://127.0.0.1:11434/api/tags | jq <span class="s">'.models[].name'</s
 
 <span class="k">general_settings:</span>
   <span class="k">master_key:</span> os.environ/LITELLM_MASTER_KEY</pre></div>
-            <div class="note">Two things to verify on your end before relying on this in agents. <strong>(1)</strong> Make sure your <code>.env</code> file has all four keys: <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>OPENROUTER_API_KEY</code>, <code>GOOGLE_API_KEY</code>. <strong>(2)</strong> Pull both Ollama models on the host before starting LiteLLM, or the local-* aliases will fail-fast: <code>ollama pull qwen3.6:27b-q4_K_M && ollama pull gemma4:e4b && ollama pull nomic-embed-text</code> (the qwen is 17 GB, the gemma 9.6 GB — total ~27 GB).</div>
+            <div class="note">Two things to verify on your end before relying on this in agents. <strong>(1)</strong> Make sure your <code>.env</code> file has all four keys: <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>OPENROUTER_API_KEY</code>, <code>GOOGLE_API_KEY</code>. <strong>(2)</strong> Pull the Ollama models on the host before starting LiteLLM, or the local-* aliases will fail-fast: <code>ollama pull nemotron-3-nano:4b && ollama pull nomic-embed-text</code> (nemotron ~2.8 GB, embeddings small — total ~3 GB).</div>
             <p>Now write the tiny callback module that the proxy will load. This is the piece I previously got wrong — LiteLLM's stable way to write structured logs to a local file is a custom callback class, not an undocumented OTEL exporter flag.</p>
             <div class="code"><div class="code-head"><span>~/ai-stack/litellm/trace_to_file.py</span><button class="code-copy">copy</button></div>
 <pre><span class="c"># LiteLLM custom callback — appends one JSON line per call to /traces/litellm.jsonl</span>
@@ -3579,7 +3574,7 @@ bl workspaces list</pre></div>
         <tbody>
           <tr class="svc-default-on">
             <td><strong>Ollama</strong></td><td>11434</td>
-            <td>Local model runtime — qwen3.6:27b, gemma4:e4b, nomic-embed-text</td>
+            <td>Local model runtime — nemotron-3-nano:4b, nomic-embed-text</td>
             <td>01</td><td>ON</td>
           </tr>
           <tr class="svc-default-on">

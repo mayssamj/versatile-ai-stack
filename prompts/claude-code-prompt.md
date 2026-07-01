@@ -301,8 +301,8 @@ The `stack` CLI reconciles declared state (services.yml + enabled flags) against
 Use exactly these. Other models in the original guide were marked UNVERIFIED — keep them commented out behind an explicit `# UNVERIFIED — verify against provider docs before enabling` block.
 
 **Local (Ollama):**
-- `local` → `ollama_chat/gemma4:e4b` (9.6 GB, default for routine fleet work)
-- `local-heavy` → `ollama_chat/qwen3.6:27b-q4_K_M` (17 GB, frontier-class local; used by researcher + data_analyst)
+- `local` → `ollama_chat/nemotron-3-nano:4b` (~2.8 GB, the ONLY local chat model + default for routine fleet work)
+- `local-heavy` → `ollama_chat/nemotron-3-nano:4b` (back-compat alias — maps to the same nemotron model)
 - `embed-local` → `ollama/nomic-embed-text`
 
 **Cloud (Anthropic direct):**
@@ -417,7 +417,7 @@ Each of these bit Mayssam in the prior session. The doctor must detect, diagnose
 | `arize_phoenix` callback not loaded | `docker logs litellm \| grep arize_phoenix` returns nothing | Check config.yaml has it in callbacks list |
 | `guardrails.handler` in callbacks but `guardrails.py` missing | `ImportError: Could not find module file /app/config/guardrails.py` in logs | Either create the file (phase 04·G) or remove from callbacks list |
 | LiteLLM crashes on start with `No such option: -e` | docker run flag ordering wrong | Fix flag ordering in start script |
-| Ollama models not pulled | `curl /api/tags` doesn't list `gemma4:e4b` and/or `qwen3.6:27b-q4_K_M` | `ollama pull` them |
+| Ollama models not pulled | `curl /api/tags` doesn't list `nemotron-3-nano:4b` and/or `nomic-embed-text` | `ollama pull` them |
 | Phoenix admin login fails | 401 on `/auth/login` | If first boot: log in as `admin@localhost` / `admin`, change password. If subsequent: wipe `~/ai-stack/data/phoenix/*` and start fresh. |
 | zsh "no matches found" on jq filter | User pasted unquoted jq filter with brackets | This is a user-error pattern — installer should always quote jq filters in its own code |
 | Helicone artifacts present (from older guide) | `~/ai-stack/helicone` directory exists | Offer to clean up; user is on Phoenix now |

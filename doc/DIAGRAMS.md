@@ -109,9 +109,9 @@ flowchart LR
 
 Key things to notice:
 - Every LLM call funnels through LiteLLM. It fronts two local runtimes —
-  Ollama (default, serves `local-gemma4`) and, when you opt into Phase 25,
-  LM Studio's MLX server (`:1234`, serves the heavy `local-qwen3.6` /
-  `local-qwen3-coder` MLX models) — plus the cloud APIs.
+  Ollama (default, serves `local`) and, when you opt into Phase 25,
+  LM Studio's MLX server (`:1234`, serves the heavy `local` /
+  `local` MLX models) — plus the cloud APIs.
 - Phoenix only receives; it never sits in the request path.
 - Honcho and Qdrant are the long-term state. Everything else is
   ephemeral.
@@ -255,7 +255,7 @@ sequenceDiagram
   participant R as hermes_ml_engineer (sandbox)
   participant SBX as hermes-gw :8642
   participant L as litellm :4000
-  participant LH as local-gemma4 (summarizer)
+  participant LH as local (summarizer)
   participant CL as Claude Opus (sub via Meridian)
   participant MCP as docs-mcp :8765
   participant Q as qdrant :6333
@@ -316,7 +316,7 @@ reconciles it into LiteLLM and re-renders each agent. The interesting
 wrinkle is **availability-gating**: if an agent is assigned an
 LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio
 is opt-in and may be off), the agent is rendered against the always-on
-fallback `local-gemma4` instead — never left pointing at a dead route.
+fallback `local` instead — never left pointing at a dead route.
 
 ```mermaid
 flowchart TB
@@ -325,9 +325,9 @@ flowchart TB
   end
 
   subgraph Models[Canonical models]
-    GM["local-gemma4 (ollama, default)"]
-    Q36["local-qwen3.6 (lmstudio, big)"]
-    QC["local-qwen3-coder (lmstudio, big)"]
+    GM["local (ollama, default)"]
+    Q36["local (lmstudio, big)"]
+    QC["local (lmstudio, big)"]
   end
 
   MY --> GM
@@ -344,7 +344,7 @@ flowchart TB
 
   P4 --> Gate{LiteLLM actually<br/>serving the model?}
   Gate -- "yes" --> Bind["render agent against assigned model"]
-  Gate -- "no (provider off)" --> Fall["availability-gated:<br/>render against local-gemma4 + warn"]
+  Gate -- "no (provider off)" --> Fall["availability-gated:<br/>render against local + warn"]
 
   Bind --> Agents["9 Hermes profiles · pi · deerflow · ace · rlm"]
   Fall --> Agents
@@ -360,7 +360,7 @@ What the assignments look like (from `models.yml`, see
 - **sakana-fugu** — an available LiteLLM route, currently **unassigned** (no
   agent binds to it by default; `hermes_techlead` dropped it 2026-06-27 and is
   now on the `claude-opus-sub-max` default like every other role).
-- **local-gemma4** (the always-on Ollama fallback) — what every subscription- or
+- **local** (the always-on Ollama fallback) — what every subscription- or
   LM-Studio-assigned agent (incl. all nine Hermes profiles) gates to when its runtime
   is down. An UNASSIGNED agent renders the `primary` (`claude-opus-sub-max`) and
   gates to this. (`default:` in models.yml names this fallback; it must be an Ollama model.)
@@ -368,10 +368,9 @@ What the assignments look like (from `models.yml`, see
 Notes:
 - The Hermes fleet now routes to a Claude subscription via the Meridian host
   daemon; availability-gating means when **Meridian is down** all nine profiles
-  render against `local-gemma4` and keep working. (The heavy MLX models
-  `local-qwen3.6` ~17.5GB and `local-qwen3-coder` ~17.2GB still exist as legacy
-  slugs and cannot coexist on a 24GB box, but no agent is bound to them by
-  default any more.)
+  render against `local` (`nemotron-3-nano:4b`) and keep working. (`local` and
+  `local-heavy` both map to nemotron — the ONLY local chat model; there is no
+  heavy 27B local model any more.)
 - `model sync` is opt-in and crash-safe; it is **not** run by
   `install all`. Phase 1 only ever adds to LiteLLM's `model_list`
   (ADD-ONLY), and LiteLLM is restarted at most once.
@@ -391,10 +390,10 @@ Notes:
 
 Zooms into §5's per-agent step: the per-`kind` dispatch and the
 rendered-vs-effective **drift** readback that §5 omits. `render_deerflow`
-writes **two tiers** — `basic` is **always** `local-gemma4`, `reasoning` is the
+writes **two tiers** — `basic` is **always** `local`, `reasoning` is the
 gated effective model — and uses the **master key**, so the P3 superset-widening
-does not apply to it (and its basic tier does not "flip" to gemma4 on gate-down,
-it already *is* gemma4).
+does not apply to it (and its basic tier does not "flip" to nemotron-3-nano:4b on gate-down,
+it already *is* nemotron-3-nano:4b).
 
 ```mermaid
 flowchart TB
@@ -418,7 +417,7 @@ flowchart TB
   M1 -- no --> FB
   M1 -- yes --> EFF
 
-  FB["availability-gated:<br/>effective = local-gemma4<br/>(the ollama fallback) + record pending"] --> EFF
+  FB["availability-gated:<br/>effective = local<br/>(the ollama fallback) + record pending"] --> EFF
 
   EFF --> DISP{dispatch by kind}
   DISP -- hermes-profile --> RH["render_hermes<br/>(openshell exec: config set)"]
@@ -463,8 +462,8 @@ flowchart LR
   HO -- "litellm.ai-stack:4000" --> HUB
 
   subgraph Runtimes[Runtimes]
-    OL["ollama :11434 (host, lazy, KEEP_ALIVE=30m)<br/>local-gemma4 = default"]
-    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local-qwen3.6 / local-qwen3-coder"]
+    OL["ollama :11434 (host, lazy, KEEP_ALIVE=30m)<br/>local = default"]
+    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local / local"]
     CLOUD["Cloud APIs - only if you pick a non-local model<br/>Anthropic / OpenAI / OpenRouter / Gemini"]
   end
 
@@ -529,7 +528,7 @@ flowchart TB
   OPEN --> LOAD
   FAIL -- no --> PAD["padded = size + 15%<br/>(size unknown -> 18 GiB fallback)<br/>headroom = 5 GiB"]
   PAD --> CHK{cap + padded + headroom<br/>> total RAM?}
-  CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local-gemma4<br/>fix: lower OrbStack cap or smaller model"]
+  CHK -- yes --> REFUSE["REFUSE (return 1)<br/>agent availability-gates to local<br/>fix: lower OrbStack cap or smaller model"]
   CHK -- no --> LOAD["unload OTHER MLX models (one-big-at-a-time)<br/>lms load --ttl -> verify in /v1/models"]
 ```
 
@@ -549,7 +548,7 @@ sequenceDiagram
   participant HO as honcho :8000 (api)
   participant DR as honcho deriver
   participant LL as litellm.ai-stack:4000
-  participant LH as local-gemma4 (Ollama gemma4:e4b, default)
+  participant LH as local (Ollama nemotron-3-nano:4b, default)
   participant PG as Postgres (data/honcho)
 
   AG->>HO: write message (session, peer-scoped)
@@ -557,7 +556,7 @@ sequenceDiagram
   HO->>DR: enqueue derivation
   DR->>LL: extract user representation (model=claude-opus-sub-xhigh, override via HONCHO_MODEL)
   LL->>LH: forward
-  Note over LL,LH: default is auto-pulled (gemma4:e4b); the old local-heavy qwen3.6:27b pin is removed (heavy now lives in LM Studio as local-qwen3.6, opt-in)
+  Note over LL,LH: default is auto-pulled (nemotron-3-nano:4b); local + local-heavy both map to it (the only local chat model) — no heavy 27B model any more
   LH-->>LL: derived facts
   LL-->>DR: derived facts (also traced to Phoenix)
   DR->>PG: persist derived representation (namespace-isolated)
@@ -857,7 +856,7 @@ The rules:
 
 If you want fully air-gapped operation: use the `paranoid` profile
 (`stack profile paranoid`), set every model to a `local-*` model
-(`local-gemma4`, or the LM Studio MLX models), disable cloud API keys in `.env`.
+(`local`, or the LM Studio MLX models), disable cloud API keys in `.env`.
 
 ---
 

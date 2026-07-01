@@ -2084,7 +2084,7 @@ function renderAddFields() {
 
   // All runtimes: name
   if (addRuntime !== 'ollama' || true) { // always show name
-    const nameField = buildField('name', 'Alias / Name', 'text', '', 'e.g. local-qwen3 (leave empty to auto-derive)');
+    const nameField = buildField('name', 'Alias / Name', 'text', '', 'e.g. local (leave empty to auto-derive)');
     wrap.appendChild(nameField);
   }
 

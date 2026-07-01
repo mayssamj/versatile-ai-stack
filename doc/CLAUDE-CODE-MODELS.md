@@ -54,9 +54,8 @@ protect RAM):
 | `openai-gpt`, `-gpt-pro` | OpenAI (metered key) | ✅ gpt tested; pro inferred |
 | `openai-gpt-sub`, `-gpt-pro-sub` | codex-bridge (ChatGPT sub) | ✅ sub tested; pro-sub inferred · GPT-5 on your subscription |
 | `sakana-fugu`, `-ultra` | Sakana (metered) | ✅ fugu tested; ultra inferred |
-| `local-gemma4`, `local-qwen3`, `local-nemotron3-nano-4b` | **Ollama** (local, opt-in) | ✅ gemma4 tested; others inferred (same `ollama_chat`) |
-| `local-nemotron3-nano-4b-mlx`, `local-gemma4-12b` | **LM Studio** (local, opt-in) | ✅ both tested |
-| `local-nemotron3-heavy` (30B), `local-qwen-heavy-fast` (27B) | **LM Studio** (local, opt-in) | ✅ inferred · ⚠ big — heavy RAM |
+| `local`, `local-heavy`, `local-nemotron3-nano-4b` | **Ollama** (local) | ✅ `nemotron-3-nano:4b` — all three aliases map to the same (only) local chat model |
+| `local-nemotron3-nano-4b-mlx` | **LM Studio** (local, opt-in) | ✅ same nemotron model on Apple MLX (Phase 25) |
 | `claude-opus-sub-*`, `claude-sonnet-sub-*` | Meridian (Claude sub) | ❌ 404 — LiteLLM bridges to `/v1/responses`, Meridian only does `/chat/completions` |
 | `google-gemini-flash`, `-pro` | Gemini | ❌ 500 — needs `GEMINI_API_KEY`/`GOOGLE_API_KEY` in the stack |
 | `embed-*` | embeddings | n/a — not chat models |
@@ -84,7 +83,7 @@ claude-litellm --list                       # everything you can use
 claude-litellm openrouter-gpt -- --resume   # args after `--` pass through to claude
 
 # Local models are opt-in (load into RAM — run one at a time):
-CLAUDE_LITELLM_ALLOW_LOCAL=1 claude-litellm local-qwen3
+CLAUDE_LITELLM_ALLOW_LOCAL=1 claude-litellm local
 ```
 
 Env overrides: `CLAUDE_LITELLM_MODEL`, `CLAUDE_LITELLM_FAST_MODEL`,

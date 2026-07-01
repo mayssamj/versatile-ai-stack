@@ -257,7 +257,7 @@ URL forms below are now uniform across **vantage points**:
 | `blaxel_cli`          | Mac   |                           |                                                                 |                                               |                                                  |                            |                              | HTTPS to `api.blaxel.ai` / `BLAXEL_API_KEY`     |
 | `llm_guard`           | ai-stack |                        |                                                                 |                                               |                                                  |                            |                              | none (it's the callee; `Bearer LITELLM_MASTER_KEY` on `llm-guard:8000` / `http://llm-guard:8000` from Mac) |
 | `unsloth` (studio)    | Mac (host:0.0.0.0) | `http://ollama:11434` (host-gateway) — used for inference after fine-tuned models are exported to GGUF | n/a (doesn't talk through LiteLLM)                              |                                               |                                                  |                            |                              | `https://huggingface.co` (model + dataset pulls), pypi (Python deps) |
-| `pi` (sandboxed)      | openshell sandbox `pi-v1` | n/a (no direct ollama)        | `http://host.docker.internal:4000/v1` / `Bearer PI_LITELLM_KEY` (virtual key; allowlist=local-model superset [local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6]; Pi's assigned model is local-qwen3-coder — see models.md) | n/a                                          | `http://host.docker.internal:8000` / `pi` peer namespace (soft isolation; Honcho v3 has no per-key peer enforcement) |                            | `http://host.docker.internal:8765` / n/a | n/a (policy denies)                              |
+| `pi` (sandboxed)      | openshell sandbox `pi-v1` | n/a (no direct ollama)        | `http://host.docker.internal:4000/v1` / `Bearer PI_LITELLM_KEY` (virtual key; allowlist=local-model superset [local, local, local-heavy, local, local, local]; Pi's assigned model is local — see models.md) | n/a                                          | `http://host.docker.internal:8000` / `pi` peer namespace (soft isolation; Honcho v3 has no per-key peer enforcement) |                            | `http://host.docker.internal:8765` / n/a | n/a (policy denies)                              |
 | `lumen` (Phase 16)    | Mac (stdio subprocess of each MCP client) | `http://localhost:11434` (default) — uses `ordis/jina-embeddings-v2-base-code` for embeddings | n/a (no LiteLLM dependency — Lumen is local-only) | n/a | n/a | n/a | n/a | n/a (no cloud egress)                            |
 | `mempalace` (Phase 26)| Mac (CLI / MCP stdio subprocess; no port) | n/a (embeddings are on-device ONNX via CoreML — not Ollama, not LiteLLM) | `http://litellm:4000/v1` / `Bearer MEMPALACE_LITELLM_KEY` — **only** for the optional entity-refiner (`--extract general`); scoped to local models | n/a (refiner call traced in Phoenix via LiteLLM) | n/a | n/a (Qdrant backend adapter staged, not live) | n/a | n/a (no cloud egress)                            |
 
@@ -290,7 +290,7 @@ sequenceDiagram
 
   U->>L: POST http://litellm:4000/v1/chat/completions<br/>Authorization: Bearer LITELLM_MASTER_KEY<br/>model=local
   Note over L: master_key check;<br/>guardrails.handler pre-call scan
-  L->>O: POST http://ollama:11434/api/chat (ollama_chat/gemma4:e4b)
+  L->>O: POST http://ollama:11434/api/chat (ollama_chat/nemotron-3-nano:4b)
   O-->>L: streaming tokens
   par fan-out callbacks
     L->>T: append JSON line (trace_to_file.handler)
@@ -316,7 +316,7 @@ sequenceDiagram
   Note over G: sandbox network policy: deny by default,<br/>inference.local is the only LiteLLM path
   G->>L: rewritten as litellm:4000 in ai-stack network
   Note over L: master_key validated by proxy;<br/>request-as-if-direct
-  L->>O: ollama_chat/gemma4:e4b
+  L->>O: ollama_chat/nemotron-3-nano:4b
   O-->>L: tokens
   L-->>G: response
   G-->>H: response
@@ -431,7 +431,7 @@ Triage table: when X is down, what visibly breaks.
 
 | If X is down                  | Y breaks like this                                                                                                                              | Mitigation / detection                                                                                            |
 |-------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| `ollama`                      | `model=local-gemma4` (the default) + embedding requests fail with connection refused on `ollama:11434`. The big MLX models (`local-qwen3.6`, `local-qwen3-coder`) live on LM Studio and are unaffected; cloud-model requests unaffected.                  | `brew services restart ollama` then `curl http://ollama:11434/api/tags`. LiteLLM has no `local` fallback by design (CHANGELOG cites this). |
+| `ollama`                      | `model=local` (the default) + embedding requests fail with connection refused on `ollama:11434`. The big MLX models (`local`, `local`) live on LM Studio and are unaffected; cloud-model requests unaffected.                  | `brew services restart ollama` then `curl http://ollama:11434/api/tags`. LiteLLM has no `local` fallback by design (CHANGELOG cites this). |
 | `litellm`                     | **Everything chat-related stops.** Open WebUI shows API errors; Honcho deriver background work pauses; Hermes profiles in sandbox can't think; docs_ingestor / docs_mcp can't embed; audit.sh fails. | `vz-ai-stack.sh start litellm` (or `vz-ai-stack.sh apply-restarts`). Check `docker logs litellm` for ImportError on guardrails.py. |
 | `phoenix`                     | LiteLLM still works. OTLP HTTP exports fail-soft (logged warnings, no spans visible in UI). `halo` still works (routes via LiteLLM).            | Phoenix is a soft dep. `vz-ai-stack.sh start phoenix`. Check `docker logs phoenix` for PHOENIX_SECRET policy errors.   |
 | `qdrant`                      | `docs_ingestor` and `docs_mcp` fail on collection ops. Open WebUI's built-in RAG (if used with Qdrant) also breaks. Everything else unaffected. | `vz-ai-stack.sh start qdrant`, then `curl http://qdrant:6333/collections`.                                            |

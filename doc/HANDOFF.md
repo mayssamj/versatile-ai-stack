@@ -27,12 +27,12 @@
 | Stack root / entry | `~/ai-stack` · `bash vz-ai-stack.sh` (alias `bin/stack`) |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x |
 | Scale | **51** services · **68** doctor checks · **46** phases (29 core / 17 opt-in) — `doctor`/`phases` are authoritative |
-| Platform default model | `claude-opus-sub-max` (fleet + unassigned agents); the opt-in sims + HALO stay on `claude-opus-sub-xhigh` (lighter for many-agent runs); `default: local-gemma4` is the keyless last-resort net. **No model SILENTLY uses a local one** — a cloud/Meridian outage surfaces a visible 503. |
+| Platform default model | `claude-opus-sub-max` (fleet + unassigned agents); the opt-in sims + HALO stay on `claude-opus-sub-xhigh` (lighter for many-agent runs); `default: local` is the keyless last-resort net. **No model SILENTLY uses a local one** — a cloud/Meridian outage surfaces a visible 503. |
 
 ## Most recent work (newest first — full detail in CHANGELOG.md)
 
 - **Concordia — Phase 37 (opt-in agent-sim #6)** — DeepMind generative agent-based modeling (GABM) with a Game Master; host-venv (py3.12), default `claude-opus-sub-xhigh`, install/`test` gate on the faster `claude-sonnet-sub-high`. Hands-on in `doc/TUTORIAL.md` L20½; doctor check 66.
-- **Model-default policy → `claude-opus-sub-max`** — platform default repointed (fleet + unassigned); LiteLLM cloud→`local-qwen3` fallbacks removed so a cloud outage is a visible 503, not a silent local degrade. Opt-in sims/HALO kept on `-xhigh`.
+- **Model-default policy → `claude-opus-sub-max`** — platform default repointed (fleet + unassigned); LiteLLM cloud→`local` fallbacks removed so a cloud outage is a visible 503, not a silent local degrade. Opt-in sims/HALO kept on `-xhigh`.
 - Anything older: read **CHANGELOG.md** top-to-bottom.
 
 ## Open threads / what's next

@@ -1,19 +1,18 @@
 model_list:
   # ============================================================
-  # LOCAL — via Ollama. Two tiers:
-  #   local       (default) → Gemma 4 E4B, 9.6GB. Fast, fits comfortably.
-  #   local-heavy           → Qwen 3.6 27B, 17GB. Frontier-class but RAM-tight.
-  # Fleet profiles point at `local` by default — swap individual
-  # profiles to `local-heavy` only when you actually need 27B's reasoning.
+  # LOCAL — via Ollama. Single model: nemotron-3-nano:4b (~2.8GB, very light).
+  #   local        (default) → nemotron-3-nano:4b
+  #   local-heavy            → nemotron-3-nano:4b (back-compat alias; no separate
+  #                            heavy local model — operator directive 2026-07-01)
   # ============================================================
   - model_name: local
     litellm_params:
-      model: ollama_chat/gemma4:e4b
-      api_base: http://host.docker.internal:11434
+      model: ollama_chat/nemotron-3-nano:4b
+      api_base: http://ollama:11434
   - model_name: local-heavy
     litellm_params:
-      model: ollama_chat/qwen3.6:27b-q4_K_M
-      api_base: http://host.docker.internal:11434
+      model: ollama_chat/nemotron-3-nano:4b
+      api_base: http://ollama:11434
 
   # ============================================================
   # CLOUD CHAT — Anthropic (direct API)
@@ -215,7 +214,7 @@ litellm_settings:
     # No local fallback — if the local model is down, surface the failure
     # so the user sees that the local stack is unhealthy.
     # NOTE (2026-06-19): the LIVE litellm/config.yaml DIVERGES from this seed — it
-    # adds a `local-gemma4 -> claude-opus-4.8-sub-xhigh` fallback. That subscription
+    # adds a `local -> claude-opus-sub-xhigh` fallback. That subscription
     # model is intentionally NOT added to this seed (it predates the `-sub` models,
     # so referencing it here would dangle). This seed only applies on a fresh
     # install when litellm/config.yaml is absent.

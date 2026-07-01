@@ -213,11 +213,11 @@ automatically) rather than at a dead-end re-mint.
 
 | | |
 |---|---|
-| Asserts | `ollama` binary on PATH; `/api/tags` 200; the lazy `REQUIRED_MODELS` set — `gemma4:e4b` (`local-gemma4`, the default) + `nomic-embed-text` — both installed (matches either bare name or `:latest`-tag variant). |
+| Asserts | `ollama` binary on PATH; `/api/tags` 200; the lazy `REQUIRED_MODELS` set — `nemotron-3-nano:4b` (`local`, the default) + `nomic-embed-text` — both installed (matches either bare name or `:latest`-tag variant). |
 | Fails when | Ollama isn't running, or someone `ollama rm`'d a required model, or the model never finished downloading. |
 | Auto-fix | `brew services start ollama`; `ollama pull` per missing model. On partial-pull (download corrupted), `ollama rm` first then retry. |
 
-Note: per the lazy-Ollama policy (2026-05-31, `01_inference.sh`), only `gemma4:e4b` + `nomic-embed-text` are eager-pulled. The heavy/coder models moved to LM Studio MLX (`local-qwen3.6`, `local-qwen3-coder` — opt-in), and the legacy Ollama `qwen3.6:27b` (`local-heavy`) is no longer auto-pulled, so this check no longer requires it. `OLLAMA_KEEP_ALIVE=30m` (Phase 00) keeps the default model warm for 30 min of inactivity, then releases it.
+Note: per the local-model policy (operator directive 2026-07-01, `01_inference.sh`), only `nemotron-3-nano:4b` + `nomic-embed-text` are eager-pulled — nemotron is the ONLY local chat model (`local`, `local-heavy`, `local-nemotron3-nano-4b` all map to it), and no gemma4/qwen model is pulled by install or doctor. `OLLAMA_KEEP_ALIVE=30m` (Phase 00) keeps the default model warm for 30 min of inactivity, then releases it.
 
 ---
 
@@ -441,7 +441,7 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 
 | | |
 |---|---|
-| Asserts | (1) `PI_LITELLM_KEY` is present in `.env`. (2) `GET http://litellm:4000/v1/models` with the virtual key returns exactly the canonical superset `local,local-gemma4,local-heavy,local-lfm2,local-qwen3-coder,local-qwen3.6` (sorted) — every scoped key is minted against this fixed superset so `model assign`/`sync` can re-point Pi without re-minting. (3) `POST /v1/chat/completions` with `model=claude-opus` returns a body containing the case-insensitive substring `"key not allowed"`. The substring match (rather than the full message) makes the check resilient to LiteLLM's wording across minor versions. |
+| Asserts | (1) `PI_LITELLM_KEY` is present in `.env`. (2) `GET http://litellm:4000/v1/models` with the virtual key returns exactly the canonical superset `local,local,local-heavy,local,local,local` (sorted) — every scoped key is minted against this fixed superset so `model assign`/`sync` can re-point Pi without re-minting. (3) `POST /v1/chat/completions` with `model=claude-opus` returns a body containing the case-insensitive substring `"key not allowed"`. The substring match (rather than the full message) makes the check resilient to LiteLLM's wording across minor versions. |
 | Fails when | Phase 15 never minted the key (LiteLLM has no Postgres DB; `LITELLM_MASTER_KEY` rotation; .env got nuked). The allowlist itself was changed via LiteLLM's `/key/update`. The virtual key path was bypassed by changing Pi's extension to use the master key directly. |
 | Auto-fix | Surfaces `bash vz-ai-stack.sh install 15` — Phase 15 detects an invalid key via the same `/v1/models` probe and re-mints. |
 
@@ -487,7 +487,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 
 **What this check does NOT prove.** That any eval has been run. Playbooks live under `ace/results/` and are user-state, not install-state. `bin/ace --help` lists the eval surface.
 
-**Routing.** ACE uses the OpenAI Python SDK; `OPENAI_BASE_URL` is the canonical env-var that SDK reads to redirect every chat-completion call. Setting it to `http://litellm:4000/v1` means every LLM call from ACE — generator, reflector, curator — passes through LiteLLM and gets traced in the `ai-stack` Phoenix project for free. The `ACE_LITELLM_KEY` virtual key is scoped to the canonical local-model superset (`local, local-gemma4, local-heavy, local-lfm2, local-qwen3-coder, local-qwen3.6`) only, so even if ACE's prompts somehow request cloud models, LiteLLM rejects with HTTP 403 ("key not allowed to access model"). ACE's assigned model in `models.yml` is `local-gemma4`.
+**Routing.** ACE uses the OpenAI Python SDK; `OPENAI_BASE_URL` is the canonical env-var that SDK reads to redirect every chat-completion call. Setting it to `http://litellm:4000/v1` means every LLM call from ACE — generator, reflector, curator — passes through LiteLLM and gets traced in the `ai-stack` Phoenix project for free. The `ACE_LITELLM_KEY` virtual key is scoped to the canonical local-model superset (`local, local, local-heavy, local, local, local`) only, so even if ACE's prompts somehow request cloud models, LiteLLM rejects with HTTP 403 ("key not allowed to access model"). ACE's assigned model in `models.yml` is `local`.
 
 ---
 

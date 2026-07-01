@@ -1,5 +1,5 @@
 openshell sandbox exec -n hermes-fleet-v1 --tty -- hermes --profile <p> -m
-  local-gemma4 -z "…"
+  local -z "…"
 
 hermes --profile hermes_cos --version
 
@@ -11,14 +11,14 @@ openshell sandbox exec -n hermes-fleet-v1 --tty --
 # -- - ends openshell's own options: everything after it is the command + args run inside the sandbox
 # without it openshell would try to parse hermes's flags (-m -z) as its own . it's the standard argv separator
 
-hermes --profile <p> -m local-gemma4 -z "..."
+hermes --profile <p> -m local -z "..."
 # hermes: /sandbox/.venv/bin/hermes v0.15.2
 # --profile <p> --> load sould.md , config and sessions for p. --> vs hermes profile use <p> --> set a sticky default. 
 # valid profile values: default, hermes_cos, hermes_creator, hermes_data_analyst, hermes_ops, hermes_researcher, hermes_reviewer, hermes_software_engineer
 
-# -m local-gemma4 or --model: ... model override for this invocation (applies to -z/--tui); routes through the
+# -m local or --model: ... model override for this invocation (applies to -z/--tui); routes through the
   profile's LiteLLM provider. Also settable via HERMES_INFERENCE_MODEL. (All profiles currently show
-  local-gemma4 because LM Studio is down → availability-gated.)
+  local because LM Studio is down → availability-gated.)
 
 # -z "…" — --oneshot PROMPT: one-shot mode — send the single prompt "…" and print only the final response
   text to stdout (no banner, spinner, tool-previews, or session-id line). Tools/memory/rules/AGENTS.md in the
@@ -30,7 +30,7 @@ hermes --profile <p> -m local-gemma4 -z "..."
 
 
 
-openshell sandbox exec -n hermes-fleet-v1 --tty -- hermes --profile <p> -m local-gemma4 -z "…"
+openshell sandbox exec -n hermes-fleet-v1 --tty -- hermes --profile <p> -m local -z "…"
 
 # --> souls in openshell/fleet-souls/*.md; .hermes at /sandbox/.hermes (hermes-fleet-v1).
 

@@ -298,7 +298,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `vz-ai-stack.sh install lmstudio && vz-ai-stack.sh start lmstudio` — then the MLX models become routable via LiteLLM.
 
-**Notes:** Opt-in. Hosts MLX models (e.g. `local-qwen3.6`, `local-qwen3-coder`) that Ollama doesn't.
+**Notes:** Opt-in. Hosts MLX models (e.g. `local`, `local`) that Ollama doesn't.
 
 ## lumen_mcp · Tier 3 · Phase 16
 
@@ -346,9 +346,9 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `ollama list` · `curl -s http://ollama:11434/api/ps | jq` (fallback `http://127.0.0.1:11434/api/tags`).
 
-**Try it:** `curl -s http://ollama:11434/api/generate -d '{"model":"gemma4:e4b","prompt":"in one sentence: what is a Merkle tree?","stream":false}' | jq -r .response`
+**Try it:** `curl -s http://ollama:11434/api/generate -d '{"model":"nemotron-3-nano:4b","prompt":"in one sentence: what is a Merkle tree?","stream":false}' | jq -r .response`
 
-**Notes:** Default local model is `gemma4:e4b` (`local-gemma4`), a reasoning model — give it room (`max_tokens >= 512`). `brew services restart ollama` wipes `OLLAMA_HOST=0.0.0.0` back to loopback. Reached *through* LiteLLM in normal use.
+**Notes:** Default local model is `nemotron-3-nano:4b` (`local`), a reasoning model — give it room (`max_tokens >= 512`). `brew services restart ollama` wipes `OLLAMA_HOST=0.0.0.0` back to loopback. Reached *through* LiteLLM in normal use.
 
 ## openagents · Tier 3 · Phase 24
 
@@ -426,7 +426,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `bash ~/ai-stack/bin/pi` (emergency stop: `bin/pi-kill`).
 
-**Try it:** `bash ~/ai-stack/bin/pi --model local-gemma4`
+**Try it:** `bash ~/ai-stack/bin/pi --model local`
 
 **Notes:** Pi is isolated — it can think (via LiteLLM) and remember (via Honcho) but cannot reach phoenix, qdrant, the workspace, or any other stack service. Uses a scoped key (`PI_LITELLM_KEY`), never the master key.
 
@@ -476,9 +476,9 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `bin/rlm --help`
 
-**Try it:** `bin/rlm "Use the REPL to compute the 20th Fibonacci number." -m local-gemma4 --max-depth 2`
+**Try it:** `bin/rlm "Use the REPL to compute the 20th Fibonacci number." -m local --max-depth 2`
 
-**Notes:** Bound to `claude-opus-sub-max` by default (keyless box falls back to `local-gemma4`). In Phoenix you'll see a *parent* call plus the *recursive sub-calls* it spawns — a tree of small prompts. HALO (Phase 11) drives RLM over your traces.
+**Notes:** Bound to `claude-opus-sub-max` by default (keyless box falls back to `local`). In Phoenix you'll see a *parent* call plus the *recursive sub-calls* it spawns — a tree of small prompts. HALO (Phase 11) drives RLM over your traces.
 
 ## skillspector · Tier 3 · Phase 23
 

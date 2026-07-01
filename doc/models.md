@@ -16,13 +16,16 @@ binding **and** the canonical entries of the LiteLLM `model_list`. Nothing else
 hand-edits an agent's model; `vz-ai-stack.sh model {list,assign,sync,discover,add,superset}`
 renders it all from this file.
 
-### The three canonical model IDs
+### The local model IDs (nemotron-only, 2026-07-01)
+
+`nemotron-3-nano:4b` is the ONLY local chat model. `local` and `local-heavy`
+BOTH map to it (there is no separate heavy local model).
 
 | LiteLLM model_name  | runtime    | served id                          | flags | notes |
 |---------------------|------------|------------------------------------|-------|-------|
-| `local-gemma4`      | ollama     | `gemma4:e4b`                       | **default**, `big: false` | the always-on Ollama FALLBACK (`default`) — what every agent gates to when its runtime is down. ~9.6GB, stays on Ollama. |
-| `local-qwen3.6`     | lmstudio   | `qwen/qwen3.6-27b`                 | `big: true`, `ttl: 1800`  | ~17.5GB MLX. Cannot coexist with `local-qwen3-coder` on 24GB. |
-| `local-qwen3-coder` | lmstudio   | `qwen3-coder-30b-a3b-instruct-mlx` | `big: true`, `ttl: 1800`  | ~17.2GB MLX. Cannot coexist with `local-qwen3.6` on 24GB. |
+| `local` / `local-heavy` | ollama | `nemotron-3-nano:4b`             | **default**, `big: false` | The ONLY local chat model + the always-on Ollama FALLBACK (`default`) — what every agent gates to when its runtime is down. `local` and `local-heavy` both map here. ~2.8 GB, stays on Ollama. |
+| `local-nemotron3-nano-4b` | ollama | `nemotron-3-nano:4b`          | `big: false`              | Explicit-name alias of `local` (same model). |
+| `local-nemotron3-nano-4b-mlx` | lmstudio | `nvidia/nemotron-3-nano-4b` | `big: false` (opt-in) | Same nemotron model on Apple MLX via LM Studio (Phase 25, opt-in; needs `start lmstudio`). |
 
 ### The 13 agents (assignments + kinds)
 
@@ -31,9 +34,9 @@ software-engineering team) plus `pi`, `deerflow`, `ace`, and `rlm`
 — each via an `assignments:` line (the model) and a `kinds:` entry (the renderer
 + scoped-key env). Any agent with no assignment now renders the **`primary`**
 (`claude-opus-sub-max`), which availability-gates to the `default`
-(`local-gemma4`, the always-on Ollama fallback) when Meridian is down. The
+(`local`, the always-on Ollama fallback) when Meridian is down. The
 nine Hermes profiles all route to a **Claude
-subscription via Meridian** and are availability-gated to `local-gemma4` when
+subscription via Meridian** and are availability-gated to `local` when
 Meridian is down. The same 9-role team is also realized as **Pi personas**
 (`bin/pi-as <role>`) and **Claude Code agents** (the `manager` is the MAIN
 agent, installed as a `~/.claude/CLAUDE.md` @-import; the other 8 roles are
@@ -54,12 +57,12 @@ subagents at `~/.claude/agents/<role>.md`), sharing the `team-protocol` skill.
 | `deerflow`                 | `claude-opus-sub-max` | deerflow | *(none — master key)* |
 | `ace`                      | `claude-opus-sub-xhigh` | ace            | `ACE_LITELLM_KEY` |
 | `rlm`                      | `claude-opus-sub-xhigh` | rlm            | `RLM_LITELLM_KEY` |
-| `mempalace`                | `local-gemma4`      | mempalace      | `MEMPALACE_LITELLM_KEY` |
+| `mempalace`                | `local`      | mempalace      | `MEMPALACE_LITELLM_KEY` |
 
 **MemPalace is a partial binding.** `mempalace` (Phase 26) is a
 host-side CLI/MCP memory tool, not a chat agent. Its `MEMPALACE_LITELLM_KEY`
 (scoped to local models) is used **only** for the *optional* entity-refiner
-(`mempalace mine --extract general`); that path defaults to `local-gemma4` and
+(`mempalace mine --extract general`); that path defaults to `local` and
 is availability-gated like everything else (gates to the default when the
 assigned slug isn't servable). MemPalace's **embeddings are NOT a model
 binding** — they are **on-device ONNX** (`all-MiniLM-L6-v2` by default, run via
@@ -67,13 +70,13 @@ CoreML on the M4 ANE; `embeddinggemma` multilingual opt-in), so they never
 touch `models.yml`, LiteLLM, or Ollama. Skip the refiner and MemPalace makes no
 LiteLLM call at all.
 
-The legacy slugs (`local`, `local-heavy`, `local-lfm2`, `local-lfm2-mlx`) are
-**retired** but **never deleted** from the scoped-key superset — the canonical
-IDs are added alongside them (add-only), so old keys keep resolving. They are
-**no longer auto-pulled or runnable defaults**: `local-heavy` (Ollama
-`qwen3.6:27b`) moved to LM Studio as **`local-qwen3.6`** (opt-in MLX), and
-`local-lfm2` / `local-lfm2-mlx` (LiquidAI LFM2.5) require a manual opt-in pull.
-Use **`local-gemma4`** in any runnable example. An agent can still be pointed at
+`local` and `local-heavy` both resolve to `nemotron-3-nano:4b` — the ONLY local
+chat model (2026-07-01). The opt-in LM Studio slugs (`local-nemotron3-nano-4b-mlx`
+= the same nemotron on Apple MLX, and the `local-lfm2-mlx` LFM2.5 demo) require
+`install lmstudio` and are never auto-pulled. Old scoped keys keep resolving
+because the canonical IDs are added to the superset **add-only** — nothing is
+deleted from an existing key's allowlist.
+Use **`local`** in any runnable example. An agent can still be pointed at
 a retired slug by hand, but it 503s unless you pull/serve it yourself.
 
 ## LiteLLM is the only hub (`litellm:4000`)
@@ -103,15 +106,15 @@ the start command for each.
 
 - **Ollama** (host, Homebrew) — **lazy**: Phase 00 sets `OLLAMA_KEEP_ALIVE=30m` so
   the default model stays warm for 30 min of inactivity, then unloads; Phase 01 eager-pulls **only**
-  `gemma4:e4b` + `nomic-embed-text`. Serves the default `local-gemma4`. Reached
+  `nemotron-3-nano:4b` + `nomic-embed-text`. Serves the default `local`. Reached
   by LiteLLM at `http://ollama:11434`.
 - **LM Studio (MLX)** — **opt-in, no auto-start**. Start the server with
   `vz-ai-stack.sh start lmstudio` (idempotent; warns it idle-spins ~0.8 core, so
   quit when done, and that **no model auto-loads** — assign one in `models.yml` +
   `vz-ai-stack.sh model sync`). `vz-ai-stack.sh stop lmstudio` stops the server.
   Reached at `http://host.docker.internal:${LMS_PORT}/v1` (`LMS_PORT` defaults to
-  `1234` — see `LMS_PORT` in `installer/lib/lmstudio.sh`). Serves `local-qwen3.6` /
-  `local-qwen3-coder`. The host-side probe uses `http://127.0.0.1:${LMS_PORT}`
+  `1234` — see `LMS_PORT` in `installer/lib/lmstudio.sh`). Serves `local` /
+  `local`. The host-side probe uses `http://127.0.0.1:${LMS_PORT}`
   (`LMS_URL`); the container-side route is `host.docker.internal:${LMS_PORT}`.
 - **Cloud** (optional) — Anthropic / OpenAI / OpenRouter / Gemini, used **only**
   when you point an agent at a non-local model and set that provider key in
@@ -125,7 +128,7 @@ the start command for each.
   like **Sakana Fugu** (`sakana-fugu` / `sakana-fugu-ultra`, `key_env SAKANA_API_KEY`)
   is **assignable** (`vz-ai-stack.sh model assign <agent> sakana-fugu`), not just a
   hand-edited config entry. The `api_key` stays the literal `os.environ/` sentinel
-  (never the expanded secret). Availability-gates to `default` (local-gemma4) when the
+  (never the expanded secret). Availability-gates to `default` (local) when the
   key is absent. The key must also be in `bin/start-litellm.sh`'s `-e` allowlist
   (`bin/start-litellm.sh --recreate` to apply a newly-added one — env is injected at
   container CREATE, not on `docker restart`).
@@ -164,14 +167,14 @@ the start command for each.
     meridian` (+ an `effort:` field) — `model sync` renders them into
     `litellm/config.yaml`, joins them to the scoped-key superset, and makes them
     **assignable** (`vz-ai-stack.sh model assign pi claude-opus-sub-xhigh`).
-    They availability-gate to `default` (local-gemma4) when Meridian is down.
+    They availability-gate to `default` (local) when Meridian is down.
   - **Current assignments:** every agent runs on the **Claude Opus subscription**
     via Meridian. `pi` and `deerflow` → `claude-opus-sub-max`; `ace` and `rlm` →
     `claude-opus-sub-xhigh`. The 9-role Hermes fleet is all-Opus too — `manager`,
     `qa_test_engineer`, `sre_engineer`, `incident_manager` on `claude-opus-sub-xhigh`
     and `techlead`, `ml_engineer`, `frontend_engineer`, `backend_engineer`,
     `reviewing_engineer` on `claude-opus-sub-max` (see the assignment table above).
-    All availability-gate to `default` (local-gemma4) when Meridian is down.
+    All availability-gate to `default` (local) when Meridian is down.
 - **Codex bridge (ChatGPT subscription)** — **opt-in, no API key, ⚠ ToS-gray**.
   The OpenAI analog of Meridian: a host daemon (`bin/start-codex-bridge.sh`,
   launchd-supervised on `127.0.0.1:3457`) running the `openai-oauth` proxy, which
@@ -201,7 +204,7 @@ the start command for each.
     `runtime: openai` (`openai-gpt-5.5` / `openai-gpt-5.5-pro` / `openai-gpt-5.4`).
     `effort` (optional, → OpenAI `reasoning_effort` none|low|medium|high|xhigh;
     `xhigh`=max) is set per entry. They **availability-gate to `default`**
-    (local-gemma4) when the bridge is down (codex-bridge) or `OPENAI_API_KEY` is
+    (local) when the bridge is down (codex-bridge) or `OPENAI_API_KEY` is
     absent (openai) — a pending line, never a hard fail, and **never** the metered
     key as a silent fallback. Doctor check 55 reports bridge health (advisory-green
     when not installed; never prints a token).
@@ -212,8 +215,8 @@ the start command for each.
 ```sh
 vz-ai-stack.sh model list                 # READ-ONLY catalog + live agent matrix
 vz-ai-stack.sh model list --json          # machine-readable
-vz-ai-stack.sh model assign pi local-qwen3-coder   # re-point one agent (then syncs it)
-vz-ai-stack.sh model assign all local-gemma4       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
+vz-ai-stack.sh model assign pi local   # re-point one agent (then syncs it)
+vz-ai-stack.sh model assign all local       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
 vz-ai-stack.sh model sync                 # render EVERY agent + the LiteLLM model_list
 vz-ai-stack.sh model sync pi              # render just one agent
 vz-ai-stack.sh model sync --dry-run       # print the plan + a config.yaml diff, write nothing
@@ -250,7 +253,7 @@ when all of these hold:
 2. the slug is in `litellm/config.yaml`, and
 3. LiteLLM actually serves it (master-key `/v1/models` lists it).
 
-Otherwise the agent is rendered to the Ollama default `local-gemma4`, and a
+Otherwise the agent is rendered to the Ollama default `local`, and a
 line is recorded in `installer/state/models-pending.txt`. This is why
 `model sync` never produces a 404/503 on a box where LM Studio is down: the MLX
 slug is only ever written once it's confirmed servable. Start LM Studio, load
@@ -264,10 +267,10 @@ Each agent's live model is resolved in four stages:
 1. **assignment** — the model named for the agent in `models.yml`. An agent with
    **no** assignment renders the **`primary`** (`models.yml .primary` =
    `claude-opus-sub-max`), which then flows through the availability-gate
-   below; only `default` (`local-gemma4`) is the always-on Ollama fallback.
+   below; only `default` (`local`) is the always-on Ollama fallback.
 2. **availability-gate** — an `lmstudio` model is kept only when LM Studio is up
    on `:${LMS_PORT}` **and** its slug is in `litellm/config.yaml` **and** LiteLLM's
-   `/v1/models` lists it; otherwise it gates down to `local-gemma4` and records a
+   `/v1/models` lists it; otherwise it gates down to `local` and records a
    pending entry. An `ollama` model is never gated — it renders as-is.
 3. **effective** — what we *will* render (assigned, or the gated-down default).
 4. **rendered** — what is *actually* wired. `model list` shows the live matrix
@@ -279,7 +282,7 @@ The renderer dispatches by `kind`: `render_hermes` (OpenShell `config set`),
 (allowlist-only), `render_rlm`, `render_mempalace` (writes the refiner's model
 for the optional `--extract general` path; embeddings are on-device ONNX and
 out of band). **DeerFlow is special**: it writes **two tiers**
-— `basic` is **always** `local-gemma4` (the default), `reasoning` takes the
+— `basic` is **always** `local` (the default), `reasoning` takes the
 gated effective model — and it uses the **master key** (no scoped allowlist), so
 the scoped-key widening (P3 below) does not apply to it.
 
@@ -306,18 +309,18 @@ cap + padded_model + headroom > total RAM
 
 It **degrades OPEN** (allows, with a note) on *any* measurement failure — e.g.
 `hw.memsize` unreadable — so it never fails closed. A refusal makes the agent
-**availability-gate to `local-gemma4`**. Bypass with `LMS_SKIP_RAM_PREFLIGHT=1`
+**availability-gate to `local`**. Bypass with `LMS_SKIP_RAM_PREFLIGHT=1`
 (use sparingly — the box crashed from over-commit).
 
-**One big MLX at a time.** `local-qwen3.6` and `local-qwen3-coder` are ~17GB each
-and **cannot coexist** on a 24GB box. `lms_load_big` unloads any *other* loaded
+**One MLX model at a time.** The opt-in LM Studio MLX slugs load into RAM;
+`lms_load_big` unloads any *other* loaded
 model before loading the requested one, then loads with a TTL (`ttl: 1800`) so
 LM Studio auto-evicts after idle. Doctor check 38 warns (advisory) if both big
 MLX models are resident. In the LM Studio GUI, *Settings → Auto-evict* (JIT +
 idle TTL) keeps only one resident.
 
 Ollama is also kept lazy: Phase 00 sets `OLLAMA_KEEP_ALIVE=30m` so the default
-model stays warm for 30 min of inactivity, then unloads, and Phase 01 only eager-pulls `gemma4:e4b`
+model stays warm for 30 min of inactivity, then unloads, and Phase 01 only eager-pulls `nemotron-3-nano:4b`
 + `nomic-embed-text` (qwen3.6 moved to LM Studio; LFM2.5 GGUF is no longer
 pre-pulled).
 
@@ -349,7 +352,7 @@ re-minting** a key. The canonical IDs are registered in `config.yaml` *before*
 any key is minted (superset-before-mint).
 
 The superset is **not** a hardcoded list — it is **DERIVED** (the sorted-unique
-union of the legacy names `{local, local-heavy, local-lfm2}` **plus every model
+union of the legacy names `{local, local-heavy, local}` **plus every model
 key in `models.yml`**), computed by `superset_members()` and printed by
 `vz-ai-stack.sh model superset`. So a `model add`-ed slug is automatically covered
 — **do not hand-edit any array**. The hardcoded `LEGACY_SUPERSET` (the 6-name
@@ -395,7 +398,7 @@ gateway can't serve.
 1. Add an `assignments:` line + a `kinds:` entry in `models.yml`:
    ```yaml
    assignments:
-     my_agent: local-gemma4
+     my_agent: local
    kinds:
      my_agent: { kind: <hermes-profile|pi|deerflow|ace|rlm>, key_env: MY_KEY }
    ```
@@ -419,7 +422,7 @@ roles (deriver, dialectic, summary, dream) use a single stack-wide model for *al
 memory work (independent of each agent's chat-model assignment), since persona
 extraction wants one consistent model. Per platform policy they default to
 `claude-opus-sub-xhigh` (Claude subscription via Meridian; LiteLLM falls back
-to `local-gemma4` only if Meridian is down), and are **overridable via the
+to `local` only if Meridian is down), and are **overridable via the
 `HONCHO_MODEL` env var** in the stack `.env`. The memory plane does **not** go
 through `models.yml` per-agent availability-gating.
 

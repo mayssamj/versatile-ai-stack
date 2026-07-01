@@ -327,7 +327,7 @@ upstream is reachable, and the scoped key may use it.
 **Reassign one role:**
 
 ```bash
-vz-ai-stack.sh model assign hermes_ml_engineer local-qwen3-coder
+vz-ai-stack.sh model assign hermes_ml_engineer local
 ```
 
 This re-points `installer/models.yml` and syncs that agent.
@@ -351,7 +351,7 @@ vz-ai-stack.sh model sync --no-restart    # reconcile config but skip the LiteLL
 
 **Availability-gating (teach this).** If the assigned model's upstream is down —
 LM Studio not running, Meridian unreachable, or a required cloud key missing —
-the role **auto-falls-back to the default `local-gemma4`** (the always-on Ollama
+the role **auto-falls-back to the default `local`** (the always-on Ollama
 fallback) and `model list` shows it under **DRIFT**. When the upstream returns,
 the role **re-gates automatically** on the next sync — you don't have to
 reassign. The fallback is a safety floor, not a silent failure: the DRIFT column
@@ -654,11 +654,11 @@ make the fleet safe to hand a goal to.
 | `openshell sandbox …` → **"Connection refused (os error 61)"** | the OpenShell **gateway** (:17670) is down — most often because Docker/OrbStack is **hung** (it crash-loops trying to reach a dead docker socket) | **Check Docker FIRST:** `docker ps` — if it *hangs*, OrbStack's daemon is thrashing (often swap-full). **Free RAM** (close apps) and it recovers when pressure eases, or restart OrbStack from its menu-bar app (note: `orb restart` is for Linux *machines*, NOT the engine). *Then* `brew services restart openshell` and confirm `openshell sandbox list` shows `Ready`. If a sandbox shows `Error`: `vz-ai-stack.sh install 04 04f 15`. |
 | `openshell sandbox exec/connect` fails fast (gateway already up) | relay idle-timed-out | `brew services restart openshell`; confirm `openshell sandbox list` (`Ready`) |
 | Bridge / office shows `[<name> unavailable]` | that agent's relay is down | `brew services restart openshell` (§6) |
-| Local-model 500: **"No fallback model group found for local-gemma4"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local-gemma4` has no fallback group | warm it once (`ollama run gemma4:e4b-mlx ''`), or just use the role's **default** model — `vz-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
+| Local-model 500: **"No fallback model group found for local"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local` has no fallback group | warm it once (`ollama run nemotron-3-nano:4b ''`), or just use the role's **default** model — `vz-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
 | Workspace **Sessions sidebar** crashes (`reading 'map'`) | dashboard not bound `0.0.0.0` cross-container | ai-stack ships the hardened image + `HERMES_DASHBOARD_HOST=0.0.0.0` (§1) |
 | Slack bot silent | secure-by-default denies all with no allowlist | set `HERMES_SLACK_ALLOWED_USERS` + re-run `install 38` (§5) |
 | Telegram bot silent | secure-by-default denies all with no allowlist | set `HERMES_TELEGRAM_ALLOWED_USERS` + re-run `install 20` (§5) |
-| A role runs on the wrong model | upstream down → availability-gated to `local-gemma4` | check the **DRIFT** column in `model list`; it re-gates when the upstream returns (§4) |
+| A role runs on the wrong model | upstream down → availability-gated to `local` | check the **DRIFT** column in `model list`; it re-gates when the upstream returns (§4) |
 
 **The security model (baked in, not optional).**
 
