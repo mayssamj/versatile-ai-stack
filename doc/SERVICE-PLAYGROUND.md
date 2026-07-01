@@ -298,7 +298,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `vz-ai-stack.sh install lmstudio && vz-ai-stack.sh start lmstudio` — then the MLX models become routable via LiteLLM.
 
-**Notes:** Opt-in. Hosts MLX models (e.g. `local`, `local`) that Ollama doesn't.
+**Notes:** Opt-in. Hosts the nemotron MLX model (`local-nemotron3-nano-4b-mlx`) — the same model Ollama serves as GGUF.
 
 ## lumen_mcp · Tier 3 · Phase 16
 

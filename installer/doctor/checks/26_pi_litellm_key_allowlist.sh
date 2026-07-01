@@ -23,7 +23,7 @@ _pi_litellm_litellm_up() {
 }
 
 # Expected allowlist, sorted-comma. DERIVED from models.yml when present:
-#   legacy IDs (local, local-heavy, local) UNION Pi's assigned slug, and —
+#   legacy IDs (local, local-heavy) UNION Pi's assigned slug, and —
 #   because `model sync` widens every scoped key to the full fixed SUPERSET so
 #   `assign` never re-mints — we expect the full superset. Fall back to the
 #   pre-models.yml literal when models.yml is absent.

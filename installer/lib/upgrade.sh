@@ -12,9 +12,20 @@
 #     exit 3). Docker recreate goes through the lock-free
 #     `bin/start-<svc>.sh --recreate`; phase re-asserts run the phase SCRIPT
 #     directly via `bash installer/phases/<id>_*.sh` (no lock_acquire in any).
-#   - Loads NO models: ollama upgrade is `brew upgrade ollama` (binary only),
-#     LM Studio is a manual note, docker is `docker pull` (image only) + recreate.
-#   - Registers NO doctor checks → the 40/40 invariant is untouched.
+#   - Loads NO CHAT models: ollama upgrade is `brew upgrade ollama` (binary only),
+#     docker is `docker pull` (image only) + recreate. CAVEAT: a `phase-rerun` of
+#     lumen (phase 16) can `ollama pull` the ~150MB EMBEDDER if its precheck fails
+#     (embedding plane is kept by design) — no CHAT model is ever pulled.
+#   - EXHAUSTIVE but honest: a service with a services.yml `upgrade:` block is
+#     version-bumped by its method (npm-global/uv-venv/git-pull/rebuild); everything
+#     else RE-RUNS its install phase (AI_STACK_UPGRADE=1 is exported as a forward
+#     convention — no phase reads it yet, so today phase-rerun RE-ASSERTS config via
+#     the phase's own precheck-guarded logic and only fetches a new version where the
+#     phase is version-UNPINNED). RESULT is labeled `re-asserted` (not `upgraded`) so
+#     the summary never implies a version bump that didn't happen. NOTE: a phase-rerun
+#     of an opt-in sim (metagpt/aitown/…) runs that phase's live model smoke, which
+#     bills the subscription/metered route when its precheck doesn't short-circuit.
+#   - Registers NO doctor checks → the doctor invariant is untouched.
 #
 # This runs as its OWN process (vz-ai-stack.sh dispatches `bash upgrade.sh "$@"`),
 # so the lock's EXIT/INT/TERM trap (common.sh) cleanly removes LOCKDIR on exit.
@@ -574,7 +585,7 @@ up_openshell() {
       # PyPI is proxy-403'd in pi-v1; phase 15 pre-stages a tarball. Never raw pip -U.
       if (( DRY )); then
         note "PLAN $svc openshell: openshell sandbox exec -n $sandbox --no-tty </dev/null -- bash -c 'hermes --version'; would re-run phase $phase directly"
-        openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'hermes --version' || true
+        : # dry-run: NO live sandbox probe (a dry-run must change/touch nothing)
         RESULT="planned"; return 0
       fi
       script="$(resolve_phase_script_inline "$phase")"
@@ -586,7 +597,7 @@ up_openshell() {
     hermes_fleet)
       if (( DRY )); then
         note "PLAN $svc openshell: openshell sandbox exec -n $sandbox --no-tty </dev/null -- hermes --version; would: pip -U hermes-agent in $sandbox + re-run phase $phase"
-        openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'hermes --version' || true
+        : # dry-run: NO live sandbox probe (a dry-run must change/touch nothing)
         RESULT="planned"; return 0
       fi
       openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'python3 -m pip install --upgrade hermes-agent' || true
@@ -659,7 +670,9 @@ up_npm_global() {
   if (( DRY )); then note "PLAN $svc npm-global: npm install -g ${pkg}@latest$([[ "$restart" != "-" ]] && echo "  (then restart $restart)")"; RESULT="planned"; return 0; fi
   command -v npm >/dev/null 2>&1 || { warn "$svc: npm not on PATH — skipping"; RESULT="skipped (no npm)"; return 0; }
   if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else err "$svc: npm install -g ${pkg}@latest failed"; RESULT=FAILED; return 0; fi
-  [[ "$restart" != "-" && -n "$restart" ]] && { note "$svc: restarting $restart"; recreate_via_start_script "$restart" || warn "$svc: restart of $restart returned non-zero (non-fatal)"; }
+  # Only restart the dependent service if the npm upgrade actually succeeded —
+  # restarting after a FAILED upgrade would just recreate on the old artifact + mask the failure.
+  [[ "$RESULT" == "upgraded" && "$restart" != "-" && -n "$restart" ]] && { note "$svc: restarting $restart"; recreate_via_start_script "$restart" || warn "$svc: restart of $restart returned non-zero (non-fatal)"; }
 }
 
 # up_uv_venv <svc> — uv pip install --python <upgrade.venv>/bin/python -U <upgrade.pkg>.
@@ -735,6 +748,14 @@ up_host_npm_global() {
   if (( DRY )); then note "PLAN $name npm-global (host): npm install -g ${pkg}@latest"; record_row "$name" npm-global "planned" "-"; return 0; fi
   if ! command -v npm >/dev/null 2>&1; then record_row "$name" npm-global "skipped (no npm)" "-"; return 0; fi
   if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; err "$name: npm install -g ${pkg}@latest failed"; fi
+  # Heads-up: the npm PACKAGE is upgraded but a running daemon/session keeps the OLD
+  # code until it restarts — surface the follow-up so the operator isn't surprised.
+  if [[ "$RESULT" == "upgraded" ]]; then
+    case "$name" in
+      claude-code) note "claude-code upgraded on disk — restart your Claude Code session to run the new version." ;;
+      meridian)    note "meridian package upgraded — restart the daemon to run it: bash bin/start-meridian.sh" ;;
+    esac
+  fi
   record_row "$name" npm-global "$RESULT" "-"
 }
 

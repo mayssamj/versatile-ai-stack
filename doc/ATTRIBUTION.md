@@ -139,7 +139,7 @@ ones most likely to have commercial conditions. Always confirm the exact model c
 
 | Model (stack alias) | Source | License | Notes |
 |---|---|---|---|
-| **NVIDIA Nemotron** (`local` / `local-heavy` / `local-nemotron3-nano-4b` = `nemotron-3-nano:4b`) | https://huggingface.co/nvidia | NVIDIA Open Model License | The stack's ONLY local chat model (Ollama, ~2.8GB) as of 2026-07-01; `local`/`local-heavy` both map to it. **Verify the exact license on the model card** (NVIDIA model-weight terms are version-specific). |
+| **NVIDIA Nemotron** (`local` / `local-heavy` / `local-nemotron3-nano-4b` = `nemotron-3-nano:4b`) | https://huggingface.co/nvidia | NVIDIA Open Model License (unverified — see model card) | The stack's ONLY local chat model (Ollama, ~2.8GB) as of 2026-07-01; `local`/`local-heavy` both map to it. **Verify the exact license on the model card** (NVIDIA model-weight terms are version-specific). |
 | **LiquidAI LFM2** (`local-lfm2-mlx` — opt-in LM Studio MLX demo only, Phase 25; NOT installed by default) | https://www.liquid.ai/lfm-license | **LFM Open License v1.0** | Apache-2.0-based **with a $10M org-revenue commercial cap**. Only reached via `install lmstudio` + `LMS_LOAD_LFM2=1`. |
 | **nomic-embed-text** | https://huggingface.co/nomic-ai/nomic-embed-text-v1.5 | Apache-2.0 | Embeddings. |
 | **jina-embeddings-v2-base-code** | https://huggingface.co/jinaai/jina-embeddings-v2-base-code | Apache-2.0 | Code embeddings. |

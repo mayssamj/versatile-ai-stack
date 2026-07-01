@@ -42,9 +42,9 @@ OSH="$(resolve_openshell)"
 # Hermes routes LLM calls through LiteLLM (OpenAI-compatible) via a virtual key,
 # reached from inside the sandbox at host.docker.internal:4000 (allowlisted in
 # hermes-fleet-v1.yaml). Default model is `local` = nemotron-3-nano:4b — LIGHT + FAST
-# (~9.6GB), workable for interactive chat / claw3d / the Telegram gateway on a
-# 24GB box. (local-heavy = qwen3.6:27b ~22GB thrashes 24GB → slow; still available
-# as an explicit alias for heavy reasoning, just not the default.) All-local, no cloud.
+# (~2.8GB), workable for interactive chat / claw3d / the Telegram gateway on a
+# 24GB box. (`local-heavy` is a back-compat alias of `local` — the SAME nemotron
+# model; there is no separate heavy local model any more.) All-local, no cloud.
 LITELLM_SANDBOX_URL="http://host.docker.internal:4000/v1"
 # Availability-gating fallback target = models.yml .default (local), so a
 # fresh install (LM Studio down) renders gated profiles to the SAME id that doctor
@@ -427,7 +427,7 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
 fi
 # Scoped key is minted against the fixed SUPERSET (legacy IDs UNION the 3
 # canonical model<->agent slugs) so a later `vz-ai-stack.sh model assign/sync` never
-# needs to re-mint when a profile is pointed at local / local.
+# needs to re-mint when a profile is pointed at local-nemotron3-nano-4b-mlx.
 # These canonical IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM still enforces the allowlist server-side.
 HERMES_SUPERSET_JSON='["local","local-heavy"]'

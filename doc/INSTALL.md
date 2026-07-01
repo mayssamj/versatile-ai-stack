@@ -400,8 +400,7 @@ moved. If any of them logged a warning during install:
   the first time from `pi/package.json`). To upgrade Pi: `rm
   pi/pi-bootstrap.tar.gz pi/package-lock.json && bash vz-ai-stack.sh install
   15`. Phase 15 mints `PI_LITELLM_KEY` server-side against the fixed local-model
-  superset (`local`, `local`, `local-heavy`, `local`,
-  `local`, `local`) — no cloud spend possible. Pi's
+  superset (`local`, `local-heavy`, `local-nemotron3-nano-4b`) — no cloud spend possible. Pi's
   declared model is `local` (see [models.md](models.md)); the
   superset lets `model assign`/`sync` re-point it without re-minting the key.
 - **Phase 16 Lumen (Ory's local code semantic search MCP)** —

@@ -487,7 +487,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 
 **What this check does NOT prove.** That any eval has been run. Playbooks live under `ace/results/` and are user-state, not install-state. `bin/ace --help` lists the eval surface.
 
-**Routing.** ACE uses the OpenAI Python SDK; `OPENAI_BASE_URL` is the canonical env-var that SDK reads to redirect every chat-completion call. Setting it to `http://litellm:4000/v1` means every LLM call from ACE — generator, reflector, curator — passes through LiteLLM and gets traced in the `ai-stack` Phoenix project for free. The `ACE_LITELLM_KEY` virtual key is scoped to the canonical local-model superset (`local, local, local-heavy, local, local, local`) only, so even if ACE's prompts somehow request cloud models, LiteLLM rejects with HTTP 403 ("key not allowed to access model"). ACE's assigned model in `models.yml` is `local`.
+**Routing.** ACE uses the OpenAI Python SDK; `OPENAI_BASE_URL` is the canonical env-var that SDK reads to redirect every chat-completion call. Setting it to `http://litellm:4000/v1` means every LLM call from ACE — generator, reflector, curator — passes through LiteLLM and gets traced in the `ai-stack` Phoenix project for free. The `ACE_LITELLM_KEY` virtual key is scoped to the canonical local-model superset (`local, local-heavy`) only, so even if ACE's prompts somehow request cloud models, LiteLLM rejects with HTTP 403 ("key not allowed to access model"). ACE's assigned model in `models.yml` is `local`.
 
 ---
 

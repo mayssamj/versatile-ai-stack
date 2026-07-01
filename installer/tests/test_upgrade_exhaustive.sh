@@ -37,6 +37,22 @@ for s in "${svcs[@]}"; do
 done
 (( gap == 0 )) && ok "all ${#svcs[@]} enabled services map to a real upgrade action (method or phase-rerun)"
 
+echo "== every manual-typed service WITHOUT an upgrade: block has a RESOLVABLE phase script =="
+# Guards the silent hole the first loop can't see: a `phase:` that points to a
+# NON-existent installer/phases/<id>_*.sh → up_phase_rerun degrades to the no-op
+# up_manual_note. (Static mirror of resolve_phase_script_inline's glob.)
+presolve_gap=0
+for s in "${svcs[@]}"; do
+  t="$(yq -r ".services.\"$s\".type // \"unknown\"" "$SVC")"
+  [[ "$MANUAL_TYPES" == *" $t "* ]] || continue
+  [[ "$(yq -r ".services.\"$s\".upgrade // \"-\"" "$SVC")" != "-" ]] && continue  # has a direct method
+  ph="$(yq -r ".services.\"$s\".phase // \"-\"" "$SVC")"
+  [[ "$ph" == "-" ]] && continue  # no phase → caught by the first loop already
+  m=( "$ROOT/installer/phases/${ph}_"*.sh )
+  [[ -e "${m[0]}" ]] || { bad "$s: phase '$ph' resolves to NO installer/phases/${ph}_*.sh → phase-rerun would silent-no-op"; presolve_gap=1; }
+done
+(( presolve_gap == 0 )) && ok "every phase-rerun service resolves to exactly one phase script"
+
 echo "== declared upgrade: blocks parse to a supported method =="
 VALID=" npm-global uv-venv git-pull rebuild phase-rerun "
 mapfile -t withup < <(yq -r '.services | to_entries | .[] | select(.value.upgrade) | .key' "$SVC")

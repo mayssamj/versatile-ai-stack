@@ -187,10 +187,10 @@ canonical local models** are declared per-agent in `installer/models.yml`
 | `claude-opus-sub-{low,medium,high,xhigh,max,ultracode}` | claude-opus-4-8 via **subscription** (Meridian), one model per effort level | sub | **no API key**. `-max` is the Open WebUI default; use `-low/-medium` for simple work, `-ultracode` for the coding-focused highest tier (above `max`) |
 | `claude-sonnet-sub-{low,medium,high,max,ultracode}` | claude-sonnet-4-6 via subscription (Meridian) | sub | Everyday subscription chat + coding (no `xhigh` — ≡ `high` on Sonnet); `-ultracode` is the highest tier |
 
-`local` is the only local model `install all` pre-pulls (alongside
-`nomic-embed-text`); the two big MLX models are opt-in (see §2.16 "Enabling the
-big MLX models"). The two big MLX models can't be resident together on a 24 GB
-box; LM Studio JIT-loads with idle-unload so only one is in RAM at a time.
+`local` (nemotron-3-nano:4b) is the only local chat model `install all` pre-pulls
+(alongside `nomic-embed-text`). The LM Studio MLX variant
+(`local-nemotron3-nano-4b-mlx`) is opt-in (see §2.16 "Enabling the LM Studio MLX
+model") and serves the same nemotron model on Apple MLX — nothing heavy runs locally.
 
 **Aliases.** `local`, `local-heavy`, and `local-nemotron3-nano-4b` all resolve to
 `nemotron-3-nano:4b` — the ONLY local chat model (operator directive 2026-07-01;
@@ -239,7 +239,7 @@ from it (deep dive: [models.md](models.md)).
 
 #### When LM Studio is off
 
-LM Studio-bound agents (`local` / `local`)
+LM Studio-bound agents (`local-nemotron3-nano-4b-mlx`)
 **availability-gate to `local`** and are recorded as *pending* in the
 installer state file. To promote them: start LM Studio
 (`vz-ai-stack.sh start lmstudio`), assign + load the model, then re-run
@@ -1016,7 +1016,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/paperclip/search?query=t
 
 #### `pi` (Phase 15, sandboxed in `pi-v1`)
 
-**What.** Earendil's `@earendil-works/pi-coding-agent` running inside the `pi-v1` OpenShell sandbox. Pi is a tree-branching TUI coding agent. Network policy: can reach `host.docker.internal:4000` (LiteLLM via `PI_LITELLM_KEY` virtual key, allowlisted to the derived local-model superset — `local`, `local`, `local` plus the retained legacy slugs `local` / `local-heavy` / `local` (retired, not runnable defaults); Pi's assigned model is `local`, see [models.md](models.md)), `:8000` (Honcho with `pi` peer namespace), `:8765` (docs-mcp). Cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or the master key.
+**What.** Earendil's `@earendil-works/pi-coding-agent` running inside the `pi-v1` OpenShell sandbox. Pi is a tree-branching TUI coding agent. Network policy: can reach `host.docker.internal:4000` (LiteLLM via `PI_LITELLM_KEY` virtual key, allowlisted to the derived local-model superset — `local`, `local-heavy`, `local-nemotron3-nano-4b` (all map to the same nemotron model); Pi's assigned model is `local`, see [models.md](models.md)), `:8000` (Honcho with `pi` peer namespace), `:8765` (docs-mcp). Cannot see Phoenix, Qdrant, FalkorDB, Open WebUI, AutoFyn, Paperclip, Unsloth, Workspace, or the master key.
 
 **When.** Sandboxed code experimentation. New project bootstrap. Working with code from an untrusted source. Anytime you want strong-isolation guarantees.
 
@@ -1415,7 +1415,7 @@ python ~/ai-stack/rlm/run_rlm.py --help
 **What.** `installer/models.yml` is the single source of truth for which model
 each agent runs. You never hand-edit soul files or scoped-key allowlists — you
 edit the binding and let `vz-ai-stack.sh model sync` reconcile everything. The
-canonical three (`local`, `local`, `local`) and the
+canonical local aliases (`local`, `local-heavy`, `local-nemotron3-nano-4b`) and the
 per-agent `assignments:` live there; see [models.md](models.md) for the full
 contract.
 
@@ -1472,7 +1472,7 @@ Nothing breaks; the agent just runs lighter until LM Studio is up.
 
 ---
 
-#### Enabling the big MLX models (`local` / `local`)
+#### Enabling the LM Studio MLX model (`local-nemotron3-nano-4b-mlx`)
 
 **What.** The two big models are served by **LM Studio's MLX engine** on the
 host (OpenAI-compatible server on `:1234`), not Ollama. They're opt-in because

@@ -148,7 +148,7 @@ container port; see [CHANGELOG.md 2026-05-28 entry](../CHANGELOG.md) for
 why we don't use port 80 anymore).
 
 Use any model from `~/ai-stack/services.yml` (or `curl /v1/models | jq`).
-Verified models: `local`, `local`, `local`,
+Verified models: `local`, `local-heavy`, `local-nemotron3-nano-4b`,
 `claude-sonnet`, `claude-opus`, `openai-gpt-5.5`, `openrouter-claude-opus-4.7`,
 `google-gemini-3.1-pro`, plus more (the retired `local` / `local-heavy` /
 `local` slugs still resolve for old keys but aren't auto-pulled — use
@@ -435,7 +435,7 @@ openshell` (check 39); a pending alert surfaces in check 43. Full failure write-
 ## LM Studio (opt-in, quit it when done)
 
 LM Studio (Phase 25) is a *second* local runtime behind LiteLLM (Apple MLX, home of
-`local` / `local`) — Ollama stays the default. It is **opt-in**
+`local-nemotron3-nano-4b-mlx`) — Ollama stays the default. It is **opt-in**
 because the LM Studio desktop app idle-spins ~0.8–1 core **even with no model loaded
 and the server stopped**. Run it only when you need MLX, and quit it afterward.
 

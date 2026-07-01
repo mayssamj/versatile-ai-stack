@@ -185,7 +185,7 @@ note "Desktop:  open -a AionUi                    (the native app; quit when don
 note "Wire your stack models (one-time, in either UI): Settings → Models → Add Model → Custom"
 note "   Base URL:  http://127.0.0.1:4000/v1"
 note "   API Key:   \$(grep ^AIONUI_LITELLM_KEY= $AI_STACK/.env | cut -d= -f2-)"
-note "   Models:    claude-opus-sub-xhigh, local, local, …"
+note "   Models:    claude-opus-sub-xhigh, local, …"
 note "Hermes bridge: AionUi auto-detects 'hermes' (host) — point it at LiteLLM with"
 note "   'hermes model' (base URL http://127.0.0.1:4000/v1 + the key above), then pick it in AionUi."
 note "Manage: vz-ai-stack.sh start aionui | stop aionui | help aionui | doctor aionui"

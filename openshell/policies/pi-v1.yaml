@@ -5,7 +5,7 @@
 #
 #   - LiteLLM   : ALLOWED on host.docker.internal:4000. Pi authenticates
 #                 with PI_LITELLM_KEY (LiteLLM virtual key scoped to
-#                 local/local-heavy/local-lfm2 — minted Phase 15, in .env).
+#                 local/local-heavy — minted Phase 15, in .env).
 #                 NOTE: OpenShell's `inference.local` L7 rewrite was
 #                 considered as the auth-hiding endpoint, but the shipped
 #                 `openai` provider type silently ignores --config endpoint

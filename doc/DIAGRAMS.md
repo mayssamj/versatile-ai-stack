@@ -463,7 +463,7 @@ flowchart LR
 
   subgraph Runtimes[Runtimes]
     OL["ollama :11434 (host, lazy, KEEP_ALIVE=30m)<br/>local = default"]
-    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local / local"]
+    LMS["LM Studio MLX :LMS_PORT default 1234 (OPT-IN, no auto-start)<br/>local-nemotron3-nano-4b-mlx"]
     CLOUD["Cloud APIs - only if you pick a non-local model<br/>Anthropic / OpenAI / OpenRouter / Gemini"]
   end
 

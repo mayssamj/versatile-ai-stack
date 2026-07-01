@@ -262,7 +262,7 @@ See the catalog from the stack's own point of view — runtime, served id, and l
 bash ~/ai-stack/vz-ai-stack.sh model list
 ```
 
-**Expected.** `/v1/models` prints a list of ids including `local`, `local`, `local`, and the `claude-*-sub-*` ladder. The first chat prints `HUB-OK`. The subscription call returns a haiku **if Meridian is up**; if it isn't, you get an error from that route — that's the availability boundary, not a broken gateway. `model list` shows `local` as the always-on default and the others as opt-in.
+**Expected.** `/v1/models` prints a list of ids including `local`, `local-heavy`, `local-nemotron3-nano-4b`, and the `claude-*-sub-*` ladder. The first chat prints `HUB-OK`. The subscription call returns a haiku **if Meridian is up**; if it isn't, you get an error from that route — that's the availability boundary, not a broken gateway. `model list` shows `local` as the always-on default and the others as opt-in.
 
 **Try it live.** The HTML page's **List models** (demo 1), **Chat** (demo 2), and **Model compare** (demo 3) panels — under *Interactive demos* — proxy through two server-side routes so the browser never holds a token: `GET /api/models` (forwarded to `/v1/models`) populates the model picker, and `POST /api/chat` (forwarded to `/v1/chat/completions`) sends your prompt. Pick `local`, send "HUB-OK", then switch the picker to a `claude-*-sub-*` model and watch the same panel route to a different runtime; the **Model compare** panel sends one prompt to two models side by side — the one-endpoint payoff.
 

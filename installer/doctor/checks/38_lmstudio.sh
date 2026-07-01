@@ -52,21 +52,10 @@ lmstudio_diagnose() {
     fi
   fi
 
-  # one-big-MLX RAM policy: WARN (advisory, NOT red) if BOTH big MLX models are
-  # resident at once — they're ~17GB each and cannot coexist on a 24GB box.
-  local lms2=""
-  [[ -x "$HOME/.lmstudio/bin/lms" ]] && lms2="$HOME/.lmstudio/bin/lms"
-  if [[ -n "$lms2" ]]; then
-    local loaded big_loaded
-    loaded="$("$lms2" ps 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' || true)"
-    big_loaded=0
-    grep -q 'qwen/qwen3.6-27b' <<<"$loaded" && big_loaded=$((big_loaded+1))
-    grep -q 'qwen3-coder-30b' <<<"$loaded" && big_loaded=$((big_loaded+1))
-    if (( big_loaded >= 2 )); then
-      echo "  (advisory) BOTH big MLX models resident in LM Studio — they're ~17GB each and thrash a 24GB box."
-      echo "             Unload one:  $lms2 unload --all   (the TTL also auto-evicts; one-big-MLX policy)"
-    fi
-  fi
+  # RAM policy: the only MLX slug now is `local-nemotron3-nano-4b-mlx` (~3GB) — the
+  # nemotron-only migration (2026-07-01) removed the big qwen MLX models, so the old
+  # "two big MLX resident thrash a 24GB box" advisory no longer applies (nothing big
+  # to coexist). Kept as a no-op comment for provenance.
   return 0
 }
 

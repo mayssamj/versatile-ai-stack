@@ -352,7 +352,7 @@ re-minting** a key. The canonical IDs are registered in `config.yaml` *before*
 any key is minted (superset-before-mint).
 
 The superset is **not** a hardcoded list — it is **DERIVED** (the sorted-unique
-union of the legacy names `{local, local-heavy, local}` **plus every model
+union of the legacy names `{local, local-heavy}` **plus every model
 key in `models.yml`**), computed by `superset_members()` and printed by
 `vz-ai-stack.sh model superset`. So a `model add`-ed slug is automatically covered
 — **do not hand-edit any array**. The hardcoded `LEGACY_SUPERSET` (the 6-name

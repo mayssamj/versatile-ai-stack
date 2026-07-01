@@ -231,7 +231,7 @@ default model warm for 30 min of inactivity, then releases it).
 Every scoped virtual key (`HERMES_`, `PI_`, `ACE_`, `RLM_LITELLM_KEY`) is
 minted against a **DERIVED**, sorted-unique **superset** of model names
 (`vz-ai-stack.sh model superset` prints it — the union of the legacy
-`{local, local-heavy, local}` plus every model key in `models.yml`, **not**
+`{local, local-heavy}` plus every model key in `models.yml`, **not**
 a hardcoded list; the `LEGACY_SUPERSET` array in `installer/lib/models.sh` is
 only the fallback when `models.yml` is absent). Because each key already allows
 the whole superset, `model assign <agent> <model>` (or `model assign all <model>` to

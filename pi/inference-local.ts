@@ -4,8 +4,8 @@
  *
  * The OpenShell sandbox network policy (openshell/policies/pi-v1.yaml)
  * whitelists host.docker.internal:4000. PI_LITELLM_KEY is a LiteLLM
- * virtual key minted in Phase 15 with models=[local, local-heavy,
- * local-lfm2] — LiteLLM rejects requests for any other model with
+ * virtual key minted in Phase 15 with models=[local, local-heavy]
+ * — LiteLLM rejects requests for any other model with
  * "key not allowed to access model".
  *
  * Why not `inference.local`? OpenShell's shipped `openai` provider type
