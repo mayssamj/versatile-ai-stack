@@ -692,6 +692,18 @@ up_openshell() {
 # up_phase_rerun <svc> — re-run the service's install phase DIRECTLY (lock-free,
 # like up_openshell) with AI_STACK_UPGRADE=1. Honest fallback: re-asserts/upgrades
 # via the phase's OWN logic. If no phase resolves, degrade to the note.
+#
+# AI_STACK_UPGRADE=1 CONTRACT (a phase may read it; it is set ONLY here, on the
+# upgrade path — never on a plain `install`). It signals "upgrade mode" and drives
+# behavior in BOTH directions, so a phase reader is explicit about which:
+#   - DO-MORE: 04f_hermes_fleet re-runs `pip install --upgrade hermes-agent` even
+#     when hermes is already present (force a version bump).
+#   - DO-LESS: the opt-in sim phases (32? no — 33/34/37) SKIP their live model
+#     smoke + embedder pre-fetch (no unsolicited metered inference / local-model
+#     load on a routine `upgrade`), re-assert config, and stamp.
+# CAVEAT: `AI_STACK_UPGRADE=1 vz-ai-stack.sh install 33` therefore skips the smoke
+# too — the flag means the mode, not the entrypoint. Use a plain `install` (or
+# `test <phase>`) for the full verified smoke.
 up_phase_rerun() {
   local svc="$1" phase script
   phase="$(svc_phase "$svc")"

@@ -466,7 +466,11 @@ ok "AgentScope 2 agents replied through LiteLLM on the scoped key — wiring ver
 fi
 
 stamp_mark "$PHASE"
-record "phase 33 complete: AgentScope venv (py3.11) + scoped key + bin/agentscope + 2-agent-verified smoke sim"
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  record "phase 33 re-asserted on upgrade (venv + scoped key + bin/agentscope + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 33' to verify)"
+else
+  record "phase 33 complete: AgentScope venv (py3.11) + scoped key + bin/agentscope + 2-agent-verified smoke sim"
+fi
 ok "Phase 33 — AgentScope — complete"
 note "Prove the swarm:  vz-ai-stack.sh test 33     # 2 AgentScope agents converse via LiteLLM"
 note "Run the demo:     bin/agentscope agentscope/sims/smoke_sim.py"

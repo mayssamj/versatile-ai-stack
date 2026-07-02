@@ -138,6 +138,13 @@ fi
 # --- 1b. Pre-fetch the embedder model so the smoke (and first run) is not the first download ---
 CC_EMBEDDER="$CC_EMBEDDER_DEFAULT"
 [[ -n "${CONCORDIA_EMBEDDER:-}" ]] && CC_EMBEDDER="$CONCORDIA_EMBEDDER"
+# The pre-fetch LOADS a local model (~90MB torch/HF). Skip it on `upgrade` for the
+# same reason as the smoke (no unsolicited local-model load on a routine upgrade);
+# a later install / first run fetches it. CC_EMBEDDER stays set above for the
+# wrapper + smoke env. (This is fail-soft on install too — `|| warn`.)
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  note "upgrade re-assert: skipping the ~90MB embedder pre-fetch (no local model load on 'upgrade'; install/first-run fetches it). embedder=$CC_EMBEDDER"
+else
 log "Pre-fetching the sentence-transformers embedder ($CC_EMBEDDER; ~90MB first time)…"
 "$CC_PY" - "$CC_EMBEDDER" <<'PYWARM' 2>&1 | tail -2 || warn "embedder pre-fetch failed (the smoke will download it on first run)"
 import sys
@@ -145,6 +152,7 @@ from sentence_transformers import SentenceTransformer
 SentenceTransformer(sys.argv[1])
 print("embedder cached")
 PYWARM
+fi
 
 # --- 2. Mint scoped LiteLLM key (stale-aware; mirrors Phase 34) ---
 CC_KEY_CURRENT="$(get_env CONCORDIA_LITELLM_KEY '')"
@@ -342,7 +350,11 @@ ok "Concordia GABM sim ran through LiteLLM on the scoped key — wiring verified
 fi
 
 stamp_mark "$PHASE"
-record "phase 37 complete: Concordia venv (py3.12) + sentence-transformers + scoped key + bin/concordia + GABM-verified smoke sim"
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  record "phase 37 re-asserted on upgrade (venv + sentence-transformers + scoped key + bin/concordia + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 37' to verify)"
+else
+  record "phase 37 complete: Concordia venv (py3.12) + sentence-transformers + scoped key + bin/concordia + GABM-verified smoke sim"
+fi
 ok "Phase 37 — Concordia — complete"
 note "Prove the sim:    vz-ai-stack.sh test 37     # a 1-step GABM sim runs via LiteLLM"
 note "Run the demo:     bin/concordia concordia/sims/smoke_sim.py"

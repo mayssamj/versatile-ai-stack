@@ -266,7 +266,11 @@ ok "CAMEL swarm replied through LiteLLM on the scoped key — OASIS wiring verif
 fi
 
 stamp_mark "$PHASE"
-record "phase 34 complete: OASIS venv (py3.11) + scoped key + bin/oasis + CAMEL-verified smoke sim"
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  record "phase 34 re-asserted on upgrade (venv + scoped key + bin/oasis + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 34' to verify)"
+else
+  record "phase 34 complete: OASIS venv (py3.11) + scoped key + bin/oasis + CAMEL-verified smoke sim"
+fi
 ok "Phase 34 — OASIS — complete"
 note "Prove the swarm:  vz-ai-stack.sh test 34     # 3 CAMEL agents reply via LiteLLM"
 note "Run the demo:     bin/oasis oasis/sims/smoke_sim.py"
