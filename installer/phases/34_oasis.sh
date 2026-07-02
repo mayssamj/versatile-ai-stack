@@ -240,6 +240,15 @@ GI
 # wiring fails the INSTALL (not just a later `test 34`). A fast key-reachability curl
 # first gives a clear error if the KEY is the problem; then the seeded multi-agent sim
 # (bounded by its own signal.alarm). ---
+# On `upgrade all` (AI_STACK_UPGRADE=1, exported by up_phase_rerun) SKIP the live
+# scoped-key + sim smoke below: it drives real/metered model calls, and a routine
+# upgrade must NOT do unsolicited inference (mechanism-audit #2 + the operator's
+# no-unsolicited-inference stance). The venv, scoped key, wrapper and seeded sim
+# are already re-asserted above; stamp and move on. The full verified smoke still
+# runs on the install path (and via `vz-ai-stack.sh test 34`).
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  note "upgrade re-assert: skipping the live OASIS/CAMEL smoke (no unsolicited metered inference on 'upgrade'). Run 'vz-ai-stack.sh install 34' for the full verified smoke."
+else
 log "Smoke: scoped key → LiteLLM chat completion…"
 _oa_key="$(get_env OASIS_LITELLM_KEY '')"
 _sc="$(litellm_scoped_curl "$_oa_key" -s -o /dev/null -w '%{http_code}' --max-time 30 \
@@ -254,9 +263,14 @@ _simout="$(OPENAI_BASE_URL="$OA_LLM_FALLBACK/v1" OPENAI_API_KEY="$_oa_key" OASIS
 printf '%s\n' "$_simout" | sed 's/^/    /'
 [[ $_simrc -eq 0 ]] || { err "the seeded CAMEL sim did not pass (rc=$_simrc) — OASIS wiring unverified, not stamping"; exit 1; }
 ok "CAMEL swarm replied through LiteLLM on the scoped key — OASIS wiring verified"
+fi
 
 stamp_mark "$PHASE"
-record "phase 34 complete: OASIS venv (py3.11) + scoped key + bin/oasis + CAMEL-verified smoke sim"
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  record "phase 34 re-asserted on upgrade (venv + scoped key + bin/oasis + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 34' to verify)"
+else
+  record "phase 34 complete: OASIS venv (py3.11) + scoped key + bin/oasis + CAMEL-verified smoke sim"
+fi
 ok "Phase 34 — OASIS — complete"
 note "Prove the swarm:  vz-ai-stack.sh test 34     # 3 CAMEL agents reply via LiteLLM"
 note "Run the demo:     bin/oasis oasis/sims/smoke_sim.py"
