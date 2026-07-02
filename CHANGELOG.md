@@ -64,6 +64,25 @@ check_image), `test_upgrade_honesty.sh` (17, incl. the exit-gate regression),
 `status --versions --local` verified live read-only. Audited by the drift-audit council
 (`wq0achnya`) + the merge-review council (`wn9pygsi9`).
 
+**Per-service mechanism audit (`w6wxiev01`, 18 agents).** Verified every one of the 54
+services/host-globals dispatches and executes its upgrade correctly and honestly — docker
+(pull+recreate / local-built rebuild), compose (honcho/aitown `--ignore-buildable`, autofyn
+dual-mode, deerflow build, hermes_workspace hardened rebuild), brew, sandbox (hermes_fleet
+real pip; openshell/telegram/slack/pi re-assert), the 3 declared blocks (byterover_cli npm,
+autoreason git-pull on a real `main`-tracking clone, remnic_hermes uv-venv), and host globals.
+The honesty guards all held (no false `upgraded`). Fixed the one concrete defect it found —
+`_iv_pip` probed with `python -m pip show`, but the stack's venvs are **uv-managed (pip-less)**,
+so `remnic_hermes` (the only uv-venv service) showed `-` everywhere despite being installed;
+`_iv_pip` is now uv-aware (`uv pip show --python` → pip → dist-info fallback).
+Documented follow-ups (not shipped here): (a) [medium] `upgrade all` re-running a sim phase
+(metagpt/agentscope/oasis/concordia) on the narrow installed-but-**drifted** path still runs
+its live model smoke — gate the smoke on `AI_STACK_UPGRADE=1` in phases 32/33/34/37 (needs live
+verification; the not-installed case is already covered by the install-stamp gate, and healthy
+sims short-circuit); (b) [low] `pi` + `pi_gateway_litellm` both resolve to phase 15 → `upgrade
+all` runs it twice (idempotent) — dedupe phase-reruns per run. Systemic note: ~30 cli/bg/config
+services wrap versionable artifacts but declare no `upgrade:` block, so they stay version-blind
+by construction (correct + honestly labeled `re-asserted`, but a future visibility opportunity).
+
 ## 2026-07-02 — Foreground servers: signal-stop no longer misfires the ERR trap
 
 `vz-ai-stack.sh tutorial-serve` (and the sibling foreground commands) printed a

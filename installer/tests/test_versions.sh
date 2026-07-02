@@ -41,8 +41,9 @@ export SERVICES_YML="$FIX/services.yml"
 mkdir -p "$FIX/t_pip_venv/bin" "$FIX/t_git_dir/.git"
 cat > "$FIX/t_pip_venv/bin/python" <<'PY'
 #!/usr/bin/env bash
-# stub venv python: `python -m pip show coolpip`
-[[ "$*" == *"pip show"* ]] && printf 'Name: coolpip\nVersion: 2.3.4\n'
+# stub: a uv-created venv is PIP-LESS by default — `python -m pip show` FAILS.
+# This reproduces the real remnic_hermes bug; _iv_pip must fall back to `uv pip show`.
+[[ "$*" == *"pip show"* ]] && { echo "No module named pip" >&2; exit 1; }
 PY
 chmod +x "$FIX/t_pip_venv/bin/python"
 
@@ -90,6 +91,16 @@ case "$*" in
   *"rev-parse --short HEAD"*) echo "abc1234" ;;
   *"ls-remote "*)             echo "def5678901234  HEAD" ;;
   *"describe"*)               echo "abc1234" ;;
+  *) exit 0 ;;
+esac
+SH
+
+# uv stub: the stack's venvs are uv-managed + pip-less, so _iv_pip must probe with
+# `uv pip show --python <py> <pkg>` (the fix for the remnic_hermes visibility bug).
+cat > "$STUB/uv" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *"pip show"*coolpip*) printf 'Name: coolpip\nVersion: 2.3.4\n' ;;
   *) exit 0 ;;
 esac
 SH

@@ -200,7 +200,18 @@ _iv_pip() {
   [[ -x "$py" ]] || { echo "-"; return 0; }
   # pkg may carry pip extras/specifiers (e.g. 'hermes-agent[mcp]'); strip to the base name.
   local base="${pkg%%[*}"; base="${base%%=*}"; base="${base%%[<>]*}"
-  out="$("$py" -m pip show "$base" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
+  # The stack standardizes on uv-managed venvs, which are PIP-LESS by default —
+  # so `python -m pip show` returns nothing (this was the remnic_hermes blind spot).
+  # Probe with `uv pip show --python` first; fall back to pip (pip-seeded venvs),
+  # then to the <pkg>-<ver>.dist-info directory name under site-packages.
+  if command -v uv >/dev/null 2>&1; then
+    out="$(uv pip show --python "$py" "$base" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
+  fi
+  [[ -z "$out" ]] && out="$("$py" -m pip show "$base" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
+  if [[ -z "$out" ]]; then
+    local si; si="$(ls -d "$(dirname "$py")/.."/lib/python*/site-packages/"${base//-/_}"-*.dist-info 2>/dev/null | head -1 || true)"
+    if [[ -n "$si" ]]; then si="${si##*/}"; si="${si#"${base//-/_}"-}"; out="${si%.dist-info}"; fi
+  fi
   printf '%s' "${out:--}"
 }
 
