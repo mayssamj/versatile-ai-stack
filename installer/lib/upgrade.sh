@@ -636,10 +636,13 @@ up_openshell() {
       if [[ -z "$script" ]]; then
         err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0
       fi
-      if TELEGRAM_NOPIP=1 bash "$script"; then RESULT="upgraded"; else RESULT=FAILED; fi
+      # Re-running the phase re-asserts the gateway config; it does NOT bump a
+      # version (no pip here) — so report 're-asserted', not a false 'upgraded'.
+      if TELEGRAM_NOPIP=1 bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
       ;;
     *)
-      # Any other openshell-type without a special case: re-run its phase.
+      # Any other openshell-type without a special case: re-run its phase. This
+      # re-asserts config (no version-moving step), so 're-asserted', not 'upgraded'.
       if (( DRY )); then
         note "PLAN $svc openshell: would re-run phase $phase directly"
         RESULT="planned"; return 0
@@ -648,7 +651,7 @@ up_openshell() {
       if [[ -z "$script" ]]; then
         err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0
       fi
-      if bash "$script"; then RESULT="upgraded"; else RESULT=FAILED; fi
+      if bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
       ;;
   esac
 }

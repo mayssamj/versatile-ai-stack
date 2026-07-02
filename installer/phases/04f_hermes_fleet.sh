@@ -345,8 +345,18 @@ fi
 # are not visible in this virtualenv."). Dropping both — they were only
 # needed for system-managed Python installs (PEP 668), which the venv avoids
 # by design.
-if ! "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'command -v hermes >/dev/null && hermes --version' >/dev/null 2>&1; then
-  warn "Hermes not detected inside sandbox. Installing from PyPI..."
+# Install if missing; ALSO upgrade in place when invoked from `upgrade`
+# (AI_STACK_UPGRADE=1). The pip line below uses `--upgrade`, so the SAME block
+# installs OR bumps an already-present hermes — closing the council finding that a
+# phase re-run could NEVER upgrade a present hermes. Default `install 04f` leaves
+# AI_STACK_UPGRADE unset → install-if-missing (a working install is never
+# surprised by a breaking hermes version); only the explicit upgrade path bumps.
+if [[ "${AI_STACK_UPGRADE:-}" == "1" ]] || ! "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- bash -c 'command -v hermes >/dev/null && hermes --version' >/dev/null 2>&1; then
+  if [[ "${AI_STACK_UPGRADE:-}" == "1" ]]; then
+    warn "Installing/upgrading hermes-agent inside sandbox from PyPI (AI_STACK_UPGRADE)…"
+  else
+    warn "Hermes not detected inside sandbox. Installing from PyPI..."
+  fi
   # hermes-agent shipped on PyPI as of v0.14.0 (2026-05-28). Cleaner than
   # `curl scripts/install.sh | bash` which the sandbox proxy 403s.
   # The relay was verified live above, so a failure here is a genuine pip/PyPI
