@@ -37,6 +37,10 @@ echo "== up_openshell (hermes_fleet) no longer swallows the pip upgrade =="
 if have "pip install --upgrade hermes-agent' || true"; then bad "hermes_fleet STILL swallows the pip result with || true"; else ok "hermes_fleet pip result is not '|| true'-swallowed"; fi
 if grep -qE '_pip_rc|Successfully installed|already satisfied' "$UPG"; then ok "hermes_fleet derives RESULT from the real pip outcome"; else bad "hermes_fleet does not inspect the pip outcome"; fi
 
+echo "== upgrade never re-runs an install phase for a NOT-installed service (metered-smoke/model-load guard, finding #5) =="
+have 'stamp_check' && ok "up_phase_rerun gates on the install stamp" || bad "phase-rerun is not gated on the install stamp"
+have 'skipped (not installed)' && ok "a not-installed service gets a visible 'skipped (not installed)' row" || bad "no 'skipped (not installed)' path"
+
 echo "== summary surfaces the version so a no-op is visible =="
 grep -q 'VERSION' "$UPG" && ok "print_summary has a VERSION column" || bad "no VERSION column in the summary"
 

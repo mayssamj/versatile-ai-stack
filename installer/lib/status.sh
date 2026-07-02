@@ -15,13 +15,15 @@ source "$AI_STACK/installer/lib/docker.sh"
 # Unknown flags warn (common.sh warn) but never abort; non-flag args are ignored.
 # `for a in "$@"` is a no-op with zero args (the current vz-ai-stack.sh call site),
 # so default behavior is unchanged under set -Eeuo pipefail.
-SHOW_DESC=0; SHOW_LEGEND=0
+SHOW_DESC=0; SHOW_LEGEND=0; SHOW_VERSIONS=0; LOCAL_ONLY=0
 for a in "$@"; do case "$a" in
-  -d|--describe) SHOW_DESC=1 ;;
-  --legend)      SHOW_LEGEND=1 ;;
-  -h|--help)     printf 'usage: vz-ai-stack.sh status [-d|--describe] [--legend]\n'; exit 0 ;;
-  -*)            warn "status: unknown flag '$a' (ignored)" ;;
-  *)             : ;;
+  -d|--describe)   SHOW_DESC=1 ;;
+  --legend)        SHOW_LEGEND=1 ;;
+  --versions|-V)   SHOW_VERSIONS=1 ;;   # focused versions view (installed + available)
+  --local)         LOCAL_ONLY=1 ;;      # with --versions: installed only, skip the network
+  -h|--help)       printf 'usage: vz-ai-stack.sh status [-d|--describe] [--legend] [--versions [--local]]\n'; exit 0 ;;
+  -*)              warn "status: unknown flag '$a' (ignored)" ;;
+  *)               : ;;
 esac; done
 
 ROW_FMT='%-30s %-10s %-10s %-12s %s\n'
@@ -261,18 +263,58 @@ svc_group() {
   esac
 }
 
+# --- `status --versions`: focused installed-vs-available view -----------------
+# Reuses the SHARED oracle (installer/lib/versions.sh) so it agrees with
+# `upgrade --check` exactly. INSTALLED is local/cheap; AVAILABLE is bounded,
+# best-effort network (skipped with --local). status.sh CANNOT source upgrade.sh
+# (it self-runs upgrade_main), which is why the oracle lives in versions.sh.
+print_versions_view() {
+  source "$AI_STACK/installer/lib/versions.sh"
+  if (( LOCAL_ONLY )); then
+    note "installed versions only (--local) — drop --local to also probe upstream."
+  else
+    note "probing installed + upstream latest (network; bounded — may be slow behind a proxy; --local to skip upstream)…"
+  fi
+  local fmt='%-26s %-15s %-24s %-22s %s\n'
+  printf "$fmt" NAME TYPE INSTALLED AVAILABLE STATUS
+  printf "$fmt" "--------------------------" "---------------" "------------------------" "----------------------" "------"
+  local grp name type inst avail status
+  for grp in "${GROUP_ORDER[@]}"; do
+    local -a vmembers=()
+    for name in "${ALL_NAMES[@]}"; do [[ "$(svc_group "$name")" == "$grp" ]] && vmembers+=("$name"); done
+    (( ${#vmembers[@]} == 0 )) && continue
+    printf '\n── %s\n' "$(group_label "$grp")"
+    for name in "${vmembers[@]}"; do
+      type="$(svc_type "$name")"
+      inst="$(svc_installed_version "$name" 2>/dev/null || echo -)"
+      if (( LOCAL_ONLY )); then
+        avail="-"; status="(local)"
+      else
+        avail="$(svc_available_version "$name" 2>/dev/null || echo -)"
+        status="$(version_status "$name" 2>/dev/null || echo -)"
+      fi
+      printf "$fmt" "$name" "$type" "$inst" "$avail" "$status"
+    done
+  done
+  printf '\n'
+  note "STATUS: up-to-date · update-available · pinned (fixed tag, won't auto-move) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'vz-ai-stack.sh upgrade <svc>'."
+}
+
 # `--legend` alone: print the legend and exit BEFORE print_header and before any
 # yq/docker/brew/pgrep work — zero probes, returns instantly. (With --describe
 # also set, fall through so the legend prints after the table instead.)
 if (( SHOW_LEGEND )) && (( ! SHOW_DESC )); then print_legend; exit 0; fi
-
-print_header
 
 # Collect declared service keys (in services.yml order) once.
 ALL_NAMES=()
 while IFS= read -r name; do
   [[ -n "$name" ]] && ALL_NAMES+=("$name")
 done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+
+# `--versions`: focused version view instead of the state table; exit after.
+if (( SHOW_VERSIONS )); then print_versions_view; exit 0; fi
+
+print_header
 
 # Print section-by-section; within a section, preserve declared order.
 for grp in "${GROUP_ORDER[@]}"; do

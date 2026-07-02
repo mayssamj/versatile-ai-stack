@@ -54,6 +54,8 @@ CHECK=0               # --check  : read-only "what has an update?" report, no mu
 OUTDATED=0            # --outdated: upgrade ONLY services the check finds outdated
 JSON=0                # --json   : machine-readable check output
 ALL_ROWS=0            # --all    : include 'manual' (non-checkable) rows in --check
+PREFLIGHT=0           # 1 while printing the pre-upgrade version report (before mutating)
+NO_CHECK=0            # --no-check: skip the pre-upgrade version report (faster; e.g. offline)
 SUMMARY=()             # rows: "svc<TAB>strategy<TAB>result<TAB>reverify"
 CHECK_ROWS=()          # rows: "svc<TAB>type<TAB>current<TAB>available<TAB>status"
 CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
@@ -117,72 +119,10 @@ print_summary() {
 }
 
 # --- image helpers -----------------------------------------------------------
-# Local RepoDigest for an image, or empty if locally-built/never-pulled.
-docker_local_digest() {
-  docker image inspect --format '{{index .RepoDigests 0}}' "$1" 2>/dev/null || true
-}
-
-# image_is_pinned <image> — true (0) for a fixed semver/sha tag, false (1) for
-# a rolling tag. No ':' → 'latest' → rolling.
-image_is_pinned() {
-  local image="$1" tag
-  tag="${image##*:}"
-  # If the part after the last ':' still contains a '/', there was no tag
-  # (e.g. qdrant/qdrant) → treat as latest.
-  [[ "$tag" == */* || "$tag" == "$image" ]] && tag="latest"
-  case "$tag" in
-    latest|main|main-stable|stable|nightly|edge) return 1 ;;
-    *) return 0 ;;
-  esac
-}
-
-# image_is_local_built <image> — true (0) for an image the stack BUILDS locally and
-# that exists in NO registry, so `docker pull` returns "pull access denied". The
-# stack's convention for such derived images: the `ai-stack/` namespace, or a
-# `:local` / `:aistack-*` tag (e.g. ai-stack/chatdev:local, hermes-workspace:aistack-
-# hardened). These are (re)built by their per-service start script, never pulled.
-# NOTE: `:local` and `:aistack-*` are RESERVED internal-build tags — never tag a
-# registry-pulled image with them, or upgrade would skip its pull and try to rebuild.
-image_is_local_built() {
-  local image="$1"
-  [[ "$image" == ai-stack/* || "$image" == *:local || "$image" == *:aistack-* ]]
-}
-
-# --- availability check (read-only; downloads nothing) -----------------------
-# Local image digest (just the sha256:..., not repo@sha), or empty.
-# `|| true`: a SIGPIPE-killed sed under pipefail+inherit_errexit would otherwise
-# fire the ERR trap through the unguarded call sites.
-img_local_digest() {
-  docker_local_digest "$1" | sed 's/.*@//' || true
-}
-# Remote index/manifest digest from the registry (manifest only — no layers).
-img_remote_digest() {
-  docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true
-}
-
-# check_image <image> — echoes one of:
-#   pinned | up-to-date | update-available | build | unknown
-# (No download: compares local RepoDigest to the registry's index digest. Both
-# sides resolve to the manifest-LIST digest — verified equal on multi-arch
-# images — so the comparison is sound.)
-#   build   = no registry manifest AND no local digest → locally-built image
-#   unknown = local image exists but registry unreachable → couldn't check
-check_image() {
-  local image="$1" l r
-  # Locally-built derived image (ai-stack/*, :local, :aistack-*) — no registry to
-  # compare against; it's rebuilt by start-<svc>.sh, never pulled. Report 'build'
-  # (NOT 'pinned') so --check is honest and --outdated never tries to pull it.
-  image_is_local_built "$image" && { echo build; return 0; }
-  image_is_pinned "$image" && { echo pinned; return 0; }
-  r="$(img_remote_digest "$image")"
-  l="$(img_local_digest "$image")"
-  if [[ -z "$r" ]]; then
-    [[ -z "$l" ]] && { echo build; return 0; }     # locally-built (no registry presence)
-    echo unknown; return 0                          # registry unreachable for a real image
-  fi
-  [[ -z "$l" ]] && { echo update-available; return 0; }  # declared but never pulled
-  [[ "$l" == "$r" ]] && echo up-to-date || echo update-available
-}
+# docker_local_digest / image_is_pinned / image_is_local_built / img_local_digest
+# / img_remote_digest / check_image now live in installer/lib/versions.sh (the
+# shared oracle, sourced above) so status.sh reuses the SAME docker currency
+# logic. up_docker/up_compose/check_one call them from there unchanged.
 
 # check_one <svc> — sets CHECK_STATUS / CHECK_CUR / CHECK_AVAIL.
 # CHECK_STATUS ∈ update-available | up-to-date | pinned | rebuild | manual | unknown
@@ -250,10 +190,22 @@ print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else
       fi
       ;;
     *)
-      # openshell, sandbox-daemon, cli-only, npm-global, pip-package, litellm-*,
-      # agent-pattern, paperclip-plugin, clone-only, python-bg, node-bg — no cheap
-      # version oracle; reported as 'manual'.
-      CHECK_STATUS="manual"
+      # Previously a blanket 'manual'. Now consult the shared oracle: npm-global,
+      # pip/uv-venv, and clone/git services (and any cli-only with a declared
+      # upgrade: block) DO have a version — surface installed + upstream instead of
+      # hiding them (council finding #7). A type with no oracle stays 'manual';
+      # installed-known-but-upstream-unreachable is honest 'unknown', not a false
+      # 'up-to-date'.
+      local inst avail
+      inst="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+      if [[ -z "$inst" || "$inst" == "-" ]]; then CHECK_STATUS="manual"; return 0; fi
+      CHECK_CUR="$inst"
+      avail="$(svc_available_version "$svc" 2>/dev/null || echo -)"
+      if [[ -z "$avail" || "$avail" == "-" ]]; then
+        CHECK_AVAIL="-"; CHECK_STATUS="unknown"
+      else
+        CHECK_AVAIL="$avail"; CHECK_STATUS="$(version_classify "$type" "$inst" "$avail")"
+      fi
       ;;
   esac
 }
@@ -288,17 +240,24 @@ print_check_report() {
     printf ']\n'
     return 0
   fi
-  printf '\n'; hdr "Upgrade availability (read-only — nothing downloaded or changed)"
+  local title="Upgrade availability (read-only — nothing downloaded or changed)"
+  (( PREFLIGHT )) && title="Versions before upgrade (installed → available upstream; read-only)"
+  printf '\n'; hdr "$title"
   local fmt='%-20s %-15s %-22s %-22s %s\n'
   printf "$fmt" SERVICE TYPE CURRENT AVAILABLE STATUS
   printf "$fmt" "--------------------" "---------------" "----------------------" "----------------------" "------"
-  local -a outdated=(); local hidden=0
+  local -a outdated=(); local hidden=0 unconfirmed=0
   for row in "${CHECK_ROWS[@]}"; do
     IFS=$'\t' read -r svc type cur avail status <<<"$row"
-    # Hide non-checkable ('manual') rows unless --all — they carry no signal.
-    if [[ "$status" == "manual" ]] && (( ALL_ROWS == 0 )); then hidden=$((hidden+1)); continue; fi
+    # Hide non-checkable ('manual') rows unless --all — they carry no signal. The
+    # pre-upgrade preflight shows every targeted service (the operator asked to see
+    # what's about to change).
+    if [[ "$status" == "manual" ]] && (( ALL_ROWS == 0 )) && (( PREFLIGHT == 0 )); then hidden=$((hidden+1)); continue; fi
     printf "$fmt" "$svc" "$type" "$cur" "$avail" "$status"
-    [[ "$status" == "update-available" ]] && outdated+=("$svc")
+    case "$status" in
+      update-available) outdated+=("$svc") ;;
+      unknown|rebuild)  unconfirmed=$((unconfirmed+1)) ;;   # currency NOT confirmed
+    esac
   done
   printf '\n'
   if (( hidden )); then
@@ -306,12 +265,24 @@ print_check_report() {
   fi
   if (( ${#outdated[@]} )); then
     ok "${#outdated[@]} update(s) available: ${outdated[*]}"
-    note "Upgrade all of them:   vz-ai-stack.sh upgrade --outdated"
-    note "Or selectively:        vz-ai-stack.sh upgrade <service>   (e.g. vz-ai-stack.sh upgrade ${outdated[0]})"
-  else
-    ok "Everything that can be auto-checked is up to date."
+    if (( PREFLIGHT == 0 )); then
+      note "Upgrade all of them:   vz-ai-stack.sh upgrade --outdated"
+      note "Or selectively:        vz-ai-stack.sh upgrade <service>   (e.g. vz-ai-stack.sh upgrade ${outdated[0]})"
+    fi
   fi
-  note "Legend: pinned=fixed tag (no rolling updates) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=no version oracle (sandbox/CLI/npm/pip) · unknown=registry unreachable or no local image"
+  # Honest all-clear: only claim currency when NOTHING is outdated AND nothing was
+  # left unconfirmed (unknown/rebuild/proxy-blocked). Otherwise say so explicitly
+  # instead of a green "everything up to date" that over-claims (council finding #7).
+  if (( ${#outdated[@]} == 0 )); then
+    if (( unconfirmed == 0 )); then
+      ok "Everything that can be auto-checked is up to date."
+    else
+      warn "No confirmed updates, but $unconfirmed service(s) could NOT be verified (unknown/rebuild — registry/proxy blocked or locally-built). Currency is NOT confirmed for those."
+    fi
+  elif (( unconfirmed )); then
+    note "$unconfirmed additional service(s) could not be verified (unknown/rebuild) — currency not confirmed for those."
+  fi
+  note "Legend: pinned=fixed tag (no rolling updates) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=no version oracle · unknown=registry/proxy unreachable or no local image · up-to-date/update-available=installed vs upstream latest"
 }
 
 # --- phase / start-script resolution (lock-free recreate paths) --------------
@@ -700,6 +671,18 @@ up_phase_rerun() {
   if [[ "$phase" == "-" || -z "$phase" ]]; then up_manual_note "$svc"; return 0; fi
   script="$(resolve_phase_script_inline "$phase")"
   if [[ -z "$script" ]]; then err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0; fi
+  # DO NOT re-run a full install phase for a service that was never installed on
+  # this host (council finding #5): `upgrade all` iterates the enabled CATALOG,
+  # and re-running an opt-in sim's phase would INSTALL it unsolicited AND run its
+  # live model smoke — billing a metered route / loading a local model, colliding
+  # with the hard NEVER-load-local-models directive. The install stamp is the
+  # cheap installed-vs-catalog signal; absent → skip with a visible row.
+  # (An installed service's stamp is present → the phase runs and short-circuits
+  # on its own precheck, so no smoke fires there either.)
+  if declare -f stamp_check >/dev/null 2>&1 && ! stamp_check "$phase"; then
+    note "$svc: phase $phase is not installed on this host (no stamp) — skipping (this is 'upgrade', not 'install'; run 'vz-ai-stack.sh install $phase' to install it)"
+    RESULT="skipped (not installed)"; return 0
+  fi
   if (( DRY )); then
     note "PLAN $svc phase-rerun: AI_STACK_UPGRADE=1 bash installer/phases/${phase}_*.sh (re-assert/upgrade via its own installer)"
     RESULT="planned"; return 0
@@ -888,6 +871,7 @@ upgrade_main() {
       --outdated)       OUTDATED=1 ;;
       --json)           JSON=1 ;;
       --all|-a)         ALL_ROWS=1 ;;
+      --no-check)       NO_CHECK=1 ;;     # skip the pre-upgrade version report
       check)            CHECK=1 ;;        # friendly bare aliases
       outdated)         OUTDATED=1 ;;
       -h|--help)        upgrade_usage; exit 0 ;;
@@ -977,6 +961,22 @@ upgrade_main() {
       [[ "$(svc_enabled "$target")" != "true" ]] && warn "$target is disabled; upgrading anyway (explicit intent)"
       targets=("$target")
     fi
+  fi
+
+  # --- pre-upgrade version report (operator asked to SEE installed vs available
+  # BEFORE upgrading). Read-only; bounded. --outdated already printed a scan;
+  # --no-check skips this (offline/fast). Shows every target, including 'manual'.
+  if (( NO_CHECK == 0 && OUTDATED == 0 )) && (( ${#targets[@]} > 0 )); then
+    note "Checking installed vs available versions before upgrading… (bounded; pass --no-check to skip)"
+    CHECK_ROWS=()
+    local psvc
+    for psvc in "${targets[@]}"; do
+      [[ "$(svc_type "$psvc")" == "unknown" ]] && continue
+      check_one "$psvc"
+      CHECK_ROWS+=("$psvc"$'\t'"$(svc_type "$psvc")"$'\t'"$CHECK_CUR"$'\t'"$CHECK_AVAIL"$'\t'"$CHECK_STATUS")
+    done
+    PREFLIGHT=1; print_check_report; PREFLIGHT=0
+    CHECK_ROWS=()
   fi
 
   # --- mutate: acquire the lock and run the upgrade loop ---------------------

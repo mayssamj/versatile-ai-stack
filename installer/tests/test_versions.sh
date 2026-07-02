@@ -156,4 +156,10 @@ rc FAILED      0.1    0.2    FAILED                # a real failure is never mas
 rc "skipped (no npm)" - -    "skipped (no npm)"    # skips pass through untouched
 rc manual      - -          manual                 # config-only pass through
 
+echo "== bounding: _vz_bounded actually time-limits a hung probe (no coreutils timeout needed) =="
+_t0=$SECONDS
+if _vz_bounded 1 sleep 8 2>/dev/null; then :; fi
+_dt=$(( SECONDS - _t0 ))
+(( _dt <= 4 )) && ok "_vz_bounded 1 sleep 8 returned in ${_dt}s (bounded)" || bad "_vz_bounded did NOT bound (took ${_dt}s — Zscaler-hang risk)"
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

@@ -38,7 +38,96 @@ _vz_bounded() {
   local secs="$1"; shift
   if   command -v timeout  >/dev/null 2>&1; then timeout  "$secs" "$@"
   elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
+  elif command -v perl     >/dev/null 2>&1; then
+    # macOS ships no coreutils `timeout`; perl always ships. alarm() schedules a
+    # SIGALRM that survives exec (POSIX), so the exec'd probe is hard-killed at
+    # <secs> — a real bound so a Zscaler-blocked registry can't hang status/upgrade.
+    perl -e 'my $s=shift; alarm $s; exec @ARGV or exit 127' "$secs" "$@"
   else "$@"; fi
+}
+
+# ============================ docker image helpers (shared) =================
+# Moved here from upgrade.sh so BOTH status.sh and upgrade.sh share one docker
+# currency oracle (status.sh cannot source upgrade.sh — it self-runs upgrade_main).
+# Local RepoDigest for an image, or empty if locally-built/never-pulled.
+docker_local_digest() {
+  docker image inspect --format '{{index .RepoDigests 0}}' "$1" 2>/dev/null || true
+}
+# image_is_pinned <image> — true (0) for a fixed semver/sha tag, false (1) for a
+# rolling tag. No ':' → 'latest' → rolling.
+image_is_pinned() {
+  local image="$1" tag
+  tag="${image##*:}"
+  [[ "$tag" == */* || "$tag" == "$image" ]] && tag="latest"
+  case "$tag" in
+    latest|main|main-stable|stable|nightly|edge) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+# image_is_local_built <image> — true (0) for an image the stack BUILDS locally
+# (ai-stack/ namespace, :local, :aistack-*) that exists in NO registry.
+image_is_local_built() {
+  local image="$1"
+  [[ "$image" == ai-stack/* || "$image" == *:local || "$image" == *:aistack-* ]]
+}
+# Local image digest (just the sha256:…), or empty.
+img_local_digest() {
+  docker_local_digest "$1" | sed 's/.*@//' || true
+}
+# Remote index/manifest digest from the registry (manifest only). Bounded so a
+# Zscaler-blocked / hung registry can't stall the caller.
+img_remote_digest() {
+  _vz_bounded 10 docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true
+}
+# check_image <image> -> pinned | build | up-to-date | update-available | unknown
+check_image() {
+  local image="$1" l r
+  image_is_local_built "$image" && { echo build; return 0; }
+  image_is_pinned "$image" && { echo pinned; return 0; }
+  r="$(img_remote_digest "$image")"
+  l="$(img_local_digest "$image")"
+  if [[ -z "$r" ]]; then
+    [[ -z "$l" ]] && { echo build; return 0; }
+    echo unknown; return 0
+  fi
+  [[ -z "$l" ]] && { echo update-available; return 0; }
+  [[ "$l" == "$r" ]] && echo up-to-date || echo update-available
+}
+
+# version_status <svc> — unified currency word over ALL types, so status.sh and
+# upgrade.sh agree. docker/compose use the digest comparison (check_image); every
+# other type uses installed-vs-available string classification.
+#   docker  -> pinned|build|up-to-date|update-available|unknown
+#   compose -> up-to-date|update-available|rebuild|unknown|manual
+#   other   -> up-to-date|update-available|no-oracle|unknown
+version_status() {
+  local svc="$1" type; type="$(svc_type "$svc")"
+  case "$type" in
+    docker)
+      local image; image="$(svc_image "$svc")"
+      [[ -z "$image" || "$image" == "-" ]] && { echo unknown; return 0; }
+      check_image "$image"
+      ;;
+    compose|docker-compose)
+      local dir; dir="$(svc_path "$svc")"
+      { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]]; } && { echo manual; return 0; }
+      command -v docker >/dev/null 2>&1 || { echo unknown; return 0; }
+      local imgs im st any_update=0 any_unknown=0 any_build=0 n=0
+      imgs="$( cd "$dir" && docker compose config --images 2>/dev/null || true )"
+      [[ -z "$imgs" ]] && { echo manual; return 0; }
+      while IFS= read -r im; do
+        [[ -z "$im" ]] && continue; n=$((n+1)); st="$(check_image "$im")"
+        case "$st" in update-available) any_update=1 ;; unknown) any_unknown=1 ;; build) any_build=1 ;; esac
+      done <<< "$imgs"
+      (( n == 0 )) && { echo manual; return 0; }
+      if   (( any_update ));               then echo update-available
+      elif (( any_build || any_unknown )); then echo rebuild
+      else                                      echo up-to-date; fi
+      ;;
+    *)
+      version_classify "$type" "$(svc_installed_version "$svc")" "$(svc_available_version "$svc")"
+      ;;
+  esac
 }
 
 # ============================ Layer A: installed ============================
