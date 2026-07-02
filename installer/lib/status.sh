@@ -290,8 +290,33 @@ print_versions_view() {
       if (( LOCAL_ONLY )); then
         avail="-"; status="(local)"
       else
-        avail="$(svc_available_version "$name" 2>/dev/null || echo -)"
-        status="$(version_status "$name" 2>/dev/null || echo -)"
+        # Avoid double-probing upstream: for docker/compose the currency is a digest
+        # compare (version_status → check_image, one registry hit) — derive a short
+        # AVAILABLE word from it; for every other type reuse the single
+        # svc_available_version probe via version_classify (no re-fetch). Roughly
+        # halves the bounded wall-time on a proxy-blocked host across ~40 services.
+        case "$type" in
+          docker|compose|docker-compose)
+            status="$(version_status "$name" 2>/dev/null || echo -)"
+            case "$status" in
+              update-available) avail="newer" ;;
+              up-to-date)       avail="current" ;;
+              pinned)           avail="pinned" ;;
+              build|rebuild)    avail="local-build" ;;
+              *)                avail="-" ;;
+            esac ;;
+          brew-service)
+            # single `brew outdated` probe (mirrors version_status brew logic).
+            avail="$(svc_available_version "$name" 2>/dev/null || echo -)"
+            if   [[ "$inst"  == "-" ]]; then status="unknown"
+            elif [[ "$avail" != "-" ]]; then status="update-available"
+            else                             status="up-to-date"; fi ;;
+          *)
+            # ONE upstream probe, then classify from the already-read inst+avail
+            # (version_classify is pure — no re-fetch).
+            avail="$(svc_available_version "$name" 2>/dev/null || echo -)"
+            status="$(version_classify "$type" "$inst" "$avail" 2>/dev/null || echo -)" ;;
+        esac
       fi
       printf "$fmt" "$name" "$type" "$inst" "$avail" "$status"
     done

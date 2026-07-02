@@ -30,6 +30,7 @@ services:
   t_docker:  { type: docker,       enabled: true, image: "foo/bar:1.2.3" }
   t_roll:    { type: docker,       enabled: true, image: "foo/roll:latest" }
   t_brew:    { type: brew-service, enabled: true }
+  t_brew_ok: { type: brew-service, enabled: true }
   t_npm:     { type: npm-global,   enabled: true, upgrade: { method: npm-global, target: coolpkg } }
   t_pip:     { type: pip-package,  enabled: true, upgrade: { method: uv-venv, venv: t_pip_venv, pkg: coolpip } }
   t_git:     { type: clone-only,   enabled: true, upgrade: { method: git-pull, dir: t_git_dir } }
@@ -142,8 +143,21 @@ ic(){ local got; got="$(version_classify "$1" "$2" "$3" 2>/dev/null)"; [[ "$got"
 # args: type installed available -> class
 ic npm-global 1.4.0 1.5.0 update-available
 ic npm-global 1.5.0 1.5.0 up-to-date
-ic npm-global 1.5.0 "-"   no-oracle
+ic npm-global 1.5.0 "-"   unknown       # installed KNOWN but upstream unreachable -> 'unknown' (agrees with upgrade --check), NOT 'no-oracle'
+ic npm-global "-"   "-"   no-oracle     # nothing knowable at all -> no-oracle
 ic npm-global "-"   1.5.0 unknown
+
+echo "== version_status: brew up-to-date must NOT read 'no-oracle' (parity with upgrade --check) =="
+vs(){ local got; got="$(version_status "$1" 2>/dev/null)"; [[ "$got" == "$2" ]] && ok "version_status($1)=$got" || bad "version_status($1)='$got' expected '$2'"; }
+vs t_brew    update-available   # in `brew outdated`
+vs t_brew_ok up-to-date         # installed + not outdated -> up-to-date (was wrongly 'no-oracle')
+
+echo "== check_image / version_status docker currency (coverage gap) =="
+di(){ local got; got="$(check_image "$1" 2>/dev/null)"; [[ "$got" == "$2" ]] && ok "check_image($1)=$got" || bad "check_image($1)='$got' expected '$2'"; }
+di foo/bar:1.2.3   pinned            # fixed semver tag -> pinned (won't auto-move)
+di foo/roll:latest update-available  # rolling tag, local digest != remote digest
+di ai-stack/foo:local build          # locally-built namespace -> build (never pulled)
+vs t_docker pinned                    # version_status(docker) delegates to check_image
 
 echo "== honesty: reconcile_result downgrades an unverified 'upgraded' =="
 rc(){ local got; got="$(reconcile_result "$1" "$2" "$3" 2>/dev/null)"; [[ "$got" == "$4" ]] && ok "reconcile($1,$2,$3)=$got" || bad "reconcile($1,$2,$3)='$got' expected '$4'"; }
@@ -161,5 +175,16 @@ _t0=$SECONDS
 if _vz_bounded 1 sleep 8 2>/dev/null; then :; fi
 _dt=$(( SECONDS - _t0 ))
 (( _dt <= 4 )) && ok "_vz_bounded 1 sleep 8 returned in ${_dt}s (bounded)" || bad "_vz_bounded did NOT bound (took ${_dt}s — Zscaler-hang risk)"
+# Force-cover the perl-alarm FALLBACK idiom directly — on CI Linux _vz_bounded
+# picks coreutils `timeout`, so the darwin-critical perl path (the ONLY bound on
+# the target host, which has no timeout/gtimeout) would otherwise be untested.
+if command -v perl >/dev/null 2>&1; then
+  _p0=$SECONDS
+  perl -e 'my $s=shift; alarm $s; exec @ARGV or exit 127' 1 sleep 8 >/dev/null 2>&1 || true
+  _pdt=$(( SECONDS - _p0 ))
+  (( _pdt <= 4 )) && ok "perl-alarm fallback bounds a hung cmd in ${_pdt}s" || bad "perl-alarm did NOT bound (${_pdt}s)"
+else
+  bad "perl absent — _vz_bounded has NO bound on a timeout-less host"
+fi
 
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

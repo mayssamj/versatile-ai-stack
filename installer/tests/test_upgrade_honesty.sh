@@ -41,6 +41,13 @@ echo "== upgrade never re-runs an install phase for a NOT-installed service (met
 have 'stamp_check' && ok "up_phase_rerun gates on the install stamp" || bad "phase-rerun is not gated on the install stamp"
 have 'skipped (not installed)' && ok "a not-installed service gets a visible 'skipped (not installed)' row" || bad "no 'skipped (not installed)' path"
 
+echo "== exit code is honest: a 'FAILED (pip)' result must trip the non-zero exit gate (council must-fix #1) =="
+if grep -qE '\[\[ "\$res" == "FAILED" \]\]' "$UPG"; then bad "exit gate EXACT-matches FAILED → misses 'FAILED (pip)' → exits 0 on a failed hermes"; else ok "exit gate does not exact-match FAILED"; fi
+grep -qE '\[\[ "\$res" == FAILED\* \]\]' "$UPG" && ok "exit gate uses FAILED* glob (catches 'FAILED (pip)')" || bad "exit gate missing FAILED* glob"
+# glob semantics: FAILED* must catch the descriptive label but not a success
+res="FAILED (pip)"; [[ "$res" == FAILED* ]] && ok "FAILED* matches 'FAILED (pip)'" || bad "FAILED* fails to match 'FAILED (pip)'"
+res="up-to-date";   [[ "$res" == FAILED* ]] && bad "FAILED* false-matches 'up-to-date'" || ok "FAILED* does not match a success result"
+
 echo "== summary surfaces the version so a no-op is visible =="
 grep -q 'VERSION' "$UPG" && ok "print_summary has a VERSION column" || bad "no VERSION column in the summary"
 

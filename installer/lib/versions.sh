@@ -124,6 +124,16 @@ version_status() {
       elif (( any_build || any_unknown )); then echo rebuild
       else                                      echo up-to-date; fi
       ;;
+    brew-service)
+      # brew outdated only lists OUTDATED formulae → svc_available_version returns
+      # "-" for a current formula. version_classify would then say no-oracle/unknown.
+      # Mirror check_one's brew logic so an installed-but-current formula (the steady
+      # state for ollama) reads 'up-to-date', matching `upgrade --check` exactly.
+      local binst; binst="$(svc_installed_version "$svc")"
+      [[ -z "$binst" || "$binst" == "-" ]] && { echo unknown; return 0; }   # not installed
+      local bavail; bavail="$(svc_available_version "$svc")"
+      [[ -n "$bavail" && "$bavail" != "-" ]] && echo update-available || echo up-to-date
+      ;;
     *)
       version_classify "$type" "$(svc_installed_version "$svc")" "$(svc_available_version "$svc")"
       ;;
@@ -149,13 +159,23 @@ _iv_docker() {
 }
 
 _iv_compose() {
-  # compose stacks have N images, no single version; report image count as a
-  # coarse installed signal. Real per-image currency handled in the classifier.
-  local svc="$1" dir n
+  # compose stacks have N images, no single version. Report the count PLUS a short
+  # fingerprint (cksum) of the local image digests, so the upgrade driver's
+  # before/after delta can tell a real pull from a no-op `compose up` (a compose
+  # no-op used to report a false 'upgraded' every run — council should-fix).
+  local svc="$1" dir imgs im d n=0 digs=""
   dir="$(svc_path "$svc")"
   { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]] || ! command -v docker >/dev/null 2>&1; } && { echo "-"; return 0; }
-  n="$( cd "$dir" && docker compose config --images 2>/dev/null | grep -c . || true )"
-  [[ -n "$n" && "$n" != "0" ]] && printf '%s imgs' "$n" || echo "-"
+  imgs="$( cd "$dir" && docker compose config --images 2>/dev/null || true )"
+  [[ -z "$imgs" ]] && { echo "-"; return 0; }
+  while IFS= read -r im; do
+    [[ -z "$im" ]] && continue
+    n=$((n+1))
+    d="$(docker_local_digest "$im")"; digs+="${d##*@};"   # local RepoDigest (or empty)
+  done <<< "$imgs"
+  (( n == 0 )) && { echo "-"; return 0; }
+  local fp; fp="$(printf '%s' "$digs" | cksum | awk '{print $1}')"
+  printf '%s imgs (%s)' "$n" "$fp"
 }
 
 _iv_brew() {
@@ -302,10 +322,14 @@ svc_available_version() {
 version_classify() {
   local _type="$1" inst="$2" avail="$3"
   if [[ -z "$inst" || "$inst" == "-" ]]; then
+    # installed not knowable: upstream known → unknown; nothing knowable → no-oracle.
     [[ -n "$avail" && "$avail" != "-" ]] && { echo unknown; return 0; }
     echo no-oracle; return 0
   fi
-  if [[ -z "$avail" || "$avail" == "-" ]]; then echo no-oracle; return 0; fi
+  # installed IS known here. Upstream unreachable/absent → 'unknown' (an oracle
+  # exists but the probe couldn't confirm — e.g. proxy-blocked), NOT 'no-oracle'.
+  # This keeps status --versions and `upgrade --check` (check_one) in agreement.
+  if [[ -z "$avail" || "$avail" == "-" ]]; then echo unknown; return 0; fi
   [[ "$inst" == "$avail" ]] && echo up-to-date || echo update-available
 }
 

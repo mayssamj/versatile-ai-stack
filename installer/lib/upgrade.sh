@@ -179,7 +179,10 @@ check_one() {
       ;;
     brew-service)
       local out
-      out="$(brew outdated --json=v2 2>/dev/null \
+      # Bound `brew outdated` (it can hit the network to refresh) so the preflight,
+      # which now runs check_one on the plain upgrade path, honors the all-probes-
+      # bounded contract on a proxy-blocked host (council should-fix).
+      out="$(_vz_bounded 12 brew outdated --json=v2 2>/dev/null \
         | python3 -c "import sys,json
 d=json.load(sys.stdin)
 f=[x for x in d.get('formulae',[]) if x['name']=='$svc']
@@ -585,6 +588,16 @@ up_openshell() {
   phase="$(svc_phase "$svc")"
   STRATEGY=openshell
 
+  # Same install-stamp guard as up_phase_rerun (council should-fix): never re-run a
+  # phase's full installer for a service not installed on this host — otherwise
+  # `upgrade all` could unsolicited-install pi-v1 (and mint a LiteLLM key) / a
+  # sandbox on a box that never opted in. Core always-installed services
+  # (openshell / hermes_*) carry their stamp, so they are never skipped.
+  if [[ "$phase" != "-" && -n "$phase" ]] && declare -f stamp_check >/dev/null 2>&1 && ! stamp_check "$phase"; then
+    note "$svc: phase $phase not installed on this host (no stamp) — skipping ('upgrade' not 'install'; run 'vz-ai-stack.sh install $phase')"
+    RESULT="skipped (not installed)"; return 0
+  fi
+
   case "$svc" in
     pi)
       # PyPI is proxy-403'd in pi-v1; phase 15 pre-stages a tarball. Never raw pip -U.
@@ -626,7 +639,10 @@ up_openshell() {
       fi
       local _newv
       _newv="$(sed -n 's/.*Successfully installed[^,]*hermes-agent-\([0-9][^ ]*\).*/\1/p' <<<"$_pip_out" | tail -1)"
-      if [[ -n "$_newv" ]]; then note "$svc: hermes-agent now $_newv (pip)"; fi
+      # Plumb the pip-reported version into the summary's VERSION column — the
+      # in-sandbox hermes version isn't readable by svc_installed_version, so
+      # without this the flagship service would show '-' even on a real 0.16→0.18.
+      if [[ -n "$_newv" ]]; then note "$svc: hermes-agent now $_newv (pip)"; VER_OVERRIDE="$_newv"; fi
       # Trust pip's own report of what changed rather than the always-green phase re-run.
       if   grep -q 'Successfully installed' <<<"$_pip_out"; then RESULT="upgraded"
       elif grep -qi 'already satisfied'     <<<"$_pip_out"; then RESULT="up-to-date"
@@ -825,6 +841,7 @@ upgrade_one() {
   # bump that didn't happen). Local/cheap probe; "-" when not knowable.
   local VER_BEFORE VER_AFTER
   VER_BEFORE="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+  VER_OVERRIDE=""   # a handler (e.g. up_openshell) may set the observed new version (global, reset per svc)
 
   case "$type" in
     docker)                                  up_docker "$svc" ;;
@@ -848,18 +865,22 @@ upgrade_one() {
 
   # Reconcile the OPTIMISTIC handlers (they set 'upgraded' on any exit-0) against
   # the observed installed-version delta, so a no-op can't masquerade as a bump.
-  # docker/compose keep their own digest logic; up_openshell already set an
-  # honest RESULT from pip's real outcome; phase-rerun stays 're-asserted'.
+  # docker keeps its OWN digest delta (up_docker sets up-to-date/upgraded); compose
+  # now reconciles too via the _iv_compose digest fingerprint; up_openshell already
+  # set an honest RESULT from pip's real outcome; phase-rerun stays 're-asserted'.
   VER_AFTER="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
   case "$STRATEGY" in
-    brew|npm-global|uv-venv|git-pull)
+    brew|npm-global|uv-venv|git-pull|compose)
       RESULT="$(reconcile_result "$RESULT" "$VER_BEFORE" "$VER_AFTER")"
       ;;
   esac
-  # Build the VERSION display: unchanged → just the version; a real move →
+  # Build the VERSION display: a handler-reported new version (e.g. hermes_fleet's
+  # in-sandbox pip) wins; else unchanged → just the version; a real move →
   # before→after; unknowable → '-'.
   local verdisp
-  if [[ "$VER_BEFORE" == "$VER_AFTER" ]]; then verdisp="$VER_BEFORE"; else verdisp="$VER_BEFORE→$VER_AFTER"; fi
+  if   [[ -n "$VER_OVERRIDE" ]];            then verdisp="$VER_OVERRIDE"
+  elif [[ "$VER_BEFORE" == "$VER_AFTER" ]]; then verdisp="$VER_BEFORE"
+  else                                           verdisp="$VER_BEFORE→$VER_AFTER"; fi
   [[ -z "$verdisp" ]] && verdisp="-"
 
   # Dry-run, manual, skip, planned, and FAILED paths don't get a live reverify.
@@ -928,7 +949,7 @@ upgrade_main() {
     up_host_npm_global "$target"
     print_summary
     local row res
-    for row in "${SUMMARY[@]}"; do res="$(printf '%s' "$row" | cut -f3)"; [[ "$res" == "FAILED" ]] && { err "Upgrade FAILED."; exit 1; }; done
+    for row in "${SUMMARY[@]}"; do res="$(printf '%s' "$row" | cut -f3)"; [[ "$res" == FAILED* ]] && { err "Upgrade FAILED."; exit 1; }; done
     return 0
   fi
   if (( OUTDATED )); then
@@ -1011,7 +1032,7 @@ upgrade_main() {
   local row res
   for row in "${SUMMARY[@]}"; do
     res="$(printf '%s' "$row" | cut -f3)"
-    [[ "$res" == "FAILED" ]] && { err "One or more upgrades FAILED."; exit 1; }
+    [[ "$res" == FAILED* ]] && { err "One or more upgrades FAILED."; exit 1; }
   done
   return 0
 }

@@ -46,10 +46,23 @@ the `hermes_workspace` agent-image digest pin (`05_uis.sh:31`, v0.17.0) as bumpa
 pinned-behind currency for immutable `@sha256` refs — needs a live rebuild to verify, so it
 stays a reviewed manual bump for now; it is surfaced as `pinned`/`rebuild` today.
 
-Tests: `test_versions.sh` (27, hermetic stubs + real bounding), `test_upgrade_honesty.sh`
-(13, static), `test_version_visibility.sh` (12); `test_upgrade_exhaustive.sh` stays green
-(15). `status --versions --local` verified live read-only. §24 council-reviewed
-(audit `wq0achnya`).
+**§24 code-review council (`wn9pygsi9`)** blocked the first cut on 3 confirmed honesty
+regressions the fix itself introduced, now fixed: (1) the exit-code gate exact-matched
+`"FAILED"` so the new `FAILED (pip)` label exited 0 → changed to a `FAILED*` glob;
+(2) `status --versions` labeled a current ollama `no-oracle` → added a brew branch to
+`version_status`; (3) `version_classify` returned `no-oracle` for installed-known +
+upstream-unreachable where `upgrade --check` says `unknown` → aligned to `unknown`.
+Plus should-fixes: compose no-op now reconciles via an `_iv_compose` digest fingerprint
+(no more false `upgraded`); `hermes_fleet`'s pip-reported version flows into the VERSION
+column; `brew outdated` in the preflight is now bounded; `status --versions` no longer
+double-probes upstream; `up_openshell` gained the same install-stamp gate (no unsolicited
+pi install).
+
+Tests: `test_versions.sh` (35, hermetic stubs + real bounding + perl-alarm fallback + docker
+check_image), `test_upgrade_honesty.sh` (17, incl. the exit-gate regression),
+`test_version_visibility.sh` (12); `test_upgrade_exhaustive.sh` stays green (15).
+`status --versions --local` verified live read-only. Audited by the drift-audit council
+(`wq0achnya`) + the merge-review council (`wn9pygsi9`).
 
 ## 2026-07-02 — Foreground servers: signal-stop no longer misfires the ERR trap
 
