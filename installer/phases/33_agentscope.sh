@@ -440,6 +440,15 @@ fi
 # fails the INSTALL (not just a later `test 33`). A fast key-reachability curl first gives
 # a clear error if the KEY is the problem; then the seeded 2-agent exchange (bounded by
 # its own signal.alarm). ---
+# On `upgrade all` (AI_STACK_UPGRADE=1, exported by up_phase_rerun) SKIP the live
+# scoped-key + sim smoke below: it drives real/metered model calls, and a routine
+# upgrade must NOT do unsolicited inference (mechanism-audit #2 + the operator's
+# no-unsolicited-inference stance). The venv, scoped key, wrapper and seeded sim
+# are already re-asserted above; stamp and move on. The full verified smoke still
+# runs on the install path (and via `vz-ai-stack.sh test 33`).
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  note "upgrade re-assert: skipping the live AgentScope smoke (no unsolicited metered inference on 'upgrade'). Run 'vz-ai-stack.sh install 33' for the full verified smoke."
+else
 log "Smoke: scoped key → LiteLLM chat completion…"
 _as_key="$(get_env AGENTSCOPE_LITELLM_KEY '')"
 _sc="$(litellm_scoped_curl "$_as_key" -s -o /dev/null -w '%{http_code}' --max-time 30 \
@@ -454,6 +463,7 @@ _simout="$(OPENAI_BASE_URL="$AS_LLM_FALLBACK/v1" OPENAI_API_KEY="$_as_key" AGENT
 printf '%s\n' "$_simout" | sed 's/^/    /'
 [[ $_simrc -eq 0 ]] || { err "the seeded AgentScope sim did not pass (rc=$_simrc) — wiring unverified, not stamping"; exit 1; }
 ok "AgentScope 2 agents replied through LiteLLM on the scoped key — wiring verified"
+fi
 
 stamp_mark "$PHASE"
 record "phase 33 complete: AgentScope venv (py3.11) + scoped key + bin/agentscope + 2-agent-verified smoke sim"

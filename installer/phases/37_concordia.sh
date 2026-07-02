@@ -315,6 +315,16 @@ GI
 
 # --- 7. Smoke gate: prove the REAL GABM path BEFORE stamping. Fast scoped-key curl first
 # (clear error if the KEY is the problem), then the seeded 1-step sim (bounded by its alarm). ---
+# On `upgrade all` (AI_STACK_UPGRADE=1, exported by up_phase_rerun) SKIP the live
+# scoped-key + GABM sim smoke below: it drives real/metered model calls (the sim
+# fans out ~26 calls/step on claude-sonnet-sub-high), and a routine upgrade must
+# NOT do unsolicited inference (mechanism-audit #2 + the operator's no-unsolicited-
+# inference stance). The venv, scoped key, wrapper and seeded sim are already
+# re-asserted above; stamp and move on. The full verified smoke still runs on the
+# install path (and via `vz-ai-stack.sh test 37`).
+if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
+  note "upgrade re-assert: skipping the live Concordia GABM smoke (no unsolicited metered inference on 'upgrade'). Run 'vz-ai-stack.sh install 37' for the full verified smoke."
+else
 log "Smoke: scoped key → LiteLLM chat completion…"
 _cc_key="$(get_env CONCORDIA_LITELLM_KEY '')"
 _sc="$(litellm_scoped_curl "$_cc_key" -s -o /dev/null -w '%{http_code}' --max-time 30 \
@@ -329,6 +339,7 @@ _simout="$(OPENAI_BASE_URL="$CC_LLM_FALLBACK/v1" OPENAI_API_KEY="$_cc_key" CONCO
 printf '%s\n' "$_simout" | grep -vE '^(Loading weights|Warning: You are sending)' | sed 's/^/    /'
 [[ $_simrc -eq 0 ]] || { err "the seeded Concordia sim did not pass (rc=$_simrc) — GABM wiring unverified, not stamping (3=routing/timeout, 4=import, 5=build, 6=runtime, 7=alarm)"; exit 1; }
 ok "Concordia GABM sim ran through LiteLLM on the scoped key — wiring verified"
+fi
 
 stamp_mark "$PHASE"
 record "phase 37 complete: Concordia venv (py3.12) + sentence-transformers + scoped key + bin/concordia + GABM-verified smoke sim"
