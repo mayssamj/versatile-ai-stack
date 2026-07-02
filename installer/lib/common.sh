@@ -241,7 +241,7 @@ m=info.get("models") or []
 print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
   if [[ -n "$allow" ]] && ! printf '%s\n' "$allow" | grep -qxF '__wildcard__' \
      && ! printf '%s\n' "$allow" | grep -qxF "$want"; then
-    echo "$key_env allow-list missing '$want' ($model_descr) — stale key after a model rename/re-assign; re-run 'vz-ai-stack.sh install $phase' to self-heal"
+    echo "$key_env allow-list missing '$want' ($model_descr) — stale key after a model rename/re-assign; self-heal: 'vz-ai-stack.sh install $phase' (its precheck now re-reconciles on allow-list drift), or reconcile every scoped key at once with 'vz-ai-stack.sh model sync'"
     return 1
   fi
   return 0
@@ -407,4 +407,196 @@ sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
   else
     warn "Could not reconcile $key_env allow-list (LiteLLM /key/update failed) — renamed-model calls may 403"
   fi
+}
+
+# ============================================================================
+# Scoped-key CATALOG-DRIFT reconciliation (systemic fix for the ca08cc1 shrink).
+# The block above (litellm_reconcile_key) only WIDENS (union). A catalog REMOVAL
+# needs EXACT convergence (drop stale extras) + the 7 opt-in consumers brought
+# under reconciliation. All control-plane only (/key/info + /key/update) — no
+# model is ever loaded. See installer/tests/test_scoped_key_catalog_reconcile.sh.
+# ============================================================================
+
+# _sets_equal <listA> <listB> — true iff the two NEWLINE-delimited lists are equal
+# as SETS (order- and dupe-insensitive; blank lines ignored).
+_sets_equal() {
+  local a b
+  a="$(printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)"
+  b="$(printf '%s\n' "$2" | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)"
+  [[ "$a" == "$b" ]]
+}
+
+# _litellm_key_allowlist <key> — echo the scoped key's live model allow-list, one per
+# line. Echoes the literal "__wildcard__" for an UNRESTRICTED key (empty models list,
+# or the all-proxy-models/all-team-models sentinel — both mean "everything" in
+# LiteLLM). Echoes NOTHING when LiteLLM is unreachable on every base, so callers can
+# tell "unreachable" apart from "restricted to []" and never build a narrowing update
+# from a falsely-empty list. SELF-LOOKUP read (Authorization: Bearer <key>, no ?key= in
+# the URL) so the scoped secret never lands in an access log. (Callers that also need
+# the base in-scope resolve it themselves — litellm_reconcile_key_exact re-inlines the
+# read loop — because this returns only the list via a command-substitution subshell.)
+_litellm_key_allowlist() {
+  local key="$1" base cur=""
+  [[ -n "$key" ]] || return 0
+  for base in "${LITELLM_BASE_URL:-http://litellm:4000}" "http://127.0.0.1:4000"; do
+    cur="$(litellm_scoped_curl "$key" -s --max-time 5 "$base/key/info" 2>/dev/null \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+info=d.get("info")
+if not isinstance(info,dict): sys.exit(0)
+m=info.get("models") or []
+print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
+    [[ -n "$cur" ]] && break
+  done
+  printf '%s' "$cur"
+}
+
+# litellm_key_covers <KEY_ENV> <model...|'["m1",...]'> — READ-ONLY coverage predicate.
+# Returns 0 (covered — do NOT force a re-run) when the scoped key's live allow-list
+# already contains EVERY requested model, OR the key is wildcard/unrestricted, OR
+# LiteLLM is unreachable, OR the response can't be parsed (soft-on-ambiguous, so a
+# precheck-fail means REAL drift, never a LiteLLM blip). Returns 1 ONLY when the key is
+# reachable + non-wildcard + genuinely MISSING a requested model. Drops empty args;
+# accepts positional names OR one JSON array. Control-plane self-lookup only (no model
+# load). Built on _litellm_key_allowlist so the scoped secret never lands in a log.
+litellm_key_covers() {
+  local key_env="$1"; shift
+  local want=()
+  if [[ $# -eq 1 && "$1" == \[* ]]; then
+    local _mj _l
+    _mj="$(printf '%s' "$1" | python3 -c 'import sys,json
+try: print("\n".join(json.load(sys.stdin)))
+except Exception: pass' 2>/dev/null || true)"
+    while IFS= read -r _l; do [[ -n "$_l" ]] && want+=("$_l"); done <<< "$_mj"
+  else
+    want=("$@")
+  fi
+  local _kept=() _x
+  for _x in "${want[@]}"; do [[ -n "$_x" ]] && _kept+=("$_x"); done
+  want=("${_kept[@]}")
+  [[ ${#want[@]} -gt 0 ]] || return 0     # nothing to check -> covered
+  local key; key="$(get_env "$key_env" '')"
+  [[ -n "$key" ]] || return 0             # no key minted -> can't judge -> soft-covered
+  local cur; cur="$(_litellm_key_allowlist "$key")"
+  [[ -z "$cur" ]] && return 0             # unreachable -> soft-covered (never force re-run on a blip)
+  printf '%s\n' "$cur" | grep -qxF '__wildcard__' && return 0   # unrestricted -> covers everything
+  local m
+  for m in "${want[@]}"; do
+    printf '%s\n' "$cur" | grep -qxF "$m" || return 1   # genuinely missing a requested model
+  done
+  return 0
+}
+
+# litellm_reconcile_key_exact <KEY_ENV> <model...|'["m1",...]'> — converge a scoped key
+# to EXACTLY <models>. The EXACT-convergence sibling of litellm_reconcile_key (which
+# only WIDENS): this ADDS missing entries AND REMOVES stale EXTRAS — a slug renamed/
+# removed from the catalog (e.g. the ca08cc1 nemotron-only cull) that a widen-only pass
+# can never drop. One /key/update REPLACE, same key string (no .env churn, no restart).
+# Idempotent (no-op when already set-equal). This is the primitive model sync P3b + the
+# doctor _fix call to remove drift.
+# SAFETY ("never narrow a key we still need") lives in the CALLER's set (fleet=superset;
+# opt-in=scoped_key_registry_models UNION any live assignment). WILDCARD-safe (unrestricted
+# key untouched), EMPTY-safe (empty intended = no-op; POSTing [] would WIDEN), UNREACHABLE-
+# safe (empty read = skip). WARN-non-fatal; the scoped key never hits argv/stdout/logs.
+litellm_reconcile_key_exact() {
+  local key_env="$1"; shift
+  local desired=()
+  if [[ $# -eq 1 && "$1" == \[* ]]; then
+    local _mj _l
+    _mj="$(printf '%s' "$1" | python3 -c 'import sys,json
+try: print("\n".join(json.load(sys.stdin)))
+except Exception: pass' 2>/dev/null || true)"
+    while IFS= read -r _l; do [[ -n "$_l" ]] && desired+=("$_l"); done <<< "$_mj"
+  else
+    desired=("$@")
+  fi
+  # Drop empty model args — never keep a key allowing "".
+  local _kept=() _x
+  for _x in "${desired[@]}"; do [[ -n "$_x" ]] && _kept+=("$_x"); done
+  desired=("${_kept[@]}")
+  [[ ${#desired[@]} -gt 0 ]] || return 0    # empty intended == unrestricted; never POST []
+  local master key base cur=""
+  master="$(get_env LITELLM_MASTER_KEY '')"
+  key="$(get_env "$key_env" '')"
+  [[ -n "$key" && -n "$master" ]] || return 0   # key not minted (consumer not installed) -> skip
+  # Read the live allow-list AND resolve the base IN-SCOPE (not via a command-substituted
+  # helper whose _LL_KEY_BASE side-effect would be trapped in the subshell) so the base is
+  # available for the /key/update below. Mirrors litellm_reconcile_key's proven loop.
+  for base in "${LITELLM_BASE_URL:-http://litellm:4000}" "http://127.0.0.1:4000"; do
+    cur="$(litellm_scoped_curl "$key" -s --max-time 5 "$base/key/info" 2>/dev/null \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+info=d.get("info")
+if not isinstance(info,dict): sys.exit(0)
+m=info.get("models") or []
+print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
+    [[ -n "$cur" ]] && break
+  done
+  if [[ -z "$cur" ]] || printf '%s\n' "$cur" | grep -qxF '__wildcard__'; then return 0; fi
+  _sets_equal "$cur" "$(printf '%s\n' "${desired[@]}")" && return 0   # already EXACT
+  log "Reconciling $key_env allow-list -> EXACTLY {${desired[*]}} (catalog drift: add missing + drop stale extras)…"
+  # New list = EXACTLY the desired set (deduped, order-stable), built with json.dumps
+  # (no shell-injection of model names / the key into the JSON body).
+  local body resp
+  local _rx=''; case $- in *x*) _rx=1; set +x;; esac
+  body="$(_RK_KEY="$key" _RK_DES="$(printf '%s\n' "${desired[@]}")" python3 -c '
+import json,os
+out=[]
+for x in os.environ["_RK_DES"].splitlines():
+    if x and x not in out: out.append(x)
+print(json.dumps({"key":os.environ["_RK_KEY"],"models":out}))' 2>/dev/null || true)"
+  [[ -n "$_rx" ]] && set -x
+  [[ -n "$body" ]] || { warn "reconcile-exact $key_env: could not build request body"; return 0; }
+  # POST the scoped-key-bearing body from a 0600 temp file via --data @file (key off
+  # argv); a SUBSHELL EXIT trap removes it on every path, isolated from the outer lock.
+  resp="$(
+    case $- in *x*) set +x;; esac
+    _bf="$(mktemp 2>/dev/null)" || exit 0
+    trap 'rm -f "$_bf"' EXIT
+    printf '%s' "$body" > "$_bf" || exit 0
+    litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
+      -X POST "$base/key/update" --data @"$_bf" 2>/dev/null || true
+  )"
+  if printf '%s' "$resp" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
+    ok "$key_env allow-list converged to EXACTLY {${desired[*]}}"
+  else
+    warn "Could not reconcile $key_env allow-list (LiteLLM /key/update failed) — drifted-model calls may 403"
+  fi
+}
+
+# scoped_key_registry — the SINGLE SOURCE OF TRUTH for the 7 OPT-IN consumer scoped keys
+# (metagpt/agentscope/oasis/chatdev/aitown/concordia/openwork). These mint a hardcoded
+# allow-list at their own phase and are NOT in the models.yml `kinds` fleet, so `model
+# sync` never reconciled them — a catalog rename/removal silently drifted them + 403'd the
+# renamed model. `model sync` P3b iterates this (converging each EXISTING key EXACT via
+# litellm_reconcile_key_exact); the regression test asserts registry==phase-mint. One row:
+#   KEY_ENV|ALIAS|OWNER|MODELS_JSON     ('|' — never appears in a model name)
+# MODELS_JSON MUST equal that phase's mint list (the regression test asserts this).
+# (mempalace/aionui keep their own phase-time union reconcile — out of scope here.)
+scoped_key_registry() {
+  cat <<'EOF'
+METAGPT_LITELLM_KEY|metagpt|metagpt|["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"]
+AGENTSCOPE_LITELLM_KEY|agentscope|agentscope|["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"]
+OASIS_LITELLM_KEY|oasis|oasis|["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"]
+CHATDEV_LITELLM_KEY|chatdev|chatdev|["local","claude-opus-sub-xhigh","claude-sonnet-sub-high"]
+AITOWN_LITELLM_KEY|aitown|aitown|["local","embed-local","claude-opus-sub-xhigh","claude-sonnet-sub-high"]
+CONCORDIA_LITELLM_KEY|concordia|concordia|["claude-sonnet-sub-high","claude-opus-sub-xhigh","local"]
+OPENWORK_LITELLM_KEY|openwork|openwork|["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-sub-high","local"]
+EOF
+}
+
+# scoped_key_registry_models <KEY_ENV> — echo the intended allow-list JSON array for a
+# registered opt-in key (empty when not in the registry).
+scoped_key_registry_models() {
+  local want="$1" ke al ow mj
+  while IFS='|' read -r ke al ow mj; do
+    [[ -z "$ke" ]] && continue
+    if [[ "$ke" == "$want" ]]; then printf '%s\n' "$mj"; return 0; fi
+  done < <(scoped_key_registry)
+  return 0
 }

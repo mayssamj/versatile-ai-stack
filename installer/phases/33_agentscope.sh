@@ -86,6 +86,14 @@ precheck() {
     curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${AS_STUDIO_PORT}/" 2>/dev/null \
       | grep -q '^200$' || return 1
   fi
+  # allow-list drift gate: fail precheck when the scoped key no longer covers the bound model +
+  # mint fallbacks, so re-install re-reconciles via /key/update (control-plane). See phase 32.
+  local _bm="$AS_MODEL_DEFAULT"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+    local _a; _a="$(yq -r '.assignments.agentscope // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    [[ -n "$_a" && "$_a" != "null" ]] && _bm="$_a"
+  fi
+  litellm_key_covers AGENTSCOPE_LITELLM_KEY "$_bm" local claude-opus-sub-xhigh claude-sonnet-sub-high || return 1
   return 0
 }
 

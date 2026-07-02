@@ -51,6 +51,19 @@ precheck() {
   litellm_scoped_curl "$key" -sf --max-time 5 "$MG_LLM_HOST/v1/models" >/dev/null 2>&1 \
     || litellm_scoped_curl "$key" -sf --max-time 5 "$MG_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
+  # allow-list drift gate (the catalog can SHRINK, not only grow): a key minted/reconciled
+  # against an OLD model set still lists /v1/models yet SILENT-403s the model the app now calls.
+  # Resolve the bound model the SAME way §3 does, then require the key's live allow-list to
+  # already cover it + the mint fallbacks (the EXACT set the body's litellm_reconcile_key uses).
+  # On drift → return 1 so precheck FAILS and the phase PROCEEDS, re-running the reconcile
+  # (control-plane /key/update; NEVER loads a model). litellm_key_covers is wildcard-/unreachable-
+  # soft (returns 0), so a down gateway or a covered key never forces a needless re-install.
+  local _bm="$MG_MODEL_DEFAULT"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+    local _a; _a="$(yq -r '.assignments.metagpt // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    [[ -n "$_a" && "$_a" != "null" ]] && _bm="$_a"
+  fi
+  litellm_key_covers METAGPT_LITELLM_KEY "$_bm" local claude-opus-sub-xhigh claude-sonnet-sub-high || return 1
   return 0
 }
 

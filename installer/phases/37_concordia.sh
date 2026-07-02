@@ -69,6 +69,14 @@ precheck() {
   litellm_scoped_curl "$key" -sf --max-time 5 "$CC_LLM_HOST/v1/models" >/dev/null 2>&1 \
     || litellm_scoped_curl "$key" -sf --max-time 5 "$CC_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
+  # allow-list drift gate: fail precheck when the scoped key no longer covers the bound model +
+  # mint fallbacks, so re-install re-reconciles via /key/update (control-plane). See phase 32.
+  local _bm="$CC_MODEL_DEFAULT"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+    local _a; _a="$(yq -r '.assignments.concordia // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    [[ -n "$_a" && "$_a" != "null" ]] && _bm="$_a"
+  fi
+  litellm_key_covers CONCORDIA_LITELLM_KEY "$_bm" claude-sonnet-sub-high claude-opus-sub-xhigh local || return 1
   return 0
 }
 

@@ -48,6 +48,14 @@ precheck() {
   litellm_scoped_curl "$key" -sf --max-time 5 "$OA_LLM_HOST/v1/models" >/dev/null 2>&1 \
     || litellm_scoped_curl "$key" -sf --max-time 5 "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1 \
     || return 1
+  # allow-list drift gate: fail precheck when the scoped key no longer covers the bound model +
+  # mint fallbacks, so re-install re-reconciles via /key/update (control-plane). See phase 32.
+  local _bm="$OA_MODEL_DEFAULT"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+    local _a; _a="$(yq -r '.assignments.oasis // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    [[ -n "$_a" && "$_a" != "null" ]] && _bm="$_a"
+  fi
+  litellm_key_covers OASIS_LITELLM_KEY "$_bm" local claude-opus-sub-xhigh claude-sonnet-sub-high || return 1
   return 0
 }
 

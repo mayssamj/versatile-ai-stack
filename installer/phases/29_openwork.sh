@@ -59,13 +59,35 @@ _ow_bin() {
   return 1
 }
 
+# Content-aware opencode.json guard: 0 ONLY when the file's provider.litellm.models key-set
+# EXACTLY equals the current OPENWORK_KEY_MODELS set. Both precheck and the seed step use this
+# so a model rename/removal RE-SEEDS the file, instead of the presence-only skip that left it
+# pinned to the stale set. Missing file / invalid JSON / shape drift → 1 (re-seed). python3
+# only parses the local file — no network, no model load.
+_ow_opencode_models_match() {
+  [[ -f "$OW_OPENCODE_JSON" ]] || return 1
+  OW_WANT_MODELS="$OPENWORK_KEY_MODELS" python3 -c 'import json,os,sys
+try: cfg=json.load(open(sys.argv[1]))
+except Exception: sys.exit(1)
+try: want=set(json.loads(os.environ["OW_WANT_MODELS"]))
+except Exception: sys.exit(1)
+have=set((((cfg.get("provider") or {}).get("litellm") or {}).get("models") or {}).keys())
+sys.exit(0 if want==have else 1)' "$OW_OPENCODE_JSON" 2>/dev/null
+}
+
 # --- precheck: binary at pinned version + opencode.json + key + healthy → done --
 precheck() {
   local bin; bin="$(_ow_bin)" || return 1
   "$bin" --version 2>/dev/null | head -1 | grep -qF "$OW_VERSION" || return 1
-  [[ -f "$OW_OPENCODE_JSON" ]] || return 1
+  # content-aware (not presence-only): re-seed when opencode.json's model set drifted from
+  # OPENWORK_KEY_MODELS (a rename/removal would otherwise leave the file pinned to the old set).
+  _ow_opencode_models_match || return 1
   [[ -n "$(get_env OPENWORK_LITELLM_KEY '')" ]] || return 1
   curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$OW_PORT/health" 2>/dev/null | grep -q '^200$' || return 1
+  # allow-list drift gate: a stale key still lists /v1/models yet 403s the renamed model. Fail
+  # precheck on drift so the phase PROCEEDS + re-reconciles via /key/update (control-plane; no
+  # model load). litellm_key_covers is wildcard-/unreachable-soft, so a down gateway never re-runs.
+  litellm_key_covers OPENWORK_LITELLM_KEY "$OPENWORK_KEY_MODELS" || return 1
   return 0
 }
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
@@ -149,7 +171,8 @@ fi
 # NEVER written to this file (the daemon injects the value from .env).
 mkdir -p "$OW_WORKDIR"
 if [[ -f "$OW_OPENCODE_JSON" ]] && python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$OW_OPENCODE_JSON" 2>/dev/null \
-   && grep -q 'OPENWORK_LITELLM_KEY' "$OW_OPENCODE_JSON" 2>/dev/null; then
+   && grep -q 'OPENWORK_LITELLM_KEY' "$OW_OPENCODE_JSON" 2>/dev/null \
+   && _ow_opencode_models_match; then
   ok "opencode.json already seeded ($OW_OPENCODE_JSON)"
 else
   log "Seeding $OW_OPENCODE_JSON with the LiteLLM provider…"

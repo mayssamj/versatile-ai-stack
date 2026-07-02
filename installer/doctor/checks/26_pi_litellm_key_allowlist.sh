@@ -114,8 +114,11 @@ except Exception as e:
 }
 
 pi_litellm_key_allowlist_fix() {
-  warn "Re-mint PI_LITELLM_KEY by re-running Phase 15:"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 15"
-  warn "(Phase 15 detects an invalid key and re-mints automatically.)"
+  warn "PI_LITELLM_KEY is ALIVE but its model allow-list drifted from the LiteLLM superset"
+  warn "(a models.yml add/remove/rename changed the catalog). Re-running Phase 15 is a NO-OP on a"
+  warn "valid key — it only re-mints a DEAD one. Reconcile every scoped key's allow-list to the"
+  warn "EXACT superset in place (widens AND narrows via /key/update — same key, no .env churn):"
+  warn "    bash $AI_STACK/vz-ai-stack.sh model sync"
+  warn "(Only if the key is fully DEAD — /v1/models rejects it — re-mint it: 'install 15'.)"
   return 1
 }

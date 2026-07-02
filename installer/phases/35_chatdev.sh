@@ -64,6 +64,16 @@ precheck() {
   curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$FE_IP:$FE_HOST_PORT/" 2>/dev/null | grep -q '^200$' || return 1
   local key; key="$(get_env CHATDEV_LITELLM_KEY '')"
   [[ -n "$key" ]] || return 1
+  # allow-list drift gate: fail precheck when the scoped key no longer covers the bound model +
+  # mint fallbacks, so re-install re-reconciles via /key/update (control-plane). See phase 32.
+  # (chatdev's precheck has no /v1/models probe; litellm_key_covers is unreachable-soft, so a
+  # down gateway returns 0 here and the body's own reachability gate handles it.)
+  local _bm="$CD_MODEL_DEFAULT"
+  if command -v yq >/dev/null 2>&1 && [[ -f "$AI_STACK/installer/models.yml" ]]; then
+    local _a; _a="$(yq -r '.assignments.chatdev // ""' "$AI_STACK/installer/models.yml" 2>/dev/null)"
+    [[ -n "$_a" && "$_a" != "null" ]] && _bm="$_a"
+  fi
+  litellm_key_covers CHATDEV_LITELLM_KEY "$_bm" local claude-opus-sub-xhigh claude-sonnet-sub-high || return 1
   return 0
 }
 

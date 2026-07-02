@@ -2,7 +2,7 @@
 
 **Your own private AI cloud — 51 services, one Mac, zero bytes leaving the building.**
 
-![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 51](https://img.shields.io/badge/services-51-blue) ![doctor: 71 checks](https://img.shields.io/badge/doctor-69%2F71-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
+![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 51](https://img.shields.io/badge/services-51-blue) ![doctor: 72 checks](https://img.shields.io/badge/doctor-70%2F72-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
 
 ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: local models, a fleet of agents, memory, RAG, and full call-by-call observability — all wired behind a single local endpoint. One installer brings up all 51 services, validates them end-to-end, and heals itself. Nothing phones home; cloud is opt-in only when you add your own keys.
 
@@ -15,7 +15,7 @@ ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: l
 - **A whole team in a box** — the Hermes 9-role engineering fleet (manager, techlead, frontend/backend/ML engineers, QA, reviewer, SRE, incident manager), a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
 - **Truly local-first** — models, memory, traces, and documents all stay on your machine; it works fully offline and only touches the cloud if you hand it keys.
 - **Three local models, sensible defaults** — `nemotron-3-nano:4b` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
-- **One installer, self-healing and reversible** — brings up all 51 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 68/71 doctor checks.
+- **One installer, self-healing and reversible** — brings up all 51 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 69/72 doctor checks.
 - **See it before you run it** — [`doc/EXPLORE.html`](doc/EXPLORE.html) is a single self-contained page (just double-click, works offline) with a searchable card and copy-paste demo for every service.
 
 ---
@@ -602,7 +602,7 @@ the guard rails.
 ├── installer/
 │   ├── lib/                # common, env, docker, validate, prompt, litellm, status, adopt, gc, history, reset, openshell
 │   ├── phases/             # one file per phase (00 .. 30)
-│   ├── doctor/checks/      # one file per failure mode (71 checks)
+│   ├── doctor/checks/      # one file per failure mode (72 checks)
 │   ├── smoke/              # per-phase end-to-end smoke tests
 │   └── state/              # stamp files, restart queue, lock dir
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -622,7 +622,7 @@ the guard rails.
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
 snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
 
-- **29 core install phases (+17 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia · slack) · 51 services · 71 doctor checks.**
+- **29 core install phases (+17 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia · slack) · 51 services · 72 doctor checks.**
 - Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);

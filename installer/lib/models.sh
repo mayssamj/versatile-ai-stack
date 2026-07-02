@@ -550,9 +550,24 @@ remint_key() {
   # exactly what a superset expansion triggers. Only mint fresh when none is set.
   local existing; existing="$(get_env "$key_env" '')"
   if [[ -n "$existing" ]]; then
-    local upd
-    upd="$(litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
-      -X POST "$base/key/update" -d "{\"key\":\"${existing}\",\"models\":${models_json}}")"
+    local upd _body
+    # Build the key-bearing body via python (key via env var, never argv), xtrace-
+    # suppressed, then POST from a 0600 temp file via --data @file so the existing scoped
+    # key never lands in curl argv (parity with litellm_reconcile_key_exact). A subshell
+    # EXIT-trap removes the temp on every path, isolated from the outer lock trap.
+    local _rx=''; case $- in *x*) _rx=1; set +x;; esac
+    _body="$(_RK_EXK="$existing" _RK_MJ="$models_json" python3 -c 'import json,os,sys
+sys.stdout.write(json.dumps({"key":os.environ["_RK_EXK"],"models":json.loads(os.environ["_RK_MJ"])}))' 2>/dev/null || true)"
+    [[ -n "$_rx" ]] && set -x
+    upd="$(
+      case $- in *x*) set +x;; esac
+      [[ -n "$_body" ]] || exit 0
+      _rk_bf="$(mktemp 2>/dev/null)" || exit 0
+      trap 'rm -f "$_rk_bf"' EXIT
+      printf '%s' "$_body" > "$_rk_bf" || exit 0
+      litellm_master_curl -s --max-time 15 -H 'Content-Type: application/json' \
+        -X POST "$base/key/update" --data @"$_rk_bf" 2>/dev/null || true
+    )"
     if printf '%s' "$upd" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(1)
@@ -578,25 +593,27 @@ sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
   return 0
 }
 
-# ensure_key_widened <key_env> <alias> <owner> — widen the scoped key to the
-# SUPERSET iff it doesn't already cover both canonical MLX slugs. Idempotent:
-# only re-mints when coverage is incomplete. WARN-non-fatal (opt-in services).
+# ensure_key_widened <key_env> <alias> <owner> — converge the fleet scoped key to
+# EXACTLY the SUPERSET: re-mint when it's MISSING a member (would 403 a live model)
+# OR carries a stale EXTRA (a slug removed from models.yml — e.g. the ca08cc1
+# nemotron-only cull — that a widen-only pass can never drop). Idempotent: a no-op
+# when the key already equals the superset as a set. WARN-non-fatal (opt-in services).
 ensure_key_widened() {
   local key_env="$1" alias="$2" owner="$3"
   [[ -n "$key_env" && "$key_env" != "null" ]] || return 0   # e.g. deerflow uses master key
   local key; key="$(get_env "$key_env" '')"
   if [[ -n "$key" ]]; then
-    # Already widened iff the key covers EVERY superset member that is actually
-    # registered in config.yaml. Members not yet in config.yaml are skipped so a
-    # freshly `model add`-ed (not-yet-synced) name can't trigger a false re-mint
-    # before its model_list entry exists.
-    local covered=1 mem
-    while IFS= read -r mem; do
-      [[ -z "$mem" ]] && continue
-      config_has_slug "$mem" || continue   # not registered yet — can't be covered
-      if ! key_covers "$key" "$mem"; then covered=0; break; fi
-    done < <(superset_members)
-    if (( covered )); then return 0; fi     # already widened
+    # Read the key's LIVE allow-list once and compare to the superset as a SET. A
+    # wildcard/unrestricted key already covers everything and is left untouched
+    # (never narrowed). Unreachable gateway => empty => skip (can't judge coverage
+    # when LiteLLM is down; the next sync/doctor retries). Since P1 registered every
+    # models.yml model into config.yaml before this P3 runs, the superset is exactly
+    # what remint_key's /key/update REPLACE writes, so an equal set means already-exact.
+    local cur; cur="$(_litellm_key_allowlist "$key")"
+    if [[ -z "$cur" ]] || printf '%s\n' "$cur" | grep -qxF '__wildcard__'; then
+      return 0
+    fi
+    _sets_equal "$cur" "$(superset_members)" && return 0   # already EXACTLY the superset
   fi
   remint_key "$key_env" "$alias" "$owner" || warn "could not widen $key_env (non-fatal)"
 }
@@ -1607,6 +1624,36 @@ cmd_sync() {
     ensure_key_widened "$keyenv" "$alias" "$owner"
   done
 
+  # P3b — reconcile the OPT-IN consumer scoped keys (metagpt/agentscope/oasis/chatdev/
+  # aitown/concordia/openwork). These live OUTSIDE the models.yml `kinds` fleet and are
+  # minted with a hardcoded allow-list at their own phase, so the fleet loop above never
+  # re-scopes them — a catalog rename/removal silently drifts them. The scoped_key_registry
+  # (common.sh) is the single source of truth for their intended sets; converge each
+  # EXISTING key EXACT (add missing + drop stale extras) via litellm_reconcile_key_exact.
+  # A key not in .env (consumer not installed) is skipped inside the primitive. Control-
+  # plane only (/key/info + /key/update) — never loads a model (OOM-safe). Skipped for a
+  # single-agent `model sync <agent>` (those target a fleet kind, not an opt-in key).
+  if [[ -z "$only" ]]; then
+    log "P3b: reconciling opt-in consumer scoped keys (registry)..."
+    local rk_env rk_alias rk_owner rk_models rk_want rk_asg
+    while IFS='|' read -r rk_env rk_alias rk_owner rk_models; do
+      [[ -z "$rk_env" ]] && continue
+      [[ -n "$(get_env "$rk_env" '')" ]] || continue      # opt-in consumer not installed — skip
+      # intended = registry list UNION any live models.yml assignment for this owner. (Today
+      # these 7 opt-in owners aren't models.yml `kinds`, so `model assign` rejects them and the
+      # union is a defensive no-op; it future-proofs the day they become assignable.)
+      rk_want="$rk_models"
+      rk_asg="$(my_q ".assignments.\"$rk_owner\"")"
+      if [[ -n "$rk_asg" && "$rk_asg" != "null" ]] && model_exists "$rk_asg"; then
+        rk_want="$(RK_J="$rk_models" RK_A="$rk_asg" python3 -c 'import json,os
+lst=json.loads(os.environ["RK_J"]); a=os.environ["RK_A"]
+if a not in lst: lst.append(a)
+print(json.dumps(lst))' 2>/dev/null || echo "$rk_models")"
+      fi
+      litellm_reconcile_key_exact "$rk_env" "$rk_want"
+    done < <(scoped_key_registry)
+  fi
+
   # P4 — per-agent render (availability-gated). Per-agent failures non-fatal.
   log "P4: rendering agents (availability-gated)..."
   for ag in $({ [[ -n "$only" ]] && echo "$only" || agents; }); do
@@ -1689,6 +1736,7 @@ _dry_run() {
   rm -rf "$tmp"
 
   note "P3 allowlist widening plan: scoped keys -> [$(superset_members | paste -sd' ' - 2>/dev/null || true)]"
+  note "P3b opt-in-key reconcile plan: converge each INSTALLED registry key EXACT -> [$(scoped_key_registry | cut -d'|' -f1 | paste -sd' ' - 2>/dev/null || true)]"
   note "P4 per-agent render plan:"
   printf '    %-26s %-26s %s\n' AGENT ASSIGNED 'EFFECTIVE (gated)'
   local ag eff
