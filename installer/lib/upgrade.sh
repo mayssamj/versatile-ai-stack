@@ -77,12 +77,21 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   `upgrade all` also upgrades the host npm globals (meridian, claude-code; codex is
   npx-always-latest). `upgrade <meridian|claude-code>` upgrades one host global.
 
-  --check is non-mutating and downloads nothing: docker/compose are compared by
-  registry manifest DIGEST, ollama by `brew outdated`. Sandbox/CLI/npm/pip
-  services can't be cheaply version-checked and are reported as 'manual'.
+  --check is non-mutating: docker/compose by registry manifest DIGEST, ollama by
+  `brew outdated`, and npm/pip(uv-venv)/git-clone services by npm/PyPI/git ls-remote
+  (bounded — a blocked registry degrades to 'unknown', never hangs). Only services
+  with no version oracle (config-only / sandbox CLIs) stay 'manual'.
+
+  Every upgrade run first prints an installed→available version report (skip with
+  --no-check), and the summary's VERSION column shows what actually moved — a no-op
+  reads 'up-to-date', a real move 'a→b', an unverifiable path 'done (unverified)'.
+  A swallowed brew/pip failure now reports FAILED instead of a false 'upgraded',
+  and `upgrade all` skips services not installed on this host (no unsolicited installs).
 
   --dry-run    print the per-service plan (current→new) and change nothing.
+  --no-check   skip the pre-upgrade version report (faster / offline).
   Set AI_STACK_ASSUME_YES=1 to auto-accept the version-pinned re-pull prompt.
+  See installed vs available anytime:  vz-ai-stack.sh status --versions
 
   Typical flow:
     vz-ai-stack.sh upgrade --check        # see what's available

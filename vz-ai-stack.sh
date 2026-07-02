@@ -211,7 +211,8 @@ ai-stack-installer — usage:
                                           what's missing (--check = read-only, CI exit code)
     vz-ai-stack.sh setup                    interactive .env / API-key bootstrap (alias: keys);
                                           all keys optional + skippable; local + Claude-sub need none
-    vz-ai-stack.sh status                   tabular service status
+    vz-ai-stack.sh status [--versions]      tabular service status; --versions shows a
+                                        focused installed-vs-available table (add --local = installed only, no network)
     vz-ai-stack.sh help <service>           what it is · how it's configured · how to use
     vz-ai-stack.sh help services            list services that have help prose
     vz-ai-stack.sh help regen [<svc>]       refresh help prose from the live codebase
@@ -271,12 +272,16 @@ ai-stack-installer — usage:
                                         docker layers; --all = everything. (gc = orphan
                                         containers; cleanup = disk artifacts.)
     vz-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
-    vz-ai-stack.sh upgrade <service|all> [--dry-run]   Pull/rebuild + recreate a service
-                                        (or all enabled), type-dispatched
-    vz-ai-stack.sh upgrade --check [service|all]   READ-ONLY: which services have an update
-                                        (compares registry digest / brew outdated; downloads nothing)
+    vz-ai-stack.sh upgrade <service|all> [--dry-run] [--no-check]   Pull/rebuild + recreate a
+                                        service (or all enabled), type-dispatched. Prints a
+                                        pre-upgrade installed→available version report first
+                                        (--no-check skips it), and the summary's VERSION column
+                                        shows what actually moved — no more green 'upgraded' on a no-op.
+    vz-ai-stack.sh upgrade --check [service|all]   READ-ONLY: installed vs available per service
+                                        (docker registry digest / brew / npm / PyPI / git ls-remote;
+                                        downloads nothing). npm/pip/git now show real versions, not 'manual'.
     vz-ai-stack.sh upgrade --outdated [--dry-run]   upgrade ONLY the services --check finds outdated
-    vz-ai-stack.sh upgrade --check --all    include non-checkable (manual: sandbox/CLI/npm/pip) rows too
+    vz-ai-stack.sh upgrade --check --all    include non-checkable (manual: sandbox/CLI/config) rows too
     vz-ai-stack.sh upgrade --check --json   machine-readable availability report
                                         (--dry-run prints the plan and changes nothing;
                                          AI_STACK_ASSUME_YES=1 auto-accepts the pinned-tag re-pull prompt)

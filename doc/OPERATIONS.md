@@ -547,12 +547,29 @@ How it decides — **no image is downloaded**:
 | `docker` | local image `RepoDigest` vs the registry **index digest** (`docker buildx imagetools inspect`). Both resolve to the manifest-list digest, so the compare is sound on multi-arch images. |
 | `compose`/`docker-compose` | every image from `docker compose config --images` is digest-checked; any newer → `update-available`; locally-built/uncheckable images → `rebuild`. |
 | `brew-service` (ollama) | `brew outdated` (version compare). |
-| everything else (sandbox/CLI/npm/pip) | no cheap version oracle for `--check`/`--outdated` → reported `manual` here (hidden unless `--all`). **NOTE:** bare `upgrade all` still upgrades them (via their `upgrade:` block or a phase re-run) — see the exhaustive note above. |
+| `npm-global` / `pip`(uv-venv) / `clone-only`(git) | **now checked** (2026-07-02) via `npm view` / PyPI JSON / `git ls-remote` (bounded — a blocked registry degrades to `unknown`, never hangs). These show real installed+available instead of `manual`. |
+| everything else (config-only / sandbox CLIs, no version oracle) | reported `manual` (hidden unless `--all`). **NOTE:** bare `upgrade all` still re-asserts them via their `upgrade:` block or a phase re-run — see the exhaustive note above. |
 
 Status legend: `update-available` · `up-to-date` · `pinned` (fixed tag, no
-rolling updates) · `rebuild` (compose stack with locally-built/uncheckable
-images — run `upgrade` to pull+rebuild) · `manual` · `unknown` (registry
-unreachable / image never pulled).
+rolling updates) · `rebuild`/`build` (locally-built — run `upgrade` to pull+rebuild) ·
+`no-oracle`/`manual` (no version source) · `unknown` (registry/proxy unreachable /
+image never pulled).
+
+**Honest results (2026-07-02).** `upgrade` never reports success it didn't verify:
+- Every run first prints an **installed → available** version report (skip with
+  `--no-check`), and the summary has a **VERSION** column showing what actually moved
+  — a no-op reads `up-to-date`, a real bump `a→b`, an unverifiable path `done (unverified)`.
+  So even when `REVERIFY` says `ok` (something is alive), VERSION shows whether the *new*
+  version is live.
+- A swallowed `brew`/`pip` failure now reports **FAILED** (was a false `upgraded`); a
+  failed ollama `OLLAMA_HOST=0.0.0.0` re-assert is FAILED (load-bearing).
+- `upgrade all` skips services **not installed on this host** (install-stamp gate) — a
+  routine upgrade never unsolicited-installs an opt-in sim or fires its live model smoke.
+- The green "everything up to date" is **suppressed** when any row is `unknown`/`rebuild`
+  (it used to over-claim currency for services it never actually checked).
+
+**See versions anytime (read-only):** `stack status --versions` prints a focused
+installed-vs-available table for the whole stack (`--local` = installed only, no network).
 
 ### 2. Upgrade them
 
