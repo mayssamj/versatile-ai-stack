@@ -4,6 +4,37 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-02 — Foreground servers: signal-stop no longer misfires the ERR trap
+
+`vz-ai-stack.sh tutorial-serve` (and the sibling foreground commands) printed a
+spurious `✗ ERR line 817: bash …tutorial-serve.sh (exit=143)` after a perfectly
+NORMAL shutdown. Root cause: these commands bare-invoked a long-running foreground
+server (`cmd_tutorial_serve() { bash …tutorial-serve.sh "$@"; }`), and the top-level
+`set -Eeuo pipefail` + ERR trap (line ~146) treats the server's signal-exit — Ctrl-C
+(SIGINT→130) or SIGTERM (→143) — as a failure. The ephemeral demo key still auto-
+revoked correctly (the trap fired); only the red ✗ was bogus.
+
+- **New shared helper `run_foreground_server <cmd> …`** maps ONLY the two graceful-stop
+  signals (130/143) to exit 0; every other non-zero (bind failure, SIGKILL 137, docker
+  error, real crash) still propagates so genuine faults stay visible. All five foreground
+  commands route through it: `tutorial-serve`, `models-serve`, `fleet-studio`,
+  `understand-dashboard`, and `logs <ctr> -f` (the helper takes a full command, not just
+  a script path, so `docker logs -f` is covered too). Verified the child-exit contract
+  holds across the bash-trap servers, python `exec`, `exec npm run dev` (npm 10.9.8:
+  SIGINT=130/SIGTERM=143), and `docker logs -f`.
+- **Offline test:** `installer/tests/test_foreground_server_signal_exit.sh` sed-extracts
+  the real function (no copy-drift) and asserts the 130/143→0 mapping, 137/1/0
+  passthrough, and no-spurious-ERR under a live `set -e` + ERR trap. 6/6 pass.
+- §24 3-reviewer council (adversarial + techlead + qa) — APPROVE; the generalization to
+  `logs -f`, the npm exit-code verification, and the regression test were council asks.
+
+Note: these remain FOREGROUND servers — run them in their own terminal and stop with
+Ctrl-C, or from elsewhere `lsof -ti tcp:<port> | xargs kill`. Launching one inside a
+non-interactive wrapper (no interactive Ctrl-C) still SIGTERMs it on timeout; that now
+exits cleanly instead of printing the red ✗.
+
+---
+
 ## 2026-06-30 — Fleet resilience round 2: corporate security-agent collision hardening (CR-4 + CA-1..CA-5)
 
 The host is an employer-managed Mac with inline, IT-pushed, IMMOVABLE security agents

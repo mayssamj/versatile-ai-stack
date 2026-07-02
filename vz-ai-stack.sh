@@ -807,22 +807,40 @@ cmd_help() {
 }
 cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $?; }
 cmd_adopt()   { worktree_guard adopt; bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
-cmd_logs()    { docker logs "$1" "${2:-}"; }
+cmd_logs()    { run_foreground_server docker logs "$1" "${2:-}"; }   # `logs <ctr> -f` blocks; Ctrl-C/SIGTERM is a clean stop
 cmd_gc()      { worktree_guard gc; bash "$AI_STACK/installer/lib/gc.sh"; }
 cmd_cleanup() { bash "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default
 cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
 cmd_upgrade() { worktree_guard upgrade; bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree
+# run_foreground_server <cmd> [args...] — run a long-running FOREGROUND command that
+# blocks until the user stops it: the doc servers (tutorial-serve / models-serve /
+# fleet-studio / understand-dashboard) and `logs <ctr> -f`. Stopping such a command
+# with Ctrl-C (SIGINT->130) or SIGTERM (->143) is a CLEAN stop, not a failure — but a
+# bare invocation lets that non-zero signal exit trip the top-level `set -e` + ERR trap
+# (line ~146), printing a spurious `✗ ERR line N: … (exit=143)` AFTER a normal shutdown.
+# Map ONLY those two graceful-stop signals to 0; every other non-zero (bind failure,
+# SIGKILL 137, docker error, a real crash) still propagates so genuine faults stay
+# visible. Child-exit contract: children must exit 130/143 on SIGINT/SIGTERM — verified
+# for the bash-trap servers, python `exec`, `exec npm run dev` (npm 10.9.8: 130/143),
+# and `docker logs -f`. Takes a full command (not just a script path) so `docker logs`
+# routes through it too — hence callers pass `bash <script>` explicitly.
+run_foreground_server() {
+  local rc=0
+  "$@" || rc=$?
+  (( rc == 130 || rc == 143 )) && return 0
+  return "$rc"
+}
 # Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
-cmd_tutorial_serve() { bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
+cmd_tutorial_serve() { run_foreground_server bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 # Serves doc/MODELS.html (the Model & Agent Console) + a loopback proxy that wraps the
 # `model` CLI to view/stage/apply model + agent-binding changes. Apply may restart the
 # live LiteLLM — run from MAIN (warns if a worktree); --read-only is safe anywhere.
-cmd_models_serve() { bash "$AI_STACK/installer/lib/models-serve.sh" "$@"; }
+cmd_models_serve() { run_foreground_server bash "$AI_STACK/installer/lib/models-serve.sh" "$@"; }
 # Serves doc/FLEET.html on loopback to review+edit agent-profiles/ in a browser.
-cmd_fleet_studio() { bash "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
+cmd_fleet_studio() { run_foreground_server bash "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
 # Serves the Understand-Anything knowledge-graph dashboard (Phase 30) for a repo.
-cmd_understand_dashboard() { bash "$AI_STACK/installer/lib/understand-dashboard.sh" "$@"; }
+cmd_understand_dashboard() { run_foreground_server bash "$AI_STACK/installer/lib/understand-dashboard.sh" "$@"; }
 
 # cmd_start <svc> — invoke bin/start-<svc>.sh (the canonical per-service
 # launcher). All managed services have one. For docker-compose services
