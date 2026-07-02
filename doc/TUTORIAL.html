@@ -1572,11 +1572,14 @@ vz-ai-stack.sh doctor 39          # run a single check by id (here: the OpenShel
 
 # STATUS — declared (services.yml) vs actual (running containers), grouped.
 vz-ai-stack.sh status
+vz-ai-stack.sh status --versions          # installed vs available version per service (--local = no network)
 
 # UPGRADE — read-only "what has an update?" first; then upgrade only what's behind.
-vz-ai-stack.sh upgrade --check            # READ-ONLY, downloads nothing
+vz-ai-stack.sh upgrade --check            # READ-ONLY: installed vs available (npm/pip/git now checked too)
 vz-ai-stack.sh upgrade --check --all      # include non-checkable (manual) services
 vz-ai-stack.sh upgrade --outdated --dry-run   # show what --outdated WOULD upgrade
+# Every `upgrade` prints a pre-run version report + a VERSION column showing what
+# actually moved — a no-op reads 'up-to-date', never a false 'upgraded' (--no-check to skip).
 
 # LOGS / HISTORY — tail a container; see the decision timeline.
 vz-ai-stack.sh logs litellm --tail 50

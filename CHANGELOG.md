@@ -4,6 +4,85 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-02 — `upgrade` stops lying about success + version visibility (`status --versions`)
+
+Operator report: `upgrade all` said done, but hermes stayed at 0.16.x while 0.18.0
+is published. A council audit (29 agents) found this was not one bug but a **systemic
+honesty defect** — `upgrade` reported `upgraded`/`ok` without ever confirming the
+installed version moved (`reverify` proves *liveness*, not a version delta), and two
+handlers swallowed the mutation's exit code. Of 51 enabled services, only `ollama`
+actually compared installed-vs-available; ~40 were `manual`/`pinned` and invisible to
+drift detection — which is exactly why the staleness was never seen.
+
+**Tier 0 — stop the lie.**
+- New `installer/lib/versions.sh`: side-effect-free, guarded, **bounded** (coreutils
+  `timeout` → `gtimeout` → `perl alarm` fallback; this host has no `timeout`, so a
+  Zscaler-blocked registry would otherwise hang), and contractually **NO model load**.
+  Layers: `svc_installed_version` (local), `svc_available_version` (opt-in, bounded),
+  `version_classify`, `version_status`, `reconcile_result`.
+- `upgrade` captures installed version before+after each service and adds a **VERSION**
+  column to the summary; `reconcile_result` downgrades an unverified `upgraded` to
+  `up-to-date` (no-op) or `done (unverified)`. `up_brew` no longer `|| true`-swallows
+  `brew upgrade` (rc≠0 → FAILED) and a failed OLLAMA_HOST 0.0.0.0 re-assert is FAILED.
+  `hermes_fleet` derives its result from pip's real outcome (`FAILED (pip)` on a proxy
+  403), not the always-green phase re-run.
+- `upgrade all` now skips services **not installed on this host** (install-stamp gate),
+  so a routine upgrade never unsolicited-installs an opt-in sim or fires its live model
+  smoke (collided with the NEVER-load-local-models directive).
+
+**Tier 1 — see the versions (the original ask).**
+- `status --versions` — focused installed-vs-available table (installed local/default-on;
+  available bounded network; `--local` skips the network). Reuses the shared oracle so it
+  agrees with `upgrade --check` exactly.
+- `upgrade --check` now shows real versions for npm/pip/git/clone/cli (not blanket
+  `manual`); a **pre-upgrade version report** prints before every `upgrade` (`--no-check`
+  skips); the green "everything up to date" is **suppressed** when any row is
+  unknown/rebuild (it previously over-claimed currency for ~44/51 services).
+
+**Tier 2 — reachability.** `04f_hermes_fleet.sh` gains an `AI_STACK_UPGRADE=1` bypass so
+the phase can bump an already-present hermes (inert by default — a working install is never
+surprised). `hermes_slack` audited safe (phase 38 does no pip). **Deferred (documented):**
+the `hermes_workspace` agent-image digest pin (`05_uis.sh:31`, v0.17.0) as bumpable data +
+pinned-behind currency for immutable `@sha256` refs — needs a live rebuild to verify, so it
+stays a reviewed manual bump for now; it is surfaced as `pinned`/`rebuild` today.
+
+**§24 code-review council (`wn9pygsi9`)** blocked the first cut on 3 confirmed honesty
+regressions the fix itself introduced, now fixed: (1) the exit-code gate exact-matched
+`"FAILED"` so the new `FAILED (pip)` label exited 0 → changed to a `FAILED*` glob;
+(2) `status --versions` labeled a current ollama `no-oracle` → added a brew branch to
+`version_status`; (3) `version_classify` returned `no-oracle` for installed-known +
+upstream-unreachable where `upgrade --check` says `unknown` → aligned to `unknown`.
+Plus should-fixes: compose no-op now reconciles via an `_iv_compose` digest fingerprint
+(no more false `upgraded`); `hermes_fleet`'s pip-reported version flows into the VERSION
+column; `brew outdated` in the preflight is now bounded; `status --versions` no longer
+double-probes upstream; `up_openshell` gained the same install-stamp gate (no unsolicited
+pi install).
+
+Tests: `test_versions.sh` (35, hermetic stubs + real bounding + perl-alarm fallback + docker
+check_image), `test_upgrade_honesty.sh` (17, incl. the exit-gate regression),
+`test_version_visibility.sh` (12); `test_upgrade_exhaustive.sh` stays green (15).
+`status --versions --local` verified live read-only. Audited by the drift-audit council
+(`wq0achnya`) + the merge-review council (`wn9pygsi9`).
+
+**Per-service mechanism audit (`w6wxiev01`, 18 agents).** Verified every one of the 54
+services/host-globals dispatches and executes its upgrade correctly and honestly — docker
+(pull+recreate / local-built rebuild), compose (honcho/aitown `--ignore-buildable`, autofyn
+dual-mode, deerflow build, hermes_workspace hardened rebuild), brew, sandbox (hermes_fleet
+real pip; openshell/telegram/slack/pi re-assert), the 3 declared blocks (byterover_cli npm,
+autoreason git-pull on a real `main`-tracking clone, remnic_hermes uv-venv), and host globals.
+The honesty guards all held (no false `upgraded`). Fixed the one concrete defect it found —
+`_iv_pip` probed with `python -m pip show`, but the stack's venvs are **uv-managed (pip-less)**,
+so `remnic_hermes` (the only uv-venv service) showed `-` everywhere despite being installed;
+`_iv_pip` is now uv-aware (`uv pip show --python` → pip → dist-info fallback).
+Documented follow-ups (not shipped here): (a) [medium] `upgrade all` re-running a sim phase
+(metagpt/agentscope/oasis/concordia) on the narrow installed-but-**drifted** path still runs
+its live model smoke — gate the smoke on `AI_STACK_UPGRADE=1` in phases 32/33/34/37 (needs live
+verification; the not-installed case is already covered by the install-stamp gate, and healthy
+sims short-circuit); (b) [low] `pi` + `pi_gateway_litellm` both resolve to phase 15 → `upgrade
+all` runs it twice (idempotent) — dedupe phase-reruns per run. Systemic note: ~30 cli/bg/config
+services wrap versionable artifacts but declare no `upgrade:` block, so they stay version-blind
+by construction (correct + honestly labeled `re-asserted`, but a future visibility opportunity).
+
 ## 2026-07-02 — Foreground servers: signal-stop no longer misfires the ERR trap
 
 `vz-ai-stack.sh tutorial-serve` (and the sibling foreground commands) printed a
