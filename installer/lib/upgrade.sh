@@ -44,6 +44,7 @@ source "$LIB/env.sh"
 source "$LIB/docker.sh"
 source "$LIB/prompt.sh"
 source "$LIB/services_accessors.sh"
+source "$LIB/versions.sh"   # shared version oracle (installed/available/classify/reconcile)
 
 trap 'err "ERR line $LINENO: $BASH_COMMAND (exit=$?)"' ERR
 
@@ -89,21 +90,29 @@ EOF
 }
 
 # --- summary recording -------------------------------------------------------
-# record_row svc strategy result reverify
+# record_row svc strategy result reverify [version]
+# Stored order: svc <TAB> strategy <TAB> result <TAB> version <TAB> reverify.
+# `version` is the installed before→after string (VER column); 5th arg is optional
+# (defaults "-") so existing 4-arg callers (host globals) keep working unchanged.
 record_row() {
-  SUMMARY+=("$1	$2	$3	$4")
+  local ver="${5:--}"
+  SUMMARY+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$ver"$'\t'"$4")
 }
 
 print_summary() {
   printf '\n'
   hdr "Upgrade summary"
-  local fmt='%-22s %-16s %-16s %s\n'
-  printf "$fmt" SERVICE STRATEGY RESULT REVERIFY
-  printf "$fmt" "----------------------" "----------------" "----------------" "--------"
-  local row svc strat res rev
+  # VERSION shows installed before→after: a no-op reads e.g. '0.16.0' (unchanged),
+  # a real bump '0.16.0→0.18.0', an unverifiable path '-'. This is the honesty
+  # surface — even if REVERIFY says 'ok' (something is alive), VERSION shows
+  # whether the version actually moved (council finding #1).
+  local fmt='%-20s %-13s %-18s %-22s %s\n'
+  printf "$fmt" SERVICE STRATEGY RESULT VERSION REVERIFY
+  printf "$fmt" "--------------------" "-------------" "------------------" "----------------------" "--------"
+  local row svc strat res ver rev
   for row in "${SUMMARY[@]}"; do
-    IFS=$'\t' read -r svc strat res rev <<<"$row"
-    printf "$fmt" "$svc" "$strat" "$res" "$rev"
+    IFS=$'\t' read -r svc strat res ver rev <<<"$row"
+    printf "$fmt" "$svc" "$strat" "$res" "$ver" "$rev"
   done
 }
 
@@ -550,7 +559,17 @@ up_brew() {
     RESULT="planned"
     return 0
   fi
-  brew upgrade "$svc" || true            # no-op if already current
+  # Capture the exit code instead of swallowing it with `|| true`: a bottle
+  # download / formula-lock / TLS-MITM (Zscaler) failure MUST surface as FAILED,
+  # not a green 'upgraded' on the old binary (council finding #3). A genuine
+  # no-op ('already installed') still exits 0 → RESULT='upgraded' here, which the
+  # driver then reconciles to 'up-to-date' via the brew version delta.
+  local _brew_rc=0
+  brew upgrade "$svc" || _brew_rc=$?
+  if (( _brew_rc != 0 )); then
+    err "$svc: 'brew upgrade $svc' failed (rc=$_brew_rc) — NOT upgraded (bottle/download/proxy?). Old binary still installed."
+    RESULT=FAILED; return 0
+  fi
   if [[ "$svc" == ollama ]]; then
     # `brew upgrade ollama` REGENERATES the launchd plist and DROPS OLLAMA_HOST=0.0.0.0,
     # rebinding 127.0.0.1 so in-stack containers (LiteLLM via ollama:host-gateway) can no
@@ -563,7 +582,13 @@ up_brew() {
     # deps.sh fails to load or the function was renamed (review finding).
     declare -f _dep_ollama_patch_env >/dev/null 2>&1 || source "$LIB/deps.sh" 2>/dev/null || true
     if declare -f _dep_ollama_patch_env >/dev/null 2>&1; then
-      _dep_ollama_patch_env || warn "$svc: OLLAMA_HOST re-assert failed — check 'lsof -nP -iTCP:11434' (want *:11434), then 'vz-ai-stack.sh doctor ollama_models'"
+      # The 0.0.0.0 rebind is LOAD-BEARING: if it fails, every in-container local-*
+      # model 500s and a loopback health probe can't see it. Surface it as FAILED,
+      # not a warn behind a green row (council finding #3).
+      if ! _dep_ollama_patch_env; then
+        err "$svc: OLLAMA_HOST=0.0.0.0 re-assert FAILED — in-container local-* models will 500. Fix: 'lsof -nP -iTCP:11434' (want *:11434), then 'vz-ai-stack.sh doctor ollama_models'"
+        RESULT=FAILED; return 0
+      fi
     else
       warn "$svc: could not load deps.sh to re-assert OLLAMA_HOST — falling back to brew services restart (may rebind 127.0.0.1; LiteLLM local-* models would 500)"
       brew services restart "$svc" || true
@@ -571,7 +596,7 @@ up_brew() {
   else
     brew services restart "$svc" || true
   fi
-  RESULT="upgraded"
+  RESULT="upgraded"   # driver reconciles to 'up-to-date' when the brew version string didn't move
 }
 
 up_openshell() {
@@ -600,12 +625,34 @@ up_openshell() {
         : # dry-run: NO live sandbox probe (a dry-run must change/touch nothing)
         RESULT="planned"; return 0
       fi
-      openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'python3 -m pip install --upgrade hermes-agent' || true
+      # Do NOT swallow the pip result with `|| true` then claim 'upgraded' off the
+      # phase re-run (council finding #2, hermes 0.16→0.18 miss). Capture the exit
+      # code AND parse pip's own outcome so RESULT reflects what actually happened
+      # to the version — the installed hermes lives inside the sandbox, so
+      # svc_installed_version can't read it and reconcile can't help here.
+      local _pip_rc=0 _pip_out
+      _pip_out="$(openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1)" || _pip_rc=$?
+      printf '%s\n' "$_pip_out" | tail -5
       script="$(resolve_phase_script_inline "$phase")"
       if [[ -z "$script" ]]; then
         err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0
       fi
-      if bash "$script"; then RESULT="upgraded"; else RESULT=FAILED; fi
+      if (( _pip_rc != 0 )); then
+        # PyPI 403 through the proxy / expired sandbox token / resolver conflict:
+        # hermes was NOT upgraded. Re-assert config (best-effort) but report the truth.
+        warn "$svc: in-sandbox 'pip install --upgrade hermes-agent' FAILED (rc=$_pip_rc) — hermes NOT upgraded (PyPI 403 via proxy? sandbox token expired?). Pre-stage a tarball like Phase 15, or re-run 'install 04f'."
+        bash "$script" >/dev/null 2>&1 || true
+        RESULT="FAILED (pip)"; return 0
+      fi
+      local _newv
+      _newv="$(sed -n 's/.*Successfully installed[^,]*hermes-agent-\([0-9][^ ]*\).*/\1/p' <<<"$_pip_out" | tail -1)"
+      if [[ -n "$_newv" ]]; then note "$svc: hermes-agent now $_newv (pip)"; fi
+      # Trust pip's own report of what changed rather than the always-green phase re-run.
+      if   grep -q 'Successfully installed' <<<"$_pip_out"; then RESULT="upgraded"
+      elif grep -qi 'already satisfied'     <<<"$_pip_out"; then RESULT="up-to-date"
+      else RESULT="done (unverified)"; fi
+      # Still re-assert the gateway/profile config via the phase; a phase failure is real.
+      if ! bash "$script"; then RESULT=FAILED; fi
       ;;
     hermes_telegram)
       # Shares hermes-fleet-v1 with hermes_fleet — NEVER pip here. Just re-assert
@@ -778,6 +825,12 @@ upgrade_one() {
   RESULT=""
   STRATEGY=""
 
+  # Capture the installed version BEFORE the mutation so we can prove afterwards
+  # whether it actually moved (council finding #1: the summary must never imply a
+  # bump that didn't happen). Local/cheap probe; "-" when not knowable.
+  local VER_BEFORE VER_AFTER
+  VER_BEFORE="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+
   case "$type" in
     docker)                                  up_docker "$svc" ;;
     compose|docker-compose)                  up_compose "$svc" ;;
@@ -798,19 +851,31 @@ upgrade_one() {
       ;;
   esac
 
-  # Dry-run, manual, skip, and FAILED paths don't get a live reverify.
+  # Reconcile the OPTIMISTIC handlers (they set 'upgraded' on any exit-0) against
+  # the observed installed-version delta, so a no-op can't masquerade as a bump.
+  # docker/compose keep their own digest logic; up_openshell already set an
+  # honest RESULT from pip's real outcome; phase-rerun stays 're-asserted'.
+  VER_AFTER="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+  case "$STRATEGY" in
+    brew|npm-global|uv-venv|git-pull)
+      RESULT="$(reconcile_result "$RESULT" "$VER_BEFORE" "$VER_AFTER")"
+      ;;
+  esac
+  # Build the VERSION display: unchanged → just the version; a real move →
+  # before→after; unknowable → '-'.
+  local verdisp
+  if [[ "$VER_BEFORE" == "$VER_AFTER" ]]; then verdisp="$VER_BEFORE"; else verdisp="$VER_BEFORE→$VER_AFTER"; fi
+  [[ -z "$verdisp" ]] && verdisp="-"
+
+  # Dry-run, manual, skip, planned, and FAILED paths don't get a live reverify.
   local rev="-"
   if (( DRY == 0 )); then
     case "$RESULT" in
-      upgraded|up-to-date|re-asserted)
-        rev="$(reverify "$svc" "$STRATEGY")"
-        ;;
-      *)
-        rev="-"
-        ;;
+      FAILED*|skipped*|manual|planned) rev="-" ;;
+      *) rev="$(reverify "$svc" "$STRATEGY")" ;;
     esac
   fi
-  record_row "$svc" "$STRATEGY" "$RESULT" "$rev"
+  record_row "$svc" "$STRATEGY" "$RESULT" "$rev" "$verdisp"
 }
 
 # --- main --------------------------------------------------------------------
