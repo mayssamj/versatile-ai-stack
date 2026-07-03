@@ -17,7 +17,7 @@ ok(){  PASS=$((PASS+1)); echo "  ok   $1"; }
 bad(){ FAIL=$((FAIL+1)); echo "  FAIL $1"; }
 
 echo "== up_phase_rerun exports the flag the gate keys on =="
-grep -qE 'AI_STACK_UPGRADE=1 bash "\$script"' "$UPG" && ok "up_phase_rerun runs the phase with AI_STACK_UPGRADE=1" || bad "up_phase_rerun does not set AI_STACK_UPGRADE=1"
+grep -qE 'AI_STACK_UPGRADE=1 "\$BASH" "\$script"' "$UPG" && ok "up_phase_rerun runs the phase with AI_STACK_UPGRADE=1" || bad "up_phase_rerun does not set AI_STACK_UPGRADE=1"
 
 echo "== INVARIANT: EVERY phase that runs a live smoke_sim.py gates it on AI_STACK_UPGRADE before stamp_mark =="
 mapfile -t SIM_PHASES < <(grep -lE '_simout=.*smoke_sim\.py' "$ROOT"/installer/phases/*.sh 2>/dev/null | sort)

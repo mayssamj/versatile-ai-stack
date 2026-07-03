@@ -163,6 +163,18 @@ nv coolpkg     1.4.0
 nv @scope/pkg  2.0.1     # scoped name contains '/' — a sed-based probe would break here
 nv ghostpkg    ""        # npm exits 1 + {"name":"lib"} → empty, no set -e/pipefail abort
 
+echo "== _compose_lone_semver_tag (compose pinned-tag; host:port & multi-tag safe) =="
+ct(){ local got; got="$(_compose_lone_semver_tag "$1")"; [[ "$got" == "$2" ]] && ok "lone-tag → '${got:-<none>}'" || bad "lone-tag='$got' expected '$2'"; }
+ct "nousresearch/hermes-agent:v2026.6.19@sha256:9f367
+hermes-workspace:aistack-hardened" "v2026.6.19"   # 1 semantic tag + a local-build → the tag
+ct "a:v1.0
+b:v2.0"                    ""                       # two semantic tags → ambiguous → none
+ct "a:latest
+b:stable"                  ""                       # non-semantic tags → none
+ct "localhost:5000/foo/bar" ""                      # registry host:port, NO tag → must NOT read "5000/…"
+ct "registry:5000/x:v3.1.4" "v3.1.4"                # host:port WITH a real tag → the tag
+ct "img@sha256:deadbeef"    ""                       # digest-only, no tag → none
+
 echo "== _iv_compose image-ID fallback: a rebuild (id change) MOVES the fingerprint =="
 export T_IMG_ID=v1; cfp1="$(_iv_compose t_compose)"; cfp1b="$(_iv_compose t_compose)"
 export T_IMG_ID=v2; cfp2="$(_iv_compose t_compose)"

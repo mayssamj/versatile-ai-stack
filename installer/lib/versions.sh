@@ -185,6 +185,22 @@ _iv_compose() {
   printf '%s imgs (%s)' "$n" "$fp"
 }
 
+# _compose_lone_semver_tag <newline-separated image refs> — echo the SOLE semantic
+# version tag among them (e.g. "v2026.6.19"), or "" if zero or >1 carry one. A real tag
+# has no '/', so a registry host:port with no explicit tag (localhost:5000/foo) is NOT a
+# tag. Lets check_one surface "N imgs (v2026.6.19)" for a single-pinned compose stack.
+_compose_lone_semver_tag() {
+  local st="" sn=0 im ref tag
+  while IFS= read -r im; do
+    [[ -z "$im" ]] && continue
+    ref="${im%@*}"; tag="${ref##*:}"
+    [[ "$tag" == "$ref" ]] && continue      # no ':' → no tag
+    [[ "$tag" == */* ]] && continue         # the ':' was a registry host:port, not a tag
+    [[ "$tag" =~ ^v?[0-9] ]] && { st="$tag"; sn=$((sn+1)); }
+  done <<< "$1"
+  (( sn == 1 )) && printf '%s' "$st"
+}
+
 # _npm_global_version <pkg> — installed version of a global npm package, or "" if
 # absent. --json + python (not sed) so a scoped name (@scope/pkg) with a '/' is safe;
 # pkg is passed as argv, never interpolated into the program. Lives here (the shared,
