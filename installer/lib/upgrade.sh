@@ -892,7 +892,7 @@ upgrade_one() {
   local verdisp
   if   [[ -n "$VER_OVERRIDE" ]];            then verdisp="$VER_OVERRIDE"
   elif [[ "$VER_BEFORE" == "$VER_AFTER" ]]; then verdisp="$VER_BEFORE"
-  else                                           verdisp="$VER_BEFORE→$VER_AFTER"; fi
+  else                                           verdisp="${VER_BEFORE}→${VER_AFTER}"; fi
   [[ -z "$verdisp" ]] && verdisp="-"
 
   # Dry-run, manual, skip, planned, and FAILED paths don't get a live reverify.

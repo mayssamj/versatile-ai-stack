@@ -24,7 +24,7 @@ hosts_block_diagnose() {
     if [[ -z "$got" ]]; then
       missing+=("$a")
     elif [[ "$got" != "${ALIAS_IP[$a]}" ]]; then
-      wrong+=("$a→$got expected ${ALIAS_IP[$a]}")
+      wrong+=("${a}→${got} expected ${ALIAS_IP[$a]}")
     fi
   done
 

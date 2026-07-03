@@ -4,6 +4,32 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-02 — `upgrade <svc>` no longer crashes on a real version move (`$var→` glue) + a doctor guard so it can't recur
+
+Operator report: `upgrade hermes_workspace` did all its real work (build / pull /
+recreate — containers came up healthy) and then **aborted** with
+`installer/lib/upgrade.sh: line 895: VER_BEFORE<byte>: unbound variable`. Root cause:
+line 895 rendered the VERSION column as `verdisp="$VER_BEFORE→$VER_AFTER"` — a **bare
+`$var` glued to the multibyte `→`**. In a UTF-8 locale (the default terminal), bash
+absorbs the arrow's lead byte into the variable name and, under `set -u`, dies. It
+fired *only* on the else-branch (a genuine version **move**, `VER_BEFORE != VER_AFTER`)
+and *only* in a UTF-8 locale, so every offline / `LC_ALL=C` test sailed past it —
+reproduced here on bash 3.2.57 and 5.3.9.
+
+- **Fix (2 lines):** brace-delimit — `verdisp="${VER_BEFORE}→${VER_AFTER}"`
+  (`installer/lib/upgrade.sh`) and the one sibling a byte-accurate sweep found,
+  `installer/doctor/checks/15_hosts_block.sh` (`"${a}→${got} …"`). Those were the only
+  two occurrences repo-wide (independently re-swept by two reviewers).
+- **Never-again:** shared scanner `installer/lib/lint_glued_var.sh` +
+  `installer/tests/test_no_glued_multibyte_var.sh` (with a self-check so a silently
+  broken scan can't pass vacuously — macOS `grep -P` no-ops on byte ranges) + **doctor
+  check 72** (`no_glued_multibyte_var`) so the invariant is re-asserted on every
+  `doctor`, not only when someone remembers the test. Doctor **72 → 73**.
+- §24 council (12 agents) reviewed the fix (unanimous — reproduced end-to-end, sweep
+  confirmed complete) and independently hunted the upgrade command for other latent
+  bugs; the QA REQUEST_CHANGES ("the guard must actually run") is what the doctor check
+  resolves.
+
 ## 2026-07-02 — `upgrade` stops lying about success + version visibility (`status --versions`)
 
 Operator report: `upgrade all` said done, but hermes stayed at 0.16.x while 0.18.0
