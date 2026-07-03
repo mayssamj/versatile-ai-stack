@@ -71,7 +71,10 @@ _hermes_agent_current_pin() {
 # skips the upgrade-only sidebar gate on an unreviewed image. Prints the chosen ref to stdout.
 _hermes_agent_choose_image() {
   if [[ "${AI_STACK_UPGRADE:-}" == "1" ]]; then
-    log "upgrade: resolving the latest hermes-agent release (bounded; falls back to the pinned default if the registry is blocked)…"
+    # NOTE: this fn's STDOUT is captured as the image ref — every diagnostic MUST go to stderr.
+    # `log`/`ok`/`note` print to stdout (only `warn`/`err` are >&2), so `log … >&2` here, else the
+    # timestamp line is captured into the ref and poisons the compose override (live-caught bug).
+    log "upgrade: resolving the latest hermes-agent release (bounded; falls back to the pinned default if the registry is blocked)…" >&2
     _hermes_agent_latest_ref; return 0
   fi
   local pin; pin="$(_hermes_agent_current_pin)"

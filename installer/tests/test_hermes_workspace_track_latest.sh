@@ -94,4 +94,19 @@ out7="$(
   || bad "fresh install wrong (got: '$out7', network_called=$([[ -f "$flag" ]] && echo yes || echo no))"
 rm -f "$flag"
 
+# 8. LOG-LEAK GUARD (live-caught bug): _hermes_agent_choose_image's STDOUT is captured as the
+#    image ref, so any diagnostic MUST go to stderr. Stub `log` to write to STDOUT exactly like
+#    the REAL log() does (common.sh has no >&2 on log) — the captured ref must be ONLY the
+#    resolved image, never the log line glued on. (The other cases stub log(){ :; }, which is
+#    precisely why 153 offline assertions missed this; here we reproduce the real stream.)
+out8="$(
+  HERMES_AGENT_DEFAULT="$DEF"; export AI_STACK_UPGRADE=1
+  log(){ printf '[ts] %s\n' "$*"; }                                  # REAL log → stdout (the trigger)
+  _hermes_agent_latest_ref(){ printf 'nousresearch/hermes-agent:v9.9.9@sha256:beef'; }
+  source <(sed -n '/^_hermes_agent_choose_image()/,/^}/p' "$P05"); _hermes_agent_choose_image
+)"
+[[ "$out8" == "nousresearch/hermes-agent:v9.9.9@sha256:beef" ]] \
+  && ok "choose_image on upgrade returns ONLY the ref (log → stderr, no capture leak)" \
+  || bad "choose_image LEAKED a stdout log line into the image ref (got: '$out8')"
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))
