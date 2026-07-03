@@ -4,6 +4,36 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-02 — `upgrade` honesty pass: five handlers that bypassed reconcile no longer over-claim "upgraded"
+
+A §24 council bug-hunt (following the `$var→` crash fix) found that five `upgrade`
+paths reported success they never verified — the same class the earlier honesty work
+targeted, but on handlers that never went through `reconcile_result`. Each was
+independently reproduced by an adversarial verifier and is now fixed:
+
+- **`upgrade meridian` / `claude-code`** (host npm globals) hardcoded `RESULT=upgraded`
+  and `VERSION=-`. `npm install -g …@latest` exits 0 even on a no-op, so an
+  already-current package read as a false "upgraded". Now probes the real installed
+  version before/after (`_npm_global_version`, `--json`+python for scoped names),
+  reconciles a no-op to `up-to-date`, and shows the real `before→after` in VERSION.
+- **`upgrade pi`** claimed "upgraded" on a phase-15 re-run that short-circuits to a
+  no-op; the in-sandbox hermes version isn't readable, so it now honestly reports
+  `re-asserted` (matching the sibling openshell cases).
+- **`upgrade chatdev`** (locally-built docker) claimed "upgraded" on any rebuild; now
+  compares the image ID before/after so a byte-identical rebuild reads `up-to-date`.
+- **`REVERIFY`** printed `warn` for a *successful* upgrade of a service with no health
+  URL (pi, hermes_fleet) — indistinguishable from a real probe failure. Now `n/a`.
+- **compose fingerprint** (`_iv_compose`) could be blind to local rebuilds on classic
+  dockerd/overlay2 (e.g. Colima), where a locally-built image has no RepoDigest → a
+  constant fingerprint → a real rebuild read `up-to-date`. Now falls back to the image
+  ID. Portability fix: on the **default OrbStack/containerd** backend a local build DOES
+  get a synthesized RepoDigest (verified against `ai-stack/chatdev:local`), so this path
+  does not trigger there — it is not a bug you'd hit on the stack's default runtime.
+
+Guards added to `test_upgrade_honesty.sh` (17 → 25). Deferred (noted for follow-up):
+the summary-always-prints EXIT-trap resilience (touches the lock lifecycle) and the
+`upgrade`-under-stripped-PATH bash-5 gate; the hermes pinned-tag display enhancement.
+
 ## 2026-07-02 — `upgrade <svc>` no longer crashes on a real version move (`$var→` glue) + a doctor guard so it can't recur
 
 Operator report: `upgrade hermes_workspace` did all its real work (build / pull /

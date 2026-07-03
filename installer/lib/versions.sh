@@ -171,11 +171,37 @@ _iv_compose() {
   while IFS= read -r im; do
     [[ -z "$im" ]] && continue
     n=$((n+1))
-    d="$(docker_local_digest "$im")"; digs+="${d##*@};"   # local RepoDigest (or empty)
+    d="$(docker_local_digest "$im")"
+    # A locally-built image lacks a RepoDigest ONLY on classic dockerd/overlay2 (e.g.
+    # Colima) — on the default OrbStack/containerd backend a local build DOES get a
+    # synthesized RepoDigest, so here this fallback is a portability no-op. WHERE it is
+    # empty, fall back to the image ID so a genuine rebuild still moves the fingerprint
+    # (otherwise the blank digest was constant → a real rebuild read 'up-to-date').
+    [[ -z "$d" ]] && d="$(docker image inspect --format '{{.Id}}' "$im" 2>/dev/null || true)"
+    digs+="${d##*@};"
   done <<< "$imgs"
   (( n == 0 )) && { echo "-"; return 0; }
   local fp; fp="$(printf '%s' "$digs" | cksum | awk '{print $1}')"
   printf '%s imgs (%s)' "$n" "$fp"
+}
+
+# _npm_global_version <pkg> — installed version of a global npm package, or "" if
+# absent. --json + python (not sed) so a scoped name (@scope/pkg) with a '/' is safe;
+# pkg is passed as argv, never interpolated into the program. Lives here (the shared,
+# sourceable oracle) so upgrade.sh's host-global reconcile can be unit-tested.
+_npm_global_version() {
+  local pkg="$1"
+  command -v npm >/dev/null 2>&1 || { printf ''; return 0; }
+  npm ls -g "$pkg" --depth=0 --json 2>/dev/null | python3 -c '
+import sys, json
+pkg = sys.argv[1]
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(""); sys.exit(0)
+dep = (d.get("dependencies") or {}).get(pkg) or {}
+print(dep.get("version", ""))
+' "$pkg" 2>/dev/null || true
 }
 
 _iv_brew() {

@@ -36,6 +36,12 @@ services:
   t_git:     { type: clone-only,   enabled: true, upgrade: { method: git-pull, dir: t_git_dir } }
 YML
 export SERVICES_YML="$FIX/services.yml"
+# compose fixture for the _iv_compose image-ID fallback test (absolute path so
+# svc_path → a real dir the function can cd into; the docker stub feeds its images).
+mkdir -p "$FIX/t_compose_dir"
+cat >> "$FIX/services.yml" <<YML
+  t_compose: { type: compose, enabled: true, path: "$FIX/t_compose_dir" }
+YML
 
 # fake venv python + git clone dir the oracle will probe
 mkdir -p "$FIX/t_pip_venv/bin" "$FIX/t_git_dir/.git"
@@ -58,6 +64,11 @@ case "$*" in
   "image inspect --format {{index .RepoDigests 0}} foo/roll:latest") echo "foo/roll@sha256:oldoldoldold0000" ;;
   "buildx imagetools inspect foo/roll:latest --format {{.Manifest.Digest}}") echo "sha256:newnewnewnew9999" ;;
   "buildx imagetools inspect foo/bar:1.2.3 --format {{.Manifest.Digest}}") echo "sha256:aaaa1111bbbb2222" ;;
+  # _iv_compose fixture: a locally-built image with NO RepoDigest (inspect fails) → the
+  # ID fallback fires; T_IMG_ID lets the test move the id to simulate a real rebuild.
+  "compose config --images") printf 't_img_a\n' ;;
+  "image inspect --format {{index .RepoDigests 0}} t_img_a") exit 1 ;;
+  "image inspect --format {{.Id}} t_img_a") echo "sha256:${T_IMG_ID:-aaaa}" ;;
   *) exit 0 ;;
 esac
 SH
@@ -79,6 +90,10 @@ cat > "$STUB/npm" <<'SH'
 case "$*" in
   "ls -g coolpkg --depth=0") printf '/usr/local/lib\n`-- coolpkg@1.4.0\n' ;;
   "view coolpkg version") echo "1.5.0" ;;
+  # --json form used by _npm_global_version (host-global reconcile probe)
+  "ls -g coolpkg --depth=0 --json")     printf '{"dependencies":{"coolpkg":{"version":"1.4.0"}}}\n' ;;
+  "ls -g @scope/pkg --depth=0 --json")  printf '{"dependencies":{"@scope/pkg":{"version":"2.0.1"}}}\n' ;;
+  "ls -g ghostpkg --depth=0 --json")    echo '{"name":"lib"}'; exit 1 ;;   # absent → npm exits 1
   *) exit 0 ;;
 esac
 SH
@@ -141,6 +156,19 @@ ia t_brew   0.5.1
 ia t_npm    1.4.0
 ia t_pip    2.3.4
 ia t_git    abc1234
+
+echo "== _npm_global_version (host-global reconcile input; --json, scoped-name & absent safe) =="
+nv(){ local pkg="$1" want="$2" got; got="$(_npm_global_version "$pkg")"; [[ "$got" == "$want" ]] && ok "_npm_global_version($pkg)='$got'" || bad "_npm_global_version($pkg)='$got' expected '$want'"; }
+nv coolpkg     1.4.0
+nv @scope/pkg  2.0.1     # scoped name contains '/' — a sed-based probe would break here
+nv ghostpkg    ""        # npm exits 1 + {"name":"lib"} → empty, no set -e/pipefail abort
+
+echo "== _iv_compose image-ID fallback: a rebuild (id change) MOVES the fingerprint =="
+export T_IMG_ID=v1; cfp1="$(_iv_compose t_compose)"; cfp1b="$(_iv_compose t_compose)"
+export T_IMG_ID=v2; cfp2="$(_iv_compose t_compose)"
+unset T_IMG_ID
+[[ "$cfp1" == "$cfp1b" ]] && ok "_iv_compose stable when the image ID is unchanged ('$cfp1')" || bad "_iv_compose unstable on identical id: '$cfp1' vs '$cfp1b'"
+[[ "$cfp1" != "$cfp2"  ]] && ok "_iv_compose fingerprint MOVES on an id change ('$cfp1' → '$cfp2')" || bad "_iv_compose fingerprint did NOT move on an id change (both '$cfp1') — fallback dead"
 
 echo "== Layer B: svc_available_version (upstream, stubbed) =="
 ib(){ local svc="$1" want="$2" got; got="$(svc_available_version "$svc" 2>/dev/null)"; [[ "$got" == *"$want"* ]] && ok "$svc available='$got' (contains $want)" || bad "$svc available='$got' expected ~ '$want'"; }
