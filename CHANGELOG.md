@@ -4,7 +4,38 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
-## 2026-07-02 — `upgrade` robustness: summary survives an abort · bash-5 gate · compose pinned-tag display
+## 2026-07-03 — fix: `upgrade hermes_fleet` couldn't reach its sandbox (missing `services.yml` field)
+
+Operator report: fleet Hermes stuck at v0.16.0 while PyPI has 0.18.0; `upgrade hermes_fleet`
+kept failing. Root cause: `hermes_fleet` in `services.yml` was **missing its `sandbox:` field**
+— the ONLY sandbox-based service without it (siblings `openshell`/`hermes_telegram`/
+`hermes_slack` declare `hermes-fleet-v1`, `pi` declares `pi-v1`). So `svc_sandbox hermes_fleet`
+returned `-`, and `up_openshell` ran `openshell sandbox exec -n "-" …` → a cryptic
+`"sandbox not found"` that the error hint misread as a PyPI 403. The honesty pass was working
+correctly — it reported `FAILED (pip)` rather than a false success — but the underlying pip
+bump never actually ran. (04f itself hardcodes `SANDBOX=hermes-fleet-v1`, which is why the
+*install* path worked while *upgrade* didn't.)
+
+- **Fix:** add `sandbox: hermes-fleet-v1` to `services.hermes_fleet` (matches every sibling +
+  the service's own description + 04f's hardcoded value).
+- **Guard:** `up_openshell` now fails LOUD on an empty/`-` sandbox with an actionable message
+  ("add `sandbox: …`") instead of the confusing "sandbox not found" + wrong PyPI-403 hint.
+- **Anti-downgrade (§24 council caught this):** the Sourcegraph MCP setup pinned
+  `hermes-agent[mcp]==0.16.0` — an EXACT pin that would silently DOWNGRADE a fleet upgraded to
+  0.18.0 back to 0.16.0 on every 04f re-run, while the summary still claimed "upgraded → 0.18.0".
+  Changed to a floor `>=0.16.0` (adds the [mcp] extra without moving the base version), and
+  `up_openshell` now re-reads the ACTUAL in-sandbox hermes version after the config re-assert
+  and reports `FAILED (reverted to X)` if it regressed below what pip installed — killing that
+  over-claim path.
+- **Regression tests:** `test_upgrade_exhaustive.sh` gains an assertion that every openshell/
+  hermes-profiles/sandbox-daemon service declares a non-empty `sandbox:` and that it matches
+  04f's hardcoded `SANDBOX=` (no two-sources-of-truth drift); new `test_hermes_fleet_sandbox_guard.sh`
+  behaviorally sources the real `up_openshell` and proves the empty-sandbox guard fires
+  (`RESULT=FAILED` + message + `openshell` never called). Teeth-verified.
+
+Token-minting verified untouched: the LiteLLM key mint in 04f is idempotent (re-mints only if
+the key is missing/invalid), and a failed run left `HERMES_LITELLM_KEY` + `LITELLM_MASTER_KEY`
+fingerprints unchanged and still validating 200.
 
 Finished the three deferred items from the honesty pass.
 
