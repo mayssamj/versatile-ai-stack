@@ -4,6 +4,27 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-03 — fix: revert workspace agent DEFAULT to v0.17.0 (v0.18.0 fail-closes fresh installs)
+
+The `upgrade hermes` feature bumped `HERMES_AGENT_DEFAULT` to v2026.7.1 (v0.18.0), but a live
+upgrade + a §24 investigation (both agents verified against the extracted v0.18.0 `web_server.py`
+and the workspace JS bundle) proved v0.18.0 is a BREAKING release for the workspace: it removed
+`HERMES_DASHBOARD_INSECURE`, so `should_require_auth(host)=host not in {127.0.0.1,localhost,::1}`
+→ a non-loopback (0.0.0.0) dashboard fail-closes (`SystemExit`) unless an auth provider is
+registered → `:9119` never binds → agent `unhealthy` → workspace UI down. The community workspace
+UI can only send `Authorization: Bearer` (no cookie-login code), so even basic-auth leaves
+`/api/sessions` 401 (empty sidebar). So v0.18.0 can't be the fresh-install/fallback default.
+
+- Revert `HERMES_AGENT_DEFAULT` → v2026.6.19 (=v0.17.0, the last workspace-compatible release).
+  Fresh installs + the offline/rate-limit fallback now land on the working v0.17.0 again.
+- `upgrade hermes_workspace` still re-resolves latest and, on that dashboard drift, fails LOUD
+  (compat re-verify → exit 1 → summary FAILED) rather than silently — honest, not a freeze.
+- Test case 1 now asserts the v0.17.0 digest; full suite green.
+
+PENDING (operator decision): the v0.18.0 workspace path — loopback+shared-netns (restores function,
+no auth, minimal) vs an auth-injecting proxy sidecar (genuine auth) vs stay on v0.17.0 — plus
+auto-rollback on compat-fail. See memory `project_upgrade_honesty_version_visibility`.
+
 ## 2026-07-03 — feat: `upgrade hermes` (one command, all surfaces) + workspace stops being frozen
 
 Operator directive: "I don't want to pin down hermes versions — `upgrade hermes` should get the
