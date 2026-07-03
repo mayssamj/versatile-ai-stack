@@ -51,4 +51,28 @@ res="up-to-date";   [[ "$res" == FAILED* ]] && bad "FAILED* false-matches 'up-to
 echo "== summary surfaces the version so a no-op is visible =="
 grep -q 'VERSION' "$UPG" && ok "print_summary has a VERSION column" || bad "no VERSION column in the summary"
 
+echo "== honesty pass: handlers that bypassed reconcile no longer over-claim 'upgraded' =="
+# (These are STATIC wiring guards, per this file's design. BEHAVIORAL tests for the
+#  sourceable helpers — _npm_global_version, _iv_compose — live in test_versions.sh.)
+VER="$ROOT/installer/lib/versions.sh"
+haveV(){ grep -qF "$1" "$VER"; }
+# pi: a phase re-run can't confirm the in-sandbox hermes version moved → 're-asserted', not 'upgraded'
+if have 'bash "$script"; then RESULT="upgraded"'; then bad "pi branch STILL claims a false 'upgraded' on an unconfirmable phase re-run"; else ok "pi phase re-run reports 're-asserted', not a false 'upgraded'"; fi
+# host npm globals (meridian/claude-code) bypass upgrade_one → must reconcile + carry a VERSION here
+haveV '_npm_global_version()' && ok "version probe _npm_global_version lives in the sourceable oracle (versions.sh)" || bad "_npm_global_version not defined in versions.sh"
+have '_npm_global_version' && ok "up_host_npm_global calls _npm_global_version" || bad "up_host_npm_global does not call the version probe"
+if grep -A40 'up_host_npm_global()' "$UPG" | grep -q 'reconcile_result'; then ok "up_host_npm_global reconciles a no-op to 'up-to-date'"; else bad "up_host_npm_global bypasses reconcile_result (false 'upgraded' on no-op)"; fi
+if grep -A40 'up_host_npm_global()' "$UPG" | grep -qF 'record_row "$name" npm-global "$RESULT" "$_rev" "$verdisp"'; then ok "up_host_npm_global records a real VERSION (before→after)"; else bad "up_host_npm_global still records VERSION '-'"; fi
+if grep -A40 'up_host_npm_global()' "$UPG" | grep -qF '_rev="n/a"'; then ok "host-npm success reports REVERIFY 'n/a' (not '-')"; else bad "host-npm success REVERIFY is not 'n/a'"; fi
+# local-built docker: compare image ID before/after; unknowable → 'done (unverified)', never blind 'upgraded'
+if grep -A22 'image_is_local_built "$image"' "$UPG" | grep -qF "docker image inspect --format '{{.Id}}'"; then ok "local-built docker compares image ID (identical rebuild → up-to-date)"; else bad "local-built docker over-claims 'upgraded' with no id compare"; fi
+if grep -A22 'image_is_local_built "$image"' "$UPG" | grep -qF 'done (unverified)'; then ok "local-built docker routes an unreadable id to 'done (unverified)', not a blind 'upgraded'"; else bad "local-built docker still defaults an unreadable id to 'upgraded'"; fi
+# reverify: a strategy with no probe reports 'n/a', not 'warn' (which reads as a failure)
+have 'echo "n/a"' && ok "reverify reports 'n/a' for no-probe strategies" || bad "reverify has no 'n/a' (a successful no-probe upgrade still reads 'warn')"
+if have 'echo warn   # brew/openshell/manual'; then bad "reverify STILL emits 'warn' for the no-probe case"; else ok "reverify no-probe case is no longer 'warn'"; fi
+# summary carries a REVERIFY legend so 'n/a' can't be misread as a failure
+have 'no probe for this type' && ok "print_summary documents the REVERIFY tokens (legend)" || bad "no REVERIFY legend in the summary"
+# compose fingerprint: fall back to image ID when RepoDigest is empty (real only on classic dockerd/overlay2)
+haveV "docker image inspect --format '{{.Id}}'" && ok "_iv_compose falls back to image ID (rebuild visible on classic dockerd/overlay2)" || bad "_iv_compose fingerprint still blind to local rebuilds"
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

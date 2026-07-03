@@ -56,7 +56,7 @@ JSON=0                # --json   : machine-readable check output
 ALL_ROWS=0            # --all    : include 'manual' (non-checkable) rows in --check
 PREFLIGHT=0           # 1 while printing the pre-upgrade version report (before mutating)
 NO_CHECK=0            # --no-check: skip the pre-upgrade version report (faster; e.g. offline)
-SUMMARY=()             # rows: "svc<TAB>strategy<TAB>result<TAB>reverify"
+SUMMARY=()             # rows: "svc<TAB>strategy<TAB>result<TAB>version<TAB>reverify"
 CHECK_ROWS=()          # rows: "svc<TAB>type<TAB>current<TAB>available<TAB>status"
 CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
 
@@ -125,6 +125,7 @@ print_summary() {
     IFS=$'\t' read -r svc strat res ver rev <<<"$row"
     printf "$fmt" "$svc" "$strat" "$res" "$ver" "$rev"
   done
+  note "VERSION: a value = installed (unchanged) · a→b = moved · - = unverifiable.   REVERIFY: ok = probe passed · warn = probe RAN and failed · n/a = no probe for this type (NOT a failure) · - = not probed (failed/skipped/dry-run)."
 }
 
 # --- image helpers -----------------------------------------------------------
@@ -321,7 +322,8 @@ recreate_via_start_script() {
 }
 
 # --- reverify (deterministic; registers NO doctor checks) --------------------
-# Echoes "ok" or "warn"; never aborts the run.
+# Echoes "ok", "warn" (probe RAN and failed), or "n/a" (no probe for this strategy);
+# never aborts the run. "n/a" must NOT read as a failure — it means "nothing to probe".
 reverify() {
   local svc="$1" strategy="$2" h
   h="$(svc_health "$svc")"
@@ -341,7 +343,7 @@ reverify() {
       fi
       ;;
     *)
-      echo warn   # brew/openshell/manual — no automated probe
+      echo "n/a"   # brew/openshell/phase-rerun w/ no health: URL — no probe exists (NOT a failure)
       ;;
   esac
 }
@@ -375,7 +377,19 @@ up_docker() {
     # Heads-up at the upgrade layer: the rebuild is a docker build (can take several
     # minutes), not a quick pull — so `upgrade all` doesn't look like it hung here.
     note "$svc: locally-built image ($image) — rebuilding via its start script (docker build; first build can take several minutes; no registry pull)…"
-    if recreate_via_start_script "$svc"; then RESULT="upgraded"; else RESULT=FAILED; fi
+    # A rebuild that produces a byte-identical image is a no-op — compare the image ID
+    # before/after so we don't over-claim 'upgraded' on an unchanged rebuild (STRATEGY
+    # stays 'docker' → reconcile_result skips it, so this is the only honesty backstop
+    # here). If either inspect fails (empty id) the delta is UNKNOWABLE → 'done
+    # (unverified)', never a blind 'upgraded' (same philosophy as reconcile_result).
+    local _bid _aid
+    _bid="$(docker image inspect --format '{{.Id}}' "$image" 2>/dev/null || true)"
+    if recreate_via_start_script "$svc"; then
+      _aid="$(docker image inspect --format '{{.Id}}' "$image" 2>/dev/null || true)"
+      if   [[ -z "$_aid" || -z "$_bid" ]]; then RESULT="done (unverified)"
+      elif [[ "$_aid" == "$_bid" ]];       then RESULT="up-to-date"
+      else                                      RESULT="upgraded"; fi
+    else RESULT=FAILED; fi
     return 0
   fi
 
@@ -610,7 +624,11 @@ up_openshell() {
       if [[ -z "$script" ]]; then
         err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0
       fi
-      if bash "$script"; then RESULT="upgraded"; else RESULT=FAILED; fi
+      # Phase 15 re-stages hermes in the pi sandbox but short-circuits to a no-op when
+      # already current; the in-sandbox version isn't readable (STRATEGY=openshell →
+      # reconcile can't help), so a phase exit-0 does NOT prove a version moved. Report
+      # 're-asserted' (honest; matches the sibling openshell cases), not a false 'upgraded'.
+      if bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
       ;;
     hermes_fleet)
       if (( DRY )); then
@@ -805,7 +823,10 @@ is_host_global() { local n="$1"; [[ "$n" == codex ]] && return 0; local p; for p
 # under set -e + the ERR trap, so a bare non-zero from the loop would abort the run.
 host_global_pkg() { local n="$1" p; for p in "${HOST_NPM_GLOBALS[@]}"; do [[ "${p%%:*}" == "$n" ]] && { printf '%s' "${p#*:}"; return 0; }; done; return 0; }
 
-# up_host_npm_global <name> — npm install -g <pkg>@latest; records its own summary row.
+# up_host_npm_global <name> — npm install -g <pkg>@latest; records its own summary row
+# WITH an honest RESULT + VERSION. These host globals bypass upgrade_one, so they miss
+# its reconcile — do it here: npm exits 0 even on a no-op ('changed 0 packages'), so
+# compare the real installed version before/after and only claim 'upgraded' on a move.
 up_host_npm_global() {
   local name="$1" pkg
   STRATEGY=npm-global; RESULT=""
@@ -817,16 +838,26 @@ up_host_npm_global() {
   pkg="$(host_global_pkg "$name")"
   if (( DRY )); then note "PLAN $name npm-global (host): npm install -g ${pkg}@latest"; record_row "$name" npm-global "planned" "-"; return 0; fi
   if ! command -v npm >/dev/null 2>&1; then record_row "$name" npm-global "skipped (no npm)" "-"; return 0; fi
+  local _before _after verdisp="-"
+  _before="$(_npm_global_version "$pkg")"
   if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; err "$name: npm install -g ${pkg}@latest failed"; fi
-  # Heads-up: the npm PACKAGE is upgraded but a running daemon/session keeps the OLD
-  # code until it restarts — surface the follow-up so the operator isn't surprised.
   if [[ "$RESULT" == "upgraded" ]]; then
-    case "$name" in
-      claude-code) note "claude-code upgraded on disk — restart your Claude Code session to run the new version." ;;
-      meridian)    note "meridian package upgraded — restart the daemon to run it: bash bin/start-meridian.sh" ;;
-    esac
+    _after="$(_npm_global_version "$pkg")"
+    RESULT="$(reconcile_result "$RESULT" "${_before:--}" "${_after:--}")"   # no-op → 'up-to-date'
+    if   [[ -n "$_after" && "$_after" != "$_before" ]]; then verdisp="${_before:--}→${_after}"
+    elif [[ -n "$_after" ]];                              then verdisp="$_after"; fi
+    # Restart heads-up ONLY on a real move (the package actually changed on disk).
+    if [[ "$RESULT" == "upgraded" ]]; then
+      case "$name" in
+        claude-code) note "claude-code upgraded on disk — restart your Claude Code session to run the new version." ;;
+        meridian)    note "meridian package upgraded — restart the daemon to run it: bash bin/start-meridian.sh" ;;
+      esac
+    fi
   fi
-  record_row "$name" npm-global "$RESULT" "-"
+  # host globals have no health probe → REVERIFY is 'n/a' on success, '-' on failure
+  # (mirrors upgrade_one: FAILED* gets no probe). 'n/a' must NOT read as a failure.
+  local _rev="n/a"; [[ "$RESULT" == FAILED* ]] && _rev="-"
+  record_row "$name" npm-global "$RESULT" "$_rev" "$verdisp"
 }
 
 up_manual_note() {
