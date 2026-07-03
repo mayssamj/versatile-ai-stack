@@ -252,6 +252,7 @@ services:
   hermes_fleet:
     enabled: true
     type: hermes-profiles
+    sandbox: hermes-fleet-v1   # the OpenShell sandbox it runs in — svc_sandbox() reads this; `upgrade` needs it to exec the in-sandbox pip bump (siblings openshell/hermes_telegram/hermes_slack declare it too)
     desc: "The 9-role Hermes engineering-team fleet in the hermes-fleet-v1 OpenShell sandbox"
     profiles: [hermes_manager, hermes_techlead, hermes_frontend_engineer, hermes_backend_engineer, hermes_ml_engineer, hermes_qa_test_engineer, hermes_reviewing_engineer, hermes_sre_engineer, hermes_incident_manager]
     phase: "04f"

@@ -696,6 +696,12 @@ up_openshell() {
       # code AND parse pip's own outcome so RESULT reflects what actually happened
       # to the version — the installed hermes lives inside the sandbox, so
       # svc_installed_version can't read it and reconcile can't help here.
+      # A missing 'sandbox:' in services.yml → svc_sandbox returns "-" → `exec -n "-"`
+      # dies with a cryptic "sandbox not found" that misreads as a PyPI 403. Fail CLEAR.
+      if [[ -z "$sandbox" || "$sandbox" == "-" ]]; then
+        err "$svc: no 'sandbox:' declared in services.yml → can't exec the in-sandbox pip upgrade. Add 'sandbox: hermes-fleet-v1' under services.$svc."
+        RESULT=FAILED; return 0
+      fi
       local _pip_rc=0 _pip_out
       _pip_out="$(openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1)" || _pip_rc=$?
       printf '%s\n' "$_pip_out" | tail -5
@@ -722,6 +728,18 @@ up_openshell() {
       else RESULT="done (unverified)"; fi
       # Still re-assert the gateway/profile config via the phase; a phase failure is real.
       if ! "$BASH" "$script"; then RESULT=FAILED; fi
+      # Honesty guard: the phase re-run (04f → Sourcegraph MCP setup) can DOWNGRADE hermes
+      # via a pinned pip install — a silent revert that would over-claim "upgraded → $VER_OVERRIDE".
+      # Re-read the ACTUAL in-sandbox version; if it regressed below what pip installed, tell
+      # the truth (never claim a bump that got reverted). §24 council finding.
+      if [[ -n "$VER_OVERRIDE" && "$RESULT" != FAILED* ]]; then
+        local _postv
+        _postv="$(openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'hermes --version 2>/dev/null' 2>/dev/null | sed -n 's/.*[vV]\([0-9][0-9.]*\).*/\1/p' | head -1)"
+        if [[ -n "$_postv" && "$_postv" != "$VER_OVERRIDE" ]]; then
+          warn "$svc: hermes is $_postv after the config re-assert, NOT the $VER_OVERRIDE that pip installed — a pinned dep (e.g. Sourcegraph MCP) reverted it."
+          RESULT="FAILED (reverted to $_postv)"; VER_OVERRIDE="$_postv"
+        fi
+      fi
       ;;
     hermes_telegram)
       # Shares hermes-fleet-v1 with hermes_fleet — NEVER pip here. Just re-assert

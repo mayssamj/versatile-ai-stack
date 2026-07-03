@@ -40,15 +40,17 @@
 #     same calls succeed when spaced). So ALL per-profile wiring runs inside ONE
 #     uploaded in-sandbox script via a SINGLE exec — ~3 relay opens, not ~50.
 #
-# Pin rationale (==0.16.0): matches the fleet's running Hermes (minimal-diff); the
-# only side effect is a starlette 1.3.1->1.0.1 downgrade that affects ONLY the
-# unused `hermes mcp serve` path.
+# Pin rationale (>=0.16.0, a FLOOR not ==): 0.16.0 is the first version with the
+# streamable-HTTP mcp client. An EXACT `==0.16.0` would DOWNGRADE a fleet upgraded to a
+# newer hermes (e.g. 0.18.0) back to 0.16.0 on every 04f re-run — a silent revert that
+# over-claims "upgraded" (§24 council caught this). The floor adds the [mcp] extra for
+# whatever hermes is already installed without moving the base version up or down.
 
 [[ -n "${_AI_STACK_MCP_SH:-}" ]] && return 0
 _AI_STACK_MCP_SH=1
 
 SG_TOKEN_FILE="$HOME/.sourcegraph-local/sg-token"
-SG_MCP_PIN="hermes-agent[mcp]==0.16.0"   # pulls mcp==1.26.0 (streamable_http)
+SG_MCP_PIN="hermes-agent[mcp]>=0.16.0"   # FLOOR (not ==): never downgrade the installed hermes; just add the [mcp] extra (streamable_http)
 
 # _sg_token_present — token exists AND is non-empty (`-s`, not just `-f`, so a
 # zero-byte token from a failed bootstrap doesn't pass and 401 at connect time).

@@ -37,6 +37,24 @@ for s in "${svcs[@]}"; do
 done
 (( gap == 0 )) && ok "all ${#svcs[@]} enabled services map to a real upgrade action (method or phase-rerun)"
 
+echo "== every sandbox-based service (openshell/hermes-profiles/sandbox-daemon) declares a 'sandbox:' =="
+# up_openshell runs the in-sandbox pip bump via `openshell sandbox exec -n "$(svc_sandbox)"`.
+# A missing sandbox: → svc_sandbox returns "-" → `exec -n "-"` → cryptic "sandbox not found"
+# that misreads as a PyPI 403 (the hermes_fleet 0.16→0.18 upgrade bug). Assert it's present.
+sb_gap=0
+for s in "${svcs[@]}"; do
+  t="$(yq -r ".services.\"$s\".type // \"unknown\"" "$SVC")"
+  case "$t" in openshell|hermes-profiles|sandbox-daemon) ;; *) continue ;; esac
+  sb="$(yq -r ".services.\"$s\".sandbox // \"-\"" "$SVC")"
+  [[ -n "$sb" && "$sb" != "-" ]] || { bad "$s ($t): no 'sandbox:' → upgrade's in-sandbox exec fails 'sandbox not found'"; sb_gap=1; }
+done
+(( sb_gap == 0 )) && ok "all sandbox-based services declare a 'sandbox:' field"
+# no two-sources-of-truth drift: 04f hardcodes SANDBOX=hermes-fleet-v1 while `upgrade` reads
+# svc_sandbox(services.yml). They must agree, or install and upgrade target different sandboxes.
+_svc_sb="$(yq -r '.services.hermes_fleet.sandbox // "-"' "$SVC")"
+_04f_sb="$(sed -n 's/^SANDBOX=//p' "$ROOT/installer/phases/04f_hermes_fleet.sh" | head -1)"
+[[ -n "$_svc_sb" && "$_svc_sb" != "-" && "$_svc_sb" == "$_04f_sb" ]] && ok "services.yml hermes_fleet.sandbox ($_svc_sb) == 04f SANDBOX literal — no drift" || bad "sandbox name drift: services.yml=[$_svc_sb] vs 04f SANDBOX=[$_04f_sb]"
+
 echo "== every manual-typed service WITHOUT an upgrade: block has a RESOLVABLE phase script =="
 # Guards the silent hole the first loop can't see: a `phase:` that points to a
 # NON-existent installer/phases/<id>_*.sh → up_phase_rerun degrades to the no-op
