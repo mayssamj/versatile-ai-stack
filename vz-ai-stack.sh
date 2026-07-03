@@ -763,7 +763,7 @@ run_phase() {
     return 1
   fi
   log "==> phase $p — $(basename "$script")"
-  bash "$script"
+  "$BASH" "$script"
 }
 
 # List every phase as `id  name` (what you can pass to `install`/`test`).
@@ -783,23 +783,23 @@ cmd_phases() {
   echo "Aliases: litellm=inference, telegram=hermes_telegram, slack=hermes_slack, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
 }
 
-cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; bash "$AI_STACK/installer/smoke/${id}.sh"; }
-cmd_status()  { bash "$AI_STACK/installer/lib/status.sh" "$@"; }
-cmd_model()   { bash "$AI_STACK/installer/lib/models.sh" "$@"; }
-cmd_embedding() { bash "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
-cmd_fleet()   { bash "$AI_STACK/installer/lib/fleet.sh" "$@"; }
+cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; "$BASH" "$AI_STACK/installer/smoke/${id}.sh"; }
+cmd_status()  { "$BASH" "$AI_STACK/installer/lib/status.sh" "$@"; }
+cmd_model()   { "$BASH" "$AI_STACK/installer/lib/models.sh" "$@"; }
+cmd_embedding() { "$BASH" "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
+cmd_fleet()   { "$BASH" "$AI_STACK/installer/lib/fleet.sh" "$@"; }
 cmd_hermes()  {   # config|slack = gateway admin (config durability + Slack allowlist); else run ONE agent
   # NB: 'config' and 'slack' are RESERVED sub-words here — a fleet role literally named config/slack
   # would be unreachable via `hermes <role>` (use the fleet runner directly). No real role uses them.
   case "${1:-}" in
     config) shift; source "$AI_STACK/installer/lib/hermes.sh"; hermes_cmd_config "$@" ;;
     slack)  shift; source "$AI_STACK/installer/lib/hermes.sh"; hermes_cmd_slack  "$@" ;;
-    *)      bash "$AI_STACK/installer/lib/fleet.sh" run "$@" ;;   # run ONE agent: vz-ai-stack.sh hermes <role> ["prompt"]
+    *)      "$BASH" "$AI_STACK/installer/lib/fleet.sh" run "$@" ;;   # run ONE agent: vz-ai-stack.sh hermes <role> ["prompt"]
   esac
 }
-cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
-cmd_ingress() { bash "$AI_STACK/installer/lib/ingress.sh" "$@"; }
-cmd_url()     { bash "$AI_STACK/bin/url" "$@"; }
+cmd_docker_engine() { "$BASH" "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
+cmd_ingress() { "$BASH" "$AI_STACK/installer/lib/ingress.sh" "$@"; }
+cmd_url()     { "$BASH" "$AI_STACK/bin/url" "$@"; }
 cmd_help() {
   # bare `help` → the full command list (same as --help; "what can I do?").
   if [[ -z "${1:-}" ]]; then usage; return 0; fi
@@ -808,16 +808,16 @@ cmd_help() {
   if is_subcommand "$1"; then usage_for "$1"; return 0; fi
   # `|| true`: help.sh exits non-zero on an unknown service — keep the friendly
   # message it prints, but don't let it trip the ERR trap into the user's output.
-  bash "$AI_STACK/installer/lib/help.sh" "$@" || true
+  "$BASH" "$AI_STACK/installer/lib/help.sh" "$@" || true
 }
-cmd_doctor()  { bash "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $?; }
-cmd_adopt()   { worktree_guard adopt; bash "$AI_STACK/installer/lib/adopt.sh" "$1"; }
+cmd_doctor()  { "$BASH" "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $?; }
+cmd_adopt()   { worktree_guard adopt; "$BASH" "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { run_foreground_server docker logs "$1" "${2:-}"; }   # `logs <ctr> -f` blocks; Ctrl-C/SIGTERM is a clean stop
-cmd_gc()      { worktree_guard gc; bash "$AI_STACK/installer/lib/gc.sh"; }
-cmd_cleanup() { bash "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default
-cmd_history() { bash "$AI_STACK/installer/lib/history.sh"; }
+cmd_gc()      { worktree_guard gc; "$BASH" "$AI_STACK/installer/lib/gc.sh"; }
+cmd_cleanup() { "$BASH" "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default
+cmd_history() { "$BASH" "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
-cmd_upgrade() { worktree_guard upgrade; bash "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree
+cmd_upgrade() { worktree_guard upgrade; "$BASH" "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree
 # run_foreground_server <cmd> [args...] — run a long-running FOREGROUND command that
 # blocks until the user stops it: the doc servers (tutorial-serve / models-serve /
 # fleet-studio / understand-dashboard) and `logs <ctr> -f`. Stopping such a command
@@ -837,15 +837,15 @@ run_foreground_server() {
   return "$rc"
 }
 # Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
-cmd_tutorial_serve() { run_foreground_server bash "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
+cmd_tutorial_serve() { run_foreground_server "$BASH" "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 # Serves doc/MODELS.html (the Model & Agent Console) + a loopback proxy that wraps the
 # `model` CLI to view/stage/apply model + agent-binding changes. Apply may restart the
 # live LiteLLM — run from MAIN (warns if a worktree); --read-only is safe anywhere.
-cmd_models_serve() { run_foreground_server bash "$AI_STACK/installer/lib/models-serve.sh" "$@"; }
+cmd_models_serve() { run_foreground_server "$BASH" "$AI_STACK/installer/lib/models-serve.sh" "$@"; }
 # Serves doc/FLEET.html on loopback to review+edit agent-profiles/ in a browser.
-cmd_fleet_studio() { run_foreground_server bash "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
+cmd_fleet_studio() { run_foreground_server "$BASH" "$AI_STACK/installer/lib/fleet-studio.sh" "$@"; }
 # Serves the Understand-Anything knowledge-graph dashboard (Phase 30) for a repo.
-cmd_understand_dashboard() { run_foreground_server bash "$AI_STACK/installer/lib/understand-dashboard.sh" "$@"; }
+cmd_understand_dashboard() { run_foreground_server "$BASH" "$AI_STACK/installer/lib/understand-dashboard.sh" "$@"; }
 
 # cmd_start <svc> — invoke bin/start-<svc>.sh (the canonical per-service
 # launcher). All managed services have one. For docker-compose services
@@ -1012,7 +1012,7 @@ cmd_start() {
   svc_type="$(SVC="$svc" yq -r '.services[strenv(SVC)].type // ""' "$SERVICES_YML" 2>/dev/null || true)"
 
   local script="$AI_STACK/bin/start-${svc}.sh"
-  # Gate on -f (exists), not -x: we invoke via `bash "$script"`, so the +x bit is
+  # Gate on -f (exists), not -x: we invoke via "$BASH" "$script", so the +x bit is
   # irrelevant — and gating on -x silently mis-routes a present-but-non-executable
   # script (e.g. a perms slip in an edit) to the "no start script" error path.
   if [[ -f "$script" ]]; then
@@ -1031,7 +1031,7 @@ cmd_start() {
     # not tee's. Verified: a script that exits 7 yields rc=7 and does NOT abort here.
     local rc=0 tmp_out captured
     tmp_out="$(mktemp)"
-    bash "$script" "${@:2}" 2>&1 | tee "$tmp_out" || rc=$?
+    "$BASH" "$script" "${@:2}" 2>&1 | tee "$tmp_out" || rc=$?
     captured="$(cat "$tmp_out")"
     rm -f "$tmp_out"
     if (( rc != 0 )); then
@@ -1115,8 +1115,8 @@ cmd_stop() {
   worktree_guard stop
 
   local script="$AI_STACK/bin/stop-${svc}.sh"
-  if [[ -f "$script" ]]; then   # -f not -x: invoked via `bash`, +x is irrelevant
-    exec bash "$script"
+  if [[ -f "$script" ]]; then   # -f not -x: invoked via "$BASH", +x is irrelevant
+    exec "$BASH" "$script"
   fi
   if docker inspect "$svc" >/dev/null 2>&1; then
     log "No bin/stop-${svc}.sh — using 'docker stop $svc'"
@@ -1218,14 +1218,14 @@ cmd_verify() {
   preflight   # Re-uses install-time preflight (docker reachable, tools present).
   hdr "Runtime verification sweep"
   note "Phase 00·V probes (state-free, ~10s)..."
-  bash "$AI_STACK/installer/phases/00v_verify.sh"
+  "$BASH" "$AI_STACK/installer/phases/00v_verify.sh"
   local v_rc=$?
   echo
   note "Doctor checks 19–22 (alias/DNS/ownership)..."
-  bash "$AI_STACK/installer/doctor/doctor.sh" lo0_aliases    || true
-  bash "$AI_STACK/installer/doctor/doctor.sh" container_alias_routable || true
-  bash "$AI_STACK/installer/doctor/doctor.sh" container_dns_in_network || true
-  bash "$AI_STACK/installer/doctor/doctor.sh" etc_hosts_ownership      || true
+  "$BASH" "$AI_STACK/installer/doctor/doctor.sh" lo0_aliases    || true
+  "$BASH" "$AI_STACK/installer/doctor/doctor.sh" container_alias_routable || true
+  "$BASH" "$AI_STACK/installer/doctor/doctor.sh" container_dns_in_network || true
+  "$BASH" "$AI_STACK/installer/doctor/doctor.sh" etc_hosts_ownership      || true
   echo
   if (( v_rc == 0 )); then
     ok "Runtime verification PASSED. Safe to run: bash vz-ai-stack.sh"
@@ -1237,7 +1237,7 @@ cmd_verify() {
 }
 
 cmd_migrate_v2() {
-  bash "$AI_STACK/installer/migrations/v1_to_v2.sh"
+  "$BASH" "$AI_STACK/installer/migrations/v1_to_v2.sh"
 }
 
 cmd_apply_restarts() {
@@ -1281,7 +1281,7 @@ cmd_reset() {
     esac
   done
   worktree_guard reset   # tears down / re-binds data paths under $AI_STACK — never from a worktree
-  bash "$AI_STACK/installer/lib/reset.sh" "$tier"
+  "$BASH" "$AI_STACK/installer/lib/reset.sh" "$tier"
 }
 
 summary_end_of_install() {

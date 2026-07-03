@@ -27,8 +27,21 @@
 #     bills the subscription/metered route when its precheck doesn't short-circuit.
 #   - Registers NO doctor checks → the doctor invariant is untouched.
 #
-# This runs as its OWN process (vz-ai-stack.sh dispatches `bash upgrade.sh "$@"`),
+# This runs as its OWN process (vz-ai-stack.sh dispatches `"$BASH" upgrade.sh "$@"`),
 # so the lock's EXIT/INT/TERM trap (common.sh) cleanly removes LOCKDIR on exit.
+
+# bash 5+ required (inherit_errexit + assoc arrays). Self-gate: if invoked under macOS's
+# stock 3.2 — a stripped-PATH cron `bash upgrade.sh`, or any bare-`bash` dispatch — re-
+# exec under brew-bash BEFORE `shopt -s inherit_errexit` below would abort on it. Makes
+# the script robust regardless of caller AND guarantees $BASH (used for our OWN sub-
+# dispatches below) is the bash-5 path. Mirrors the vz-ai-stack.sh gate.
+if (( BASH_VERSINFO[0] < 5 )); then
+  for _c in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x "$_c" ]] && exec "$_c" "$0" "$@"
+  done
+  echo "upgrade.sh requires bash 5+ (macOS ships 3.2); run: brew install bash" >&2
+  exit 1
+fi
 
 set -Eeuo pipefail
 shopt -s inherit_errexit nullglob
@@ -57,6 +70,7 @@ ALL_ROWS=0            # --all    : include 'manual' (non-checkable) rows in --ch
 PREFLIGHT=0           # 1 while printing the pre-upgrade version report (before mutating)
 NO_CHECK=0            # --no-check: skip the pre-upgrade version report (faster; e.g. offline)
 SUMMARY=()             # rows: "svc<TAB>strategy<TAB>result<TAB>version<TAB>reverify"
+_SUMMARY_PRINTED=0     # idempotency guard: the explicit call AND the EXIT-trap both call print_summary
 CHECK_ROWS=()          # rows: "svc<TAB>type<TAB>current<TAB>available<TAB>status"
 CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
 
@@ -111,6 +125,10 @@ record_row() {
 }
 
 print_summary() {
+  # Idempotent: the explicit post-loop call AND the EXIT-trap safety net
+  # (upgrade_on_exit) may both invoke this — print exactly once.
+  (( _SUMMARY_PRINTED )) && return 0
+  _SUMMARY_PRINTED=1
   printf '\n'
   hdr "Upgrade summary"
   # VERSION shows installed before→after: a no-op reads e.g. '0.16.0' (unchanged),
@@ -126,6 +144,35 @@ print_summary() {
     printf "$fmt" "$svc" "$strat" "$res" "$ver" "$rev"
   done
   note "VERSION: a value = installed (unchanged) · a→b = moved · - = unverifiable.   REVERIFY: ok = probe passed · warn = probe RAN and failed · n/a = no probe for this type (NOT a failure) · - = not probed (failed/skipped/dry-run)."
+}
+
+# upgrade_on_exit — EXIT-trap safety net. GUARANTEES the honesty summary is printed even
+# if a bug aborts the run mid-loop (the `$var→` crash killed the whole run AND ate the
+# summary — the structural version of that bug), and releases the lock. It MUST be
+# trapped AFTER lock_acquire so it supersedes the lock's own EXIT trap (common.sh sets
+# `rm -rf LOCKDIR`); we redo that cleanup here. INT/TERM keep the lock trap (a user
+# interrupt doesn't need a summary). A `set -u` unbound abort is NOT catchable by
+# `|| handler` in a non-subshell (verified), so this EXIT trap — not a per-service
+# guard — is the only thing that can save the summary.
+upgrade_on_exit() {
+  local _rc=$?
+  # Subshell-isolate the print: even if print_summary itself aborts (the bug class this
+  # very net guards against), the lock is STILL released below.
+  (( ${#SUMMARY[@]} > 0 )) && ( print_summary ) || true
+  lock_release                                          # single source of truth (common.sh)
+  return "$_rc"
+}
+
+# _arm_upgrade_traps — install the mutate-phase signal handlers; call RIGHT AFTER
+# lock_acquire so it supersedes the lock's own EXIT/INT/TERM trap. EXIT: print the summary
+# + release the lock even on an abort. INT/TERM: STOP the run (exit 130/143) so the EXIT
+# trap then frees the lock + prints the partial — Ctrl-C must NOT release the lock and let
+# the loop keep mutating (a concurrency hazard). A function (not inline traps) so a test can
+# exercise the REAL arming instead of a hand-copied trap line.
+_arm_upgrade_traps() {
+  trap 'upgrade_on_exit' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 }
 
 # --- image helpers -----------------------------------------------------------
@@ -169,6 +216,14 @@ check_one() {
       done <<< "$imgs"
       (( n == 0 )) && { CHECK_STATUS="manual"; return 0; }   # only blank lines → nothing checked
       CHECK_CUR="${n} imgs"
+      # Surface a lone pinned semantic version (e.g. "2 imgs (v2026.6.19)") — the
+      # actionable fact the bare count hides — but only when it fits the CURRENT column.
+      # Display-only; the reconcile fingerprint in _iv_compose is untouched.
+      local _lt; _lt="$(_compose_lone_semver_tag "$imgs")"
+      if [[ -n "$_lt" ]]; then
+        local _cand="${n} imgs (${_lt})"
+        (( ${#_cand} <= 22 )) && CHECK_CUR="$_cand"
+      fi
       # Precedence: a confirmed registry update wins. Otherwise, any image we
       # couldn't digest-check (locally-built OR registry-unreachable) → 'rebuild':
       # for a compose stack the remediation is identical — `upgrade` runs
@@ -313,7 +368,7 @@ recreate_via_start_script() {
   local svc="$1" script
   for script in "$AI_STACK/bin/start-${svc}.sh" "$AI_STACK/bin/start-${svc//_/-}.sh"; do
     if [[ -x "$script" ]]; then
-      bash "$script" --recreate
+      "$BASH" "$script" --recreate
       return $?
     fi
   done
@@ -449,7 +504,7 @@ up_compose() {
         RESULT="planned"; return 0
       fi
       if (( DOCKER_OK == 0 )); then RESULT="skipped (docker unavailable)"; return 0; fi
-      if bash "$AI_STACK/bin/start-deerflow.sh" build; then RESULT="upgraded"; else RESULT=FAILED; fi
+      if "$BASH" "$AI_STACK/bin/start-deerflow.sh" build; then RESULT="upgraded"; else RESULT=FAILED; fi
       ;;
     autofyn)
       # start-autofyn.sh has NO pull — run pull && up -d directly in svc_path.
@@ -628,7 +683,7 @@ up_openshell() {
       # already current; the in-sandbox version isn't readable (STRATEGY=openshell →
       # reconcile can't help), so a phase exit-0 does NOT prove a version moved. Report
       # 're-asserted' (honest; matches the sibling openshell cases), not a false 'upgraded'.
-      if bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
+      if "$BASH" "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
       ;;
     hermes_fleet)
       if (( DRY )); then
@@ -652,7 +707,7 @@ up_openshell() {
         # PyPI 403 through the proxy / expired sandbox token / resolver conflict:
         # hermes was NOT upgraded. Re-assert config (best-effort) but report the truth.
         warn "$svc: in-sandbox 'pip install --upgrade hermes-agent' FAILED (rc=$_pip_rc) — hermes NOT upgraded (PyPI 403 via proxy? sandbox token expired?). Pre-stage a tarball like Phase 15, or re-run 'install 04f'."
-        bash "$script" >/dev/null 2>&1 || true
+        "$BASH" "$script" >/dev/null 2>&1 || true
         RESULT="FAILED (pip)"; return 0
       fi
       local _newv
@@ -666,7 +721,7 @@ up_openshell() {
       elif grep -qi 'already satisfied'     <<<"$_pip_out"; then RESULT="up-to-date"
       else RESULT="done (unverified)"; fi
       # Still re-assert the gateway/profile config via the phase; a phase failure is real.
-      if ! bash "$script"; then RESULT=FAILED; fi
+      if ! "$BASH" "$script"; then RESULT=FAILED; fi
       ;;
     hermes_telegram)
       # Shares hermes-fleet-v1 with hermes_fleet — NEVER pip here. Just re-assert
@@ -681,7 +736,7 @@ up_openshell() {
       fi
       # Re-running the phase re-asserts the gateway config; it does NOT bump a
       # version (no pip here) — so report 're-asserted', not a false 'upgraded'.
-      if TELEGRAM_NOPIP=1 bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
+      if TELEGRAM_NOPIP=1 "$BASH" "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
       ;;
     *)
       # Any other openshell-type without a special case: re-run its phase. This
@@ -694,7 +749,7 @@ up_openshell() {
       if [[ -z "$script" ]]; then
         err "$svc: cannot resolve phase $phase script"; RESULT=FAILED; return 0
       fi
-      if bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
+      if "$BASH" "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
       ;;
   esac
 }
@@ -746,7 +801,7 @@ up_phase_rerun() {
     RESULT="planned"; return 0
   fi
   note "$svc: re-running phase $phase to re-assert/upgrade (AI_STACK_UPGRADE=1)…"
-  if AI_STACK_UPGRADE=1 bash "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
+  if AI_STACK_UPGRADE=1 "$BASH" "$script"; then RESULT="re-asserted"; else RESULT=FAILED; fi
 }
 
 # up_npm_global <svc> — npm install -g <upgrade.target>@latest (+ optional restart).
@@ -988,6 +1043,7 @@ upgrade_main() {
   # A named host-global target (e.g. `upgrade meridian`) is handled standalone.
   if [[ -n "$target" && "$target" != "all" ]] && is_host_global "$target"; then
     lock_acquire
+    _arm_upgrade_traps   # EXIT keeps the summary+lock on an abort; INT/TERM stop the run (supersedes the lock's traps)
     hdr "Upgrade plan ($([[ $DRY == 1 ]] && echo dry-run || echo live))"
     up_host_npm_global "$target"
     print_summary
@@ -1057,6 +1113,7 @@ upgrade_main() {
 
   # --- mutate: acquire the lock and run the upgrade loop ---------------------
   lock_acquire
+  _arm_upgrade_traps   # EXIT keeps the summary+lock on an abort; INT/TERM stop the run (supersedes the lock's traps)
 
   hdr "Upgrade plan ($([[ $DRY == 1 ]] && echo dry-run || echo live))"
   local svc

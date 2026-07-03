@@ -4,6 +4,48 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-02 — `upgrade` robustness: summary survives an abort · bash-5 gate · compose pinned-tag display
+
+Finished the three deferred items from the honesty pass.
+
+- **The honesty summary always prints now, and Ctrl-C actually stops the run.**
+  `upgrade_main` ran each service under `set -Eeuo pipefail`; an abort in one service's
+  post-processing tail (the class the `$var→` crash belonged to) killed the whole run AND
+  ate the summary. An EXIT-trap safety net (`upgrade_on_exit`) now guarantees the
+  accumulated summary prints and the lock is released even on an unexpected abort — armed
+  **after** `lock_acquire` so it supersedes the lock's own EXIT trap, and it delegates lock
+  cleanup to a shared `common.sh:lock_release()` (single source of truth, no drift). The
+  print is subshell-isolated so the lock is freed even if `print_summary` *itself* aborts;
+  `print_summary` is idempotent so the normal path prints exactly once. INT/TERM now
+  `exit 130/143` → the run genuinely **stops** (previously Ctrl-C released the lock but the
+  loop ran on to completion — a silent concurrency hazard) and the EXIT trap still frees the
+  lock + prints the partial summary. A `set -u` unbound is NOT catchable by `|| handler` in a
+  non-subshell (verified), so this EXIT trap — not a per-service guard — is the only fix.
+- **bash-5 gate (complete).** Every sub-script dispatch in `vz-ai-stack.sh` AND in
+  `upgrade.sh` itself now runs via `"$BASH"` (the gated bash-5), not a bare PATH-resolved
+  `bash` — under a stripped PATH (cron/launchd) a bare `bash` resolved to macOS's 3.2 and
+  died on `shopt -s inherit_errexit`. Belt-and-suspenders: `upgrade.sh` also **self-gates**
+  (re-execs to bash-5 if invoked under 3.2), so it's robust regardless of caller. Proven
+  before/after under `env -i PATH=/usr/bin:/bin`. (The first pass missed `run_phase`,
+  `cmd_start`, `cmd_stop`, and upgrade.sh's own ~8 dispatch sites — the §24 council caught
+  the over-claim; the claim is now actually true.)
+- **Compose pinned-tag display.** `upgrade --check` on a compose stack surfaces a lone
+  semantic image tag in CURRENT — hermes_workspace reads `2 imgs (v2026.6.19)` instead of
+  the opaque `2 imgs` — via a sourceable `versions.sh:_compose_lone_semver_tag()` (a real
+  tag has no `/`, so a `localhost:5000/…` registry host:port is not mistaken for one; only
+  surfaced when it fits the 22-char column). Display-only — the reconcile fingerprint in
+  `_iv_compose` is untouched; >1 semantically-tagged image keeps `N imgs`.
+
+§24 council (3 reviewers) — all findings folded in: completed the bash-5 sweep + self-gate,
+fixed the Ctrl-C-doesn't-stop hazard, subshell-isolated the print, extracted `lock_release`,
+hardened the compose-tag parser, and rebuilt the tests with real teeth. New
+`test_upgrade_resilience.sh` (22 assertions; behavioral harnesses that source the REAL
+`_arm_upgrade_traps` — abort-survival, no-double-print, print-abort-lock-release,
+SIGTERM-stop) + `_compose_lone_semver_tag` behavioral tests in `test_versions.sh`. The
+mutate-phase signal handlers are a single `_arm_upgrade_traps()` (called after each
+`lock_acquire`) so the tests exercise the real arming, not a hand-copied trap line. All
+offline suites green.
+
 ## 2026-07-02 — `upgrade` honesty pass: five handlers that bypassed reconcile no longer over-claim "upgraded"
 
 A §24 council bug-hunt (following the `$var→` crash fix) found that five `upgrade`

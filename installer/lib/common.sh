@@ -97,9 +97,14 @@ lock_acquire() {
   done
   echo "$$" > "$LOCKDIR/pid"
   echo "$RUN_ID" > "$LOCKDIR/run-id"
-  # shellcheck disable=SC2064
-  trap "rm -rf '$LOCKDIR'" EXIT INT TERM
+  trap 'lock_release' EXIT INT TERM
 }
+
+# lock_release — remove the lock dir. SINGLE source of truth for lock cleanup, so a
+# caller that supersedes the EXIT trap (e.g. upgrade.sh's upgrade_on_exit) redoes the
+# cleanup by CALLING this, not by duplicating the rm — if lock cleanup ever grows beyond
+# the dir, both the lock trap and the superseding caller track it for free.
+lock_release() { rm -rf "$LOCKDIR" 2>/dev/null || true; }   # never let cleanup abort an EXIT trap
 
 # --- phase stamp files (Reviewer B #3, Adversarial #5) ----------------------
 # Stamps are an ADVISORY cache. Every phase has its own precheck() that
