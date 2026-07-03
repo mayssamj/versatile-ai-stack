@@ -24,8 +24,14 @@ WS_DIR="$AI_STACK/hermes-workspace"
 # (AI_STACK_UPGRADE=1) RE-RESOLVES the newest release and moves the pin forward — NO
 # permanent freeze — then re-verifies the sidebar so a drifted release fails LOUD.
 #   default = last-known-good INDEX digest (portable arm64/amd64; NOT :latest, NOT
-#             `docker image inspect .Id`). Offline fallback when the registry is blocked.
-HERMES_AGENT_DEFAULT="nousresearch/hermes-agent:v2026.7.1@sha256:b6c019227889e6675424a2b6223b2cafdd36bf7d1048d1ddd8e043b880d6cc0f"  # =v0.18.0
+#             `docker image inspect .Id`). Offline fallback + FRESH-install value.
+# PINNED AT v0.17.0 (NOT latest v0.18.0): v0.18.0 REMOVED HERMES_DASHBOARD_INSECURE — its
+# dashboard now fail-closes on a non-loopback bind (needs an auth provider), which the
+# community workspace UI can't satisfy (it only speaks Authorization: Bearer, no cookie
+# login) → agent unhealthy → UI down. v0.17.0 is the last workspace-compatible release; the
+# default MUST stay here until the v0.18.0 loopback+netns (or proxy-auth) path lands. `upgrade`
+# still re-resolves latest and, on that dashboard drift, fails LOUD (compat re-verify → exit 1).
+HERMES_AGENT_DEFAULT="nousresearch/hermes-agent:v2026.6.19@sha256:9f367c7756ef087661a361536a89f438d57a122b958dc23d82d456b1433e6e9e"  # =v0.17.0 (last workspace-compatible)
 HERMES_WS_BASE="ghcr.io/outsourc-e/hermes-workspace@sha256:2d2ba9aa5b1230766267322817e8e51113541780a5797802a582a47cc34a3df3"
 HERMES_WS_IMAGE="hermes-workspace:aistack-hardened"
 
