@@ -101,4 +101,28 @@ if grep -q 'up_manual_note "\$svc"; return 0' "$UPG"; then
   ok "up_manual_note retained only as the phase-rerun last-resort fallback"
 else bad "up_manual_note no longer reachable as a safe fallback"; fi
 
+echo "== 'upgrade hermes' group alias + workspace phase-rerun routing =="
+# collect_targets must expand the 'hermes' group DATA-DRIVEN from services.yml group:hermes tags.
+grep -q 'select(.value.group == "hermes")' "$UPG" \
+  && ok "collect_targets expands the 'hermes' group data-driven (group:hermes tag, no hardcoded list)" \
+  || bad "collect_targets 'hermes' group is not data-driven"
+# drift guard: all 4 surfaces carry the tag (add a hermes surface with group:hermes → it auto-joins).
+_hg="$(yq -r '.services | to_entries | .[] | select(.value.group == "hermes") | .key' "$SVC" | tr '\n' ' ')"
+[[ "$_hg" == *hermes_fleet* && "$_hg" == *hermes_workspace* && "$_hg" == *hermes_telegram* && "$_hg" == *hermes_slack* ]] \
+  && ok "group:hermes tags cover all 4 surfaces ($_hg)" \
+  || bad "group:hermes tags miss a surface (got: $_hg)"
+# the mutate path must ALSO accept 'hermes' (not error 'Unknown service').
+grep -q 'collect_targets targets hermes' "$UPG" \
+  && ok "mutate path resolves the 'hermes' group (not 'Unknown service')" \
+  || bad "mutate path would reject 'upgrade hermes' as Unknown service"
+# hermes_workspace (compose) overrides its type default with a phase-rerun so `upgrade`
+# re-resolves the LATEST agent image instead of blind-pulling the frozen pin.
+[[ "$(yq -r '.services.hermes_workspace.upgrade.method // "-"' "$SVC")" == "phase-rerun" ]] \
+  && ok "hermes_workspace declares upgrade.method=phase-rerun (re-resolve latest, not blind pull)" \
+  || bad "hermes_workspace missing upgrade.method=phase-rerun → upgrade would blind-pull the frozen pin"
+# upgrade_one must honor that override (svc_has_upgrade → up_by_method BEFORE the type case).
+grep -q 'if svc_has_upgrade "$svc"; then up_by_method "$svc"; else' "$UPG" \
+  && ok "upgrade_one routes an explicit upgrade: block over the type default" \
+  || bad "upgrade_one ignores explicit upgrade: blocks (hermes_workspace would hit up_compose)"
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

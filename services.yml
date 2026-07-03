@@ -252,6 +252,7 @@ services:
   hermes_fleet:
     enabled: true
     type: hermes-profiles
+    group: hermes              # `upgrade hermes` fans out to every service tagged group:hermes
     sandbox: hermes-fleet-v1   # the OpenShell sandbox it runs in — svc_sandbox() reads this; `upgrade` needs it to exec the in-sandbox pip bump (siblings openshell/hermes_telegram/hermes_slack declare it too)
     desc: "The 9-role Hermes engineering-team fleet in the hermes-fleet-v1 OpenShell sandbox"
     profiles: [hermes_manager, hermes_techlead, hermes_frontend_engineer, hermes_backend_engineer, hermes_ml_engineer, hermes_qa_test_engineer, hermes_reviewing_engineer, hermes_sre_engineer, hermes_incident_manager]
@@ -269,6 +270,7 @@ services:
   hermes_telegram:
     enabled: true # Phase 20 — native hermes gateway → Telegram (@vz_hermes_controller_bot)
     type: sandbox-daemon
+    group: hermes
     desc: "Hermes gateway inside the sandbox bridging the fleet to a Telegram bot"
     phase: "20"
     sandbox: hermes-fleet-v1
@@ -299,6 +301,7 @@ services:
   hermes_slack:
     enabled: true # Phase 38 (opt-in) — ai-stack Slack role router → Hermes fleet
     type: sandbox-daemon
+    group: hermes
     desc: "Hermes Slack role router inside the sandbox (Socket Mode, virtual roles + mission threads)"
     phase: "38"
     sandbox: hermes-fleet-v1
@@ -425,6 +428,7 @@ services:
   hermes_workspace:
     enabled: true
     type: compose
+    group: hermes
     desc: "Web UI for managing the Hermes fleet (profiles, load, memory state)"
     path: ~/ai-stack/hermes-workspace
     # Compose normalizes the project name to dashes — actual containers are
@@ -434,6 +438,11 @@ services:
     port: 3000
     bind: 127.0.0.1
     phase: "05"
+    # `upgrade` must RE-RESOLVE the latest hermes-agent release + rebuild — not blindly
+    # `compose pull` the currently-pinned image. Phase 05 (AI_STACK_UPGRADE=1) does the
+    # resolve→rebuild→sidebar-reverify; this block overrides the default compose handler.
+    upgrade:
+      method: phase-rerun
     open_url: http://workspace:3000
     alias: workspace
     host_ip: 127.0.10.10

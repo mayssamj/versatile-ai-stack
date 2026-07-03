@@ -277,6 +277,8 @@ ai-stack-installer — usage:
                                         pre-upgrade installed→available version report first
                                         (--no-check skips it), and the summary's VERSION column
                                         shows what actually moved — no more green 'upgraded' on a no-op.
+    vz-ai-stack.sh upgrade hermes           GROUP: upgrade EVERY hermes surface to latest
+                                        (fleet pip + workspace UI image + Telegram/Slack gateways)
     vz-ai-stack.sh upgrade --check [service|all]   READ-ONLY: installed vs available per service
                                         (docker registry digest / brew / npm / PyPI / git ls-remote;
                                         downloads nothing). npm/pip/git now show real versions, not 'manual'.

@@ -12,25 +12,72 @@ source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
+source "$AI_STACK/installer/lib/versions.sh"   # img_remote_digest (bounded via _vz_bounded) for the latest-release resolver
 
 PHASE=05
 WS_DIR="$AI_STACK/hermes-workspace"
 
-# --- Pinned image pair (no :latest drift) + the thin "hardened" workspace ---
-# Upstream ships hermes-agent and hermes-workspace as a PAIR but both float on
-# :latest and drift independently — that drift ({data} vs {items} sessions
-# shape) is what broke the sidebar. Pin both to verified-working digests.
-#   AGENT  = the STABLE release tag's MULTI-ARCH INDEX digest (portable across
-#            arm64/amd64). NOT :latest (re-pushed several times a day) and NOT
-#            `docker image inspect .Id` (the non-portable per-image config
-#            digest that 'manifest unknown's on amd64 / fresh pulls). = v0.17.0.
-#   WS_BASE= the index digest of hermes-workspace :latest at v2.2.0 (no semver
-#            image tag is published for it; :latest/:main share this digest).
-# Bump EITHER via:  docker buildx imagetools inspect <ref>  → the 'Digest:' line
-# (NOT docker image inspect). Re-verify the hardening sed target on a WS bump.
-HERMES_AGENT_IMAGE="nousresearch/hermes-agent:v2026.6.19@sha256:9f367c7756ef087661a361536a89f438d57a122b958dc23d82d456b1433e6e9e"
+# --- Hermes-agent image: TRACK LATEST on upgrade, pin for reproducibility ------
+# Upstream ships hermes-agent + hermes-workspace as a PAIR that both float on :latest and
+# drift independently ({data} vs {items} sessions shape → the sidebar crash). So we PIN a
+# specific multi-arch INDEX digest (reproducible), but `upgrade hermes`/`hermes_workspace`
+# (AI_STACK_UPGRADE=1) RE-RESOLVES the newest release and moves the pin forward — NO
+# permanent freeze — then re-verifies the sidebar so a drifted release fails LOUD.
+#   default = last-known-good INDEX digest (portable arm64/amd64; NOT :latest, NOT
+#             `docker image inspect .Id`). Offline fallback when the registry is blocked.
+HERMES_AGENT_DEFAULT="nousresearch/hermes-agent:v2026.7.1@sha256:b6c019227889e6675424a2b6223b2cafdd36bf7d1048d1ddd8e043b880d6cc0f"  # =v0.18.0
 HERMES_WS_BASE="ghcr.io/outsourc-e/hermes-workspace@sha256:2d2ba9aa5b1230766267322817e8e51113541780a5797802a582a47cc34a3df3"
 HERMES_WS_IMAGE="hermes-workspace:aistack-hardened"
+
+# _hermes_agent_latest_ref — newest nousresearch/hermes-agent RELEASE as
+# `repo:tag@sha256:<index-digest>`; falls back to HERMES_AGENT_DEFAULT when the GitHub
+# releases API or the registry is unreachable (Zscaler/proxy). Bounded via --max-time.
+_hermes_agent_latest_ref() {
+  local tag digest
+  # GitHub's purpose-built STABLE-latest endpoint (skips prereleases/drafts), bounded.
+  tag="$(curl -fsS --max-time 10 https://api.github.com/repos/NousResearch/hermes-agent/releases/latest 2>/dev/null \
+         | python3 -c 'import sys,json
+try:
+    d=json.load(sys.stdin); print(d.get("tag_name","") if isinstance(d,dict) else "")
+except Exception:
+    print("")' 2>/dev/null)" || true
+  if [[ "$tag" != v* ]]; then
+    # HONESTY: a silent fallback that looks identical to a live success is the exact over-claim
+    # this repo fought. `curl -f` treats a 403 rate-limit / blocked proxy as failure — SAY SO.
+    warn "hermes-agent: couldn't resolve the latest release (GitHub API blocked or rate-limited?) — using the pinned default ${HERMES_AGENT_DEFAULT#nousresearch/hermes-agent:}"
+    printf '%s' "$HERMES_AGENT_DEFAULT"; return 0
+  fi
+  # BOUNDED index-digest fetch (reuse the version oracle's helper — _vz_bounded hard-kills a
+  # blocked/hung registry, e.g. the corporate Zscaler proxy, so the upgrade never stalls).
+  digest="$(img_remote_digest "nousresearch/hermes-agent:$tag")" || true
+  if [[ "$digest" != sha256:* ]]; then
+    warn "hermes-agent: resolved release $tag but its registry digest is unreachable (blocked/Zscaler?) — using the pinned default ${HERMES_AGENT_DEFAULT#nousresearch/hermes-agent:}"
+    printf '%s' "$HERMES_AGENT_DEFAULT"; return 0
+  fi
+  printf 'nousresearch/hermes-agent:%s@%s' "$tag" "$digest"
+}
+
+# _hermes_agent_current_pin — the digest-pinned agent already in the override, or "".
+_hermes_agent_current_pin() {
+  local ovr="$WS_DIR/docker-compose.override.yml"
+  [[ -f "$ovr" ]] || { printf ''; return 0; }
+  yq -r '.services.hermes-agent.image // ""' "$ovr" 2>/dev/null | grep -E '^nousresearch/hermes-agent:.*@sha256:' || printf ''
+}
+
+# _hermes_agent_choose_image — the pin-vs-latest-vs-default decision, EXTRACTED so it's unit-testable
+# (QA §24): upgrade (AI_STACK_UPGRADE=1) → newest release; else the existing override pin
+# (reproducible re-install); else (FRESH install, no override) → the committed DEFAULT, NOT a
+# network-resolved latest — so two installs of one commit stay identical AND the fresh path never
+# skips the upgrade-only sidebar gate on an unreviewed image. Prints the chosen ref to stdout.
+_hermes_agent_choose_image() {
+  if [[ "${AI_STACK_UPGRADE:-}" == "1" ]]; then
+    log "upgrade: resolving the latest hermes-agent release (bounded; falls back to the pinned default if the registry is blocked)…"
+    _hermes_agent_latest_ref; return 0
+  fi
+  local pin; pin="$(_hermes_agent_current_pin)"
+  [[ -n "$pin" ]] && { printf '%s' "$pin"; return 0; }
+  printf '%s' "$HERMES_AGENT_DEFAULT"
+}
 
 precheck() {
   container_running openwebui || return 1
@@ -58,7 +105,9 @@ precheck() {
   return 0
 }
 
-if precheck 2>/dev/null && stamp_check "$PHASE"; then
+# On `upgrade` (AI_STACK_UPGRADE=1) NEVER early-exit — the whole point is to re-resolve
+# the latest agent image + rebuild. A plain re-run stays stamp-gated.
+if [[ "${AI_STACK_UPGRADE:-}" != "1" ]] && precheck 2>/dev/null && stamp_check "$PHASE"; then
   ok "phase $PHASE already complete (host UIs)"
   exit 0
 fi
@@ -89,6 +138,10 @@ fi
 # --- Hermes Workspace ---
 # Upstream URL is a placeholder — the published repo path may differ.
 # Skip cleanly if URL doesn't resolve; user can clone manually.
+
+# Resolve the agent image (upgrade→latest · re-install→existing pin · fresh→committed default).
+HERMES_AGENT_IMAGE="$(_hermes_agent_choose_image)"
+note "hermes-agent image → ${HERMES_AGENT_IMAGE#nousresearch/hermes-agent:}"
 if [[ ! -d "$WS_DIR/.git" && ! -f "$WS_DIR/docker-compose.yml" ]]; then
   log "Cloning Hermes Workspace (best effort)..."
   rm -rf "${WS_DIR}.partial"
@@ -287,6 +340,32 @@ YML
   else
     warn "hermes workspace didn't respond at $WS_PROBE in 120s — check 'docker compose -f $WS_DIR/docker-compose.yml logs hermes-agent'"
   fi
+
+  # On `upgrade` (AI_STACK_UPGRADE=1), re-verify the Sessions API SHAPE — the {data}/{items}/
+  # {sessions} drift that crashed the sidebar is a SHAPE change, so a 200 that still carries a
+  # "sessions" list means the new agent kept the contract. This is an ENVELOPE/liveness check,
+  # NOT proof the sidebar RENDERS (a degraded dashboard can still 200 with an empty list) — the
+  # render proof is the operator's browser (SOUL §5). A shape drift sets _ws_compat_fail, which
+  # makes the phase EXIT 1 below, so the upgrade summary shows FAILED (never a silent green warn).
+  if [[ "${AI_STACK_UPGRADE:-}" == "1" ]]; then
+    _ss_raw="$(curl -s -w '\nHTTPSTATUS:%{http_code}' --max-time 10 "${WS_PROBE%/}/api/sessions" 2>/dev/null)"
+    _ss_code="$(printf '%s' "$_ss_raw" | sed -n 's/.*HTTPSTATUS://p')"
+    if [[ "${_ss_code:-000}" == "200" ]] && printf '%s' "$_ss_raw" | grep -q '"sessions"'; then
+      ok "upgrade compat OK: /api/sessions → 200 + a sessions list on $HERMES_AGENT_IMAGE (envelope check — confirm the sidebar RENDERS in a browser)"
+    else
+      _ws_compat_fail=1
+      warn "UPGRADE COMPAT FAIL: ${WS_PROBE%/}/api/sessions → HTTP ${_ss_code:-000} without a sessions list. The new hermes-agent ($HERMES_AGENT_IMAGE) likely drifted the sessions API. ROLL BACK: pin the prior digest in $WS_DIR/docker-compose.override.yml (.services.hermes-agent.image) + 'vz-ai-stack.sh install 05', or open an issue."
+      record "phase 05 UPGRADE COMPAT FAIL: hermes-workspace /api/sessions HTTP ${_ss_code:-000} on $HERMES_AGENT_IMAGE — sessions API shape drift (durable run-log)"
+    fi
+  fi
+fi
+
+# Honesty gate (§24 council): a DETECTED upgrade compat failure must FAIL the phase (exit 1) so
+# up_phase_rerun records RESULT=FAILED and the upgrade summary carries it — never a green row
+# under a loud warn the operator has to catch in scrollback. Not stamped, so it re-checks next run.
+if [[ "${_ws_compat_fail:-0}" == "1" ]]; then
+  err "Phase 05: hermes-workspace upgrade compat check FAILED (sessions API shape drift — see the warning + rollback hint above)."
+  exit 1
 fi
 
 stamp_mark "$PHASE"
