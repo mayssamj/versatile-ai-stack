@@ -4,6 +4,46 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-03 — feat: `upgrade hermes` (one command, all surfaces) + workspace stops being frozen
+
+Operator directive: "I don't want to pin down hermes versions — `upgrade hermes` should get the
+latest and handle ALL hermes upgrades." The fleet pip already auto-upgrades (→0.18.0); the
+workspace UI's agent image was digest-FROZEN at v0.17.0 (`v2026.6.19`). Two changes, design
+approved:
+
+- **`upgrade hermes` group alias** — one command upgrades EVERY hermes surface: the fleet (pip),
+  the workspace UI image, and the Telegram/Slack gateways. `collect_targets` grows a `hermes`
+  group (so `upgrade hermes` / `--check hermes` / `--outdated hermes` all work); the mutate path
+  resolves it instead of erroring "Unknown service".
+- **Workspace TRACKS LATEST on upgrade (no permanent freeze)** — phase 05 now resolves the NEWEST
+  `nousresearch/hermes-agent` release (GitHub releases → `buildx imagetools` INDEX digest; bounded,
+  falls back to a known-good default when the registry is blocked). On `upgrade` (AI_STACK_UPGRADE=1)
+  it moves the pin forward + rebuilds the hardened workspace + **re-verifies the Sessions sidebar**
+  (`/api/sessions` 200 + list) so a drifted release fails LOUD with a rollback hint — never a
+  silent revert or a dead sidebar. A plain (re-)install keeps the existing pin (reproducible).
+  Default bumped to `v2026.7.1` (=v0.18.0).
+- **Routing** — hermes_workspace (type `compose`) declares `upgrade: {method: phase-rerun}`, and
+  `upgrade_one` now honors an explicit `upgrade:` block OVER the type default (so the workspace
+  re-resolves latest via phase-rerun instead of blind-pulling the old pin). Only hermes_workspace
+  changes; the 3 other upgrade-block services are manual types that already routed to up_by_method.
+- **§24 council hardening (4 reviewers: adversarial + architect + QA + PM):**
+  - *Honesty* — a compat drift now FAILS the phase (`exit 1` → `up_phase_rerun` records `FAILED`) AND
+    is durably `record()`'d to the run-log, instead of a warn-only line under a green summary row.
+    The `/api/sessions` check is documented as an ENVELOPE/liveness check (not proof the sidebar
+    renders — that's a browser check per SOUL §5).
+  - *Reproducibility* — a FRESH install falls back to the committed `HERMES_AGENT_DEFAULT` (not a
+    network-resolved latest), so two installs of one commit can't diverge and the compat gate isn't skipped.
+  - *Bounded + honest resolver* — the digest fetch reuses `versions.sh:img_remote_digest` (`_vz_bounded`,
+    never hangs on a blocked Zscaler registry); uses GitHub's `/releases/latest` (skips prereleases);
+    and WARNS on a silent fallback (rate-limit/blocked) instead of looking identical to success.
+  - *Discoverability* — `upgrade hermes` added to the MAIN `usage()` heredoc that `--help` reads.
+  - *Data-driven group* — `group: hermes` tags in services.yml (a new hermes surface auto-joins) replace
+    the hardcoded list, per the "generic composable > one-offs" preference.
+- **Tests** — `test_hermes_workspace_track_latest.sh` (valid default pin · gate bypass · BOTH resolver
+  fallback guards · compat-fail honesty wiring: flag+record+exit-1 · reproducibility · functional group
+  fan-out) + `test_upgrade_exhaustive.sh` data-driven group/routing asserts. Full offline suite green;
+  teeth-verified (mutation).
+
 ## 2026-07-03 — fix: `upgrade hermes_fleet` couldn't reach its sandbox (missing `services.yml` field)
 
 Operator report: fleet Hermes stuck at v0.16.0 while PyPI has 0.18.0; `upgrade hermes_fleet`

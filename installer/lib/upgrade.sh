@@ -78,7 +78,9 @@ CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
 upgrade_usage() {
   cat <<'EOF'
 vz-ai-stack.sh upgrade <service|all> [--dry-run]   upgrade a service (or all enabled)
-vz-ai-stack.sh upgrade --check [service|all]       READ-ONLY: show which have an update available
+vz-ai-stack.sh upgrade hermes                      GROUP: upgrade EVERY hermes surface to latest
+                                                   (fleet pip + workspace UI image + Telegram/Slack gateways)
+vz-ai-stack.sh upgrade --check [service|all|hermes] READ-ONLY: show which have an update available
 vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY the services found outdated
 vz-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
 vz-ai-stack.sh upgrade --check --json              machine-readable availability report
@@ -288,6 +290,13 @@ collect_targets() {
       [[ -z "$name" ]] && continue
       [[ "$(svc_enabled "$name")" == "true" ]] && _out+=("$name")
     done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
+  elif [[ "$target" == "hermes" ]]; then
+    # Group alias — DATA-DRIVEN: every enabled service tagged `group: hermes` in services.yml
+    # (tag a new hermes surface → it auto-joins; no hardcoded list to drift out of sync).
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
+      [[ "$(svc_enabled "$name")" == "true" ]] && _out+=("$name")
+    done < <(yq -r '.services | to_entries | .[] | select(.value.group == "hermes") | .key' "$SERVICES_YML")
   else
     _out=("$target")
   fi
@@ -959,6 +968,11 @@ upgrade_one() {
   VER_BEFORE="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
   VER_OVERRIDE=""   # a handler (e.g. up_openshell) may set the observed new version (global, reset per svc)
 
+  # Override hook: an explicit `upgrade:` block in services.yml WINS over the type's
+  # default handler (e.g. hermes_workspace is 'compose' but must phase-rerun to re-resolve
+  # the latest agent image, not blind-pull the old pin). Manual types already route to
+  # up_by_method, so this only changes docker/compose/brew/openshell services that opt in.
+  if svc_has_upgrade "$svc"; then up_by_method "$svc"; else
   case "$type" in
     docker)                                  up_docker "$svc" ;;
     compose|docker-compose)                  up_compose "$svc" ;;
@@ -978,6 +992,7 @@ upgrade_one() {
       warn "$svc: unknown type '$type'; skipping"
       ;;
   esac
+  fi
 
   # Reconcile the OPTIMISTIC handlers (they set 'upgraded' on any exit-0) against
   # the observed installed-version delta, so a no-op can't masquerade as a bump.
@@ -1097,6 +1112,10 @@ upgrade_main() {
     if [[ "$target" == "all" ]]; then
       collect_targets targets all
       hg_targets=(meridian claude-code codex)   # exhaustive: host npm globals too
+    elif [[ "$target" == "hermes" ]]; then
+      collect_targets targets hermes            # group alias → all enabled hermes surfaces
+      (( ${#targets[@]} )) || { err "no enabled hermes services to upgrade"; exit 2; }
+      ok "upgrade hermes → ${targets[*]}"
     else
       if [[ "$(svc_type "$target")" == "unknown" ]]; then
         err "Unknown service: $target"
