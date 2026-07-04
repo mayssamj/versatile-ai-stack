@@ -130,5 +130,9 @@ container_liveness_fix() {
   warn "  docker restart <name>               # if it was a transient/OOM kill"
   warn "If a bind-mounted source drifted from its image (e.g. autofyn /workspace),"
   warn "bring that checkout up to date to match the image, then restart."
+  warn "For the hermes-workspace ↔ hermes-agent pair (SHARED netns), a plain"
+  warn "'docker restart' can't re-join the workspace to a recreated agent netns — use"
+  warn "  docker compose -f $AI_STACK/hermes-workspace/docker-compose.yml up -d"
+  warn "  (check 73 hermes_workspace_pair auto-heals this split)."
   return 1
 }

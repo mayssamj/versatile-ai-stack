@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 73 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 74 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -841,6 +841,18 @@ Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `in
 | Auto-fix | self-heals by re-running Phase 38 converge, which re-writes config, restarts the router, and then re-diagnoses health. |
 
 Skips cleanly (passes) when `HERMES_SLACK_BOT_TOKEN` isn't set — Slack is an opt-in add-on (Phase 38). Makes **no external Slack API call** and never prints the tokens; it reads only in-sandbox pid, health, token-presence, and log files. Benign Socket-Mode churn (`reconnect` / `disconnect` / `ping` / `pong` / rate-limit / `429`) is filtered before matching auth errors so a healthy, reconnecting bot doesn't false-fail. A passing check may still note "**running but LOCKED**" (no allowlist → denies every user) — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) to set `HERMES_SLACK_ALLOWED_USERS`.
+
+---
+
+## 73 · Hermes Workspace ↔ agent netns pair intact + self-heal (Phase 05)
+
+| | |
+|---|---|
+| Asserts | when the workspace is on the v0.18.0 loopback+netns model (`network_mode: service:hermes-agent` in the override), the `hermes-agent` and `hermes-workspace` containers are BOTH running. |
+| Fails when | the agent is **running** but the workspace is **not** (`exited`/`dead`/`created`) — the parent-up / child-down split unique to the shared netns (a host reboot can start the netns child before the agent's namespace exists). |
+| Auto-fix | `AUTOHEAL=1` — idempotent `docker compose up -d` in `hermes-workspace/` (compose starts the agent first via `depends_on`, then re-joins the workspace to its netns). Worktree-guarded, non-destructive, bounded wait. |
+
+Skips cleanly (passes) when the workspace isn't installed or isn't on the netns model, and when the agent itself is down (that's a full-stop / general-census concern, check 53 — not the netns split). Never touches volumes.
 
 ---
 

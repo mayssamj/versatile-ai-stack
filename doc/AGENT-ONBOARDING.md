@@ -333,7 +333,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **73 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **74 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.

@@ -4,6 +4,43 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-04 — feat: Hermes Workspace on hermes-agent v0.18.0 (loopback dashboard + shared netns)
+
+Completes `install/upgrade hermes` bringing ALL three surfaces (CLI · fleet · web) to latest.
+The web surface (Phase 05) was stuck on v0.17.0 because v0.18.0 fail-closes the dashboard on a
+non-loopback bind (the prior CHANGELOG entry). The fix is NOT an auth provider or a workspace
+patch: bind the dashboard to `127.0.0.1` and put the WORKSPACE in the agent's network namespace
+(`network_mode: service:hermes-agent`) so its existing `Authorization: Bearer` path reaches the
+loopback dashboard — v0.18.0 keeps a loopback bind un-gated and inlines the session token. Proven
+end-to-end in a real browser (Sessions sidebar renders via the dashboard path, not the degraded
+gateway fallback) on a throwaway v2026.7.1 stack; the live stack was never touched during design.
+
+§24-reviewed by **4 reviewers** (adversarial+security, techlead architect, PM, SRE/infra) to
+consensus — the council caught two real bugs a standalone throwaway missed, plus one ingress
+regression:
+- `HERMES_AGENT_DEFAULT` → v2026.7.1 (=v0.18.0); dashboard `HERMES_DASHBOARD_HOST=127.0.0.1`,
+  `HERMES_DASHBOARD_INSECURE` dropped (inert on v0.18.0), a stable `HERMES_DASHBOARD_SESSION_TOKEN`
+  (= the UI's `HERMES_DASHBOARD_TOKEN`, generated in `.env`, compose-interpolated) pins the bearer.
+- **F1** — the workspace `ports` are force-replaced via Compose's `!override` merge tag (a
+  netns-sharing container can't own published ports; Compose merges list keys by append, so
+  omitting `ports:` leaves the base `:3000` → daemon rejects "conflicting options: port publishing
+  and container network mode"). The UI `:3000` publish moves onto the agent (both `127.0.0.1` and
+  `127.0.10.10`); the `hermes-gw` `:8642` publish (127.0.10.11) is **preserved** — the Caddy
+  ingress hostname depends on it (SRE caught that dropping it would 502 `hermes-gw`).
+- **F2** — the token placeholder is escaped in the unquoted heredoc so it stays a compose
+  placeholder (not bash-expanded to blank under `set -u`).
+- **F3** — a compat-fail now **auto-rolls-back the WHOLE prior override** + recreates (not just the
+  image line → no v0.17-image/v0.18-topology Frankenstein).
+- **precheck()** self-heals old installs onto the new signature; **doctor check 73**
+  (`hermes_workspace_pair`, AUTOHEAL) reconciles the one new fragility — a host-reboot netns split
+  (agent up, workspace down) — via idempotent `docker compose up -d`.
+- Security posture IMPROVES: `:9119` is loopback-bound in a netns shared only by the pair
+  (unreachable even by bridge peers — tighter than the old `0.0.0.0`+`--insecure` bridge bind).
+
+Empirically validated against the real base compose + real images + real daemon: yq migration
+round-trips `!override` idempotently, merged config valid, daemon `create` accepts it, and an agent
+image-bump `up -d` recreates BOTH containers (netns-child cascade → every future upgrade is atomic).
+
 ## 2026-07-03 — fix: revert workspace agent DEFAULT to v0.17.0 (v0.18.0 fail-closes fresh installs)
 
 The `upgrade hermes` feature bumped `HERMES_AGENT_DEFAULT` to v2026.7.1 (v0.18.0), but a live

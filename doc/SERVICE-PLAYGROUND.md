@@ -238,7 +238,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** open `http://workspace:3000`.
 
-**Notes:** The dashboard must bind `0.0.0.0` to be reachable cross-container (`HERMES_DASHBOARD_HOST=0.0.0.0`). See doc/HERMES-HANDSON.md for the full hands-on.
+**Notes:** On hermes-agent v0.18.0 the dashboard fail-closes off-loopback, so it binds `127.0.0.1` and the UI runs in the agent's network namespace (`network_mode: service:hermes-agent`) to reach it over the shared loopback. See doc/HERMES-HANDSON.md for the full hands-on.
 
 ## honcho · Tier 1 · Phase 03
 

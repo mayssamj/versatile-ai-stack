@@ -25,13 +25,16 @@ WS_DIR="$AI_STACK/hermes-workspace"
 # permanent freeze — then re-verifies the sidebar so a drifted release fails LOUD.
 #   default = last-known-good INDEX digest (portable arm64/amd64; NOT :latest, NOT
 #             `docker image inspect .Id`). Offline fallback + FRESH-install value.
-# PINNED AT v0.17.0 (NOT latest v0.18.0): v0.18.0 REMOVED HERMES_DASHBOARD_INSECURE — its
-# dashboard now fail-closes on a non-loopback bind (needs an auth provider), which the
-# community workspace UI can't satisfy (it only speaks Authorization: Bearer, no cookie
-# login) → agent unhealthy → UI down. v0.17.0 is the last workspace-compatible release; the
-# default MUST stay here until the v0.18.0 loopback+netns (or proxy-auth) path lands. `upgrade`
-# still re-resolves latest and, on that dashboard drift, fails LOUD (compat re-verify → exit 1).
-HERMES_AGENT_DEFAULT="nousresearch/hermes-agent:v2026.6.19@sha256:9f367c7756ef087661a361536a89f438d57a122b958dc23d82d456b1433e6e9e"  # =v0.17.0 (last workspace-compatible)
+# DEFAULT = v0.18.0 (Docker Hub v2026.7.1) — workspace-compatible under the loopback+netns
+# plumbing in the override heredoc below. v0.18.0 REMOVED HERMES_DASHBOARD_INSECURE and
+# fail-closes the dashboard on a NON-loopback bind (CVE-hardening). The fix is NOT an auth
+# provider or a workspace patch: bind the dashboard to 127.0.0.1 and put the workspace in the
+# agent's network namespace (network_mode: service:hermes-agent) so its existing Authorization:
+# Bearer path reaches the loopback dashboard (v0.18.0 keeps loopback un-gated + inlines the
+# token). Proven end-to-end in a browser (§24-reviewed, 4 reviewers). `upgrade` still
+# re-resolves the newest release and, on a sidebar/compat drift, fails LOUD (compat re-verify →
+# exit 1) AND auto-rolls-back the whole override to the prior working pin.
+HERMES_AGENT_DEFAULT="nousresearch/hermes-agent:v2026.7.1@sha256:b6c019227889e6675424a2b6223b2cafdd36bf7d1048d1ddd8e043b880d6cc0f"  # =v0.18.0 (loopback+netns workspace-compatible)
 HERMES_WS_BASE="ghcr.io/outsourc-e/hermes-workspace@sha256:2d2ba9aa5b1230766267322817e8e51113541780a5797802a582a47cc34a3df3"
 HERMES_WS_IMAGE="hermes-workspace:aistack-hardened"
 
@@ -91,22 +94,22 @@ _hermes_agent_choose_image() {
 precheck() {
   container_running openwebui || return 1
   wait_http http://openwebui:8080 5 || return 1
-  # Force a phase re-run if a PRIOR install left the Hermes dashboard pinned to
-  # loopback. HERMES_DASHBOARD_HOST=127.0.0.1 (or a missing HERMES_DASHBOARD_
-  # INSECURE) binds the dashboard to the agent container's OWN loopback, which
-  # the workspace container cannot reach — that forces the broken gateway
-  # sessions fallback and crashes the sidebar ("...reading 'map'"). The phase
-  # body's yq migration rebinds it; but the heredoc is write-once and the body
-  # sits behind this stamp gate, so without this check an existing broken
-  # install would never self-heal on a normal `install all`. Returning 1 here
-  # (stale override) keeps the stamp gate from early-exiting so the body runs.
-  # Also re-run when a prior install left the images on :latest (no @sha256:
-  # digest pin) or without the hardened workspace image — so existing installs
-  # self-heal onto the pinned + hardened pair on a normal `install all`.
+  # Force a phase re-run if a PRIOR install is missing the v0.18.0 loopback+netns
+  # signature. The workspace runs on hermes-agent v0.18.0, which fail-closes the
+  # dashboard on a non-loopback bind — so we bind the dashboard to 127.0.0.1 and
+  # put the workspace in the agent's netns (network_mode: service:hermes-agent) to
+  # reach it. An OLD install (dashboard 0.0.0.0 + HERMES_DASHBOARD_INSECURE, the
+  # pre-v0.18.0 shape), one on :latest (no @sha256:), or one without the hardened
+  # image must re-run so the body's yq migration self-heals it — the heredoc is
+  # write-once and the body sits behind this stamp gate, so returning 1 here keeps
+  # it from early-exiting. The NEW up-to-date signature is: dashboard on 127.0.0.1
+  # + network_mode:service:hermes-agent + NO HERMES_DASHBOARD_INSECURE + pinned +
+  # hardened.
   local _ovr="$WS_DIR/docker-compose.override.yml"
   if [[ -f "$_ovr" ]]; then
-    grep -qE '^[[:space:]]*HERMES_DASHBOARD_HOST:[[:space:]]*0\.0\.0\.0[[:space:]]*$' "$_ovr" \
-      && grep -qE '^[[:space:]]*HERMES_DASHBOARD_INSECURE:[[:space:]]' "$_ovr" \
+    grep -qE '^[[:space:]]*HERMES_DASHBOARD_HOST:[[:space:]]*127\.0\.0\.1[[:space:]]*$' "$_ovr" \
+      && grep -qE '^[[:space:]]*network_mode:[[:space:]]*"?service:hermes-agent"?[[:space:]]*$' "$_ovr" \
+      && ! grep -qE '^[[:space:]]*HERMES_DASHBOARD_INSECURE:[[:space:]]' "$_ovr" \
       && grep -q '@sha256:' "$_ovr" \
       && grep -q 'aistack-hardened' "$_ovr" \
       || return 1
@@ -190,6 +193,15 @@ if [[ -f "$WS_DIR/docker-compose.yml" ]]; then
     echo "API_SERVER_KEY=$(openssl rand -hex 24)" >> "$WS_DIR/.env"
     ok "generated random API_SERVER_KEY in $WS_DIR/.env"
   fi
+  # Stable dashboard session token — pins the hermes-agent v0.18.0 dashboard bearer so the
+  # workspace (in the shared netns) authenticates with a known value. The override references
+  # it as ${HERMES_DASHBOARD_TOKEN} placeholders (agent HERMES_DASHBOARD_SESSION_TOKEN +
+  # workspace HERMES_DASHBOARD_TOKEN) that compose interpolates from THIS project .env — so the
+  # secret lives ONLY here, never in the (gitignored) override. Idempotent: reuse if present.
+  if ! grep -qE '^HERMES_DASHBOARD_TOKEN=.+' "$WS_DIR/.env" 2>/dev/null; then
+    echo "HERMES_DASHBOARD_TOKEN=$(openssl rand -hex 32)" >> "$WS_DIR/.env"
+    ok "generated HERMES_DASHBOARD_TOKEN in $WS_DIR/.env (pins the v0.18.0 dashboard bearer)"
+  fi
   # Compose binds 127.0.0.1:3000 by default. Rebind to the workspace alias
   # IP (127.0.10.10) and the hermes-gw alias (127.0.10.11 for hermes-agent
   # at :8642) so the /etc/hosts aliases actually reach the listeners.
@@ -221,48 +233,64 @@ USER workspace
 DOCKER
   printf '*\n!Dockerfile\n' > "$WS_DIR/.aistack-build/.dockerignore"
 
+  # F3 auto-rollback: snapshot the CURRENT (pre-change) override so an upgrade whose compat
+  # re-verify FAILS below can restore the WHOLE prior config (not just the image line — a partial
+  # restore would leave a v0.17-image + v0.18-topology Frankenstein). Only meaningful when one
+  # already exists (a fresh install has nothing to roll back to → the gate falls through to FAILED).
+  _ovr_prev=""
+  if [[ -f "$WS_DIR/docker-compose.override.yml" ]]; then
+    _ovr_prev="$WS_DIR/.docker-compose.override.yml.prev"
+    cp -f "$WS_DIR/docker-compose.override.yml" "$_ovr_prev" 2>/dev/null || _ovr_prev=""
+  fi
+
   if [[ ! -f "$WS_DIR/docker-compose.override.yml" ]]; then
-    # Compose lists are merged (appended) by default. Adding alias-IP bindings
-    # alongside the upstream 127.0.0.1 bindings makes BOTH work, so existing
-    # `http://localhost:3000` clients aren't broken and `http://workspace:3000`
-    # (alias) also resolves. Unquoted heredoc: the ${HERMES_*} vars expand (the
-    # body has no other $ or backticks).
+    # Unquoted heredoc: ${HERMES_AGENT_IMAGE}/${HERMES_WS_BASE}/${HERMES_WS_IMAGE} are BASH vars
+    # (expanded here). ${HERMES_DASHBOARD_TOKEN} is ESCAPED (\${...}) so it stays a literal
+    # placeholder COMPOSE interpolates from $WS_DIR/.env — the secret never lands in this
+    # (gitignored) file. Workspace ports use the `!override` merge tag (see below).
     cat > "$WS_DIR/docker-compose.override.yml" <<YML
-# ai-stack — also publish on the aliases scheme
-# (127.0.10.10 = workspace, 127.0.10.11 = hermes-gw)
+# ai-stack — Hermes Workspace on hermes-agent v0.18.0 (loopback dashboard + shared netns).
 #
-# Images are PINNED by digest (no :latest drift). The agent is the stable
-# release index digest; the workspace is a thin "hardened" derived image (built
-# from .aistack-build/Dockerfile FROM the pinned base) that guards the gateway
-# sessions .map so a dashboard OUTAGE shows an EMPTY sidebar instead of a 500.
-# Do NOT stack docker-compose.dev.yml with this override — its build: REPLACES
-# this one (compose build: is replace-not-merge) and rebuilds the unpatched
-# source clone. Drop the derived image once upstream ships PR #577 in a tag.
+# Images are PINNED by digest (no :latest drift). The agent is the stable release index digest;
+# the workspace is a thin "hardened" derived image (built from .aistack-build/Dockerfile FROM the
+# pinned base) that guards the gateway sessions .map so a dashboard OUTAGE degrades the sidebar to
+# an EMPTY list instead of a 500. Do NOT stack docker-compose.dev.yml with this override — its
+# build: REPLACES this one (compose build: is replace-not-merge). Drop the derived image once
+# upstream ships PR #577 in a tag.
 #
-# Bind the dashboard (:9119) to 0.0.0.0 INSIDE the container so the workspace
-# container can reach it via Docker DNS (hermes-agent:9119). A 127.0.0.1 bind
-# only listens on the agent's OWN loopback, so cross-container requests (which
-# arrive on the bridge IP) are refused — that left dashboard.available=false,
-# forced the workspace onto the gateway sessions fallback ({data} vs {items}),
-# and crashed the sidebar with "Cannot read properties of undefined (reading
-# 'map')". A non-loopback bind fails closed unless --insecure is opted in, so
-# set HERMES_DASHBOARD_INSECURE=1 (the dashboard analogue of the workspace's
-# HERMES_ALLOW_INSECURE_REMOTE=1). The prior 127.0.0.1 pin was a misdiagnosis
-# from an older agent version — do NOT restore it.
-# Trust boundary: :9119 is NEVER published to the host (only :8642 is, on
-# loopback) — it is reachable only on the hermes-workspace_default bridge, whose
-# only members are the agent + the workspace it serves. Sensitive dashboard
-# /api/* routes require the ephemeral session token, but GET / and /api/status
-# are unauthenticated and the token is embedded in the root HTML, so any peer
-# ADDED to that bridge would get full agent-config access. NEVER publish :9119.
+# WHY loopback + netns (v0.18.0): v0.18.0 REMOVED HERMES_DASHBOARD_INSECURE and fail-closes the
+# dashboard (:9119) on any NON-loopback bind (it needs an auth provider). The community workspace
+# UI only speaks Authorization: Bearer (no cookie-login), so a 0.0.0.0 bind → 401 / empty sidebar.
+# On a LOOPBACK bind v0.18.0 keeps the dashboard un-gated + inlines the session token, and the
+# legacy Bearer still works. So we bind the dashboard to 127.0.0.1 and put the WORKSPACE in the
+# agent's network namespace (network_mode: service:hermes-agent) so it reaches the dashboard over
+# that same loopback (HERMES_DASHBOARD_URL=http://127.0.0.1:9119). HERMES_DASHBOARD_SESSION_TOKEN
+# (agent) = HERMES_DASHBOARD_TOKEN (workspace) pins the bearer to a stable value.
+#
+# Trust boundary: :9119 is NEVER host-published and, now loopback-bound inside a netns shared ONLY
+# by the agent + the workspace it serves, is unreachable even by other bridge peers (TIGHTER than
+# the old 0.0.0.0+INSECURE bridge bind). /api/* is Bearer-gated (no-auth → 401). The gateway :8642
+# stays host-published on 127.0.10.11 (the hermes-gw ingress alias) with API_SERVER_HOST=0.0.0.0
+# (base) + a strong API_SERVER_KEY — unchanged from before.
+#
+# NETNS COUPLING (blast radius): the workspace shares the agent's netns, so recreating/stopping the
+# agent (upgrade, manual restart, crash) takes the workspace's OWN :3000 listener network-dark for
+# that window (not just its reach to the agent). On a host reboot Docker's restart engine has no
+# cross-container ordering guarantee, so the workspace may briefly fail to start until the agent's
+# netns exists; doctor's hermes_workspace_pair autoheal (docker compose up -d) reconciles a split.
 services:
   hermes-agent:
     image: ${HERMES_AGENT_IMAGE}
     environment:
-      HERMES_DASHBOARD_HOST: 0.0.0.0
-      HERMES_DASHBOARD_INSECURE: "1"
+      HERMES_DASHBOARD_HOST: 127.0.0.1
+      HERMES_DASHBOARD_SESSION_TOKEN: \${HERMES_DASHBOARD_TOKEN}
+    # The UI :3000 is published HERE (the workspace shares this netns and can't own ports). Keep
+    # the hermes-gw gateway publish (127.0.10.11:8642). Both :3000 addresses preserve the
+    # http://localhost:3000 (127.0.0.1) and http://workspace:3000 (127.0.10.10 alias) entrypoints.
     ports:
       - "127.0.10.11:8642:8642"
+      - "127.0.0.1:3000:3000"
+      - "127.0.10.10:3000:3000"
   hermes-workspace:
     build:
       context: ./.aistack-build
@@ -270,23 +298,42 @@ services:
       args:
         WS_BASE: ${HERMES_WS_BASE}
     image: ${HERMES_WS_IMAGE}
+    network_mode: "service:hermes-agent"
     environment:
       HERMES_ALLOW_INSECURE_REMOTE: "1"
-    ports:
-      - "127.0.10.10:3000:3000"
+      HERMES_API_URL: http://127.0.0.1:8642
+      HERMES_DASHBOARD_URL: http://127.0.0.1:9119
+      HERMES_DASHBOARD_TOKEN: \${HERMES_DASHBOARD_TOKEN}
+    # A netns-sharing container cannot own published ports; force-REPLACE the base's inherited
+    # 127.0.0.1:3000 (compose merges list keys by append, so omitting ports leaves it → daemon
+    # rejects "port publishing + container network mode"). !override (single-bang) drops it.
+    ports: !override []
 YML
-    ok "wrote $WS_DIR/docker-compose.override.yml (pinned + hardened)"
+    ok "wrote $WS_DIR/docker-compose.override.yml (v0.18.0 loopback+netns, pinned + hardened)"
   fi
   # Migration/idempotency: the heredoc above is write-once, so patch EXISTING
   # overrides from prior installs onto the same dashboard + pin + hardened config
   # (yq set is idempotent; yq is a guaranteed core dep via deps.sh).
   if command -v yq >/dev/null 2>&1 && [[ -f "$WS_DIR/docker-compose.override.yml" ]]; then
-    yq -i '.services.hermes-workspace.environment.HERMES_ALLOW_INSECURE_REMOTE = "1"
-           | .services.hermes-agent.environment.HERMES_DASHBOARD_HOST = "0.0.0.0"
-           | .services.hermes-agent.environment.HERMES_DASHBOARD_INSECURE = "1"' \
+    # Migrate an EXISTING override (the heredoc is write-once) onto the v0.18.0 loopback+netns
+    # shape. Single-quoted: literals only — incl. the ${HERMES_DASHBOARD_TOKEN} compose
+    # placeholders, which must reach the file VERBATIM (single quotes stop bash expanding them).
+    # !override on the workspace ports force-drops the base's inherited :3000 (a netns-sharing
+    # container can't own ports). All assignments are idempotent (re-asserted on every run).
+    yq -i '.services.hermes-agent.environment.HERMES_DASHBOARD_HOST = "127.0.0.1"
+           | del(.services.hermes-agent.environment.HERMES_DASHBOARD_INSECURE)
+           | .services.hermes-agent.environment.HERMES_DASHBOARD_SESSION_TOKEN = "${HERMES_DASHBOARD_TOKEN}"
+           | .services.hermes-agent.ports = ["127.0.10.11:8642:8642","127.0.0.1:3000:3000","127.0.10.10:3000:3000"]
+           | .services.hermes-workspace.network_mode = "service:hermes-agent"
+           | .services.hermes-workspace.environment.HERMES_ALLOW_INSECURE_REMOTE = "1"
+           | .services.hermes-workspace.environment.HERMES_API_URL = "http://127.0.0.1:8642"
+           | .services.hermes-workspace.environment.HERMES_DASHBOARD_URL = "http://127.0.0.1:9119"
+           | .services.hermes-workspace.environment.HERMES_DASHBOARD_TOKEN = "${HERMES_DASHBOARD_TOKEN}"
+           | .services.hermes-workspace.ports = []
+           | .services.hermes-workspace.ports tag= "!override"' \
       "$WS_DIR/docker-compose.override.yml" 2>/dev/null \
-      && ok "ensured dashboard 0.0.0.0+insecure + workspace no-login in override" \
-      || warn "could not patch override dashboard/login settings — set them manually"
+      && ok "migrated override to v0.18.0 loopback dashboard + shared netns" \
+      || warn "could not migrate override dashboard/netns settings — set them manually"
     # Pin images (no :latest) + wire the hardened workspace build for EXISTING
     # overrides: the agent digest pin, the workspace derived-image build (context
     # + WS_BASE arg) and its image tag.
@@ -363,8 +410,21 @@ YML
       ok "upgrade compat OK: /api/sessions → 200 + a sessions list on $HERMES_AGENT_IMAGE (envelope check — confirm the sidebar RENDERS in a browser)"
     else
       _ws_compat_fail=1
-      warn "UPGRADE COMPAT FAIL: ${WS_PROBE%/}/api/sessions → HTTP ${_ss_code:-000} without a sessions list. The new hermes-agent ($HERMES_AGENT_IMAGE) likely drifted the sessions API. ROLL BACK: pin the prior digest in $WS_DIR/docker-compose.override.yml (.services.hermes-agent.image) + 'vz-ai-stack.sh install 05', or open an issue."
+      warn "UPGRADE COMPAT FAIL: ${WS_PROBE%/}/api/sessions → HTTP ${_ss_code:-000} without a sessions list. The new hermes-agent ($HERMES_AGENT_IMAGE) likely drifted the sessions API."
       record "phase 05 UPGRADE COMPAT FAIL: hermes-workspace /api/sessions HTTP ${_ss_code:-000} on $HERMES_AGENT_IMAGE — sessions API shape drift (durable run-log)"
+      # AUTO-ROLLBACK (F3): restore the WHOLE prior override + recreate so a bad release never
+      # leaves the UI down. Best-effort; the exit 1 below still reports FAILED honestly.
+      if [[ -n "${_ovr_prev:-}" && -f "$_ovr_prev" ]]; then
+        if cp -f "$_ovr_prev" "$WS_DIR/docker-compose.override.yml" 2>/dev/null \
+           && (cd "$WS_DIR" && docker compose up -d 2>&1 | tail -6); then
+          warn "AUTO-ROLLBACK: restored the prior working override + recreated — the UI is back on the previous agent. Investigate the new release before retrying."
+          record "phase 05 AUTO-ROLLBACK: restored prior override after compat fail on $HERMES_AGENT_IMAGE"
+        else
+          warn "AUTO-ROLLBACK FAILED: could not restore/recreate from $_ovr_prev — restore it manually + 'vz-ai-stack.sh install 05'."
+        fi
+      else
+        warn "No prior override snapshot to roll back to (fresh path). Pin a known-good digest in $WS_DIR/docker-compose.override.yml + 'vz-ai-stack.sh install 05'."
+      fi
     fi
   fi
 fi
