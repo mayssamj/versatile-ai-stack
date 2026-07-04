@@ -655,7 +655,7 @@ make the fleet safe to hand a goal to.
 | `openshell sandbox exec/connect` fails fast (gateway already up) | relay idle-timed-out | `brew services restart openshell`; confirm `openshell sandbox list` (`Ready`) |
 | Bridge / office shows `[<name> unavailable]` | that agent's relay is down | `brew services restart openshell` (§6) |
 | Local-model 500: **"No fallback model group found for local"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local` has no fallback group | warm it once (`ollama run nemotron-3-nano:4b ''`), or just use the role's **default** model — `vz-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
-| Workspace **Sessions sidebar** crashes (`reading 'map'`) | dashboard not bound `0.0.0.0` cross-container | ai-stack ships the hardened image + `HERMES_DASHBOARD_HOST=0.0.0.0` (§1) |
+| Workspace **Sessions sidebar** crashes (`reading 'map'`) | dashboard unreachable → gateway fallback | ai-stack ships the hardened image + binds the dashboard to `127.0.0.1` with the UI in the agent's netns (`network_mode: service:hermes-agent`, v0.18.0) (§1) |
 | Slack bot silent | secure-by-default denies all with no allowlist | set `HERMES_SLACK_ALLOWED_USERS` + re-run `install 38` (§5) |
 | Telegram bot silent | secure-by-default denies all with no allowlist | set `HERMES_TELEGRAM_ALLOWED_USERS` + re-run `install 20` (§5) |
 | A role runs on the wrong model | upstream down → availability-gated to `local` | check the **DRIFT** column in `model list`; it re-gates when the upstream returns (§4) |
