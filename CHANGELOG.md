@@ -4,6 +4,30 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): takeover batch 5 — doctor verifies fixes by re-diagnosing (#46/#45/#32)
+
+Root-cause fix for the doctor "honesty" cluster. doctor counted a check "fixed" purely on the fix
+function's EXIT CODE, which was wrong in both directions:
+
+- a fix that HEALED but returned non-zero (e.g. `lumen_fix`/`claw3d_fix` `return 1` after a good
+  model-pull / restart, #45/#32) was reported "fix attempt failed"; and
+- a fix that only QUEUED a restart (didn't resolve now, #46) returned 0 and was counted "fixed", so
+  doctor exited 0 on a still-broken stack.
+
+Fix: after applying a fix, doctor now RE-DIAGNOSES and counts the check fixed only if it actually passes
+(`_doctor_apply_and_verify` in `doctor.sh`). This makes the accounting honest and subsumes the per-check
+`return 1`-on-success bugs (their exit codes no longer matter — the re-diagnosis is the source of truth).
+The fix's own progress messages still print; only the verification diagnose is silenced. Cost: one extra
+diagnose per fixed check, paid only on checks that both failed and had a fix applied.
+
+Tested end-to-end against the REAL `doctor.sh` (new `DOCTOR_CHECKS_DIR` override) with three synthetic
+AUTOHEAL checks — heals-cleanly, heals-but-fix-returns-1, and fix-returns-0-but-unresolved — asserting
+the honest outcome (2 fixed, 1 remaining, exit 1) where the old exit-code accounting gave the inverted
+result (1 wrongly-fixed, exit 0). Updated `test_doctor_noninteractive_guard.sh` to extract the new helper
+(its intent — branch ordering + headless-safety — is unchanged and still green). Suite now 53 assertions.
+
+---
+
 ## 2026-07-05 — fix(hardening): takeover batch 4 — 4 more confirmed defects + tests
 
 Continuing the takeover hardening with four more root-cause fixes, each with a hermetic

@@ -363,6 +363,40 @@ PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "cwd anchor is space-safe (matches 
 kill "$P" 2>/dev/null || true; rm -rf "$STUB2"; unset -f pid_is_ours
 unset PS_ARGS LSOF_CWD
 
+# ---------------------------------------------------------------------------
+# FIX-13 (#46/#45/#32): doctor must VERIFY a fix by re-diagnosing, not trust the fix's
+# exit code. Run the REAL doctor.sh (via DOCTOR_CHECKS_DIR) against 3 synthetic AUTOHEAL
+# checks: (a) heals cleanly; (b) heals but its fix returns 1 (the lumen/claw3d case);
+# (c) fix returns 0 but does NOT resolve (the queue-only case). Honest accounting =
+# a+b counted fixed, c not, exit 1.
+# ---------------------------------------------------------------------------
+section "FIX-13 doctor verifies fixes by re-diagnosing (doctor.sh)"
+grep -q 'DOCTOR_CHECKS_DIR' "$ROOT/installer/doctor/doctor.sh" && t_ok "doctor.sh honors DOCTOR_CHECKS_DIR (test hook)" || t_bad "doctor.sh has no DOCTOR_CHECKS_DIR override"
+grep -q '_doctor_apply_and_verify' "$ROOT/installer/doctor/doctor.sh" && t_ok "doctor.sh re-diagnoses after applying a fix" || t_bad "doctor.sh still trusts the fix exit code"
+DC="$(mktemp -d)"; DS="$(mktemp -d)"
+cat > "$DC/aa_heals.sh" <<'CHK'
+CHECKS+=(zz_heals); CHECK_TITLE[zz_heals]="synthetic heals"; AUTOHEAL[zz_heals]=1
+zz_heals_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals" ]] || { echo "not healed"; return 1; }; }
+zz_heals_fix() { touch "$DOCTOR_TEST_STATE/heals"; echo "fix: healed"; }
+CHK
+cat > "$DC/ab_heals_r1.sh" <<'CHK'
+CHECKS+=(zz_heals_r1); CHECK_TITLE[zz_heals_r1]="synthetic heals, fix returns 1"; AUTOHEAL[zz_heals_r1]=1
+zz_heals_r1_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals_r1" ]] || { echo "not healed"; return 1; }; }
+zz_heals_r1_fix() { touch "$DOCTOR_TEST_STATE/heals_r1"; echo "fix: healed but returning 1"; return 1; }
+CHK
+cat > "$DC/ac_queues.sh" <<'CHK'
+CHECKS+=(zz_queues); CHECK_TITLE[zz_queues]="synthetic unresolved"; AUTOHEAL[zz_queues]=1
+zz_queues_diagnose() { echo "still broken"; return 1; }
+zz_queues_fix() { echo "fix: queued (returns 0, does not resolve)"; return 0; }
+CHK
+dout="$(DOCTOR_CHECKS_DIR="$DC" DOCTOR_TEST_STATE="$DS" $BASH5 "$ROOT/installer/doctor/doctor.sh" 2>&1)"; drc=$?
+n_verified="$(grep -c 'auto-healed (verified)' <<<"$dout" || true)"
+[[ "$n_verified" == "2" ]] && t_ok "both truly-healed checks counted fixed (incl. the fix-returns-1 one)" || t_bad "expected 2 verified heals, got $n_verified"
+grep -q 'still fails' <<<"$dout" && t_ok "the queue-only fix (returns 0 but unresolved) is NOT counted fixed" || t_bad "queue-only fix was not reported as still-failing"
+grep -qE '3 checks, 0 passed, 2 fixed, 1 remaining failed' <<<"$dout" && t_ok "summary is honest: 2 fixed, 1 remaining failed" || t_bad "dishonest summary: $(grep -i 'doctor done' <<<"$dout")"
+[[ "$drc" == "1" ]] && t_ok "doctor exits 1 (a fix that did not resolve leaves a real failure)" || t_bad "doctor exit=$drc (expected 1)"
+rm -rf "$DC" "$DS"
+
 echo
 echo "TOTAL: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

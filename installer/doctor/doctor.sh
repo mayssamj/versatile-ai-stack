@@ -29,7 +29,9 @@ declare -Ag CHECK_TITLE=()
 declare -Ag AUTOHEAL=()
 
 # Source every check file. Each must append to CHECKS + set CHECK_TITLE.
-for f in "$AI_STACK"/installer/doctor/checks/*.sh; do
+# DOCTOR_CHECKS_DIR overrides the checks directory (defaults to the shipped one) —
+# used by the hermetic doctor tests to run this real runner against synthetic checks.
+for f in "${DOCTOR_CHECKS_DIR:-$AI_STACK/installer/doctor/checks}"/*.sh; do
   # shellcheck source=/dev/null
   source "$f"
 done
@@ -50,6 +52,22 @@ if [[ "$FILTER" == "--all" ]]; then
   FILTER=""
 fi
 hdr "Running doctor checks${FILTER:+ (filter: $FILTER)}"
+
+# _doctor_apply_and_verify <check> — run the check's fix, then RE-DIAGNOSE to confirm it
+# actually resolved the problem. Returns 0 IFF the check now passes. The old code counted
+# a check "fixed" purely on the fix function's EXIT CODE, which was wrong in BOTH directions:
+#   - a fix that HEALED but returned non-zero (e.g. lumen/claw3d _fix `return 1` after a
+#     good model-pull / restart) was falsely reported "fix attempt failed"; and
+#   - a fix that only QUEUED a restart (didn't resolve now) returned 0 and was falsely
+#     counted "fixed", so doctor exited 0 on a still-broken stack.
+# Verifying by re-diagnosis makes the accounting honest. The fix's own messages still print;
+# only the verification diagnose is silenced. (Adds one diagnose re-run per fixed check —
+# a bounded cost paid only on checks that both failed AND had a fix applied.) 2026-07-05.
+_doctor_apply_and_verify() {
+  local chk="$1"
+  ( "${chk}_fix" </dev/null ) || true                # run the fix (its messages show); rc is advisory
+  ( "${chk}_diagnose" ) </dev/null >/dev/null 2>&1   # re-diagnose: did the fix actually resolve it?
+}
 
 # Use a deliberately uncommon loop variable so check functions can't shadow it.
 # (A function that does `for name in ...` without declaring `local name` would
@@ -88,11 +106,11 @@ for __check in "${CHECKS[@]}"; do
         # AUTOMATICALLY — no prompt. This failure class is meant to resolve
         # itself, and the recovery is non-destructive + worktree-guarded.
         note "    auto-healing (safe, idempotent — no prompt)…"
-        if ( "${__check}_fix" </dev/null ); then
-          ok   "    auto-healed."
+        if _doctor_apply_and_verify "$__check"; then
+          ok   "    auto-healed (verified)."
           fixed=$((fixed+1))
         else
-          err "    auto-heal attempt failed."
+          err "    auto-heal ran but the check still fails (may need a restart or manual step)."
         fi
       elif ! [[ -t 0 ]]; then
         # Non-interactive shell (piped / </dev/null / cron / spawned as a subprocess): NEVER
@@ -104,11 +122,11 @@ for __check in "${CHECKS[@]}"; do
         # a human in a real terminal. Report + skip.
         note "    (auto-fix available; non-interactive shell — skipping; re-run \`doctor\` in a terminal to apply)"
       elif confirm "    Auto-fix available. Apply?" Y; then
-        if ( "${__check}_fix" </dev/null ); then
-          ok   "    fixed."
+        if _doctor_apply_and_verify "$__check"; then
+          ok   "    fixed (verified)."
           fixed=$((fixed+1))
         else
-          err "    fix attempt failed."
+          err "    fix ran but the check still fails — see the detail above; a queued restart (vz-ai-stack.sh apply-restarts) or a manual step may be needed."
         fi
       fi
     fi
