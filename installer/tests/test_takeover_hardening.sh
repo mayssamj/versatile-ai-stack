@@ -339,8 +339,9 @@ printf '%s\n' "${PS_ARGS:-}"
 PS
 cat > "$STUB2/lsof" <<'LS'
 #!/usr/bin/env bash
-echo "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME"
-echo "node 1 u cwd DIR 1,1 1 1 ${LSOF_CWD:-/tmp}"
+# Emulate `lsof -a -d cwd -p PID -Fn` machine format: a single `n<path>` line
+# (space-safe). The real code parses this with `sed -n 's/^n//p'`.
+printf 'p1\nfcwd\nn%s\n' "${LSOF_CWD:-/tmp}"
 LS
 chmod +x "$STUB2/ps" "$STUB2/lsof"
 sleep 300 & P=$!
@@ -355,6 +356,10 @@ PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "our pnpm dev (cwd==PC_DIR) is corr
 # Case C: a descendant carrying PC_DIR in argv → ours (first check).
 export PS_ARGS="node $PC_DIR/node_modules/.bin/tsx watch"; export LSOF_CWD="/irrelevant"
 PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "descendant carrying PC_DIR in argv is ours" || t_bad "descendant with PC_DIR not identified"
+# Case D: PC_DIR (and cwd) contain SPACES — the -Fn parse must still match (space-safe).
+PC_DIR="/Users/x/My AI Stack/tools/paperclip"
+export PS_ARGS="node /somewhere/pnpm dev"; export LSOF_CWD="$PC_DIR"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "cwd anchor is space-safe (matches a spaced PC_DIR)" || t_bad "spaced-path cwd not matched (parse not space-safe)"
 kill "$P" 2>/dev/null || true; rm -rf "$STUB2"; unset -f pid_is_ours
 unset PS_ARGS LSOF_CWD
 

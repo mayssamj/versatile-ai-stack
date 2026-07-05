@@ -65,7 +65,11 @@ pid_is_ours() {
   # running an unrelated dev server was classified "ours" and the restart path SIGTERM'd
   # it. Anchoring to the cwd removes that cross-project kill. (2026-07-05 takeover fix.)
   if ps -p "$pid" -o args= 2>/dev/null | grep -qE 'pnpm.*dev'; then
-    local cwd; cwd="$(lsof -a -d cwd -p "$pid" 2>/dev/null | awk 'NR>1{print $NF}')"
+    # lsof -Fn emits the cwd as a single `n<path>` line (machine format), so this is
+    # space-safe even if AI_STACK is cloned under a path containing spaces — unlike a
+    # column-split parse. Missing lsof / no match → empty → not ours (fail-safe: fewer
+    # kills, never a wrong one). (2026-07-05 takeover fix; §24-hardened.)
+    local cwd; cwd="$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
     [[ -n "$cwd" && "$cwd" == "$PC_DIR" ]] && return 0
   fi
   return 1
