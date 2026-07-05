@@ -4,6 +4,18 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — docs(ports): full PORTS.md refresh (last verified 2026-05-31 → now); §24-reviewed
+
+`doc/PORTS.md` had drifted badly — its alias table was 15 rows and it predated ~19 services. Rewrote it against the canonical sources (`installer/lib/aliases.tsv`, `services.yml`, `bin/audit.sh`, `mcp_server.py`, the hermes-workspace override) so it reflects the live platform:
+
+- **Alias table 15 → 22 rows.** Added `deerflow` (127.0.10.17, now aliased), `chatdev` (.18), `aitown` (.19), `sourcegraph` (.20), and the three `127.0.0.1`-pinned named aliases (`openwork`, `aionui`, `agentscope-studio`). Documented the first two **host≠container remaps** (`chatdev` 5274→5173, `aitown` 5273→5173) — the old "host==container for every row" invariant no longer holds.
+- **New sections:** the bare-hostname ingress (Phase 31 `ingress up`/`add`, host-native Caddy, `http-loopback` rows), the two-file alias system (`aliases.tsv` + gitignored `aliases.local.tsv`), the sandbox-daemon Hermes gateways (`hermes_telegram` 20, `hermes_slack` 38 — no host port), and the on-demand host viewers. Every one of the 51 `services.yml` keys is now accounted for.
+- **Per-service detail** added for sourcegraph (dual-bind 127.0.0.1 + 127.0.10.20), aionui, openwork, understand-mcp (:7081 host-gateway/token-gated), chatdev, aitown (incl. the loopback Convex backend :3210/:3211 + admin dashboard :6791), agentscope-studio (+ OTLP :4318), and the CLI-only additions (ace/lumen_mcp/portless/cmux/skillspector/openagents/metagpt/oasis/concordia).
+- **Corrected `llm_guard`** — kept the authoritative `:8000` and flagged `services.yml`'s `port: 8001` as a stale v1 field (its own `config_notes` say so).
+- **Security-honest External-facing summary** (§24 council catch): the doc no longer claims agentscope-studio is the "one exception" binding `0.0.0.0` — `docs_mcp` (`0.0.0.0:8765`, default-installed Phase 06) and `unsloth` (`0.0.0.0:8898`) also bind `0.0.0.0` and ARE LAN-reachable while up. Added a host-listener posture table + mitigations, and quoted `bin/audit.sh`'s actual container-scoped leak-check verbatim (the old snippet misquoted it).
+
+Reviewed by a 3-agent §24 council (adversarial fact-check / domain-architect / QA-completeness); disputed live-behavior claims (docs_mcp bind, hermes-agent pinned version, aitown extra ports) settled by direct inspection.
+
 ## 2026-07-05 — fix(upgrade): `--check --all` crash + bounded retry on a transient OpenShell relay timeout
 
 Two `upgrade`-path fixes surfaced by running the commands end-to-end (not just the workspace path):
