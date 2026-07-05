@@ -37,7 +37,7 @@ for f in "${DOCTOR_CHECKS_DIR:-$AI_STACK/installer/doctor/checks}"/*.sh; do
 done
 
 if (( ${#CHECKS[@]} == 0 )); then
-  warn "no doctor checks found in installer/doctor/checks/"
+  warn "no doctor checks found in ${DOCTOR_CHECKS_DIR:-$AI_STACK/installer/doctor/checks}/"
   exit 0
 fi
 
