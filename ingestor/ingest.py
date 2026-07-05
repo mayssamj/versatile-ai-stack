@@ -103,8 +103,20 @@ for src in sorted(INBOX.rglob("*")):
         continue
     docs = [Document(text=text, metadata={"source": str(src)})]
     VectorStoreIndex.from_documents(docs, storage_context=sctx, embed_model=embed)
-    shutil.move(str(src), str(DONE / src.name))
+    # Move to processed/ PRESERVING the inbox subtree, and NEVER clobber. Using the
+    # basename (DONE / src.name) flattened subdirs, so two files with the same name in
+    # different inbox subdirs — or a re-run whose basename already sits in processed/ —
+    # silently os.rename-overwrote each other, losing the earlier processed file.
+    # (2026-07-05 takeover fix.)
+    dest = DONE / src.relative_to(INBOX)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        stem, suffix, n = dest.stem, dest.suffix, 1
+        while dest.exists():
+            dest = dest.parent / f"{stem}.{n}{suffix}"
+            n += 1
+    shutil.move(str(src), str(dest))
     count += 1
-    print(f"  ingested: {src.name}")
+    print(f"  ingested: {src.relative_to(INBOX)}")
 
 print(f"done: {count} docs ingested.")

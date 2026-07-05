@@ -4,6 +4,35 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): takeover batch 4 — 4 more confirmed defects + tests
+
+Continuing the takeover hardening with four more root-cause fixes, each with a hermetic
+regression test (suite now 46 assertions; full existing suite green):
+
+- **ACE/RLM first real call 403'd (#7, High)** — phases 17/18 mint the scoped key for
+  `[local,local-heavy]` but write `OPENAI_MODEL=<bound model>` (which `models.yml` may set to a
+  subscription/cloud model the key doesn't allow); the `--help`-only smoke passes green, so the first
+  `bin/ace`/`bin/rlm` completion 403s. Fix: `litellm_reconcile_key` after the model is resolved (unions
+  the bound model into the key in place), matching the peer opt-in phases.
+- **ingest.py flattened + clobbered processed files (#62, data-integrity)** — `shutil.move(src, DONE /
+  src.name)` used the basename, so two inbox files with the same name in different subdirs, or a re-run
+  whose name already sat in `processed/`, silently overwrote each other. Fix: move preserving the inbox
+  subtree (`relative_to(INBOX)`) and disambiguate instead of clobbering.
+- **start-understand.sh could SIGTERM a recycled PID (#55)** — `_alive` did `kill -0` only; after a
+  reboot a recycled PID passes that and the `if _alive; then kill …` path signals an unrelated process.
+  Fix: add a shim-identity guard (mirrors `start-docs_mcp.sh`).
+- **start-paperclip.sh could kill another project's `pnpm dev` (#58)** — `pid_is_ours`'s fallback
+  matched ANY `pnpm dev` (or anything mentioning "paperclip"). Fix: anchor the `pnpm dev` match to the
+  process's working directory (== `PC_DIR`) via `lsof -d cwd`, so an unrelated dev server on a recycled
+  PID is never treated as ours.
+
+Deferred with recommended fix: doctor helicone `_fix` (#43) auto-answers its `rm -rf` confirm because
+doctor pipes fixes from `/dev/null` (default Y wins). The fix is to read the confirm from `/dev/tty` and
+fail-safe when absent, but that can't be regression-tested deterministically without a controllable tty,
+so it's tracked rather than shipped untested.
+
+---
+
 ## 2026-07-05 — fix(hardening): §24 review response — reset.sh regression + test hardening
 
 A 3-reviewer §24 panel (adversarial / architect / QA) audited the takeover fixes and found ONE

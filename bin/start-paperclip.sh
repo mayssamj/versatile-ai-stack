@@ -58,8 +58,16 @@ pid_is_ours() {
   # mentions our specific paperclip path. This avoids matching other people's
   # paperclips on the same machine.
   ps -p "$pid" -o args= 2>/dev/null | grep -qF "$PC_DIR" && return 0
-  # Some descendants no longer have PC_DIR in argv but still mention paperclip
-  ps -p "$pid" -o args= 2>/dev/null | grep -qE 'paperclip|pnpm.*dev' && return 0
+  # The `pnpm dev` PARENT's argv is just "pnpm dev" (it's started with cwd=PC_DIR but
+  # PC_DIR isn't in argv), so we still match it — but ONLY when its working directory
+  # is PC_DIR. The old bare `pnpm.*dev`/`paperclip` fallback matched ANY project's
+  # `pnpm dev` (or any process merely mentioning "paperclip"), so a recycled PID
+  # running an unrelated dev server was classified "ours" and the restart path SIGTERM'd
+  # it. Anchoring to the cwd removes that cross-project kill. (2026-07-05 takeover fix.)
+  if ps -p "$pid" -o args= 2>/dev/null | grep -qE 'pnpm.*dev'; then
+    local cwd; cwd="$(lsof -a -d cwd -p "$pid" 2>/dev/null | awk 'NR>1{print $NF}')"
+    [[ -n "$cwd" && "$cwd" == "$PC_DIR" ]] && return 0
+  fi
   return 1
 }
 

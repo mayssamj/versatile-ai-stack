@@ -238,6 +238,126 @@ else
   t_bad "rm -rf is not guarded by the abort"
 fi
 
+# ---------------------------------------------------------------------------
+# FIX-9 (#7): phases 17/18 must widen the ACE/RLM scoped key to include the bound
+# model (minted [local,local-heavy] but OPENAI_MODEL may be a cloud/sub model → first
+# real bin/ace|bin/rlm call 403s). Static: the reconcile call is present after model
+# resolution. Behavioral: litellm_reconcile_key actually unions the bound model in.
+# ---------------------------------------------------------------------------
+section "FIX-9 ACE/RLM key widened to the bound model (17_ace.sh / 18_rlm.sh)"
+grep -q 'litellm_reconcile_key ACE_LITELLM_KEY "\$ACE_MODEL" local local-heavy' "$ROOT/installer/phases/17_ace.sh" && t_ok "phase 17 reconciles ACE_LITELLM_KEY to the bound model" || t_bad "phase 17 missing the ACE key reconcile"
+grep -q 'litellm_reconcile_key RLM_LITELLM_KEY "\$RLM_MODEL_VAL" local local-heavy' "$ROOT/installer/phases/18_rlm.sh" && t_ok "phase 18 reconciles RLM_LITELLM_KEY to the bound model" || t_bad "phase 18 missing the RLM key reconcile"
+# The reconcile must come AFTER the model is resolved (set_env X_MODEL), or it would
+# widen to an empty/stale model.
+awk '/set_env ACE_DEFAULT_MODEL/{seen=1} seen&&/litellm_reconcile_key ACE_LITELLM_KEY/{print "AFTER"; exit}' "$ROOT/installer/phases/17_ace.sh" | grep -q AFTER && t_ok "phase 17 reconcile runs after the model is resolved" || t_bad "phase 17 reconcile is not after model resolution"
+# Behavioral: prove litellm_reconcile_key unions the bound cloud model into a [local]-only key.
+fresh_stack
+source "$ROOT/installer/lib/common.sh" >/dev/null 2>&1   # defines litellm_reconcile_key
+set_env LITELLM_MASTER_KEY "sk-master-test" >/dev/null 2>&1
+set_env ACE_LITELLM_KEY "sk-ace-test" >/dev/null 2>&1
+CAP="$AI_STACK/keyupdate.json"; : > "$CAP"
+# Stub the two curl wrappers reconcile calls: current allow-list = [local]; capture the update body.
+litellm_scoped_curl() { echo '{"info":{"models":["local"]}}'; }
+litellm_master_curl() { local a; for a in "$@"; do case "$a" in @*) cat "${a#@}" > "$CAP" 2>/dev/null;; esac; done; echo '{"key":"sk-ace-test","models":["local"]}'; }
+litellm_reconcile_key ACE_LITELLM_KEY "claude-opus-sub-xhigh" local local-heavy >/dev/null 2>&1 || true
+if grep -q 'claude-opus-sub-xhigh' "$CAP" 2>/dev/null && grep -q '"local"' "$CAP" 2>/dev/null; then
+  t_ok "litellm_reconcile_key unions the bound cloud model into a [local]-only key"
+else
+  t_bad "reconcile did not widen the key (captured: $(cat "$CAP" 2>/dev/null))"
+fi
+unset -f litellm_scoped_curl litellm_master_curl
+rm -rf "$AI_STACK"
+
+# ---------------------------------------------------------------------------
+# FIX-10 (#62): ingest.py must preserve inbox subtree + never clobber when moving to
+# processed/. The old `DONE / src.name` flattened subdirs and os.rename-overwrote
+# same-basename files (data loss). (ingest.py is not import-safe — module-level Qdrant
+# connection — so we static-check the real source + behaviorally prove the algorithm.)
+# ---------------------------------------------------------------------------
+section "FIX-10 ingest.py preserves subtree + no-clobber (ingestor/ingest.py)"
+grep -q 'DONE / src.relative_to(INBOX)' "$ROOT/ingestor/ingest.py" && t_ok "ingest.py moves preserving the inbox subtree (relative_to)" || t_bad "ingest.py still flattens with src.name"
+grep -q 'while dest.exists()' "$ROOT/ingestor/ingest.py" && t_ok "ingest.py disambiguates instead of clobbering" || t_bad "ingest.py has no no-clobber guard"
+grep -q 'shutil.move(str(src), str(DONE / src.name))' "$ROOT/ingestor/ingest.py" && t_bad "ingest.py still uses the clobbering DONE / src.name move" || t_ok "ingest.py no longer uses the clobbering basename move"
+# Behavioral: the shipped destination algorithm loses no data across same-basename
+# files in distinct subdirs AND a re-run whose name already exists in processed/.
+ing_out="$(python3 - <<'PY' 2>&1 || true
+import pathlib, shutil, tempfile, os
+tmp = pathlib.Path(tempfile.mkdtemp())
+INBOX, DONE = tmp/"inbox", tmp/"processed"
+(INBOX/"q1").mkdir(parents=True); (INBOX/"q2").mkdir(parents=True); DONE.mkdir()
+(INBOX/"q1"/"report.pdf").write_text("Q1")
+(INBOX/"q2"/"report.pdf").write_text("Q2")
+(DONE/"report.pdf").write_text("PRIOR")   # a prior-run file at the flat basename
+def move(src):  # EXACT algorithm shipped in ingest.py
+    dest = DONE / src.relative_to(INBOX)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        stem, suffix, n = dest.stem, dest.suffix, 1
+        while dest.exists():
+            dest = dest.parent / f"{stem}.{n}{suffix}"; n += 1
+    shutil.move(str(src), str(dest))
+for src in sorted(INBOX.rglob("*")):
+    if src.is_file(): move(src)
+# Both Q1 and Q2 contents must survive distinctly, and the PRIOR file must be intact.
+bodies = sorted(p.read_text() for p in DONE.rglob("*") if p.is_file())
+assert bodies == ["PRIOR", "Q1", "Q2"], f"DATA LOSS: {bodies}"
+assert (DONE/"report.pdf").read_text() == "PRIOR", "prior processed file was overwritten"
+print("OK", bodies)
+PY
+)"
+[[ "$ing_out" == OK* ]] && t_ok "move algorithm loses no data (subtree + prior file preserved)" || t_bad "move algorithm lost data: $ing_out"
+
+# ---------------------------------------------------------------------------
+# FIX-11 (#55): start-understand.sh _alive must NOT treat a recycled unrelated PID as
+# the daemon (and then SIGTERM it). Extract the real _alive and run it against a live
+# non-daemon process (a `sleep`), controlling SHIM so we test both directions.
+# ---------------------------------------------------------------------------
+section "FIX-11 start-understand _alive has a pid-identity guard (start-understand.sh)"
+fn11="$(sed -n '/^_alive() {/,/^}/p' "$ROOT/bin/start-understand.sh")"
+grep -q 'grep -qF "\$SHIM"' <<<"$fn11" && t_ok "_alive checks the pid is our node shim" || t_bad "_alive has no shim identity guard"
+sleep 300 & DUMMY=$!
+TMPPID="$(mktemp)"; echo "$DUMMY" > "$TMPPID"
+eval "$fn11"
+# Negative (safety): SHIM points at a path the sleep's argv does NOT contain → not ours.
+PIDFILE="$TMPPID" SHIM="/no/such/understand-mcp/bin.mjs" _alive && t_bad "_alive treated a recycled non-daemon PID as ours (would SIGTERM it)" || t_ok "recycled non-daemon PID is NOT treated as the daemon"
+# Positive: SHIM set to a token the sleep's argv DOES contain → correctly identified.
+PIDFILE="$TMPPID" SHIM="sleep" _alive && t_ok "a matching-argv process IS identified as the daemon" || t_bad "_alive failed to identify a matching process"
+kill "$DUMMY" 2>/dev/null || true; rm -f "$TMPPID"; unset -f _alive
+
+# ---------------------------------------------------------------------------
+# FIX-12 (#58): start-paperclip pid_is_ours must not classify an UNRELATED `pnpm dev`
+# (different cwd) as ours. Extract the real function; stub ps/lsof to drive scenarios.
+# ---------------------------------------------------------------------------
+section "FIX-12 start-paperclip pid_is_ours anchors pnpm-dev to cwd (start-paperclip.sh)"
+fn12="$(sed -n '/^pid_is_ours() {/,/^}/p' "$ROOT/bin/start-paperclip.sh")"
+grep -q 'lsof -a -d cwd' <<<"$fn12" && t_ok "pid_is_ours anchors the pnpm-dev fallback to cwd" || t_bad "pid_is_ours still uses the unanchored fallback"
+grep -qE "grep -qE 'paperclip\|pnpm" <<<"$fn12" && t_bad "pid_is_ours still has the bare paperclip|pnpm fallback" || t_ok "pid_is_ours dropped the bare paperclip fallback"
+STUB2="$(mktemp -d)"
+cat > "$STUB2/ps"   <<'PS'
+#!/usr/bin/env bash
+printf '%s\n' "${PS_ARGS:-}"
+PS
+cat > "$STUB2/lsof" <<'LS'
+#!/usr/bin/env bash
+echo "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME"
+echo "node 1 u cwd DIR 1,1 1 1 ${LSOF_CWD:-/tmp}"
+LS
+chmod +x "$STUB2/ps" "$STUB2/lsof"
+sleep 300 & P=$!
+eval "$fn12"
+PC_DIR="/Users/x/tools/paperclip"
+# Case A: unrelated pnpm dev, cwd != PC_DIR → NOT ours (the bug).
+export PS_ARGS="node /somewhere/node_modules/.bin/pnpm dev"; export LSOF_CWD="/other/project"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_bad "unrelated pnpm dev (wrong cwd) wrongly classified as ours — would be killed" || t_ok "unrelated pnpm dev (different cwd) is NOT ours"
+# Case B: our pnpm dev parent, cwd == PC_DIR → ours.
+export LSOF_CWD="$PC_DIR"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "our pnpm dev (cwd==PC_DIR) is correctly ours" || t_bad "our pnpm dev (cwd==PC_DIR) not identified"
+# Case C: a descendant carrying PC_DIR in argv → ours (first check).
+export PS_ARGS="node $PC_DIR/node_modules/.bin/tsx watch"; export LSOF_CWD="/irrelevant"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "descendant carrying PC_DIR in argv is ours" || t_bad "descendant with PC_DIR not identified"
+kill "$P" 2>/dev/null || true; rm -rf "$STUB2"; unset -f pid_is_ours
+unset PS_ARGS LSOF_CWD
+
 echo
 echo "TOTAL: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
