@@ -198,7 +198,13 @@ _compose_lone_semver_tag() {
     [[ "$tag" == */* ]] && continue         # the ':' was a registry host:port, not a tag
     [[ "$tag" =~ ^v?[0-9] ]] && { st="$tag"; sn=$((sn+1)); }
   done <<< "$1"
+  # NOTE: `(( sn == 1 ))` returns exit 1 when the condition is FALSE (sn=0 or >1). As the
+  # function's LAST statement that made the whole function return 1, so the caller's
+  # `_lt="$(_compose_lone_semver_tag …)"` assignment ABORTED under set -e + inherit_errexit
+  # (crashed `upgrade --check --all` on the first compose stack with no lone semver tag —
+  # honcho/autofyn/aitown). The explicit `return 0` makes the empty result a normal outcome.
   (( sn == 1 )) && printf '%s' "$st"
+  return 0
 }
 
 # _npm_global_version <pkg> — installed version of a global npm package, or "" if

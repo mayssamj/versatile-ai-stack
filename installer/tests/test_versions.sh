@@ -238,4 +238,26 @@ else
   bad "perl absent — _vz_bounded has NO bound on a timeout-less host"
 fi
 
+echo "== _compose_lone_semver_tag never aborts the caller under set -e (the upgrade --check --all crash) =="
+# The bug: `(( sn == 1 ))` was the function's LAST statement, so it RETURNED exit 1 when sn!=1
+# (0 or >1 lone semver tags) → the caller's `_lt="$(_compose_lone_semver_tag …)"` assignment
+# aborted under set -e + inherit_errexit, crashing `upgrade --check --all` on the first compose
+# stack with no lone semver tag (honcho/autofyn/aitown). Assert the caller SURVIVES for sn=0/1/2.
+_clst_out="$(AI_STACK="$ROOT" bash -c '
+  set -Eeuo pipefail; shopt -s inherit_errexit 2>/dev/null || true
+  source '"$ROOT"'/installer/lib/versions.sh
+  z="$(_compose_lone_semver_tag "honcho/honcho:latest")"; printf "sn0=[%s]rc=%s;" "$z" "$?"
+  o="$(_compose_lone_semver_tag "a:v2026.7.1
+b:img-hardened")"; printf "sn1=[%s]rc=%s;" "$o" "$?"
+  t="$(_compose_lone_semver_tag "a:v1.2.3
+b:v4.5.6")"; printf "sn2=[%s]rc=%s;" "$t" "$?"
+  printf "REACHED_END"
+' 2>&1)"
+[[ "$_clst_out" == *REACHED_END ]] \
+  && ok "_compose_lone_semver_tag: caller survives set -e for sn=0/1/2 (no crash)" \
+  || bad "_compose_lone_semver_tag aborted the caller under set -e (got: '$_clst_out')"
+[[ "$_clst_out" == *'sn0=[]rc=0'* && "$_clst_out" == *'sn1=[v2026.7.1]rc=0'* && "$_clst_out" == *'sn2=[]rc=0'* ]] \
+  && ok "_compose_lone_semver_tag: empty for sn=0/2, the tag for sn=1, rc=0 throughout" \
+  || bad "_compose_lone_semver_tag returned wrong value/rc (got: '$_clst_out')"
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))
