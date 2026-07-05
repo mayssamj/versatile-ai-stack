@@ -183,6 +183,42 @@ rc=0; NO_PROMPT=1 /opt/homebrew/bin/bash "$ROOT/installer/doctor/doctor.sh" __no
 rc=0; NO_PROMPT=1 /opt/homebrew/bin/bash "$ROOT/installer/doctor/doctor.sh" lo0_aliases >/dev/null 2>&1 || rc=$?
 [[ "$rc" != "2" ]] && t_ok "valid filter runs at least one check (exit $rc != 2)" || t_bad "valid filter wrongly hit the no-match guard"
 
+# ---------------------------------------------------------------------------
+# FIX-7 (#17): reset nuke's managed-container sweep must be EXHAUSTIVE — one failed
+# `docker rm -f` must not abort the whole nuke under set -e.
+# ---------------------------------------------------------------------------
+section "FIX-7 reset nuke container sweep survives a single rm failure (reset.sh)"
+sweep_block="$(sed -n '/Stopping + removing managed ai-stack containers/,/read -r c/p;/read -r c/,/done </p' "$ROOT/installer/lib/reset.sh")"
+grep -qE 'docker rm -f "\$c".*\|\|' "$ROOT/installer/lib/reset.sh" && t_ok "reset nuke rm is guarded (|| continue)" || t_bad "reset nuke rm is unguarded — one failure aborts the sweep"
+# Behavioral: the guarded loop pattern continues past a failing rm; the unguarded one aborts.
+guarded="$(/opt/homebrew/bin/bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+  _rm(){ [[ "$1" == bad ]] && return 1 || return 0; }
+  fails=()
+  while IFS= read -r c; do _rm "$c" || fails+=("$c"); done < <(printf "%s\n" a bad b)
+  echo "DONE removed-attempted=3 failed=${#fails[@]}"' 2>/dev/null || true)"
+[[ "$guarded" == *"DONE removed-attempted=3 failed=1"* ]] && t_ok "guarded sweep processes all containers past a failure" || t_bad "guarded sweep did not complete: $guarded"
+unguarded="$(/opt/homebrew/bin/bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+  _rm(){ [[ "$1" == bad ]] && return 1 || return 0; }
+  while IFS= read -r c; do _rm "$c"; done < <(printf "%s\n" a bad b)
+  echo DONE' 2>/dev/null || true)"
+[[ "$unguarded" == *DONE* ]] && t_bad "unguarded sweep did not abort (semantics wrong)" || t_ok "unguarded sweep aborts mid-way (confirms the bug class)"
+
+# ---------------------------------------------------------------------------
+# FIX-8 (#59): aitown --nuke must NOT wipe the world when the pre-delete backup
+# failed (fail-closed, unless AI_STACK_FORCE_WIPE=1). The old code warned + wiped.
+# ---------------------------------------------------------------------------
+section "FIX-8 aitown --nuke fails closed when backup fails (start-aitown.sh)"
+nuke_block="$(sed -n '/backup-before-delete/,/rm -rf "\$AT_DATA"/p' "$ROOT/bin/start-aitown.sh")"
+grep -q 'ABORTING aitown --nuke' <<<"$nuke_block" && t_ok "aitown --nuke aborts on backup failure" || t_bad "aitown --nuke does not abort on backup failure"
+grep -q 'AI_STACK_FORCE_WIPE' <<<"$nuke_block" && t_ok "aitown --nuke honors AI_STACK_FORCE_WIPE override" || t_bad "aitown --nuke lacks the force-wipe override"
+# The rm -rf must be REACHED only after a verified backup or the force flag — assert the
+# abort (exit 1) sits BETWEEN the backup attempt and the rm.
+if awk '/cp -a "\$AT_DATA"/{seen=1} seen&&/ABORTING aitown --nuke/{ab=1} seen&&/rm -rf "\$AT_DATA"/{print (ab?"GUARDED":"UNGUARDED"); exit}' "$ROOT/bin/start-aitown.sh" | grep -q GUARDED; then
+  t_ok "abort guard precedes the rm -rf"
+else
+  t_bad "rm -rf is not guarded by the abort"
+fi
+
 echo
 echo "TOTAL: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

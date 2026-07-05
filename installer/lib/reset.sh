@@ -373,8 +373,17 @@ case "$TIER" in
     log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace)..."
     teardown_compose_projects
     log "Stopping + removing managed ai-stack containers..."
-    while IFS= read -r c; do docker rm -f "$c" >/dev/null; done \
-      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
+    # A nuke must be EXHAUSTIVE: one container that fails to remove (odd state,
+    # engine hiccup) must not abort the whole sweep under `set -e` and leave a
+    # half-nuked stack. Warn + continue; surface any that could not be removed.
+    # (2026-07-05 takeover fix.)
+    local _rm_failed=()
+    while IFS= read -r c; do
+      docker rm -f "$c" >/dev/null 2>&1 || _rm_failed+=("$c")
+    done < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
+    if (( ${#_rm_failed[@]} > 0 )); then
+      warn "Could not remove ${#_rm_failed[@]} container(s): ${_rm_failed[*]} — remove manually: docker rm -f ${_rm_failed[*]}"
+    fi
     # Sourcegraph data (~/.sourcegraph-local) lives OUTSIDE the repo data/ tree, so
     # the data/ backup above never covers it. The managed-label sweep removed the
     # container but not this dir. NUKE = remove everything → back it up (fail-closed,
