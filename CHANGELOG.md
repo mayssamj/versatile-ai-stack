@@ -4,6 +4,57 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): codebase-takeover pass — 8 confirmed defects (platform integrity + secret leak)
+
+Independent takeover review of the whole tree (14 parallel readers → 67 candidate findings →
+adversarial per-finding verification: 63 CONFIRMED, 0 refuted). This entry lands the first batch of
+root-cause fixes, each with a hermetic regression test in `installer/tests/test_takeover_hardening.sh`
+(22 assertions) or `claw3d-bridge/test_bridge_redact.py` (5 assertions). Full suite stays green.
+
+- **`set_env` corrupted values with backslash escapes** (`installer/lib/env.sh`). It wrote the value via
+  `awk -v v="$val"`, and `awk -v` applies C-escape processing — a pasted token containing `\n`/`\t`/`\\`
+  was expanded, silently corrupting the secret AND splitting `.env` into a malformed extra line (which
+  then fails `load_env_strict`/doctor-03 and breaks `docker --env-file`). Fix: pass key/value via
+  `ENVIRON[]` (raw bytes, no escape processing). Every writer (setup prompts, key mints, engine pin)
+  funnels through `set_env`.
+- **`gc` offered to `docker rm -f` the entire healthy stack** (`installer/lib/docker.sh`, `gc.sh`).
+  `mark_ready` used `docker update --label-add`, which does not exist (`docker update` has no `--label`
+  flag; labels are immutable) — a silent no-op, so `ai-stack.partial=true` never cleared and `gc` listed
+  EVERY running container (litellm/qdrant/phoenix/…) as a "partial orphan". Fix: `mark_ready` now records
+  readiness in a durable marker (`installer/state/ready/<name>`), and `gc` excludes any partial-labeled
+  container that is running or ready-marked — only genuinely stuck containers are offered for removal.
+  `recreate_guard` clears the marker on rebuild.
+- **`http_ok` reported a dead server as healthy** (`bin/start-paperclip.sh`, `bin/start-unsloth.sh`).
+  `code=$(curl -w '%{http_code}' … || echo 000)` — curl already emits `000` on failure AND exits
+  non-zero, so `|| echo 000` APPENDED a second `000` → `"000000" != "000"` → true (healthy). Fix: move
+  the fallback out of the substitution (`… ) || code=000`) and require a 3-digit non-000 code. (The repo
+  had already learned this in claw3d/aitown/doctor-40; the fix hadn't propagated to these two.)
+- **A relay blip aborted the whole `upgrade all`** (`installer/lib/upgrade.sh:777`). The hermes
+  post-upgrade version read was a bare `_postv="$(_openshell_exec_retry … | sed | head)"` with no
+  `|| true`; under `set -Eeuo pipefail`+`inherit_errexit` a persistent relay failure tripped errexit and
+  killed the run mid-loop (remaining services never upgraded). Fix: `|| true`, matching the guarded pip
+  sibling — it now falls through to the "skip, unchanged" path the comment already assumed.
+- **`adopt falkordb` always false-failed its smoke test** (`installer/lib/adopt.sh`). It probed
+  `127.0.0.1:6379`, but falkordb publishes only on its alias IP `127.0.10.7:6379` — so after the
+  original container was destroyed and correctly recreated, the smoke reported "smoke fail". Fix: probe
+  `127.0.10.7:6379` with a bounded retry.
+- **`doctor --all` was a silent 0-check no-op that exited 0** (`installer/doctor/doctor.sh`). `--all`
+  was treated as a substring name-filter matching nothing (checks 25/49 document it as the `DOCTOR_ALL`
+  deep-probe trigger). Fix: `--all` sets `DOCTOR_ALL=1` and clears the filter; a mistyped filter that
+  matches zero checks now exits 2 instead of green (a typo'd `doctor pheonix` no longer passes CI).
+- **The claw3d bridge leaked `PI_LITELLM_KEY` to the browser** (`claw3d-bridge/bridge.py`). On a Pi
+  turn timeout, `subprocess.run(…, timeout=…)` raised `TimeoutExpired`, whose string embeds the full
+  argv — including `env PI_LITELLM_KEY=sk-…` — and `do_POST` returned that exception text verbatim as a
+  chat message. Fix: `run_pi` converts the timeout to a clean, key-free error (root cause), and a
+  `_redact()` backstop scrubs `PI_LITELLM_KEY=`/`sk-…`/`Bearer …` from anything returned to a client.
+
+Deferred (documented, not shipped): docs-mcp binds `0.0.0.0:8765` with no auth. The obvious "bind
+127.0.0.1" fix would BREAK the Pi sandbox → docs-mcp path (a container reaches it via
+`host.docker.internal`, which needs a non-loopback bind). The correct fix is MCP-layer auth, which needs
+FastMCP research + live validation — tracked as a follow-up rather than shipping a regression.
+
+---
+
 ## 2026-07-05 — fix(upgrade): `--check --all` crash + bounded retry on a transient OpenShell relay timeout
 
 Two `upgrade`-path fixes surfaced by running the commands end-to-end (not just the workspace path):

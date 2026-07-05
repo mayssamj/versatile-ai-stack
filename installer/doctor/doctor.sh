@@ -40,6 +40,15 @@ if (( ${#CHECKS[@]} == 0 )); then
 fi
 
 FILTER="${1:-}"
+# `--all` is NOT a name filter: it means "run every check, INCLUDING the deep/negative
+# probes that gate on DOCTOR_ALL" (checks 25/49 document `doctor --all` as their trigger).
+# The old code treated `--all` as a substring filter — no check name contains "--all", so
+# every check was skipped and the run became a silent "0 checks, 0 passed" no-op that exited
+# 0 where a full audit was intended. Map it to the env flag + an empty filter. (2026-07-05.)
+if [[ "$FILTER" == "--all" ]]; then
+  export DOCTOR_ALL=1
+  FILTER=""
+fi
 hdr "Running doctor checks${FILTER:+ (filter: $FILTER)}"
 
 # Use a deliberately uncommon loop variable so check functions can't shadow it.
@@ -105,6 +114,15 @@ for __check in "${CHECKS[@]}"; do
     fi
   fi
 done
+
+# A non-empty filter that matched ZERO checks is almost always a typo (e.g. `doctor
+# pheonix`). The old code silently reported "0 checks" and exited 0 — so a mistyped
+# filter in a CI/pre-push gate passed green forever. Fail loud + non-zero instead.
+# (2026-07-05 takeover fix.)
+if [[ -n "$FILTER" ]] && (( passed + failed == 0 )); then
+  err "doctor: filter '$FILTER' matched no checks (skipped all $skipped). Check the name, or run 'vz-ai-stack.sh doctor' with no filter."
+  exit 2
+fi
 
 printf '\nDoctor done: %d checks, %d passed, %d fixed, %d remaining failed, %d skipped.\n' \
   "$((passed+failed))" "$passed" "$fixed" "$((failed-fixed))" "$skipped"

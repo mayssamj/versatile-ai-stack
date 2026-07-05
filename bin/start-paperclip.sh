@@ -35,8 +35,13 @@ PORT=3100
 # return 404 or 5xx before the route table is loaded.
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 http_ok() {
-  local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || echo 000)
-  [[ "$code" != "000" ]]
+  # curl -w '%{http_code}' ALREADY emits 000 on a connection failure/timeout AND exits
+  # non-zero. The old `... || echo 000` inside the substitution APPENDED a second 000 →
+  # "000000", which `!= "000"` read as HEALTHY for a dead server. Put the fallback in a
+  # separate assignment (`|| code=000`) so it never concatenates, and keep set -e happy.
+  # (2026-07-05 takeover fix; same idiom the repo already uses in doctor check 40.)
+  local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null) || code=000
+  [[ "$code" =~ ^[0-9]{3}$ && "$code" != "000" ]]
 }
 
 [[ -d "$PC_DIR" ]]               || { err "paperclip source missing at $PC_DIR — run phase 08 first."; exit 1; }

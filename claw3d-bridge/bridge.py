@@ -56,6 +56,21 @@ PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "600"))
 DEERFLOW_TIMEOUT = int(os.environ.get("CLAW3D_DEERFLOW_TIMEOUT", "600"))
 DEFAULT_MODEL = os.environ.get("CLAW3D_DEFAULT_MODEL", "local")
 
+# --- secret redaction (2026-07-05 takeover) ---------------------------------
+# do_POST returns exception text to the browser client as a chat message. Adapter
+# errors can carry secrets: a subprocess.TimeoutExpired stringifies the FULL argv
+# — which for the Pi backend includes `env PI_LITELLM_KEY=sk-...` — and any bearer
+# token could appear in an error body. Scrub these before anything reaches a client.
+_SECRET_RE = re.compile(r'(PI_LITELLM_KEY=)\S+|sk-[A-Za-z0-9._\-]{4,}|(Bearer\s+)\S+', re.IGNORECASE)
+def _redact(s: str) -> str:
+    def _sub(m: "re.Match") -> str:
+        if m.group(1):  # PI_LITELLM_KEY=...
+            return m.group(1) + "***"
+        if m.group(2):  # Bearer ...
+            return m.group(2) + "***"
+        return "***"    # sk-... token
+    return _SECRET_RE.sub(_sub, s or "")
+
 # --- Agent registry: ONE place to add/remove agents shown in the office. ------
 # kind: "chat" (v1) | "task-launcher" (reserved, e.g. AutoFyn). backend selects the adapter.
 AGENTS = [
@@ -216,7 +231,14 @@ def run_pi(prompt: str, model: str) -> str:
            "/sandbox/node_modules/.bin/pi",
            "--provider", "openai", "--model", model, "--thinking", "off",
            "-p", prompt]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
+    except subprocess.TimeoutExpired:
+        # NEVER let TimeoutExpired propagate: str(TimeoutExpired) embeds the full argv,
+        # which for this backend contains `env PI_LITELLM_KEY=sk-...`. do_POST returns
+        # exception text to the browser, so this would leak the scoped key. Raise a
+        # clean message instead. (2026-07-05 takeover fix; _redact is the backstop.)
+        raise RuntimeError(f"pi timed out after {PI_TIMEOUT + 15}s (sandbox slow or relay wedged)")
     if "relay open timed out" in (out.stderr or "") or "DeadlineExceeded" in (out.stderr or ""):
         raise RuntimeError("OpenShell relay timed out — sandbox unavailable (restart openshell)")
     # Pi prints Node/UNDICI warnings before the answer — drop them.
@@ -355,7 +377,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             text = dispatch(agent, prompt, model)
         except Exception as e:  # noqa: BLE001 — surface as a chat message, don't 500 the office
-            text = f"[{agent['name']} unavailable] {e}"
+            # _redact: never return a secret (e.g. a key embedded in a subprocess
+            # error's argv) to the browser client. (2026-07-05 takeover fix.)
+            text = _redact(f"[{agent['name']} unavailable] {e}")
         return self._send(200, {
             "id": "claw3d-bridge", "object": "chat.completion", "model": agent["id"],
             "choices": [{"index": 0, "message": {"role": "assistant", "content": text},

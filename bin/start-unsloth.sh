@@ -56,8 +56,11 @@ pid_is_ours() {
 }
 
 http_ok() {
-  local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || echo 000)
-  [[ "$code" != "000" ]]
+  # curl -w '%{http_code}' already emits 000 on failure AND exits non-zero; the old
+  # `... || echo 000` inside the substitution doubled it to "000000" != "000" → a dead
+  # server read as HEALTHY. Fallback goes in a separate assignment. (2026-07-05 takeover.)
+  local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null) || code=000
+  [[ "$code" =~ ^[0-9]{3}$ && "$code" != "000" ]]
 }
 
 # --- Already running + serving? Then no-op.

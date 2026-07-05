@@ -118,10 +118,29 @@ docker_run_managed() {
     "${cmd_args[@]}"
 }
 
-# Clear the partial=true label after smoke test passes.
+# Mark a container ready after its smoke test passes.
+# IMPORTANT: Docker labels are IMMUTABLE post-create and `docker update` has NO
+# --label flag (verified: `docker update --help` lists none), so the old
+# `docker update --label-add "ai-stack.partial=false" ... || true` was a SILENT
+# NO-OP for EVERY managed container — the ai-stack.partial=true label set at
+# creation never cleared, so `vz-ai-stack.sh gc` classified the entire healthy
+# running stack as "partial orphans" and offered to `docker rm -f` all of it.
+# (2026-07-05 takeover fix.)
+#
+# Since the label can't be mutated, record readiness in a durable state marker
+# instead. gc consults this marker AND the container's running-state so a healthy
+# container is never treated as an orphan. Best-effort (never aborts a start
+# script): a missing marker just means gc falls back to the running-state check.
 mark_ready() {
   local name="$1"
-  docker update --label-add "ai-stack.partial=false" "$name" >/dev/null 2>&1 || true
+  [[ -n "${STATE_DIR:-}" ]] || return 0
+  mkdir -p "$STATE_DIR/ready" 2>/dev/null || return 0
+  : > "$STATE_DIR/ready/$name" 2>/dev/null || true
+}
+
+# container_ready_marked NAME — true if mark_ready recorded this container ready.
+container_ready_marked() {
+  [[ -n "${STATE_DIR:-}" && -f "$STATE_DIR/ready/$1" ]]
 }
 
 # Idempotent recreate / reconcile guard.
@@ -145,6 +164,10 @@ recreate_guard() {
     if [[ "$recreate_flag" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]]; then
       backup_before_recreate "$name"
       docker rm -f "$name" >/dev/null
+      # Clear any stale readiness marker: the new container must re-earn ready via
+      # its smoke test (mark_ready). Prevents a removed→recreated name from being
+      # wrongly excluded from gc on an old marker.
+      [[ -n "${STATE_DIR:-}" ]] && rm -f "$STATE_DIR/ready/$name" 2>/dev/null || true
       record "recreated container $name"
       return 0
     fi
