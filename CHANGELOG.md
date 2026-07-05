@@ -4,6 +4,28 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(upgrade): `--check --all` crash + bounded retry on a transient OpenShell relay timeout
+
+Two `upgrade`-path fixes surfaced by running the commands end-to-end (not just the workspace path):
+
+- **`upgrade --check --all` crashed** under `set -Eeuo pipefail`: `_compose_lone_semver_tag`
+  (`versions.sh`) ended in `(( sn == 1 ))`, which returns exit 1 when the count isn't 1, so the
+  function returned 1 and the caller's `_lt="$(…)"` assignment aborted (ERR trap). Bit any compose
+  stack with no lone semver tag (honcho/autofyn/aitown). Pre-existing (version-visibility work
+  `76cec27`), surfaced by `--check --all`. Fix: explicit `return 0` — an empty result is a normal
+  outcome. Regression test in `test_versions.sh` (48 assertions).
+- **A transient OpenShell relay timeout reddened the whole `upgrade hermes`**: the fleet's
+  in-sandbox `pip install --upgrade hermes-agent` failed on a one-off `relay open timed out`
+  (`DeadlineExceeded`) even though the fleet was already at 0.18.0. New `_openshell_exec_retry`
+  wraps the exec with a BOUNDED retry (3 attempts, 3s backoff, ≤6s) on the OBSERVED relay signature
+  ONLY — a real error (PyPI 403, resolver conflict) has no relay signature → fails immediately.
+  Applied to the pip exec AND the post-version-read (so a relay blip can't silently no-op the §24
+  revert-detection guard). §24: adversarial + SRE reviewers — caught a broken sibling test
+  (`test_hermes_fleet_sandbox_guard.sh` extracts functions by sed range → had to source the new
+  helper), a speculative `status: Unavailable` signature (dropped — zero repo occurrences), and a
+  missing version-skew hypothesis in the give-up message (a persistent relay timeout can be a
+  version-skewed openshell client, not a flake). New `test_openshell_relay_retry.sh` (4 assertions).
+
 ## 2026-07-04 — feat: Hermes Workspace on hermes-agent v0.18.0 (loopback dashboard + shared netns)
 
 Completes `install/upgrade hermes` bringing ALL three surfaces (CLI · fleet · web) to latest.

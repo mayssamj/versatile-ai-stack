@@ -37,6 +37,8 @@ DRY=0; VER_OVERRIDE=""
 err(){  printf 'ERR: %s\n' "\$*" >&2; }
 warn(){ printf 'WARN: %s\n' "\$*" >&2; }
 note(){ :; }
+sleep(){ :; }
+source <(sed -n '/^_openshell_exec_retry()/,/^}/p' "$UPG")   # up_openshell calls this; extract it too
 source <(sed -n '/^up_openshell()/,/^}/p' "$UPG")
 PRE
 }

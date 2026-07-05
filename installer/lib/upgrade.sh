@@ -660,6 +660,31 @@ up_brew() {
   RESULT="upgraded"   # driver reconciles to 'up-to-date' when the brew version string didn't move
 }
 
+# _openshell_exec_retry <sandbox> <cmd...> — run `openshell sandbox exec -n <sandbox> --no-tty`
+# with a BOUNDED retry on the TRANSIENT relay signature ONLY. The OpenShell gateway occasionally
+# answers `status: DeadlineExceeded, message: "relay open timed out"` — a gRPC transient that
+# should NOT red a whole upgrade (the sandbox is fine, the relay blipped). But a REAL in-sandbox
+# error (PyPI 403, a resolver conflict, a genuine crash) must FAIL immediately — its output does
+# NOT carry the relay signature, so it is never retried. Echoes combined stdout+stderr; returns the
+# command's exit code (or the last attempt's on give-up). 3 attempts, 3s backoff (≤6s worst case,
+# perl-alarm-free — no coreutils `timeout` on the target host). Reads `$svc` from the caller for the msg.
+_openshell_exec_retry() {
+  local sandbox="$1"; shift
+  local attempt out rc
+  for attempt in 1 2 3; do
+    out="$(openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- "$@" 2>&1)"; rc=$?
+    if (( rc == 0 )); then printf '%s' "$out"; return 0; fi
+    # Retry ONLY the relay/deadline transient — never a real in-sandbox failure. Signatures are
+    # the ones actually OBSERVED in this repo's incident history (CHANGELOG + 04f_hermes_fleet.sh);
+    # do NOT add speculative gRPC codes (e.g. "status: Unavailable" has zero occurrences here).
+    if (( attempt < 3 )) && grep -qiE 'relay open timed out|DeadlineExceeded|relay .*(timed out|timeout)' <<<"$out"; then
+      warn "${svc:-openshell}: OpenShell relay transient (attempt $attempt/3: $(grep -oiE 'relay open timed out|DeadlineExceeded' <<<"$out" | head -1)) — retrying in 3s…" >&2
+      sleep 3; continue
+    fi
+    printf '%s' "$out"; return "$rc"
+  done
+}
+
 up_openshell() {
   local svc="$1" sandbox phase script
   sandbox="$(svc_sandbox "$svc")"
@@ -712,7 +737,9 @@ up_openshell() {
         RESULT=FAILED; return 0
       fi
       local _pip_rc=0 _pip_out
-      _pip_out="$(openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'python3 -m pip install --upgrade hermes-agent' 2>&1)" || _pip_rc=$?
+      # Bounded retry on a TRANSIENT OpenShell relay timeout (a gRPC blip shouldn't red the upgrade);
+      # a REAL pip error (PyPI 403, resolver conflict) carries no relay signature → fails immediately.
+      _pip_out="$(_openshell_exec_retry "$sandbox" bash -c 'python3 -m pip install --upgrade hermes-agent')" || _pip_rc=$?
       printf '%s\n' "$_pip_out" | tail -5
       script="$(resolve_phase_script_inline "$phase")"
       if [[ -z "$script" ]]; then
@@ -721,7 +748,7 @@ up_openshell() {
       if (( _pip_rc != 0 )); then
         # PyPI 403 through the proxy / expired sandbox token / resolver conflict:
         # hermes was NOT upgraded. Re-assert config (best-effort) but report the truth.
-        warn "$svc: in-sandbox 'pip install --upgrade hermes-agent' FAILED (rc=$_pip_rc) — hermes NOT upgraded (PyPI 403 via proxy? sandbox token expired?). Pre-stage a tarball like Phase 15, or re-run 'install 04f'."
+        warn "$svc: in-sandbox 'pip install --upgrade hermes-agent' FAILED (rc=$_pip_rc) — hermes NOT upgraded (PyPI 403 via proxy? sandbox token expired? persistent 'relay open timed out' after 3 retries — which can ALSO be a version-skewed openshell client shadowing the gateway binary, see 'install 04' diagnostics?). Pre-stage a tarball like Phase 15, or re-run 'install 04f'."
         "$BASH" "$script" >/dev/null 2>&1 || true
         RESULT="FAILED (pip)"; return 0
       fi
@@ -743,7 +770,11 @@ up_openshell() {
       # the truth (never claim a bump that got reverted). §24 council finding.
       if [[ -n "$VER_OVERRIDE" && "$RESULT" != FAILED* ]]; then
         local _postv
-        _postv="$(openshell sandbox exec -n "$sandbox" --no-tty </dev/null -- bash -c 'hermes --version 2>/dev/null' 2>/dev/null | sed -n 's/.*[vV]\([0-9][0-9.]*\).*/\1/p' | head -1)"
+        # Retry a transient relay blip HERE too (§24 both reviewers): a flake on THIS read — not
+        # the pip call — would otherwise leave _postv empty and SILENTLY no-op the revert-detection
+        # guard below, hiding a real pinned-dep downgrade. The helper folds stderr into stdout, so a
+        # persistent relay error still seds to empty (skip, unchanged fallback) after 3 bounded tries.
+        _postv="$(_openshell_exec_retry "$sandbox" bash -c 'hermes --version 2>/dev/null' | sed -n 's/.*[vV]\([0-9][0-9.]*\).*/\1/p' | head -1)"
         if [[ -n "$_postv" && "$_postv" != "$VER_OVERRIDE" ]]; then
           warn "$svc: hermes is $_postv after the config re-assert, NOT the $VER_OVERRIDE that pip installed — a pinned dep (e.g. Sourcegraph MCP) reverted it."
           RESULT="FAILED (reverted to $_postv)"; VER_OVERRIDE="$_postv"
