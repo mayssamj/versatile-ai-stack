@@ -36,6 +36,11 @@ r3 = bridge._redact("Authorization: Bearer sk-abc123XYZ._-def")
 if "sk-abc123" not in r3 and "Bearer ***" in r3: ok("Bearer token redacted")
 else: bad(f"Bearer token leaked: {r3!r}")
 
+# 3b) Non-sk- secrets (defense-in-depth): PHOENIX_SECRET (bare hex) and a *_TOKEN.
+r3b = bridge._redact("PHOENIX_SECRET=deadbeefcafe0123 DEER_FLOW_INTERNAL_AUTH_TOKEN=abc123XYZ")
+if "deadbeefcafe0123" not in r3b and "abc123XYZ" not in r3b: ok("non-sk- NAME_SECRET/NAME_TOKEN values redacted")
+else: bad(f"non-sk- secret leaked: {r3b!r}")
+
 # 4) The EXACT leak vector: str(subprocess.TimeoutExpired) embeds the full argv
 #    including PI_LITELLM_KEY=<key>. The redactor must scrub it. This is what the
 #    old do_POST returned verbatim to the browser on a Pi timeout.

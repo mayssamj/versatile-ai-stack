@@ -61,10 +61,13 @@ DEFAULT_MODEL = os.environ.get("CLAW3D_DEFAULT_MODEL", "local")
 # errors can carry secrets: a subprocess.TimeoutExpired stringifies the FULL argv
 # — which for the Pi backend includes `env PI_LITELLM_KEY=sk-...` — and any bearer
 # token could appear in an error body. Scrub these before anything reaches a client.
-_SECRET_RE = re.compile(r'(PI_LITELLM_KEY=)\S+|sk-[A-Za-z0-9._\-]{4,}|(Bearer\s+)\S+', re.IGNORECASE)
+# Covers: any NAME_KEY / NAME_SECRET / NAME_TOKEN / NAME_PASSWORD = value assignment
+# (PI_LITELLM_KEY, LITELLM_MASTER_KEY, PHOENIX_SECRET, DEER_FLOW_INTERNAL_AUTH_TOKEN,
+# the per-consumer *_LITELLM_KEY, …), any sk-… token, and any Bearer header value.
+_SECRET_RE = re.compile(r'([A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD)=)\S+|sk-[A-Za-z0-9._\-]{4,}|(Bearer\s+)\S+', re.IGNORECASE)
 def _redact(s: str) -> str:
     def _sub(m: "re.Match") -> str:
-        if m.group(1):  # PI_LITELLM_KEY=...
+        if m.group(1):  # NAME_KEY=... / NAME_SECRET=... / ...
             return m.group(1) + "***"
         if m.group(2):  # Bearer ...
             return m.group(2) + "***"

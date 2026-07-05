@@ -5,6 +5,15 @@
 # NO live-stack mutation. Run: bash installer/tests/test_takeover_hardening.sh
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Resolve a bash 5+ interpreter for the strict-shell sub-invocations, portably
+# (not a hardcoded Homebrew path). Prefer the running interpreter, then the usual
+# Homebrew locations, then PATH.
+BASH5="${BASH:-}"
+if [[ -z "$BASH5" || "${BASH_VERSINFO[0]:-0}" -lt 5 ]]; then
+  for _b in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
+    [[ -x "$_b" ]] && { BASH5="$_b"; break; }
+  done
+fi
 PASS=0; FAIL=0
 # NOTE: named t_ok/t_bad (not ok/bad) — sourcing common.sh into the test shell
 # defines its own ok()/warn()/err(), which would clobber plain ok()/bad().
@@ -74,7 +83,7 @@ fi
 exit 0
 STUB
 chmod +x "$STUBDIR/docker"
-gc_out="$(PATH="$STUBDIR:$PATH" NO_PROMPT=1 /opt/homebrew/bin/bash "$ROOT/installer/lib/gc.sh" 2>&1 || true)"
+gc_out="$(PATH="$STUBDIR:$PATH" NO_PROMPT=1 $BASH5 "$ROOT/installer/lib/gc.sh" 2>&1 || true)"
 if grep -q 'halfdead' <<<"$gc_out"; then t_ok "gc lists the genuinely-dead partial container (halfdead)"; else t_bad "gc did not list the dead orphan"; fi
 if grep -qE '^\s*-\s*litellm' <<<"$gc_out"; then t_bad "gc listed the RUNNING container litellm for removal (mass-delete danger)"; else t_ok "gc excluded the running container litellm from removal"; fi
 grep -qi 'Excluded' <<<"$gc_out" && t_ok "gc reports it excluded healthy containers" || t_bad "gc did not report exclusions"
@@ -114,11 +123,11 @@ fi
 # Behavioral: prove the shell semantics the guard relies on, in FRESH strict shells
 # (errexit must be active from the top — a subshell that sets -e from inside a
 # command-substitution/condition context has -e ignored, so we use bash -c).
-guarded_out="$(/opt/homebrew/bin/bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+guarded_out="$($BASH5 -c 'set -Eeuo pipefail; shopt -s inherit_errexit
   _fail(){ return 1; }
   v="$(_fail | sed -n "s/x/y/p" | head -1)" || true
   echo REACHED' 2>/dev/null || true)"
-unguarded_out="$(/opt/homebrew/bin/bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+unguarded_out="$($BASH5 -c 'set -Eeuo pipefail; shopt -s inherit_errexit
   _fail(){ return 1; }
   v="$(_fail | sed -n "s/x/y/p" | head -1)"
   echo REACHED' 2>/dev/null || true)"
@@ -177,31 +186,41 @@ else
 fi
 # Behavioral: a filter matching NO checks now exits non-zero (skips every check, so no
 # docker/diagnose runs — safe against the live daemon).
-rc=0; NO_PROMPT=1 /opt/homebrew/bin/bash "$ROOT/installer/doctor/doctor.sh" __nomatch_zzz__ >/dev/null 2>&1 || rc=$?
+rc=0; NO_PROMPT=1 $BASH5 "$ROOT/installer/doctor/doctor.sh" __nomatch_zzz__ >/dev/null 2>&1 || rc=$?
 [[ "$rc" == "2" ]] && t_ok "mistyped filter exits 2 (was silent exit 0)" || t_bad "mistyped filter exit=$rc (expected 2)"
 # Behavioral: a valid filter still runs (a host-local, docker-free check) → exit != 2.
-rc=0; NO_PROMPT=1 /opt/homebrew/bin/bash "$ROOT/installer/doctor/doctor.sh" lo0_aliases >/dev/null 2>&1 || rc=$?
+rc=0; NO_PROMPT=1 $BASH5 "$ROOT/installer/doctor/doctor.sh" lo0_aliases >/dev/null 2>&1 || rc=$?
 [[ "$rc" != "2" ]] && t_ok "valid filter runs at least one check (exit $rc != 2)" || t_bad "valid filter wrongly hit the no-match guard"
 
 # ---------------------------------------------------------------------------
-# FIX-7 (#17): reset nuke's managed-container sweep must be EXHAUSTIVE — one failed
-# `docker rm -f` must not abort the whole nuke under set -e.
+# FIX-7 (#17): reset's managed-container sweep must be EXHAUSTIVE — one failed
+# `docker rm -f` must not abort the reset under set -e. The sweep is now the shared
+# function _remove_managed_containers, called by BOTH the hard and nuke branches.
+# We EXTRACT the real function and RUN it (not a simulation) with a stubbed docker —
+# this catches the `local`-outside-a-function class the §24 review flagged, which a
+# grep/simulate test misses. (Reviewer-hardened after batch 2.)
 # ---------------------------------------------------------------------------
-section "FIX-7 reset nuke container sweep survives a single rm failure (reset.sh)"
-sweep_block="$(sed -n '/Stopping + removing managed ai-stack containers/,/read -r c/p;/read -r c/,/done </p' "$ROOT/installer/lib/reset.sh")"
-grep -qE 'docker rm -f "\$c".*\|\|' "$ROOT/installer/lib/reset.sh" && t_ok "reset nuke rm is guarded (|| continue)" || t_bad "reset nuke rm is unguarded — one failure aborts the sweep"
-# Behavioral: the guarded loop pattern continues past a failing rm; the unguarded one aborts.
-guarded="$(/opt/homebrew/bin/bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
-  _rm(){ [[ "$1" == bad ]] && return 1 || return 0; }
-  fails=()
-  while IFS= read -r c; do _rm "$c" || fails+=("$c"); done < <(printf "%s\n" a bad b)
-  echo "DONE removed-attempted=3 failed=${#fails[@]}"' 2>/dev/null || true)"
-[[ "$guarded" == *"DONE removed-attempted=3 failed=1"* ]] && t_ok "guarded sweep processes all containers past a failure" || t_bad "guarded sweep did not complete: $guarded"
-unguarded="$(/opt/homebrew/bin/bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
-  _rm(){ [[ "$1" == bad ]] && return 1 || return 0; }
-  while IFS= read -r c; do _rm "$c"; done < <(printf "%s\n" a bad b)
-  echo DONE' 2>/dev/null || true)"
-[[ "$unguarded" == *DONE* ]] && t_bad "unguarded sweep did not abort (semantics wrong)" || t_ok "unguarded sweep aborts mid-way (confirms the bug class)"
+section "FIX-7 reset sweep continues past a single rm failure (reset.sh, real fn)"
+# Both branches must call the shared function (fixes the hard-branch gap + de-dups).
+call_sites="$(grep -c '^ *_remove_managed_containers$' "$ROOT/installer/lib/reset.sh" || echo 0)"
+[[ "$call_sites" -ge 2 ]] && t_ok "both hard+nuke branches call _remove_managed_containers ($call_sites sites)" || t_bad "expected >=2 call sites, found $call_sites"
+grep -q '^_remove_managed_containers() {' "$ROOT/installer/lib/reset.sh" && t_ok "the sweep is a real function (local is valid inside it)" || t_bad "_remove_managed_containers is not defined as a function"
+# Extract + RUN the real function under set -e with a stubbed docker where 'halfdead'
+# fails to remove. Assert: it completes (no abort), removes the good ones, and warns
+# about the failure. A `local`-outside-function bug would make this ERROR out.
+fn_body="$(sed -n '/^_remove_managed_containers() {/,/^}/p' "$ROOT/installer/lib/reset.sh")"
+[[ -n "$fn_body" ]] || t_bad "could not extract _remove_managed_containers"
+sweep_out="$($BASH5 -c '
+  set -Eeuo pipefail; shopt -s inherit_errexit
+  ok(){ echo "OK $*"; }; warn(){ echo "WARN $*"; }
+  docker(){ if [[ "$1" == ps ]]; then printf "%s\n" litellm halfdead qdrant; return 0; fi
+            if [[ "$1" == rm ]]; then [[ "$3" == halfdead ]] && return 1 || return 0; fi; return 0; }
+  '"$fn_body"'
+  _remove_managed_containers
+  echo "SWEEP_COMPLETED"' 2>&1 || true)"
+[[ "$sweep_out" == *SWEEP_COMPLETED* ]] && t_ok "real sweep function runs to completion under set -e (no local-scope abort)" || t_bad "sweep aborted before completion: $sweep_out"
+grep -q 'OK removed litellm' <<<"$sweep_out" && grep -q 'OK removed qdrant' <<<"$sweep_out" && t_ok "sweep removed the healthy containers past the failing one" || t_bad "sweep did not remove all healthy containers: $sweep_out"
+grep -q 'WARN.*halfdead' <<<"$sweep_out" && t_ok "sweep warns about the container it could not remove" || t_bad "sweep did not warn about the failed removal: $sweep_out"
 
 # ---------------------------------------------------------------------------
 # FIX-8 (#59): aitown --nuke must NOT wipe the world when the pre-delete backup

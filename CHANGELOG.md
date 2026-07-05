@@ -4,6 +4,34 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): §24 review response — reset.sh regression + test hardening
+
+A 3-reviewer §24 panel (adversarial / architect / QA) audited the takeover fixes and found ONE
+self-inflicted regression plus a fix-scope gap, both now fixed:
+
+- **BLOCKING regression (introduced by batch 2):** `reset.sh` nuke put `local _rm_failed=()` at
+  `case`-scope (outside any function) — a fatal `local: can only be used in a function` error that,
+  under `set -Eeuo pipefail`, aborted `reset hard`/`nuke` BEFORE removing a single container (worse than
+  pre-fix). The batch-2 regression test missed it because it *simulated* the loop instead of running the
+  real code. Fix: extract the sweep into a real function `_remove_managed_containers` (so `local` is
+  valid) called by BOTH tiers.
+- **Fix-scope gap (QA):** the `hard` tier's container sweep (`reset.sh:309`) still had the original
+  unguarded `docker rm -f "$c"` — one failure aborted the hard-reset sweep. The shared function fixes
+  both tiers at once.
+- **Test hardening:** FIX-7 now EXTRACTS and RUNS the real `_remove_managed_containers` under `set -e`
+  with a stubbed docker (proven to fail on the buggy version and pass on the fix), replacing the loose
+  static grep. The suite's 7 hardcoded Homebrew bash paths are now a portable `$BASH5` resolver.
+- **Defense-in-depth (adversarial):** `bridge.py:_redact` now also scrubs any `NAME_KEY`/`NAME_SECRET`/
+  `NAME_TOKEN`/`NAME_PASSWORD=value` (covers PHOENIX_SECRET, the DeerFlow token, per-consumer keys), not
+  just `sk-…`/`Bearer`.
+- **Doc drift (architect):** the stale "mark_ready is a known platform-wide no-op" comment in
+  `bin/start-chatdev.sh` now describes the shipped marker behavior.
+
+Consensus after debate: 3/3 reviewers APPROVE the corrected batch. Tests: 30 bash + 6 python assertions,
+full existing suite green.
+
+---
+
 ## 2026-07-05 — fix(hardening): codebase-takeover pass — 8 confirmed defects (platform integrity + secret leak)
 
 Independent takeover review of the whole tree (14 parallel readers → 67 candidate findings →

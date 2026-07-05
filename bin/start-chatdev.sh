@@ -208,12 +208,11 @@ case "$_rc" in 0) _run_backend ;; 10) : ;; *) exit 1 ;; esac
 _rc=0; _cd_reconcile "$NAME" "$RECREATE_FLAG" || _rc=$?
 case "$_rc" in 0) _run_frontend ;; 10) : ;; *) exit 1 ;; esac
 
-# Both containers are now up (freshly started or reconciled-in-place). Clear the
-# partial=true label (mark_ready). NOTE: mark_ready is a known platform-wide no-op —
-# `docker update` has no --label-add and Docker labels are immutable post-create, so
-# the clear silently does nothing for EVERY managed container, not just ChatDev's.
-# That is safe here because gc (vz-ai-stack.sh gc) is INTERACTIVE and defaults to N —
-# it never auto-reaps. The real fix belongs in shared installer/lib/docker.sh (a
-# separate platform follow-up); we call it for parity so ChatDev isn't an outlier.
+# Both containers are now up (freshly started or reconciled-in-place). Record
+# readiness (mark_ready). NOTE (2026-07-05): mark_ready now writes a durable marker
+# under installer/state/ready/<name> — the old `docker update --label-add` was a
+# silent no-op (no such flag; Docker labels are immutable post-create), which let
+# `vz-ai-stack.sh gc` treat every healthy managed container as a partial orphan. gc
+# now excludes running/ready containers, so these calls genuinely un-flag the pair.
 mark_ready "$BE_NAME"; mark_ready "$NAME"
 record "start-chatdev: pid=$$ image=$IMAGE fe=$FE_HOST_PORT be=$BE_PORT"
