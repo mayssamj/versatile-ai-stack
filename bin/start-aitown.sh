@@ -141,7 +141,20 @@ _do_uninstall() {
     if [[ -d "$AT_DATA/convex" ]]; then
       local ts bak; ts="$(date +%Y%m%d-%H%M%S)"; bak="$AT_DATA.bak-$ts"
       log "Checkpoint: $AT_DATA → $bak (backup-before-delete)…"
-      cp -a "$AT_DATA" "$bak" 2>/dev/null && ok "world backed up → $bak" || warn "backup failed — proceeding (the bind mount is also at $AT_DATA until removed)"
+      # Fail-CLOSED: if the backup does not verifiably exist, do NOT wipe the world.
+      # The old code warned and PROCEEDED to `down -v` + `rm -rf` even when the
+      # backup failed — defeating the "backup-before-delete" discipline and losing
+      # the Convex world irrecoverably. Matches reset.sh's nuke guard (AI_STACK_FORCE_WIPE
+      # to override). (2026-07-05 takeover fix.)
+      if cp -a "$AT_DATA" "$bak" 2>/dev/null && [[ -d "$bak/convex" ]]; then
+        ok "world backed up → $bak"
+      elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+        warn "world backup FAILED but AI_STACK_FORCE_WIPE=1 — proceeding (you may lose the Convex world)"
+      else
+        err "ABORTING aitown --nuke: world backup failed and AI_STACK_FORCE_WIPE!=1 — NOTHING removed."
+        err "Fix the backup target (disk space / perms), or set AI_STACK_FORCE_WIPE=1 to wipe anyway."
+        exit 1
+      fi
     fi
     _compose down -v 2>&1 | tail -8 || true
     rm -rf "$AT_DATA"

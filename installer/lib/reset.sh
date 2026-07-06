@@ -261,6 +261,24 @@ remove_ai_stack_network() {
   fi
 }
 
+# _remove_managed_containers — `docker rm -f` every ai-stack.managed container,
+# EXHAUSTIVELY. A single failed removal (odd container state, engine hiccup) must
+# NOT abort the reset under `set -e` and leave a half-torn-down stack. Warn +
+# continue; surface any that could not be removed. Used by BOTH the hard and nuke
+# tiers (previously each open-coded the sweep — hard was unguarded, and nuke's
+# guarded version wrongly used `local` at case-scope, a fatal outside-a-function
+# error that aborted the sweep before the first removal). (2026-07-05 takeover.)
+_remove_managed_containers() {
+  local c _rm_failed=()
+  while IFS= read -r c; do
+    [[ -z "$c" ]] && continue
+    docker rm -f "$c" >/dev/null 2>&1 && ok "removed $c" || _rm_failed+=("$c")
+  done < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
+  if (( ${#_rm_failed[@]} > 0 )); then
+    warn "Could not remove ${#_rm_failed[@]} container(s): ${_rm_failed[*]} — remove manually: docker rm -f ${_rm_failed[*]}"
+  fi
+}
+
 case "$TIER" in
   soft)
     if ! confirm "Proceed with soft reset?" N; then exit 0; fi
@@ -306,8 +324,7 @@ case "$TIER" in
     teardown_compose_projects
     # (3) Single-container managed services (litellm, phoenix, qdrant, ...).
     log "Stopping + removing managed ai-stack containers..."
-    while IFS= read -r c; do docker rm -f "$c" >/dev/null && ok "removed $c"; done \
-      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
+    _remove_managed_containers
     # (4) Host-side daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)
     #     — NOT containers, so nothing above stops them; they'd keep their ports
     #     and break the next install. Free the ports + clear stale pidfiles.
@@ -373,8 +390,7 @@ case "$TIER" in
     log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace)..."
     teardown_compose_projects
     log "Stopping + removing managed ai-stack containers..."
-    while IFS= read -r c; do docker rm -f "$c" >/dev/null; done \
-      < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
+    _remove_managed_containers
     # Sourcegraph data (~/.sourcegraph-local) lives OUTSIDE the repo data/ tree, so
     # the data/ backup above never covers it. The managed-label sweep removed the
     # container but not this dir. NUKE = remove everything → back it up (fail-closed,

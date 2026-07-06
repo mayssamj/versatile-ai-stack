@@ -36,10 +36,14 @@ echo "== integration: drive the REAL fix-dispatch block extracted from doctor.sh
 # Extract the actual `if declare -F "${__check}_fix" … fi` block from doctor.sh and run it with a
 # fake check + stubs, so this tests the SHIPPED code path (not a hand-transcribed mirror).
 BLOCK="$(awk '/^    if declare -F "/{f=1} f{print} f&&/^    fi$/{exit}' "$DOC")"
+# The fix-dispatch block delegates to the _doctor_apply_and_verify helper (2026-07-05:
+# run the fix, then re-diagnose). Extract that helper too so the block is self-contained.
+eval "$(awk '/^_doctor_apply_and_verify\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$DOC")"
 if [[ -z "$BLOCK" ]]; then bad "could not extract the fix-dispatch block from doctor.sh"; else
   SENT="$(mktemp -u)"; declare -A AUTOHEAL; __check=fake; fixed=0
-  fake_fix(){ : > "$SENT"; }     # the "fix" — records that it actually RAN
-  confirm(){ return 0; }         # would say yes if reached; the non-TTY guard must prevent that
+  fake_fix(){ : > "$SENT"; }       # the "fix" — records that it actually RAN
+  fake_diagnose(){ return 0; }     # the re-diagnose verification (helper re-runs it)
+  confirm(){ return 0; }           # would say yes if reached; the non-TTY guard must prevent that
   # Run the extracted block in a SUBSHELL that LOCALLY stubs the doctor helpers (note/ok/err), so
   # they don't clobber this harness's own ok()/bad() reporters (they collide by name).
   drive(){ rm -f "$SENT"; ( note(){ :;}; ok(){ :;}; err(){ :;}; eval "$BLOCK" ); }

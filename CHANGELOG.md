@@ -4,6 +4,186 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): §24 merge-review response — 2 blocking + 1 fail-safe follow-up
+
+Two §24 councils (adversarial/security · architect · QA/infra) audited the takeover-hardening batch before
+merge — one on the batch, one re-reviewing this fix commit. All suites were green, but two BLOCKING gaps
+and one fail-safe residual survived the original review; fixed here, each re-verified with a non-vacuity
+revert (revert the fix → the test goes red / the leak returns):
+
+- **BLOCKING (security): the claw3d bridge redacted only the ERROR path, not the SUCCESS path**
+  (`claw3d-bridge/bridge.py`). `_redact` was applied only inside `do_POST`'s `except` branch; the agent's
+  own reply (`text = dispatch(...)`) went to the browser unredacted — yet the CHANGELOG/comment claimed
+  "scrubs … from anything returned to a client". The backends (pi/hermes) are autonomous agents launched
+  with a scoped LiteLLM key in their env (`env PI_LITELLM_KEY=sk-…`), so a normal prompt ("print your
+  env") echoes the key on a **non-error** reply. Fix: `_redact` now wraps the content at the SINGLE
+  response-construction choke point, covering both paths; the comment is corrected to "best-effort
+  backstop, not a guarantee". New behavioral test drives the real `Handler.do_POST` with a stubbed
+  `dispatch` that emits a key and asserts the browser payload is scrubbed (reverting the fix leaks it).
+  (Default bind is `127.0.0.1`, so exposure was operator-localhost + a scoped local key — but the false
+  guarantee was the real defect.)
+- **BLOCKING (test integrity): FIX-13's assertions could not detect the very regression they name**
+  (`installer/tests/test_takeover_hardening.sh`). The 3-check fixture's two opposite miscounts (a
+  heals-but-`return 1` check wrongly dropped; a queue-only `return 0` fix wrongly credited) CANCEL to the
+  same "2 fixed, 1 remaining, exit 1" summary as the correct code, so a logic-only revert (keeping the
+  "(verified)" strings) passed green. Fix: broke the count symmetry with a **second** heals-but-`return 1`
+  check (correct→3 fixed vs buggy→2), added **per-check-identity** binding (each outcome checked in its
+  OWN output block), and added a **single queue-only check** sub-run that reproduces the exact #46
+  inversion (buggy: 1 fixed / exit 0 on a broken stack; correct: 0 fixed / exit 1). Verified: reverting
+  the doctor dispatch to raw-exit-code accounting now turns FIX-13 **red (5 failures)** — it was green
+  before.
+- **NON-BLOCKING (fail-safe): stale `state/ready/<name>` marker survives a recreate** (`installer/lib/docker.sh`,
+  `bin/start-chatdev.sh`, `installer/lib/adopt.sh`). A container removed OUTSIDE its guard (a `reset` tier,
+  a manual `docker rm`) then recreated could inherit an old readiness marker and be wrongly excluded from
+  `gc` (fail-safe direction: under-reap, never the pre-fix mass-delete). Root cause: `recreate_guard`
+  cleared the marker only on its `--recreate` branch, NOT on the fresh-create (container-absent) path — so
+  any raw-`docker run` service recreated after an external `rm` kept the stale marker. Fix: a shared
+  `clear_ready_marker` helper wired into every real (re)create/removal choke point — `recreate_guard` (both
+  the `--recreate` and the absent/fresh-create paths, the root spot every `recreate_guard` service
+  reconciles through), `docker_run_managed`, chatdev's hand-rolled `_cd_reconcile` twin (the sole
+  production service that writes markers via raw `docker run`), and `adopt`'s own `docker rm -f`. (The
+  first fix draft placed the clear only in `docker_run_managed`, which no production start script calls —
+  the §24 re-review caught that it never reached the real consumer; corrected here.)
+
+Suite: `test_takeover_hardening.sh` now 59 assertions; `test_bridge_redact.py` 7; `test_doctor_
+noninteractive_guard.sh` 9 — all green; full existing suite (22 shell suites + the bridge test) green, no
+regressions. Two §24 councils reached consensus APPROVE after debate. (Note: `container_ready_marked` is
+exercised by the FIX-2 tests — not dead code.)
+
+---
+
+## 2026-07-05 — fix(hardening): takeover batch 5 — doctor verifies fixes by re-diagnosing (#46/#45/#32)
+
+Root-cause fix for the doctor "honesty" cluster. doctor counted a check "fixed" purely on the fix
+function's EXIT CODE, which was wrong in both directions:
+
+- a fix that HEALED but returned non-zero (e.g. `lumen_fix`/`claw3d_fix` `return 1` after a good
+  model-pull / restart, #45/#32) was reported "fix attempt failed"; and
+- a fix that only QUEUED a restart (didn't resolve now, #46) returned 0 and was counted "fixed", so
+  doctor exited 0 on a still-broken stack.
+
+Fix: after applying a fix, doctor now RE-DIAGNOSES and counts the check fixed only if it actually passes
+(`_doctor_apply_and_verify` in `doctor.sh`). This makes the accounting honest and subsumes the per-check
+`return 1`-on-success bugs (their exit codes no longer matter — the re-diagnosis is the source of truth).
+The fix's own progress messages still print; only the verification diagnose is silenced. Cost: one extra
+diagnose per fixed check, paid only on checks that both failed and had a fix applied.
+
+Tested end-to-end against the REAL `doctor.sh` (new `DOCTOR_CHECKS_DIR` override) with three synthetic
+AUTOHEAL checks — heals-cleanly, heals-but-fix-returns-1, and fix-returns-0-but-unresolved — asserting
+the honest outcome (2 fixed, 1 remaining, exit 1) where the old exit-code accounting gave the inverted
+result (1 wrongly-fixed, exit 0). Updated `test_doctor_noninteractive_guard.sh` to extract the new helper
+(its intent — branch ordering + headless-safety — is unchanged and still green). Suite now 53 assertions.
+
+---
+
+## 2026-07-05 — fix(hardening): takeover batch 4 — 4 more confirmed defects + tests
+
+Continuing the takeover hardening with four more root-cause fixes, each with a hermetic
+regression test (suite now 46 assertions; full existing suite green):
+
+- **ACE/RLM first real call 403'd (#7, High)** — phases 17/18 mint the scoped key for
+  `[local,local-heavy]` but write `OPENAI_MODEL=<bound model>` (which `models.yml` may set to a
+  subscription/cloud model the key doesn't allow); the `--help`-only smoke passes green, so the first
+  `bin/ace`/`bin/rlm` completion 403s. Fix: `litellm_reconcile_key` after the model is resolved (unions
+  the bound model into the key in place), matching the peer opt-in phases.
+- **ingest.py flattened + clobbered processed files (#62, data-integrity)** — `shutil.move(src, DONE /
+  src.name)` used the basename, so two inbox files with the same name in different subdirs, or a re-run
+  whose name already sat in `processed/`, silently overwrote each other. Fix: move preserving the inbox
+  subtree (`relative_to(INBOX)`) and disambiguate instead of clobbering.
+- **start-understand.sh could SIGTERM a recycled PID (#55)** — `_alive` did `kill -0` only; after a
+  reboot a recycled PID passes that and the `if _alive; then kill …` path signals an unrelated process.
+  Fix: add a shim-identity guard (mirrors `start-docs_mcp.sh`).
+- **start-paperclip.sh could kill another project's `pnpm dev` (#58)** — `pid_is_ours`'s fallback
+  matched ANY `pnpm dev` (or anything mentioning "paperclip"). Fix: anchor the `pnpm dev` match to the
+  process's working directory (== `PC_DIR`) via `lsof -d cwd`, so an unrelated dev server on a recycled
+  PID is never treated as ours.
+
+Deferred with recommended fix: doctor helicone `_fix` (#43) auto-answers its `rm -rf` confirm because
+doctor pipes fixes from `/dev/null` (default Y wins). The fix is to read the confirm from `/dev/tty` and
+fail-safe when absent, but that can't be regression-tested deterministically without a controllable tty,
+so it's tracked rather than shipped untested.
+
+---
+
+## 2026-07-05 — fix(hardening): §24 review response — reset.sh regression + test hardening
+
+A 3-reviewer §24 panel (adversarial / architect / QA) audited the takeover fixes and found ONE
+self-inflicted regression plus a fix-scope gap, both now fixed:
+
+- **BLOCKING regression (introduced by batch 2):** `reset.sh` nuke put `local _rm_failed=()` at
+  `case`-scope (outside any function) — a fatal `local: can only be used in a function` error that,
+  under `set -Eeuo pipefail`, aborted `reset hard`/`nuke` BEFORE removing a single container (worse than
+  pre-fix). The batch-2 regression test missed it because it *simulated* the loop instead of running the
+  real code. Fix: extract the sweep into a real function `_remove_managed_containers` (so `local` is
+  valid) called by BOTH tiers.
+- **Fix-scope gap (QA):** the `hard` tier's container sweep (`reset.sh:309`) still had the original
+  unguarded `docker rm -f "$c"` — one failure aborted the hard-reset sweep. The shared function fixes
+  both tiers at once.
+- **Test hardening:** FIX-7 now EXTRACTS and RUNS the real `_remove_managed_containers` under `set -e`
+  with a stubbed docker (proven to fail on the buggy version and pass on the fix), replacing the loose
+  static grep. The suite's 7 hardcoded Homebrew bash paths are now a portable `$BASH5` resolver.
+- **Defense-in-depth (adversarial):** `bridge.py:_redact` now also scrubs any `NAME_KEY`/`NAME_SECRET`/
+  `NAME_TOKEN`/`NAME_PASSWORD=value` (covers PHOENIX_SECRET, the DeerFlow token, per-consumer keys), not
+  just `sk-…`/`Bearer`.
+- **Doc drift (architect):** the stale "mark_ready is a known platform-wide no-op" comment in
+  `bin/start-chatdev.sh` now describes the shipped marker behavior.
+
+Consensus after debate: 3/3 reviewers APPROVE the corrected batch. Tests: 30 bash + 6 python assertions,
+full existing suite green.
+
+---
+
+## 2026-07-05 — fix(hardening): codebase-takeover pass — 8 confirmed defects (platform integrity + secret leak)
+
+Independent takeover review of the whole tree (14 parallel readers → 67 candidate findings →
+adversarial per-finding verification: 63 CONFIRMED, 0 refuted). This entry lands the first batch of
+root-cause fixes, each with a hermetic regression test in `installer/tests/test_takeover_hardening.sh`
+(22 assertions) or `claw3d-bridge/test_bridge_redact.py` (5 assertions). Full suite stays green.
+
+- **`set_env` corrupted values with backslash escapes** (`installer/lib/env.sh`). It wrote the value via
+  `awk -v v="$val"`, and `awk -v` applies C-escape processing — a pasted token containing `\n`/`\t`/`\\`
+  was expanded, silently corrupting the secret AND splitting `.env` into a malformed extra line (which
+  then fails `load_env_strict`/doctor-03 and breaks `docker --env-file`). Fix: pass key/value via
+  `ENVIRON[]` (raw bytes, no escape processing). Every writer (setup prompts, key mints, engine pin)
+  funnels through `set_env`.
+- **`gc` offered to `docker rm -f` the entire healthy stack** (`installer/lib/docker.sh`, `gc.sh`).
+  `mark_ready` used `docker update --label-add`, which does not exist (`docker update` has no `--label`
+  flag; labels are immutable) — a silent no-op, so `ai-stack.partial=true` never cleared and `gc` listed
+  EVERY running container (litellm/qdrant/phoenix/…) as a "partial orphan". Fix: `mark_ready` now records
+  readiness in a durable marker (`installer/state/ready/<name>`), and `gc` excludes any partial-labeled
+  container that is running or ready-marked — only genuinely stuck containers are offered for removal.
+  `recreate_guard` clears the marker on rebuild.
+- **`http_ok` reported a dead server as healthy** (`bin/start-paperclip.sh`, `bin/start-unsloth.sh`).
+  `code=$(curl -w '%{http_code}' … || echo 000)` — curl already emits `000` on failure AND exits
+  non-zero, so `|| echo 000` APPENDED a second `000` → `"000000" != "000"` → true (healthy). Fix: move
+  the fallback out of the substitution (`… ) || code=000`) and require a 3-digit non-000 code. (The repo
+  had already learned this in claw3d/aitown/doctor-40; the fix hadn't propagated to these two.)
+- **A relay blip aborted the whole `upgrade all`** (`installer/lib/upgrade.sh:777`). The hermes
+  post-upgrade version read was a bare `_postv="$(_openshell_exec_retry … | sed | head)"` with no
+  `|| true`; under `set -Eeuo pipefail`+`inherit_errexit` a persistent relay failure tripped errexit and
+  killed the run mid-loop (remaining services never upgraded). Fix: `|| true`, matching the guarded pip
+  sibling — it now falls through to the "skip, unchanged" path the comment already assumed.
+- **`adopt falkordb` always false-failed its smoke test** (`installer/lib/adopt.sh`). It probed
+  `127.0.0.1:6379`, but falkordb publishes only on its alias IP `127.0.10.7:6379` — so after the
+  original container was destroyed and correctly recreated, the smoke reported "smoke fail". Fix: probe
+  `127.0.10.7:6379` with a bounded retry.
+- **`doctor --all` was a silent 0-check no-op that exited 0** (`installer/doctor/doctor.sh`). `--all`
+  was treated as a substring name-filter matching nothing (checks 25/49 document it as the `DOCTOR_ALL`
+  deep-probe trigger). Fix: `--all` sets `DOCTOR_ALL=1` and clears the filter; a mistyped filter that
+  matches zero checks now exits 2 instead of green (a typo'd `doctor pheonix` no longer passes CI).
+- **The claw3d bridge leaked `PI_LITELLM_KEY` to the browser** (`claw3d-bridge/bridge.py`). On a Pi
+  turn timeout, `subprocess.run(…, timeout=…)` raised `TimeoutExpired`, whose string embeds the full
+  argv — including `env PI_LITELLM_KEY=sk-…` — and `do_POST` returned that exception text verbatim as a
+  chat message. Fix: `run_pi` converts the timeout to a clean, key-free error (root cause), and a
+  `_redact()` backstop scrubs `PI_LITELLM_KEY=`/`sk-…`/`Bearer …` from anything returned to a client.
+
+Deferred (documented, not shipped): docs-mcp binds `0.0.0.0:8765` with no auth. The obvious "bind
+127.0.0.1" fix would BREAK the Pi sandbox → docs-mcp path (a container reaches it via
+`host.docker.internal`, which needs a non-loopback bind). The correct fix is MCP-layer auth, which needs
+FastMCP research + live validation — tracked as a follow-up rather than shipping a regression.
+
+---
+
 ## 2026-07-05 — docs(ports): full PORTS.md refresh (last verified 2026-05-31 → now); §24-reviewed
 
 `doc/PORTS.md` had drifted badly — its alias table was 15 rows and it predated ~19 services. Rewrote it against the canonical sources (`installer/lib/aliases.tsv`, `services.yml`, `bin/audit.sh`, `mcp_server.py`, the hermes-workspace override) so it reflects the live platform:
@@ -15,6 +195,8 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 - **Security-honest External-facing summary** (§24 council catch): the doc no longer claims agentscope-studio is the "one exception" binding `0.0.0.0` — `docs_mcp` (`0.0.0.0:8765`, default-installed Phase 06) and `unsloth` (`0.0.0.0:8898`) also bind `0.0.0.0` and ARE LAN-reachable while up. Added a host-listener posture table + mitigations, and quoted `bin/audit.sh`'s actual container-scoped leak-check verbatim (the old snippet misquoted it).
 
 Reviewed by a 3-agent §24 council (adversarial fact-check / domain-architect / QA-completeness); disputed live-behavior claims (docs_mcp bind, hermes-agent pinned version, aitown extra ports) settled by direct inspection.
+
+---
 
 ## 2026-07-05 — fix(upgrade): `--check --all` crash + bounded retry on a transient OpenShell relay timeout
 

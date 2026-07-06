@@ -56,6 +56,24 @@ PI_TIMEOUT = int(os.environ.get("CLAW3D_PI_TIMEOUT", "600"))
 DEERFLOW_TIMEOUT = int(os.environ.get("CLAW3D_DEERFLOW_TIMEOUT", "600"))
 DEFAULT_MODEL = os.environ.get("CLAW3D_DEFAULT_MODEL", "local")
 
+# --- secret redaction (2026-07-05 takeover) ---------------------------------
+# do_POST returns exception text to the browser client as a chat message. Adapter
+# errors can carry secrets: a subprocess.TimeoutExpired stringifies the FULL argv
+# — which for the Pi backend includes `env PI_LITELLM_KEY=sk-...` — and any bearer
+# token could appear in an error body. Scrub these before anything reaches a client.
+# Covers: any NAME_KEY / NAME_SECRET / NAME_TOKEN / NAME_PASSWORD = value assignment
+# (PI_LITELLM_KEY, LITELLM_MASTER_KEY, PHOENIX_SECRET, DEER_FLOW_INTERNAL_AUTH_TOKEN,
+# the per-consumer *_LITELLM_KEY, …), any sk-… token, and any Bearer header value.
+_SECRET_RE = re.compile(r'([A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD)=)\S+|sk-[A-Za-z0-9._\-]{4,}|(Bearer\s+)\S+', re.IGNORECASE)
+def _redact(s: str) -> str:
+    def _sub(m: "re.Match") -> str:
+        if m.group(1):  # NAME_KEY=... / NAME_SECRET=... / ...
+            return m.group(1) + "***"
+        if m.group(2):  # Bearer ...
+            return m.group(2) + "***"
+        return "***"    # sk-... token
+    return _SECRET_RE.sub(_sub, s or "")
+
 # --- Agent registry: ONE place to add/remove agents shown in the office. ------
 # kind: "chat" (v1) | "task-launcher" (reserved, e.g. AutoFyn). backend selects the adapter.
 AGENTS = [
@@ -216,7 +234,14 @@ def run_pi(prompt: str, model: str) -> str:
            "/sandbox/node_modules/.bin/pi",
            "--provider", "openai", "--model", model, "--thinking", "off",
            "-p", prompt]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT + 15)
+    except subprocess.TimeoutExpired:
+        # NEVER let TimeoutExpired propagate: str(TimeoutExpired) embeds the full argv,
+        # which for this backend contains `env PI_LITELLM_KEY=sk-...`. do_POST returns
+        # exception text to the browser, so this would leak the scoped key. Raise a
+        # clean message instead. (2026-07-05 takeover fix; _redact is the backstop.)
+        raise RuntimeError(f"pi timed out after {PI_TIMEOUT + 15}s (sandbox slow or relay wedged)")
     if "relay open timed out" in (out.stderr or "") or "DeadlineExceeded" in (out.stderr or ""):
         raise RuntimeError("OpenShell relay timed out — sandbox unavailable (restart openshell)")
     # Pi prints Node/UNDICI warnings before the answer — drop them.
@@ -356,9 +381,20 @@ class Handler(BaseHTTPRequestHandler):
             text = dispatch(agent, prompt, model)
         except Exception as e:  # noqa: BLE001 — surface as a chat message, don't 500 the office
             text = f"[{agent['name']} unavailable] {e}"
+        # _redact at the SINGLE response-construction choke point, so BOTH the
+        # exception text AND the agent's own success output are scrubbed — no call
+        # site can bypass it. This matters because the backends are autonomous
+        # coding agents (pi/hermes) launched with a scoped LiteLLM key in their env
+        # (e.g. `env PI_LITELLM_KEY=sk-...`); a perfectly normal prompt ("run `env`",
+        # "print your config") makes the agent echo that key on the SUCCESS path,
+        # not just via a crash. Redacting only the except branch (the pre-2026-07-05
+        # state) left that wide open. Best-effort backstop, not a guarantee — the
+        # root-cause fix is not to hand a live secret to an agent that can print it;
+        # this keeps a stray sk-.../Bearer/NAME_KEY= token out of the browser reply.
+        # (2026-07-06 §24 review: success-path leak closed.)
         return self._send(200, {
             "id": "claw3d-bridge", "object": "chat.completion", "model": agent["id"],
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": text},
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": _redact(text)},
                          "finish_reason": "stop"}],
         })
 

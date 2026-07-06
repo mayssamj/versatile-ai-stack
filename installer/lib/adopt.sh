@@ -131,6 +131,7 @@ fi
 # Step 6 — stop the foreign container.
 log "Stopping & removing foreign container..."
 docker rm -f "$SVC" >/dev/null
+clear_ready_marker "$SVC"   # the managed replacement re-earns ready via the smoke test below
 record_block "adoption: $SVC" \
   "user-confirmed adoption" \
   "backup at: ${backup_root:-(none — --no-backup)}"
@@ -157,7 +158,18 @@ case "$SVC" in
   litellm)  litellm_wait_ready 60 || { err "smoke fail"; exit 1; } ;;
   phoenix)  wait_http http://phoenix:6006 60 || { err "smoke fail"; exit 1; } ;;
   qdrant)   wait_http http://qdrant:6333/collections 30 || { err "smoke fail"; exit 1; } ;;
-  falkordb) (echo > /dev/tcp/127.0.0.1/6379) 2>/dev/null || { err "smoke fail"; exit 1; } ;;
+  falkordb)
+    # falkordb publishes ONLY on its alias IP 127.0.10.7:6379 (installer/lib/aliases.tsv),
+    # NOT 127.0.0.1 — the old 127.0.0.1 probe always false-failed after the recreate,
+    # reporting "smoke fail" on a container that actually came up fine. Probe the real
+    # bind, with a bounded retry since the container was just (re)started.
+    # (2026-07-05 takeover fix.)
+    _fk_ok=0
+    for _i in $(seq 1 30); do
+      if (exec 3<>/dev/tcp/127.0.10.7/6379) 2>/dev/null; then exec 3>&- 3<&- 2>/dev/null; _fk_ok=1; break; fi
+      sleep 1
+    done
+    (( _fk_ok )) || { err "smoke fail (falkordb not reachable on 127.0.10.7:6379 after 30s)"; exit 1; } ;;
 esac
 mark_ready "$SVC"
 ok "Adopted: $SVC"

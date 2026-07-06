@@ -774,7 +774,14 @@ up_openshell() {
         # the pip call — would otherwise leave _postv empty and SILENTLY no-op the revert-detection
         # guard below, hiding a real pinned-dep downgrade. The helper folds stderr into stdout, so a
         # persistent relay error still seds to empty (skip, unchanged fallback) after 3 bounded tries.
-        _postv="$(_openshell_exec_retry "$sandbox" bash -c 'hermes --version 2>/dev/null' | sed -n 's/.*[vV]\([0-9][0-9.]*\).*/\1/p' | head -1)"
+        # `|| true`: on a persistent relay failure OR a broken hermes entrypoint,
+        # _openshell_exec_retry returns non-zero. Without this guard the bare
+        # command-substitution assignment aborts the WHOLE `upgrade all` run under
+        # `set -Eeuo pipefail` + inherit_errexit (killing every remaining service),
+        # instead of falling through to the empty-`_postv` "skip, unchanged" path the
+        # comment above already assumes. Mirrors the guarded sibling at the pip call.
+        # (2026-07-05 takeover fix.)
+        _postv="$(_openshell_exec_retry "$sandbox" bash -c 'hermes --version 2>/dev/null' | sed -n 's/.*[vV]\([0-9][0-9.]*\).*/\1/p' | head -1)" || true
         if [[ -n "$_postv" && "$_postv" != "$VER_OVERRIDE" ]]; then
           warn "$svc: hermes is $_postv after the config re-assert, NOT the $VER_OVERRIDE that pip installed — a pinned dep (e.g. Sourcegraph MCP) reverted it."
           RESULT="FAILED (reverted to $_postv)"; VER_OVERRIDE="$_postv"

@@ -35,8 +35,13 @@ PORT=3100
 # return 404 or 5xx before the route table is loaded.
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 http_ok() {
-  local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null || echo 000)
-  [[ "$code" != "000" ]]
+  # curl -w '%{http_code}' ALREADY emits 000 on a connection failure/timeout AND exits
+  # non-zero. The old `... || echo 000` inside the substitution APPENDED a second 000 →
+  # "000000", which `!= "000"` read as HEALTHY for a dead server. Put the fallback in a
+  # separate assignment (`|| code=000`) so it never concatenates, and keep set -e happy.
+  # (2026-07-05 takeover fix; same idiom the repo already uses in doctor check 40.)
+  local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null) || code=000
+  [[ "$code" =~ ^[0-9]{3}$ && "$code" != "000" ]]
 }
 
 [[ -d "$PC_DIR" ]]               || { err "paperclip source missing at $PC_DIR — run phase 08 first."; exit 1; }
@@ -53,8 +58,20 @@ pid_is_ours() {
   # mentions our specific paperclip path. This avoids matching other people's
   # paperclips on the same machine.
   ps -p "$pid" -o args= 2>/dev/null | grep -qF "$PC_DIR" && return 0
-  # Some descendants no longer have PC_DIR in argv but still mention paperclip
-  ps -p "$pid" -o args= 2>/dev/null | grep -qE 'paperclip|pnpm.*dev' && return 0
+  # The `pnpm dev` PARENT's argv is just "pnpm dev" (it's started with cwd=PC_DIR but
+  # PC_DIR isn't in argv), so we still match it — but ONLY when its working directory
+  # is PC_DIR. The old bare `pnpm.*dev`/`paperclip` fallback matched ANY project's
+  # `pnpm dev` (or any process merely mentioning "paperclip"), so a recycled PID
+  # running an unrelated dev server was classified "ours" and the restart path SIGTERM'd
+  # it. Anchoring to the cwd removes that cross-project kill. (2026-07-05 takeover fix.)
+  if ps -p "$pid" -o args= 2>/dev/null | grep -qE 'pnpm.*dev'; then
+    # lsof -Fn emits the cwd as a single `n<path>` line (machine format), so this is
+    # space-safe even if AI_STACK is cloned under a path containing spaces — unlike a
+    # column-split parse. Missing lsof / no match → empty → not ours (fail-safe: fewer
+    # kills, never a wrong one). (2026-07-05 takeover fix; §24-hardened.)
+    local cwd; cwd="$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+    [[ -n "$cwd" && "$cwd" == "$PC_DIR" ]] && return 0
+  fi
   return 1
 }
 

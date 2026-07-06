@@ -167,6 +167,13 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   fi
 fi
 set_env ACE_DEFAULT_MODEL "$ACE_MODEL"
+# Widen the scoped key to ALLOW the bound model. The key is minted for the fixed
+# superset [local,local-heavy], but ACE_MODEL may resolve (via models.yml) to a
+# subscription/cloud model (e.g. claude-opus-sub-xhigh) that the key does NOT allow —
+# so the first real `bin/ace` call 403s while the --help-only smoke passes green. This
+# unions the bound model into the key IN PLACE (no re-mint, no .env churn), matching
+# the peer opt-in phases. WARN-non-fatal if LiteLLM is unreachable. (2026-07-05 takeover.)
+litellm_reconcile_key ACE_LITELLM_KEY "$ACE_MODEL" local local-heavy
 # Other provider keys are set to "unused" to satisfy any unconditional
 # `from X import Y` in ACE's provider files.
 cat > "$ACE_DIR/.env" <<ENVEOF

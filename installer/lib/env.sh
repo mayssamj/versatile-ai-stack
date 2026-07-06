@@ -61,8 +61,14 @@ set_env() {
   local tmp
   tmp="$(mktemp "${ENV_FILE}.XXXXXX")" || return 1
   chmod 600 "$tmp"
-  awk -v k="$key" -v v="$val" '
-    BEGIN { found=0 }
+  # Pass key/value through the ENVIRONMENT (ENVIRON[]), NOT via `awk -v`. `awk -v`
+  # applies C-escape processing to the assigned string, so a value containing a
+  # literal backslash-escape (a token/password with `\n`, `\t`, or `\\`) would be
+  # expanded — e.g. `abc\nxyz` becomes `abc<newline>xyz`, silently corrupting the
+  # secret AND splitting the .env into two lines (one bare, malformed). ENVIRON
+  # values are raw bytes, so the value is written verbatim. (2026-07-05 takeover.)
+  _SE_K="$key" _SE_V="$val" awk '
+    BEGIN { found=0; k=ENVIRON["_SE_K"]; v=ENVIRON["_SE_V"] }
     /^[[:space:]]*#/ { print; next }
     {
       # match KEY= at start of line, exact key match (no partial prefix)

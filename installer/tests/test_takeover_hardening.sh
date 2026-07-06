@@ -1,0 +1,461 @@
+#!/usr/bin/env bash
+# test_takeover_hardening.sh — regression tests for the 2026-07-05 codebase-takeover
+# hardening pass. Each test corresponds to a CONFIRMED defect fixed in that pass and is
+# HERMETIC + CI-SAFE: temp sandboxes, stubbed binaries on PATH, NO real docker/network,
+# NO live-stack mutation. Run: bash installer/tests/test_takeover_hardening.sh
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Resolve a bash 5+ interpreter for the strict-shell sub-invocations, portably
+# (not a hardcoded Homebrew path). Prefer the running interpreter, then the usual
+# Homebrew locations, then PATH.
+BASH5="${BASH:-}"
+if [[ -z "$BASH5" || "${BASH_VERSINFO[0]:-0}" -lt 5 ]]; then
+  for _b in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
+    [[ -x "$_b" ]] && { BASH5="$_b"; break; }
+  done
+fi
+PASS=0; FAIL=0
+# NOTE: named t_ok/t_bad (not ok/bad) — sourcing common.sh into the test shell
+# defines its own ok()/warn()/err(), which would clobber plain ok()/bad().
+t_ok(){  PASS=$((PASS+1)); echo "  ok   $1"; }
+t_bad(){ FAIL=$((FAIL+1)); echo "  FAIL $1"; }
+section(){ echo; echo "== $1 =="; }
+
+# fresh_stack — make a throwaway $AI_STACK/.env sandbox and (re)source common+env there.
+fresh_stack() {
+  AI_STACK="$(mktemp -d)"; export AI_STACK
+  ENV_FILE="$AI_STACK/.env"; export ENV_FILE
+  export RUN_ID="test-hardening"
+  # shellcheck disable=SC1090
+  source "$ROOT/installer/lib/common.sh" >/dev/null 2>&1
+  source "$ROOT/installer/lib/env.sh"    >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------------------
+# FIX-1 (#0): set_env must NOT C-escape-expand values (awk -v bug). A value with a
+# literal backslash-escape (e.g. a token containing `\n`) must be stored verbatim as
+# ONE .env line, and read back byte-identical — never split into two lines.
+# ---------------------------------------------------------------------------
+section "FIX-1 set_env preserves backslash-escape values (env.sh)"
+fresh_stack
+secret='abc\nxyz'                     # literal backslash + n (a plausible pasted token)
+set_env TOKEN "$secret" >/dev/null 2>&1 || t_bad "set_env returned non-zero"
+if grep -qx 'xyz' "$ENV_FILE"; then t_bad "orphan 'xyz' line present — value was split"; else t_ok "no orphan line from split value"; fi
+got="$(get_env TOKEN)"
+[[ "$got" == "$secret" ]] && t_ok "get_env returns verbatim backslash-n" || t_bad "get_env returned '$got' != '$secret'"
+set_env TOK2 'a\tb' >/dev/null 2>&1
+got2="$(get_env TOK2)"
+[[ "$got2" == 'a\tb' ]] && t_ok "tab-escape round-trips" || t_bad "tab-escape corrupted: '$got2'"
+# A double-backslash must also survive.
+set_env TOK3 'x\\y' >/dev/null 2>&1
+got3="$(get_env TOK3)"
+[[ "$got3" == 'x\\y' ]] && t_ok "double-backslash round-trips" || t_bad "double-backslash corrupted: '$got3'"
+rm -rf "$AI_STACK"
+
+# ---------------------------------------------------------------------------
+# FIX-2 (#1/#6): `gc` must NOT offer to remove healthy RUNNING containers. The
+# ai-stack.partial=true label can never be cleared (immutable), so gc must exclude
+# running (and mark_ready'd) containers. Also: mark_ready must actually record
+# readiness (the old docker update --label-add was a silent no-op).
+# ---------------------------------------------------------------------------
+section "FIX-2 gc excludes running containers; mark_ready records readiness"
+
+# --- 2a: mark_ready writes a durable marker (no longer a no-op) ---
+fresh_stack
+source "$ROOT/installer/lib/docker.sh" >/dev/null 2>&1
+mark_ready "litellm"
+if [[ -f "$AI_STACK/installer/state/ready/litellm" ]]; then t_ok "mark_ready records a readiness marker"; else t_bad "mark_ready did not write a marker (still a no-op?)"; fi
+container_ready_marked "litellm" && t_ok "container_ready_marked true after mark_ready" || t_bad "container_ready_marked false after mark_ready"
+container_ready_marked "phoenix" && t_bad "container_ready_marked true for un-marked container" || t_ok "container_ready_marked false for un-marked container"
+rm -rf "$AI_STACK"
+
+# --- 2b: gc.sh excludes a RUNNING partial container, lists only the dead one ---
+STUBDIR="$(mktemp -d)"
+cat > "$STUBDIR/docker" <<'STUB'
+#!/usr/bin/env bash
+# Fake docker: `ps -a --filter label=ai-stack.partial=true` -> two partial containers
+# (one running "litellm", one exited "halfdead"); `ps` (running) -> only "litellm".
+if [[ "$1" == "ps" ]]; then
+  shift
+  if [[ "$*" == *"-a"* ]]; then printf '%s\n' litellm halfdead; else printf '%s\n' litellm; fi
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$STUBDIR/docker"
+gc_out="$(PATH="$STUBDIR:$PATH" NO_PROMPT=1 $BASH5 "$ROOT/installer/lib/gc.sh" 2>&1 || true)"
+if grep -q 'halfdead' <<<"$gc_out"; then t_ok "gc lists the genuinely-dead partial container (halfdead)"; else t_bad "gc did not list the dead orphan"; fi
+if grep -qE '^\s*-\s*litellm' <<<"$gc_out"; then t_bad "gc listed the RUNNING container litellm for removal (mass-delete danger)"; else t_ok "gc excluded the running container litellm from removal"; fi
+grep -qi 'Excluded' <<<"$gc_out" && t_ok "gc reports it excluded healthy containers" || t_bad "gc did not report exclusions"
+rm -rf "$STUBDIR"
+
+# --- 2c: stale-marker leak (R3) — a marker must be dropped when a container is
+# (re)created, so a name removed OUTSIDE its guard (reset / manual docker rm) then
+# recreated can't inherit a prior life's marker and dodge gc. The shared helper
+# clear_ready_marker is wired into recreate_guard (both --recreate and the
+# fresh-create/absent path), docker_run_managed, chatdev's _cd_reconcile twin, and
+# adopt. Here we prove the helper + the recreate_guard absent-path (the root spot
+# every recreate_guard service reconciles through). (2026-07-05 §24 review.)
+fresh_stack
+source "$ROOT/installer/lib/docker.sh" >/dev/null 2>&1
+mark_ready "chatdev-be"
+clear_ready_marker "chatdev-be"
+[[ ! -f "$AI_STACK/installer/state/ready/chatdev-be" ]] && t_ok "clear_ready_marker removes a readiness marker" || t_bad "clear_ready_marker did not remove the marker"
+mark_ready "qdrant"                 # stale marker left by a prior life
+container_exists() { return 1; }    # simulate: the container is ABSENT now (fresh create)
+recreate_guard "qdrant" >/dev/null 2>&1 || true
+[[ ! -f "$AI_STACK/installer/state/ready/qdrant" ]] && t_ok "recreate_guard(absent) clears a stale marker before a fresh create" || t_bad "recreate_guard left a stale marker on the fresh-create path (gc would wrongly exclude a broken recreate)"
+unset -f container_exists
+# The chatdev twin + adopt call the same helper on their own rm/create paths.
+grep -q 'clear_ready_marker' "$ROOT/bin/start-chatdev.sh" && t_ok "chatdev _cd_reconcile clears the marker (real consumer covered)" || t_bad "start-chatdev.sh does not clear the ready marker"
+grep -q 'clear_ready_marker' "$ROOT/installer/lib/adopt.sh" && t_ok "adopt clears the marker on its own docker rm -f" || t_bad "adopt.sh does not clear the ready marker"
+rm -rf "$AI_STACK"
+
+# ---------------------------------------------------------------------------
+# FIX-3 (#10): http_ok must report a DEAD server as unhealthy. The `|| echo 000`
+# inside the substitution doubled curl's 000 to "000000" != "000" → false-healthy.
+# We extract the SHIPPED http_ok from each start script and exercise it.
+# ---------------------------------------------------------------------------
+section "FIX-3 http_ok reports a dead server as unhealthy (start-paperclip/unsloth)"
+DEAD_URL="http://127.0.0.1:59999/health"   # nothing listens here
+for f in bin/start-paperclip.sh bin/start-unsloth.sh; do
+  fn="$(sed -n '/^http_ok() {/,/^}/p' "$ROOT/$f")"
+  [[ -n "$fn" ]] || { t_bad "$f: could not extract http_ok"; continue; }
+  # Run in a strict subshell (set -e) so we also prove it does not abort on curl failure.
+  if ( set -Eeuo pipefail; eval "$fn"; http_ok "$DEAD_URL" ) 2>/dev/null; then
+    t_bad "$f: http_ok returned HEALTHY for a dead server"
+  else
+    t_ok "$f: http_ok returns unhealthy for a dead server (no set -e abort)"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# FIX-4 (#2): the hermes post-upgrade version read must not abort `upgrade all`.
+# The bare `_postv="$(_openshell_exec_retry ... | sed | head)"` had no `|| true`, so
+# a persistent relay failure (non-zero rc) tripped errexit and killed the whole run.
+# ---------------------------------------------------------------------------
+section "FIX-4 upgrade hermes post-version read is guarded (upgrade.sh)"
+# Static: the real _postv= line carries a || true / rc guard.
+postv_line="$(grep -n '_postv="\$(_openshell_exec_retry' "$ROOT/installer/lib/upgrade.sh" | head -1)"
+if grep -q '_postv="\$(_openshell_exec_retry.*)" *|| *\(true\|_[a-z]*=\$?\)' "$ROOT/installer/lib/upgrade.sh"; then
+  t_ok "upgrade.sh _postv read is guarded (|| true)"
+else
+  t_bad "upgrade.sh _postv read is NOT guarded — errexit will abort upgrade all"
+fi
+# Behavioral: prove the shell semantics the guard relies on, in FRESH strict shells
+# (errexit must be active from the top — a subshell that sets -e from inside a
+# command-substitution/condition context has -e ignored, so we use bash -c).
+guarded_out="$($BASH5 -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+  _fail(){ return 1; }
+  v="$(_fail | sed -n "s/x/y/p" | head -1)" || true
+  echo REACHED' 2>/dev/null || true)"
+unguarded_out="$($BASH5 -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+  _fail(){ return 1; }
+  v="$(_fail | sed -n "s/x/y/p" | head -1)"
+  echo REACHED' 2>/dev/null || true)"
+[[ "$guarded_out" == *REACHED* ]] && t_ok "guarded form continues the run" || t_bad "guarded form did not continue"
+[[ "$unguarded_out" == *REACHED* ]] && t_bad "unguarded form did NOT abort (semantics assumption wrong)" || t_ok "unguarded form aborts (confirms the bug class)"
+
+# ---------------------------------------------------------------------------
+# FIX-5 (#3): adopt falkordb smoke must probe the real bind (127.0.10.7:6379), not
+# 127.0.0.1 (nothing listens there → guaranteed false "smoke fail" after recreate).
+# ---------------------------------------------------------------------------
+section "FIX-5 adopt falkordb smoke targets the correct bind IP (adopt.sh)"
+fk_block="$(sed -n '/falkordb)/,/;;/p' "$ROOT/installer/lib/adopt.sh")"
+grep -q '127.0.10.7/6379' <<<"$fk_block" && t_ok "adopt falkordb smoke probes 127.0.10.7:6379 (the alias bind)" || t_bad "adopt falkordb smoke does not probe 127.0.10.7"
+grep -q 'dev/tcp/127.0.0.1/6379' <<<"$fk_block" && t_bad "adopt falkordb smoke still probes 127.0.0.1 (always fails)" || t_ok "adopt falkordb smoke no longer probes 127.0.0.1"
+# Behavioral: the /dev/tcp retry mechanism connects to a live listener and fails on a dead port.
+probe_tcp() {  # host port -> 0 if connectable within ~3s
+  local h="$1" p="$2" i
+  for i in 1 2 3; do (exec 3<>/dev/tcp/"$h"/"$p") 2>/dev/null && { exec 3>&- 3<&- 2>/dev/null; return 0; }; sleep 1; done
+  return 1
+}
+PORTF="$(mktemp)"
+python3 -c '
+import socket,time,sys
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+s.bind(("127.0.0.1",0)); s.listen(5)
+open(sys.argv[1],"w").write(str(s.getsockname()[1]))
+end=time.time()+5
+while time.time()<end:
+    s.settimeout(1)
+    try: c,_=s.accept(); c.close()
+    except Exception: pass
+' "$PORTF" &
+LPID=$!
+sleep 0.6
+LPORT="$(cat "$PORTF" 2>/dev/null || echo 0)"
+if [[ "$LPORT" =~ ^[0-9]+$ && "$LPORT" != 0 ]]; then
+  probe_tcp 127.0.0.1 "$LPORT" && t_ok "tcp retry probe connects to a live listener" || t_bad "tcp probe failed against a live listener"
+else
+  t_bad "could not start test listener"
+fi
+probe_tcp 127.0.0.1 59998 && t_bad "tcp probe wrongly succeeded on a dead port" || t_ok "tcp retry probe fails on a dead port"
+kill "$LPID" 2>/dev/null || true; rm -f "$PORTF"
+
+# ---------------------------------------------------------------------------
+# FIX-6 (#8/#47): `doctor --all` must run every check (and enable DOCTOR_ALL deep
+# probes), not be treated as a name filter matching nothing (silent 0-check exit 0).
+# A MISTYPED filter matching zero checks must exit non-zero, not silently green.
+# ---------------------------------------------------------------------------
+section "FIX-6 doctor --all runs checks; mistyped filter fails loud (doctor.sh)"
+# Static: --all maps to DOCTOR_ALL + empty filter.
+if grep -qE 'FILTER == "--all"|"\$FILTER" == "--all"' "$ROOT/installer/doctor/doctor.sh" \
+   && grep -q 'DOCTOR_ALL=1' "$ROOT/installer/doctor/doctor.sh"; then
+  t_ok "doctor.sh maps --all to DOCTOR_ALL=1 (not a name filter)"
+else
+  t_bad "doctor.sh does not special-case --all"
+fi
+# Behavioral: a filter matching NO checks now exits non-zero (skips every check, so no
+# docker/diagnose runs — safe against the live daemon).
+rc=0; NO_PROMPT=1 $BASH5 "$ROOT/installer/doctor/doctor.sh" __nomatch_zzz__ >/dev/null 2>&1 || rc=$?
+[[ "$rc" == "2" ]] && t_ok "mistyped filter exits 2 (was silent exit 0)" || t_bad "mistyped filter exit=$rc (expected 2)"
+# Behavioral: a valid filter still runs (a host-local, docker-free check) → exit != 2.
+rc=0; NO_PROMPT=1 $BASH5 "$ROOT/installer/doctor/doctor.sh" lo0_aliases >/dev/null 2>&1 || rc=$?
+[[ "$rc" != "2" ]] && t_ok "valid filter runs at least one check (exit $rc != 2)" || t_bad "valid filter wrongly hit the no-match guard"
+
+# ---------------------------------------------------------------------------
+# FIX-7 (#17): reset's managed-container sweep must be EXHAUSTIVE — one failed
+# `docker rm -f` must not abort the reset under set -e. The sweep is now the shared
+# function _remove_managed_containers, called by BOTH the hard and nuke branches.
+# We EXTRACT the real function and RUN it (not a simulation) with a stubbed docker —
+# this catches the `local`-outside-a-function class the §24 review flagged, which a
+# grep/simulate test misses. (Reviewer-hardened after batch 2.)
+# ---------------------------------------------------------------------------
+section "FIX-7 reset sweep continues past a single rm failure (reset.sh, real fn)"
+# Both branches must call the shared function (fixes the hard-branch gap + de-dups).
+call_sites="$(grep -c '^ *_remove_managed_containers$' "$ROOT/installer/lib/reset.sh" || echo 0)"
+[[ "$call_sites" -ge 2 ]] && t_ok "both hard+nuke branches call _remove_managed_containers ($call_sites sites)" || t_bad "expected >=2 call sites, found $call_sites"
+grep -q '^_remove_managed_containers() {' "$ROOT/installer/lib/reset.sh" && t_ok "the sweep is a real function (local is valid inside it)" || t_bad "_remove_managed_containers is not defined as a function"
+# Extract + RUN the real function under set -e with a stubbed docker where 'halfdead'
+# fails to remove. Assert: it completes (no abort), removes the good ones, and warns
+# about the failure. A `local`-outside-function bug would make this ERROR out.
+fn_body="$(sed -n '/^_remove_managed_containers() {/,/^}/p' "$ROOT/installer/lib/reset.sh")"
+[[ -n "$fn_body" ]] || t_bad "could not extract _remove_managed_containers"
+sweep_out="$($BASH5 -c '
+  set -Eeuo pipefail; shopt -s inherit_errexit
+  ok(){ echo "OK $*"; }; warn(){ echo "WARN $*"; }
+  docker(){ if [[ "$1" == ps ]]; then printf "%s\n" litellm halfdead qdrant; return 0; fi
+            if [[ "$1" == rm ]]; then [[ "$3" == halfdead ]] && return 1 || return 0; fi; return 0; }
+  '"$fn_body"'
+  _remove_managed_containers
+  echo "SWEEP_COMPLETED"' 2>&1 || true)"
+[[ "$sweep_out" == *SWEEP_COMPLETED* ]] && t_ok "real sweep function runs to completion under set -e (no local-scope abort)" || t_bad "sweep aborted before completion: $sweep_out"
+grep -q 'OK removed litellm' <<<"$sweep_out" && grep -q 'OK removed qdrant' <<<"$sweep_out" && t_ok "sweep removed the healthy containers past the failing one" || t_bad "sweep did not remove all healthy containers: $sweep_out"
+grep -q 'WARN.*halfdead' <<<"$sweep_out" && t_ok "sweep warns about the container it could not remove" || t_bad "sweep did not warn about the failed removal: $sweep_out"
+
+# ---------------------------------------------------------------------------
+# FIX-8 (#59): aitown --nuke must NOT wipe the world when the pre-delete backup
+# failed (fail-closed, unless AI_STACK_FORCE_WIPE=1). The old code warned + wiped.
+# ---------------------------------------------------------------------------
+section "FIX-8 aitown --nuke fails closed when backup fails (start-aitown.sh)"
+nuke_block="$(sed -n '/backup-before-delete/,/rm -rf "\$AT_DATA"/p' "$ROOT/bin/start-aitown.sh")"
+grep -q 'ABORTING aitown --nuke' <<<"$nuke_block" && t_ok "aitown --nuke aborts on backup failure" || t_bad "aitown --nuke does not abort on backup failure"
+grep -q 'AI_STACK_FORCE_WIPE' <<<"$nuke_block" && t_ok "aitown --nuke honors AI_STACK_FORCE_WIPE override" || t_bad "aitown --nuke lacks the force-wipe override"
+# The rm -rf must be REACHED only after a verified backup or the force flag — assert the
+# abort (exit 1) sits BETWEEN the backup attempt and the rm.
+if awk '/cp -a "\$AT_DATA"/{seen=1} seen&&/ABORTING aitown --nuke/{ab=1} seen&&/rm -rf "\$AT_DATA"/{print (ab?"GUARDED":"UNGUARDED"); exit}' "$ROOT/bin/start-aitown.sh" | grep -q GUARDED; then
+  t_ok "abort guard precedes the rm -rf"
+else
+  t_bad "rm -rf is not guarded by the abort"
+fi
+
+# ---------------------------------------------------------------------------
+# FIX-9 (#7): phases 17/18 must widen the ACE/RLM scoped key to include the bound
+# model (minted [local,local-heavy] but OPENAI_MODEL may be a cloud/sub model → first
+# real bin/ace|bin/rlm call 403s). Static: the reconcile call is present after model
+# resolution. Behavioral: litellm_reconcile_key actually unions the bound model in.
+# ---------------------------------------------------------------------------
+section "FIX-9 ACE/RLM key widened to the bound model (17_ace.sh / 18_rlm.sh)"
+grep -q 'litellm_reconcile_key ACE_LITELLM_KEY "\$ACE_MODEL" local local-heavy' "$ROOT/installer/phases/17_ace.sh" && t_ok "phase 17 reconciles ACE_LITELLM_KEY to the bound model" || t_bad "phase 17 missing the ACE key reconcile"
+grep -q 'litellm_reconcile_key RLM_LITELLM_KEY "\$RLM_MODEL_VAL" local local-heavy' "$ROOT/installer/phases/18_rlm.sh" && t_ok "phase 18 reconciles RLM_LITELLM_KEY to the bound model" || t_bad "phase 18 missing the RLM key reconcile"
+# The reconcile must come AFTER the model is resolved (set_env X_MODEL), or it would
+# widen to an empty/stale model.
+awk '/set_env ACE_DEFAULT_MODEL/{seen=1} seen&&/litellm_reconcile_key ACE_LITELLM_KEY/{print "AFTER"; exit}' "$ROOT/installer/phases/17_ace.sh" | grep -q AFTER && t_ok "phase 17 reconcile runs after the model is resolved" || t_bad "phase 17 reconcile is not after model resolution"
+# Behavioral: prove litellm_reconcile_key unions the bound cloud model into a [local]-only key.
+fresh_stack
+source "$ROOT/installer/lib/common.sh" >/dev/null 2>&1   # defines litellm_reconcile_key
+set_env LITELLM_MASTER_KEY "sk-master-test" >/dev/null 2>&1
+set_env ACE_LITELLM_KEY "sk-ace-test" >/dev/null 2>&1
+CAP="$AI_STACK/keyupdate.json"; : > "$CAP"
+# Stub the two curl wrappers reconcile calls: current allow-list = [local]; capture the update body.
+litellm_scoped_curl() { echo '{"info":{"models":["local"]}}'; }
+litellm_master_curl() { local a; for a in "$@"; do case "$a" in @*) cat "${a#@}" > "$CAP" 2>/dev/null;; esac; done; echo '{"key":"sk-ace-test","models":["local"]}'; }
+litellm_reconcile_key ACE_LITELLM_KEY "claude-opus-sub-xhigh" local local-heavy >/dev/null 2>&1 || true
+if grep -q 'claude-opus-sub-xhigh' "$CAP" 2>/dev/null && grep -q '"local"' "$CAP" 2>/dev/null; then
+  t_ok "litellm_reconcile_key unions the bound cloud model into a [local]-only key"
+else
+  t_bad "reconcile did not widen the key (captured: $(cat "$CAP" 2>/dev/null))"
+fi
+unset -f litellm_scoped_curl litellm_master_curl
+rm -rf "$AI_STACK"
+
+# ---------------------------------------------------------------------------
+# FIX-10 (#62): ingest.py must preserve inbox subtree + never clobber when moving to
+# processed/. The old `DONE / src.name` flattened subdirs and os.rename-overwrote
+# same-basename files (data loss). (ingest.py is not import-safe — module-level Qdrant
+# connection — so we static-check the real source + behaviorally prove the algorithm.)
+# ---------------------------------------------------------------------------
+section "FIX-10 ingest.py preserves subtree + no-clobber (ingestor/ingest.py)"
+grep -q 'DONE / src.relative_to(INBOX)' "$ROOT/ingestor/ingest.py" && t_ok "ingest.py moves preserving the inbox subtree (relative_to)" || t_bad "ingest.py still flattens with src.name"
+grep -q 'while dest.exists()' "$ROOT/ingestor/ingest.py" && t_ok "ingest.py disambiguates instead of clobbering" || t_bad "ingest.py has no no-clobber guard"
+grep -q 'shutil.move(str(src), str(DONE / src.name))' "$ROOT/ingestor/ingest.py" && t_bad "ingest.py still uses the clobbering DONE / src.name move" || t_ok "ingest.py no longer uses the clobbering basename move"
+# Behavioral: the shipped destination algorithm loses no data across same-basename
+# files in distinct subdirs AND a re-run whose name already exists in processed/.
+ing_out="$(python3 - <<'PY' 2>&1 || true
+import pathlib, shutil, tempfile, os
+tmp = pathlib.Path(tempfile.mkdtemp())
+INBOX, DONE = tmp/"inbox", tmp/"processed"
+(INBOX/"q1").mkdir(parents=True); (INBOX/"q2").mkdir(parents=True); DONE.mkdir()
+(INBOX/"q1"/"report.pdf").write_text("Q1")
+(INBOX/"q2"/"report.pdf").write_text("Q2")
+(DONE/"report.pdf").write_text("PRIOR")   # a prior-run file at the flat basename
+def move(src):  # EXACT algorithm shipped in ingest.py
+    dest = DONE / src.relative_to(INBOX)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        stem, suffix, n = dest.stem, dest.suffix, 1
+        while dest.exists():
+            dest = dest.parent / f"{stem}.{n}{suffix}"; n += 1
+    shutil.move(str(src), str(dest))
+for src in sorted(INBOX.rglob("*")):
+    if src.is_file(): move(src)
+# Both Q1 and Q2 contents must survive distinctly, and the PRIOR file must be intact.
+bodies = sorted(p.read_text() for p in DONE.rglob("*") if p.is_file())
+assert bodies == ["PRIOR", "Q1", "Q2"], f"DATA LOSS: {bodies}"
+assert (DONE/"report.pdf").read_text() == "PRIOR", "prior processed file was overwritten"
+print("OK", bodies)
+PY
+)"
+[[ "$ing_out" == OK* ]] && t_ok "move algorithm loses no data (subtree + prior file preserved)" || t_bad "move algorithm lost data: $ing_out"
+
+# ---------------------------------------------------------------------------
+# FIX-11 (#55): start-understand.sh _alive must NOT treat a recycled unrelated PID as
+# the daemon (and then SIGTERM it). Extract the real _alive and run it against a live
+# non-daemon process (a `sleep`), controlling SHIM so we test both directions.
+# ---------------------------------------------------------------------------
+section "FIX-11 start-understand _alive has a pid-identity guard (start-understand.sh)"
+fn11="$(sed -n '/^_alive() {/,/^}/p' "$ROOT/bin/start-understand.sh")"
+grep -q 'grep -qF "\$SHIM"' <<<"$fn11" && t_ok "_alive checks the pid is our node shim" || t_bad "_alive has no shim identity guard"
+sleep 300 & DUMMY=$!
+TMPPID="$(mktemp)"; echo "$DUMMY" > "$TMPPID"
+eval "$fn11"
+# Negative (safety): SHIM points at a path the sleep's argv does NOT contain → not ours.
+PIDFILE="$TMPPID" SHIM="/no/such/understand-mcp/bin.mjs" _alive && t_bad "_alive treated a recycled non-daemon PID as ours (would SIGTERM it)" || t_ok "recycled non-daemon PID is NOT treated as the daemon"
+# Positive: SHIM set to a token the sleep's argv DOES contain → correctly identified.
+PIDFILE="$TMPPID" SHIM="sleep" _alive && t_ok "a matching-argv process IS identified as the daemon" || t_bad "_alive failed to identify a matching process"
+kill "$DUMMY" 2>/dev/null || true; rm -f "$TMPPID"; unset -f _alive
+
+# ---------------------------------------------------------------------------
+# FIX-12 (#58): start-paperclip pid_is_ours must not classify an UNRELATED `pnpm dev`
+# (different cwd) as ours. Extract the real function; stub ps/lsof to drive scenarios.
+# ---------------------------------------------------------------------------
+section "FIX-12 start-paperclip pid_is_ours anchors pnpm-dev to cwd (start-paperclip.sh)"
+fn12="$(sed -n '/^pid_is_ours() {/,/^}/p' "$ROOT/bin/start-paperclip.sh")"
+grep -q 'lsof -a -d cwd' <<<"$fn12" && t_ok "pid_is_ours anchors the pnpm-dev fallback to cwd" || t_bad "pid_is_ours still uses the unanchored fallback"
+grep -qE "grep -qE 'paperclip\|pnpm" <<<"$fn12" && t_bad "pid_is_ours still has the bare paperclip|pnpm fallback" || t_ok "pid_is_ours dropped the bare paperclip fallback"
+STUB2="$(mktemp -d)"
+cat > "$STUB2/ps"   <<'PS'
+#!/usr/bin/env bash
+printf '%s\n' "${PS_ARGS:-}"
+PS
+cat > "$STUB2/lsof" <<'LS'
+#!/usr/bin/env bash
+# Emulate `lsof -a -d cwd -p PID -Fn` machine format: a single `n<path>` line
+# (space-safe). The real code parses this with `sed -n 's/^n//p'`.
+printf 'p1\nfcwd\nn%s\n' "${LSOF_CWD:-/tmp}"
+LS
+chmod +x "$STUB2/ps" "$STUB2/lsof"
+sleep 300 & P=$!
+eval "$fn12"
+PC_DIR="/Users/x/tools/paperclip"
+# Case A: unrelated pnpm dev, cwd != PC_DIR → NOT ours (the bug).
+export PS_ARGS="node /somewhere/node_modules/.bin/pnpm dev"; export LSOF_CWD="/other/project"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_bad "unrelated pnpm dev (wrong cwd) wrongly classified as ours — would be killed" || t_ok "unrelated pnpm dev (different cwd) is NOT ours"
+# Case B: our pnpm dev parent, cwd == PC_DIR → ours.
+export LSOF_CWD="$PC_DIR"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "our pnpm dev (cwd==PC_DIR) is correctly ours" || t_bad "our pnpm dev (cwd==PC_DIR) not identified"
+# Case C: a descendant carrying PC_DIR in argv → ours (first check).
+export PS_ARGS="node $PC_DIR/node_modules/.bin/tsx watch"; export LSOF_CWD="/irrelevant"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "descendant carrying PC_DIR in argv is ours" || t_bad "descendant with PC_DIR not identified"
+# Case D: PC_DIR (and cwd) contain SPACES — the -Fn parse must still match (space-safe).
+PC_DIR="/Users/x/My AI Stack/tools/paperclip"
+export PS_ARGS="node /somewhere/pnpm dev"; export LSOF_CWD="$PC_DIR"
+PATH="$STUB2:$PATH" pid_is_ours "$P" && t_ok "cwd anchor is space-safe (matches a spaced PC_DIR)" || t_bad "spaced-path cwd not matched (parse not space-safe)"
+kill "$P" 2>/dev/null || true; rm -rf "$STUB2"; unset -f pid_is_ours
+unset PS_ARGS LSOF_CWD
+
+# ---------------------------------------------------------------------------
+# FIX-13 (#46/#45/#32): doctor must VERIFY a fix by re-diagnosing, not trust the fix's
+# exit code. Run the REAL doctor.sh (via DOCTOR_CHECKS_DIR) against 3 synthetic AUTOHEAL
+# checks: (a) heals cleanly; (b) heals but its fix returns 1 (the lumen/claw3d case);
+# (c) fix returns 0 but does NOT resolve (the queue-only case). Honest accounting =
+# a+b counted fixed, c not, exit 1.
+# ---------------------------------------------------------------------------
+section "FIX-13 doctor verifies fixes by re-diagnosing (doctor.sh)"
+grep -q 'DOCTOR_CHECKS_DIR' "$ROOT/installer/doctor/doctor.sh" && t_ok "doctor.sh honors DOCTOR_CHECKS_DIR (test hook)" || t_bad "doctor.sh has no DOCTOR_CHECKS_DIR override"
+grep -q '_doctor_apply_and_verify' "$ROOT/installer/doctor/doctor.sh" && t_ok "doctor.sh re-diagnoses after applying a fix" || t_bad "doctor.sh still trusts the fix exit code"
+
+# Fixture design (2026-07-06 §24 review hardening): the old 3-check fixture could not
+# discriminate the regression it exists to catch. The buggy exit-code accounting makes
+# TWO opposite errors — a heals-but-fix-returns-1 check wrongly NOT counted (false neg)
+# and a queue-only fix (rc0, unresolved) wrongly counted (false pos) — which CANCEL in
+# a symmetric 3-check fixture, yielding the identical "2 fixed, 1 remaining, exit 1"
+# summary as the correct code. Fix: BREAK the symmetry with TWO heals-but-rc1 checks
+# so old→"2 fixed" vs new→"3 fixed" (aggregate now discriminates), AND bind each
+# outcome to its OWN check's output block (so a logic-only revert that keeps the
+# "(verified)" message strings still fails). Unique, non-overlapping title tokens.
+DC="$(mktemp -d)"; DS="$(mktemp -d)"
+cat > "$DC/aa_heals.sh" <<'CHK'
+CHECKS+=(zz_heals); CHECK_TITLE[zz_heals]="synthetic-heals-clean"; AUTOHEAL[zz_heals]=1
+zz_heals_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals" ]] || { echo "not healed"; return 1; }; }
+zz_heals_fix() { touch "$DOCTOR_TEST_STATE/heals"; echo "fix: healed"; }
+CHK
+cat > "$DC/ab_heals_r1a.sh" <<'CHK'
+CHECKS+=(zz_heals_r1a); CHECK_TITLE[zz_heals_r1a]="synthetic-heals-rc1-A"; AUTOHEAL[zz_heals_r1a]=1
+zz_heals_r1a_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals_r1a" ]] || { echo "not healed"; return 1; }; }
+zz_heals_r1a_fix() { touch "$DOCTOR_TEST_STATE/heals_r1a"; echo "fix: healed but returning 1"; return 1; }
+CHK
+cat > "$DC/ac_heals_r1b.sh" <<'CHK'
+CHECKS+=(zz_heals_r1b); CHECK_TITLE[zz_heals_r1b]="synthetic-heals-rc1-B"; AUTOHEAL[zz_heals_r1b]=1
+zz_heals_r1b_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals_r1b" ]] || { echo "not healed"; return 1; }; }
+zz_heals_r1b_fix() { touch "$DOCTOR_TEST_STATE/heals_r1b"; echo "fix: healed but returning 1"; return 1; }
+CHK
+cat > "$DC/ad_queues.sh" <<'CHK'
+CHECKS+=(zz_queues); CHECK_TITLE[zz_queues]="synthetic-queue-only"; AUTOHEAL[zz_queues]=1
+zz_queues_diagnose() { echo "still broken"; return 1; }
+zz_queues_fix() { echo "fix: queued (returns 0, does not resolve)"; return 0; }
+CHK
+dout="$(DOCTOR_CHECKS_DIR="$DC" DOCTOR_TEST_STATE="$DS" $BASH5 "$ROOT/installer/doctor/doctor.sh" 2>&1)"; drc=$?
+# _block TOKEN — slice one check's output block (from its title line to the next
+# title line). Title lines start with exactly two spaces + the token; detail/outcome
+# lines are indented deeper, so `index($0,"  "t)==1` reliably delimits per check.
+_block() { awk -v t="$1" '/^  [^ ]/ { cap = (index($0, "  " t)==1) } cap { print }' <<<"$dout"; }
+
+# Aggregate (symmetry now broken): correct code counts 3 fixed; the buggy exit-code
+# accounting counts only 2 (misses BOTH rc1 heals, miscredits the queue-only fix).
+n_verified="$(grep -c 'auto-healed (verified)' <<<"$dout" || true)"
+[[ "$n_verified" == "3" ]] && t_ok "3 truly-healed checks counted fixed (both rc1 heals + the clean one)" || t_bad "expected 3 verified heals, got $n_verified (buggy exit-code accounting gives 2)"
+grep -qE '4 checks, 0 passed, 3 fixed, 1 remaining failed' <<<"$dout" && t_ok "summary is honest: 3 fixed, 1 remaining failed" || t_bad "dishonest summary: $(grep -i 'doctor done' <<<"$dout")"
+[[ "$drc" == "1" ]] && t_ok "doctor exits 1 (the unresolved queue-only fix leaves a real failure)" || t_bad "doctor exit=$drc (expected 1)"
+# Per-check binding (catches a logic revert that keeps the "(verified)" strings):
+qblk="$(_block synthetic-queue-only)"
+grep -q 'still fails' <<<"$qblk" && ! grep -q 'auto-healed (verified)' <<<"$qblk" && t_ok "queue-only check (rc0, unresolved) is NOT verified in ITS OWN block" || t_bad "queue-only check block mis-reported: $qblk"
+rblk="$(_block synthetic-heals-rc1-A)"
+grep -q 'auto-healed (verified)' <<<"$rblk" && ! grep -q 'still fails' <<<"$rblk" && t_ok "heals-but-rc1 check IS verified-fixed in ITS OWN block (fix rc ignored)" || t_bad "heals-rc1 check block mis-reported: $rblk"
+
+# Direct #46 reproduction: a SINGLE queue-only check (fix rc0, never resolves). The
+# buggy code counts it "fixed" and exits 0 on a still-broken stack — the exact
+# inversion. Correct code counts 0 fixed, 1 remaining, exit 1. (This is the honest
+# form of the CHANGELOG's "1 wrongly-fixed, exit 0" claim, which the multi-check
+# fixture above cannot show because its miscounts cancel to exit 1.)
+DC1="$(mktemp -d)"; DS1="$(mktemp -d)"; cp "$DC/ad_queues.sh" "$DC1/aa_queues.sh"
+dout1="$(DOCTOR_CHECKS_DIR="$DC1" DOCTOR_TEST_STATE="$DS1" $BASH5 "$ROOT/installer/doctor/doctor.sh" 2>&1)"; drc1=$?
+grep -qE '1 checks, 0 passed, 0 fixed, 1 remaining failed' <<<"$dout1" && [[ "$drc1" == "1" ]] \
+  && t_ok "single queue-only check: 0 fixed, exit 1 (buggy code gave 1 fixed, exit 0)" \
+  || t_bad "single queue-only check mis-accounted: $(grep -i 'doctor done' <<<"$dout1") rc=$drc1"
+rm -rf "$DC" "$DS" "$DC1" "$DS1"
+
+echo
+echo "TOTAL: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]

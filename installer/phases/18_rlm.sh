@@ -117,6 +117,11 @@ if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; t
   fi
 fi
 set_env RLM_MODEL "$RLM_MODEL_VAL"
+# Widen the scoped key to ALLOW the bound model (same as Phase 17): minted for
+# [local,local-heavy], but RLM_MODEL_VAL may resolve to a subscription/cloud model
+# the key doesn't allow → first real `bin/rlm` call 403s while --help smoke passes.
+# Unions the bound model in place; WARN-non-fatal. (2026-07-05 takeover.)
+litellm_reconcile_key RLM_LITELLM_KEY "$RLM_MODEL_VAL" local local-heavy
 ( umask 077; cat > "$RLM_DIR/.env" <<ENVEOF
 # ai-stack: rendered by installer/phases/18_rlm.sh. Routes RLM through LiteLLM.
 # Do not edit; re-run 'bash vz-ai-stack.sh install 18' to regenerate.

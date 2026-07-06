@@ -28,7 +28,17 @@ SHIM="$AI_STACK/understand-mcp/bin.mjs"
 # Resolve the plugin root (built by Phase 30; stable symlink preferred).
 PLUGIN_ROOT="${UNDERSTAND_PLUGIN_ROOT:-$HOME/.understand-anything-plugin}"
 
-_alive() { local p; [[ -f "$PIDFILE" ]] && p="$(cat "$PIDFILE" 2>/dev/null)" && [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null; }
+_alive() {
+  local p
+  [[ -f "$PIDFILE" ]] || return 1
+  p="$(cat "$PIDFILE" 2>/dev/null)"; [[ -n "$p" ]] || return 1
+  kill -0 "$p" 2>/dev/null || return 1
+  # PID-recycle guard (mirrors start-docs_mcp.sh's pid_is_ours): after a reboot a
+  # recycled PID can pass kill -0 while being an UNRELATED process. Confirm it is
+  # actually our node shim before treating it as the daemon — and, critically, before
+  # the `if _alive; then kill …` below SIGTERMs it. (2026-07-05 takeover fix.)
+  ps -p "$p" -o command= 2>/dev/null | grep -qF "$SHIM"
+}
 _health() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://$HOSTB:$PORT/healthz" 2>/dev/null | grep -q '^200$'; }
 
 if [[ ! -f "$SHIM" ]]; then
