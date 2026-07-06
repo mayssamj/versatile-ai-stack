@@ -4,6 +4,54 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): §24 merge-review response — 2 blocking + 1 fail-safe follow-up
+
+Two §24 councils (adversarial/security · architect · QA/infra) audited the takeover-hardening batch before
+merge — one on the batch, one re-reviewing this fix commit. All suites were green, but two BLOCKING gaps
+and one fail-safe residual survived the original review; fixed here, each re-verified with a non-vacuity
+revert (revert the fix → the test goes red / the leak returns):
+
+- **BLOCKING (security): the claw3d bridge redacted only the ERROR path, not the SUCCESS path**
+  (`claw3d-bridge/bridge.py`). `_redact` was applied only inside `do_POST`'s `except` branch; the agent's
+  own reply (`text = dispatch(...)`) went to the browser unredacted — yet the CHANGELOG/comment claimed
+  "scrubs … from anything returned to a client". The backends (pi/hermes) are autonomous agents launched
+  with a scoped LiteLLM key in their env (`env PI_LITELLM_KEY=sk-…`), so a normal prompt ("print your
+  env") echoes the key on a **non-error** reply. Fix: `_redact` now wraps the content at the SINGLE
+  response-construction choke point, covering both paths; the comment is corrected to "best-effort
+  backstop, not a guarantee". New behavioral test drives the real `Handler.do_POST` with a stubbed
+  `dispatch` that emits a key and asserts the browser payload is scrubbed (reverting the fix leaks it).
+  (Default bind is `127.0.0.1`, so exposure was operator-localhost + a scoped local key — but the false
+  guarantee was the real defect.)
+- **BLOCKING (test integrity): FIX-13's assertions could not detect the very regression they name**
+  (`installer/tests/test_takeover_hardening.sh`). The 3-check fixture's two opposite miscounts (a
+  heals-but-`return 1` check wrongly dropped; a queue-only `return 0` fix wrongly credited) CANCEL to the
+  same "2 fixed, 1 remaining, exit 1" summary as the correct code, so a logic-only revert (keeping the
+  "(verified)" strings) passed green. Fix: broke the count symmetry with a **second** heals-but-`return 1`
+  check (correct→3 fixed vs buggy→2), added **per-check-identity** binding (each outcome checked in its
+  OWN output block), and added a **single queue-only check** sub-run that reproduces the exact #46
+  inversion (buggy: 1 fixed / exit 0 on a broken stack; correct: 0 fixed / exit 1). Verified: reverting
+  the doctor dispatch to raw-exit-code accounting now turns FIX-13 **red (5 failures)** — it was green
+  before.
+- **NON-BLOCKING (fail-safe): stale `state/ready/<name>` marker survives a recreate** (`installer/lib/docker.sh`,
+  `bin/start-chatdev.sh`, `installer/lib/adopt.sh`). A container removed OUTSIDE its guard (a `reset` tier,
+  a manual `docker rm`) then recreated could inherit an old readiness marker and be wrongly excluded from
+  `gc` (fail-safe direction: under-reap, never the pre-fix mass-delete). Root cause: `recreate_guard`
+  cleared the marker only on its `--recreate` branch, NOT on the fresh-create (container-absent) path — so
+  any raw-`docker run` service recreated after an external `rm` kept the stale marker. Fix: a shared
+  `clear_ready_marker` helper wired into every real (re)create/removal choke point — `recreate_guard` (both
+  the `--recreate` and the absent/fresh-create paths, the root spot every `recreate_guard` service
+  reconciles through), `docker_run_managed`, chatdev's hand-rolled `_cd_reconcile` twin (the sole
+  production service that writes markers via raw `docker run`), and `adopt`'s own `docker rm -f`. (The
+  first fix draft placed the clear only in `docker_run_managed`, which no production start script calls —
+  the §24 re-review caught that it never reached the real consumer; corrected here.)
+
+Suite: `test_takeover_hardening.sh` now 59 assertions; `test_bridge_redact.py` 7; `test_doctor_
+noninteractive_guard.sh` 9 — all green; full existing suite (22 shell suites + the bridge test) green, no
+regressions. Two §24 councils reached consensus APPROVE after debate. (Note: `container_ready_marked` is
+exercised by the FIX-2 tests — not dead code.)
+
+---
+
 ## 2026-07-05 — fix(hardening): takeover batch 5 — doctor verifies fixes by re-diagnosing (#46/#45/#32)
 
 Root-cause fix for the doctor "honesty" cluster. doctor counted a check "fixed" purely on the fix

@@ -380,12 +380,21 @@ class Handler(BaseHTTPRequestHandler):
         try:
             text = dispatch(agent, prompt, model)
         except Exception as e:  # noqa: BLE001 — surface as a chat message, don't 500 the office
-            # _redact: never return a secret (e.g. a key embedded in a subprocess
-            # error's argv) to the browser client. (2026-07-05 takeover fix.)
-            text = _redact(f"[{agent['name']} unavailable] {e}")
+            text = f"[{agent['name']} unavailable] {e}"
+        # _redact at the SINGLE response-construction choke point, so BOTH the
+        # exception text AND the agent's own success output are scrubbed — no call
+        # site can bypass it. This matters because the backends are autonomous
+        # coding agents (pi/hermes) launched with a scoped LiteLLM key in their env
+        # (e.g. `env PI_LITELLM_KEY=sk-...`); a perfectly normal prompt ("run `env`",
+        # "print your config") makes the agent echo that key on the SUCCESS path,
+        # not just via a crash. Redacting only the except branch (the pre-2026-07-05
+        # state) left that wide open. Best-effort backstop, not a guarantee — the
+        # root-cause fix is not to hand a live secret to an agent that can print it;
+        # this keeps a stray sk-.../Bearer/NAME_KEY= token out of the browser reply.
+        # (2026-07-06 §24 review: success-path leak closed.)
         return self._send(200, {
             "id": "claw3d-bridge", "object": "chat.completion", "model": agent["id"],
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": text},
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": _redact(text)},
                          "finish_reason": "stop"}],
         })
 

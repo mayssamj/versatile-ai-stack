@@ -104,6 +104,10 @@ docker_run_managed() {
     [[ -n "$_ah" ]] && _addhost=("$_ah")
   fi
 
+  # A freshly-created container is partial=true and, by definition, NOT yet ready — it
+  # must re-earn "ready" via its own smoke test (mark_ready). Drop any stale marker so
+  # a recreated name can't inherit a prior life's readiness. (2026-07-05 §24 review.)
+  clear_ready_marker "$name"
   docker run -d \
     --name "$name" \
     --label "ai-stack.managed=true" \
@@ -143,6 +147,15 @@ container_ready_marked() {
   [[ -n "${STATE_DIR:-}" && -f "$STATE_DIR/ready/$1" ]]
 }
 
+# clear_ready_marker NAME — drop a container's readiness marker. Call it wherever a
+# container is REMOVED or a fresh partial=true container is about to be CREATED, so a
+# name recreated after a removal (recreate, `reset` tier, manual `docker rm`) can't
+# inherit a prior life's marker and be wrongly excluded from gc (gc excludes running
+# OR ready-marked). Best-effort; a missing STATE_DIR / marker is a no-op.
+clear_ready_marker() {
+  [[ -n "${STATE_DIR:-}" ]] && rm -f "$STATE_DIR/ready/$1" 2>/dev/null || true
+}
+
 # Idempotent recreate / reconcile guard.
 #   Returns 0 (caller proceeds to `docker run`) when the container does NOT exist,
 #     or when --recreate / FORCE_RECREATE=1 (after backup + rm).
@@ -164,10 +177,7 @@ recreate_guard() {
     if [[ "$recreate_flag" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]]; then
       backup_before_recreate "$name"
       docker rm -f "$name" >/dev/null
-      # Clear any stale readiness marker: the new container must re-earn ready via
-      # its smoke test (mark_ready). Prevents a removed→recreated name from being
-      # wrongly excluded from gc on an old marker.
-      [[ -n "${STATE_DIR:-}" ]] && rm -f "$STATE_DIR/ready/$name" 2>/dev/null || true
+      clear_ready_marker "$name"   # new container must re-earn ready via its smoke test
       record "recreated container $name"
       return 0
     fi
@@ -189,6 +199,11 @@ recreate_guard() {
     warn "Adopt it (vz-ai-stack.sh adopt $name) or replace: bash bin/start-${name}.sh --recreate"
     return 1
   fi
+  # Container absent → the caller is about to `docker run` a fresh partial=true one.
+  # Clear any marker left by a prior life removed OUTSIDE this guard (a `reset` tier, a
+  # manual `docker rm`), so the fresh container re-earns ready. This is the root-cause
+  # spot for every service that reconciles through recreate_guard. (2026-07-05 §24 review.)
+  clear_ready_marker "$name"
   return 0
 }
 

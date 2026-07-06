@@ -89,6 +89,28 @@ if grep -qE '^\s*-\s*litellm' <<<"$gc_out"; then t_bad "gc listed the RUNNING co
 grep -qi 'Excluded' <<<"$gc_out" && t_ok "gc reports it excluded healthy containers" || t_bad "gc did not report exclusions"
 rm -rf "$STUBDIR"
 
+# --- 2c: stale-marker leak (R3) — a marker must be dropped when a container is
+# (re)created, so a name removed OUTSIDE its guard (reset / manual docker rm) then
+# recreated can't inherit a prior life's marker and dodge gc. The shared helper
+# clear_ready_marker is wired into recreate_guard (both --recreate and the
+# fresh-create/absent path), docker_run_managed, chatdev's _cd_reconcile twin, and
+# adopt. Here we prove the helper + the recreate_guard absent-path (the root spot
+# every recreate_guard service reconciles through). (2026-07-05 §24 review.)
+fresh_stack
+source "$ROOT/installer/lib/docker.sh" >/dev/null 2>&1
+mark_ready "chatdev-be"
+clear_ready_marker "chatdev-be"
+[[ ! -f "$AI_STACK/installer/state/ready/chatdev-be" ]] && t_ok "clear_ready_marker removes a readiness marker" || t_bad "clear_ready_marker did not remove the marker"
+mark_ready "qdrant"                 # stale marker left by a prior life
+container_exists() { return 1; }    # simulate: the container is ABSENT now (fresh create)
+recreate_guard "qdrant" >/dev/null 2>&1 || true
+[[ ! -f "$AI_STACK/installer/state/ready/qdrant" ]] && t_ok "recreate_guard(absent) clears a stale marker before a fresh create" || t_bad "recreate_guard left a stale marker on the fresh-create path (gc would wrongly exclude a broken recreate)"
+unset -f container_exists
+# The chatdev twin + adopt call the same helper on their own rm/create paths.
+grep -q 'clear_ready_marker' "$ROOT/bin/start-chatdev.sh" && t_ok "chatdev _cd_reconcile clears the marker (real consumer covered)" || t_bad "start-chatdev.sh does not clear the ready marker"
+grep -q 'clear_ready_marker' "$ROOT/installer/lib/adopt.sh" && t_ok "adopt clears the marker on its own docker rm -f" || t_bad "adopt.sh does not clear the ready marker"
+rm -rf "$AI_STACK"
+
 # ---------------------------------------------------------------------------
 # FIX-3 (#10): http_ok must report a DEAD server as unhealthy. The `|| echo 000`
 # inside the substitution doubled curl's 000 to "000000" != "000" → false-healthy.
@@ -373,29 +395,66 @@ unset PS_ARGS LSOF_CWD
 section "FIX-13 doctor verifies fixes by re-diagnosing (doctor.sh)"
 grep -q 'DOCTOR_CHECKS_DIR' "$ROOT/installer/doctor/doctor.sh" && t_ok "doctor.sh honors DOCTOR_CHECKS_DIR (test hook)" || t_bad "doctor.sh has no DOCTOR_CHECKS_DIR override"
 grep -q '_doctor_apply_and_verify' "$ROOT/installer/doctor/doctor.sh" && t_ok "doctor.sh re-diagnoses after applying a fix" || t_bad "doctor.sh still trusts the fix exit code"
+
+# Fixture design (2026-07-06 §24 review hardening): the old 3-check fixture could not
+# discriminate the regression it exists to catch. The buggy exit-code accounting makes
+# TWO opposite errors — a heals-but-fix-returns-1 check wrongly NOT counted (false neg)
+# and a queue-only fix (rc0, unresolved) wrongly counted (false pos) — which CANCEL in
+# a symmetric 3-check fixture, yielding the identical "2 fixed, 1 remaining, exit 1"
+# summary as the correct code. Fix: BREAK the symmetry with TWO heals-but-rc1 checks
+# so old→"2 fixed" vs new→"3 fixed" (aggregate now discriminates), AND bind each
+# outcome to its OWN check's output block (so a logic-only revert that keeps the
+# "(verified)" message strings still fails). Unique, non-overlapping title tokens.
 DC="$(mktemp -d)"; DS="$(mktemp -d)"
 cat > "$DC/aa_heals.sh" <<'CHK'
-CHECKS+=(zz_heals); CHECK_TITLE[zz_heals]="synthetic heals"; AUTOHEAL[zz_heals]=1
+CHECKS+=(zz_heals); CHECK_TITLE[zz_heals]="synthetic-heals-clean"; AUTOHEAL[zz_heals]=1
 zz_heals_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals" ]] || { echo "not healed"; return 1; }; }
 zz_heals_fix() { touch "$DOCTOR_TEST_STATE/heals"; echo "fix: healed"; }
 CHK
-cat > "$DC/ab_heals_r1.sh" <<'CHK'
-CHECKS+=(zz_heals_r1); CHECK_TITLE[zz_heals_r1]="synthetic heals, fix returns 1"; AUTOHEAL[zz_heals_r1]=1
-zz_heals_r1_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals_r1" ]] || { echo "not healed"; return 1; }; }
-zz_heals_r1_fix() { touch "$DOCTOR_TEST_STATE/heals_r1"; echo "fix: healed but returning 1"; return 1; }
+cat > "$DC/ab_heals_r1a.sh" <<'CHK'
+CHECKS+=(zz_heals_r1a); CHECK_TITLE[zz_heals_r1a]="synthetic-heals-rc1-A"; AUTOHEAL[zz_heals_r1a]=1
+zz_heals_r1a_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals_r1a" ]] || { echo "not healed"; return 1; }; }
+zz_heals_r1a_fix() { touch "$DOCTOR_TEST_STATE/heals_r1a"; echo "fix: healed but returning 1"; return 1; }
 CHK
-cat > "$DC/ac_queues.sh" <<'CHK'
-CHECKS+=(zz_queues); CHECK_TITLE[zz_queues]="synthetic unresolved"; AUTOHEAL[zz_queues]=1
+cat > "$DC/ac_heals_r1b.sh" <<'CHK'
+CHECKS+=(zz_heals_r1b); CHECK_TITLE[zz_heals_r1b]="synthetic-heals-rc1-B"; AUTOHEAL[zz_heals_r1b]=1
+zz_heals_r1b_diagnose() { [[ -f "$DOCTOR_TEST_STATE/heals_r1b" ]] || { echo "not healed"; return 1; }; }
+zz_heals_r1b_fix() { touch "$DOCTOR_TEST_STATE/heals_r1b"; echo "fix: healed but returning 1"; return 1; }
+CHK
+cat > "$DC/ad_queues.sh" <<'CHK'
+CHECKS+=(zz_queues); CHECK_TITLE[zz_queues]="synthetic-queue-only"; AUTOHEAL[zz_queues]=1
 zz_queues_diagnose() { echo "still broken"; return 1; }
 zz_queues_fix() { echo "fix: queued (returns 0, does not resolve)"; return 0; }
 CHK
 dout="$(DOCTOR_CHECKS_DIR="$DC" DOCTOR_TEST_STATE="$DS" $BASH5 "$ROOT/installer/doctor/doctor.sh" 2>&1)"; drc=$?
+# _block TOKEN — slice one check's output block (from its title line to the next
+# title line). Title lines start with exactly two spaces + the token; detail/outcome
+# lines are indented deeper, so `index($0,"  "t)==1` reliably delimits per check.
+_block() { awk -v t="$1" '/^  [^ ]/ { cap = (index($0, "  " t)==1) } cap { print }' <<<"$dout"; }
+
+# Aggregate (symmetry now broken): correct code counts 3 fixed; the buggy exit-code
+# accounting counts only 2 (misses BOTH rc1 heals, miscredits the queue-only fix).
 n_verified="$(grep -c 'auto-healed (verified)' <<<"$dout" || true)"
-[[ "$n_verified" == "2" ]] && t_ok "both truly-healed checks counted fixed (incl. the fix-returns-1 one)" || t_bad "expected 2 verified heals, got $n_verified"
-grep -q 'still fails' <<<"$dout" && t_ok "the queue-only fix (returns 0 but unresolved) is NOT counted fixed" || t_bad "queue-only fix was not reported as still-failing"
-grep -qE '3 checks, 0 passed, 2 fixed, 1 remaining failed' <<<"$dout" && t_ok "summary is honest: 2 fixed, 1 remaining failed" || t_bad "dishonest summary: $(grep -i 'doctor done' <<<"$dout")"
-[[ "$drc" == "1" ]] && t_ok "doctor exits 1 (a fix that did not resolve leaves a real failure)" || t_bad "doctor exit=$drc (expected 1)"
-rm -rf "$DC" "$DS"
+[[ "$n_verified" == "3" ]] && t_ok "3 truly-healed checks counted fixed (both rc1 heals + the clean one)" || t_bad "expected 3 verified heals, got $n_verified (buggy exit-code accounting gives 2)"
+grep -qE '4 checks, 0 passed, 3 fixed, 1 remaining failed' <<<"$dout" && t_ok "summary is honest: 3 fixed, 1 remaining failed" || t_bad "dishonest summary: $(grep -i 'doctor done' <<<"$dout")"
+[[ "$drc" == "1" ]] && t_ok "doctor exits 1 (the unresolved queue-only fix leaves a real failure)" || t_bad "doctor exit=$drc (expected 1)"
+# Per-check binding (catches a logic revert that keeps the "(verified)" strings):
+qblk="$(_block synthetic-queue-only)"
+grep -q 'still fails' <<<"$qblk" && ! grep -q 'auto-healed (verified)' <<<"$qblk" && t_ok "queue-only check (rc0, unresolved) is NOT verified in ITS OWN block" || t_bad "queue-only check block mis-reported: $qblk"
+rblk="$(_block synthetic-heals-rc1-A)"
+grep -q 'auto-healed (verified)' <<<"$rblk" && ! grep -q 'still fails' <<<"$rblk" && t_ok "heals-but-rc1 check IS verified-fixed in ITS OWN block (fix rc ignored)" || t_bad "heals-rc1 check block mis-reported: $rblk"
+
+# Direct #46 reproduction: a SINGLE queue-only check (fix rc0, never resolves). The
+# buggy code counts it "fixed" and exits 0 on a still-broken stack — the exact
+# inversion. Correct code counts 0 fixed, 1 remaining, exit 1. (This is the honest
+# form of the CHANGELOG's "1 wrongly-fixed, exit 0" claim, which the multi-check
+# fixture above cannot show because its miscounts cancel to exit 1.)
+DC1="$(mktemp -d)"; DS1="$(mktemp -d)"; cp "$DC/ad_queues.sh" "$DC1/aa_queues.sh"
+dout1="$(DOCTOR_CHECKS_DIR="$DC1" DOCTOR_TEST_STATE="$DS1" $BASH5 "$ROOT/installer/doctor/doctor.sh" 2>&1)"; drc1=$?
+grep -qE '1 checks, 0 passed, 0 fixed, 1 remaining failed' <<<"$dout1" && [[ "$drc1" == "1" ]] \
+  && t_ok "single queue-only check: 0 fixed, exit 1 (buggy code gave 1 fixed, exit 0)" \
+  || t_bad "single queue-only check mis-accounted: $(grep -i 'doctor done' <<<"$dout1") rc=$drc1"
+rm -rf "$DC" "$DS" "$DC1" "$DS1"
 
 echo
 echo "TOTAL: $PASS passed, $FAIL failed"

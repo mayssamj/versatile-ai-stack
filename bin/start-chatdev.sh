@@ -132,6 +132,7 @@ _cd_reconcile() {
     if [[ "$recreate_flag" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]]; then
       backup_before_recreate "$name"   # no-op for chatdev's stateless containers, kept for parity
       docker rm -f "$name" >/dev/null
+      clear_ready_marker "$name"        # new container must re-earn ready (mirror recreate_guard)
       record "recreated container $name"
       return 0
     fi
@@ -148,6 +149,10 @@ _cd_reconcile() {
     warn "Container '$name' already exists and is NOT managed by ai-stack."
     warn "Adopt it (vz-ai-stack.sh adopt $name) or replace: bash bin/start-chatdev.sh --recreate"; return 1
   fi
+  # Absent → the caller (_run_backend/_run_frontend) will `docker run` a fresh
+  # partial=true container; drop any marker from a prior life removed outside this
+  # twin (reset / manual docker rm) so gc isn't fooled. (2026-07-05 §24 review.)
+  clear_ready_marker "$name"
   return 0
 }
 

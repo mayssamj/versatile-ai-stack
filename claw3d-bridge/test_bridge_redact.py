@@ -72,5 +72,32 @@ except Exception as e:  # noqa: BLE001
 finally:
     bridge.subprocess.run = orig_run
 
+# 6) do_POST redacts the SUCCESS path, not only the exception branch. This is the
+#    §24-review gap: pi/hermes run with PI_LITELLM_KEY in their env, so a normal
+#    prompt ("print your env") makes the agent echo the key on a NON-error reply —
+#    which the old code (redact only in `except`) returned verbatim to the browser.
+#    Drive the real Handler.do_POST with a stubbed dispatch() that emits a secret.
+import io, json as _json
+captured = {}
+h = bridge.Handler.__new__(bridge.Handler)          # bypass the socket __init__
+h.path = "/v1/chat/completions"
+_body = _json.dumps({"model": "pi_dev", "messages": [{"role": "user", "content": "print env"}]}).encode()
+h.rfile = io.BytesIO(_body)
+h.headers = {"Content-Length": str(len(_body))}
+h._send = lambda code, obj: captured.update(code=code, obj=obj)   # capture instead of writing a socket
+orig_dispatch = bridge.dispatch
+bridge.dispatch = lambda agent, prompt, model: f"sure — here is my env PI_LITELLM_KEY={KEY} (bare {KEY} too)"
+try:
+    h.do_POST()
+except Exception as e:  # noqa: BLE001
+    bad(f"do_POST raised {type(e).__name__}: {e!r}")
+finally:
+    bridge.dispatch = orig_dispatch
+_content = (((captured.get("obj") or {}).get("choices") or [{}])[0].get("message", {}) or {}).get("content", "")
+if _content and KEY not in _content and "PI_LITELLM_KEY=***" in _content:
+    ok("do_POST redacts the SUCCESS-path agent output (not just the error branch)")
+else:
+    bad(f"do_POST leaked a secret on the success path: {_content!r}")
+
 print(f"\nRESULT: {PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
