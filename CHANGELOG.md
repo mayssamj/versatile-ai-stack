@@ -4,6 +4,44 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-05 — fix(hardening): doctor (and all diagnostic/query commands) no longer misfire the ERR trap
+
+User report: "the script failed when I called the doctor command multiple times." `vz-ai-stack.sh doctor`
+was printing a spurious `✗ ERR line 1329: return $? (exit=1)` **after** a perfectly normal run — making a
+routine "1 check failed" look like the installer itself had crashed. Reproduced on every run with any
+failing check (the first all-green runs exit 0 and stay quiet; once a check starts failing, every
+subsequent run "fails").
+
+**Root cause:** the top-level `set -Eeuo pipefail` + ERR trap (line ~146) fires for ANY command that exits
+non-zero as its last action in a non-conditional position — a bare subprocess dispatch OR a `return $?`.
+`doctor.sh` exits non-zero as its DOCUMENTED diagnostic contract (0 healthy / 1 unhealed-failures / 2
+error), so that legitimate result tripped the "something went wrong in the script" trap. The `|| return $?`
+in `cmd_doctor` was NOT the culprit — a bare `cmd_x(){ bash sub.sh; }` trips it identically.
+
+**Fix (centralized, §24-reviewed):** added a `diag_exit` helper — sibling of `run_foreground_server` — that
+runs a dispatch in a `||` context (suppressing errexit + the ERR trap for its whole subtree) and then
+`exit`s with the captured code, PRESERVING it for `doctor && …`/CI without the false alarm. The
+diagnostic/query commands (`doctor`, `verify`, `test`, `embedding`, `status`, `model`, `fleet`,
+`docker-engine`, `ingress`, `url`) route through it; installer ACTION commands (`install`/`start`/`setup`/
+`reset`/…) deliberately do NOT — a non-zero there is a real fault the trap should surface. The leaf `cmd_*`
+functions stay plain and composable (no in-body `exit`). This also kills the same user-visible symptom on
+sibling commands, e.g. `vz-ai-stack.sh url <unknown>` no longer stacks a `✗ ERR line …` on top of `bin/url`'s
+own error.
+
+**Bonus — real behavior bug caught by the §24 adversarial reviewer:** `cmd_verify` did `probe; local
+v_rc=$?`, which does NOT shield the probe from errexit. On a failing probe the trap fired at the probe line,
+so `v_rc` was never captured, doctor checks 19–22 never ran, and the documented `err "Runtime verification
+FAILED…"` message was DEAD CODE (the exit-1 contract was also violated for probe codes ≠ 1). Routing
+`verify` through `diag_exit` revives the whole failure path — the errexit-ignored context propagates into
+the function body.
+
+**Verified:** `bash -n` clean; real `doctor` / `url <unknown>` / `status` all emit zero `ERR line`s with exit
+codes preserved (1 / 1 / 0); new regression test `installer/tests/test_doctor_err_trap_exit.sh` (unit +
+real-`main()` e2e + a non-vacuity control confirming a bare dispatch still trips the trap) passes 6/6. §24
+council (adversarial · architect · QA/infra) reviewed the original 2-line fix, converged on the centralized
+`diag_exit` design, and drove this broadened scope; their DoD gaps (git-tracked test, CHANGELOG, comment
+accuracy, brittle magic line number) are closed here.
+
 ## 2026-07-05 — fix(hardening): §24 merge-review response — 2 blocking + 1 fail-safe follow-up
 
 Two §24 councils (adversarial/security · architect · QA/infra) audited the takeover-hardening batch before

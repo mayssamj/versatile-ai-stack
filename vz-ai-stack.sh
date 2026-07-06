@@ -788,7 +788,7 @@ cmd_phases() {
 cmd_test()    { local p="$1" script id="$1"; if script="$(resolve_phase_script "$p" 2>/dev/null)"; then id="$(basename "$script" .sh)"; id="${id%%_*}"; fi; "$BASH" "$AI_STACK/installer/smoke/${id}.sh"; }
 cmd_status()  { "$BASH" "$AI_STACK/installer/lib/status.sh" "$@"; }
 cmd_model()   { "$BASH" "$AI_STACK/installer/lib/models.sh" "$@"; }
-cmd_embedding() { "$BASH" "$AI_STACK/installer/lib/embeddings.sh" "$@" || return $?; }
+cmd_embedding() { "$BASH" "$AI_STACK/installer/lib/embeddings.sh" "$@"; }   # non-zero = result; dispatched via diag_exit
 cmd_fleet()   { "$BASH" "$AI_STACK/installer/lib/fleet.sh" "$@"; }
 cmd_hermes()  {   # config|slack = gateway admin (config durability + Slack allowlist); else run ONE agent
   # NB: 'config' and 'slack' are RESERVED sub-words here — a fleet role literally named config/slack
@@ -812,7 +812,10 @@ cmd_help() {
   # message it prints, but don't let it trip the ERR trap into the user's output.
   "$BASH" "$AI_STACK/installer/lib/help.sh" "$@" || true
 }
-cmd_doctor()  { "$BASH" "$AI_STACK/installer/doctor/doctor.sh" "${1:-}" || return $?; }
+# doctor.sh exits 0 healthy / 1 unhealed-failures / 2 error — a DIAGNOSTIC RESULT, not a script
+# fault. Dispatched via diag_exit so its expected non-zero preserves the code without tripping the
+# ERR trap (see diag_exit for the mechanism). Kept plain + composable — no in-body `exit`.
+cmd_doctor()  { "$BASH" "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { worktree_guard adopt; "$BASH" "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { run_foreground_server docker logs "$1" "${2:-}"; }   # `logs <ctr> -f` blocks; Ctrl-C/SIGTERM is a clean stop
 cmd_gc()      { worktree_guard gc; "$BASH" "$AI_STACK/installer/lib/gc.sh"; }
@@ -838,6 +841,19 @@ run_foreground_server() {
   (( rc == 130 || rc == 143 )) && return 0
   return "$rc"
 }
+# diag_exit CMD [args...] — dispatch a DIAGNOSTIC/QUERY command whose non-zero exit is a normal
+# RESULT (doctor: checks failed 1/2; verify: probes failed; test: smoke failed; a query/config
+# command rejecting bad input) — NOT a fault in the installer's own inline logic. Under `set -Eeuo`
+# the ERR trap (line ~146) fires for ANY command that exits non-zero as its last action in a
+# non-conditional position — a bare `sub`, a `return $?`, all of it — so a normal "1 check failed"
+# would print a spurious "✗ ERR line N: ... (exit=1)" that reads like a crash (the reported bug).
+# Running CMD in a `||` context suppresses errexit + the ERR trap for its WHOLE subtree (bash
+# propagates the errexit-ignored context into the callee — this is also what revives cmd_verify's
+# otherwise-dead failure-path messaging), then we `exit` with the captured code so it is PRESERVED
+# for `cmd && ...` / CI without the false alarm. Sibling of run_foreground_server (signal-stopped
+# servers). Installer ACTION commands (install/start/setup/reset/...) do NOT route here on purpose:
+# they carry real inline logic where a non-zero IS a fault the trap should surface.
+diag_exit() { local rc=0; "$@" || rc=$?; exit "$rc"; }
 # Serves doc/TUTORIAL.html + a loopback proxy with an ephemeral local-only key.
 cmd_tutorial_serve() { run_foreground_server "$BASH" "$AI_STACK/installer/lib/tutorial-serve.sh" "$@"; }
 # Serves doc/MODELS.html (the Model & Agent Console) + a loopback proxy that wraps the
@@ -1316,20 +1332,23 @@ main() {
   case "$cmd" in
     install|"")        cmd_install "$@" ;;   # forward ALL args (target + flags like --dry-run)
     prepare-sudo)      cmd_prepare_sudo ;;
-    test)              cmd_test "$1" ;;
+    # DIAGNOSTIC / QUERY commands: a non-zero exit is a RESULT (checks/probes/tests failed, or a
+    # query/config subprocess rejecting bad input), NOT an installer fault — route through
+    # diag_exit so the expected non-zero preserves the exit code WITHOUT tripping the ERR trap.
+    test)              diag_exit cmd_test "$1" ;;
     phases|steps|list) cmd_phases ;;
-    status)            cmd_status "$@" ;;
-    model)             cmd_model "$@" ;;
-    embedding|embeddings) cmd_embedding "$@" ;;
-    fleet)             cmd_fleet "$@" ;;
+    status)            diag_exit cmd_status "$@" ;;
+    model)             diag_exit cmd_model "$@" ;;
+    embedding|embeddings) diag_exit cmd_embedding "$@" ;;
+    fleet)             diag_exit cmd_fleet "$@" ;;
     hermes)            cmd_hermes "$@" ;;
-    docker-engine)     cmd_docker_engine "$@" ;;
-    ingress)           cmd_ingress "$@" ;;
-    url)               cmd_url "$@" ;;
-    doctor)            cmd_doctor "${1:-}" ;;
+    docker-engine)     diag_exit cmd_docker_engine "$@" ;;
+    ingress)           diag_exit cmd_ingress "$@" ;;
+    url)               diag_exit cmd_url "$@" ;;
+    doctor)            diag_exit cmd_doctor "${1:-}" ;;
     deps)              cmd_deps "$@" ;;
     setup|keys)        cmd_setup "$@" ;;
-    verify)            cmd_verify ;;
+    verify)            diag_exit cmd_verify ;;
     adopt)             cmd_adopt "$1" ;;
     apply-restarts)    cmd_apply_restarts ;;
     logs)              cmd_logs "$@" ;;
