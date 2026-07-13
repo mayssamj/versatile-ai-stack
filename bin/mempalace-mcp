@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# bin/mempalace-mcp — stack wrapper around the uv-installed `mempalace-mcp` stdio MCP
+# server (the 29-tool MemPalace server). Sibling of bin/mempalace; registered with the
+# host Claude session by Phase 39 (fleet memory) via `claude mcp add -s user mempalace
+# -- <this>`. Registering the RAW `mempalace-mcp` binary directly would launch it with
+# none of the env the stack relies on:
+#   * On-device embeddings (no cloud, no LiteLLM hop): MEMPALACE_EMBEDDING_*.
+#   * LiteLLM routing for the OPTIONAL entity-refinement LLM: openai-compat (OPENAI_*)
+#     + closet_llm (LLM_*). Key is read from .env at RUNTIME (never baked into this file
+#     or into ~/.claude.json).
+# Identical env contract to bin/mempalace — keep the two in sync.
+set -Eeuo pipefail
+AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_mp_get_env() { grep -E "^$1=" "$AI_STACK/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
+# Resolve the RAW uv tool, NEVER this wrapper: ~/ai-stack/bin may precede ~/.local/bin
+# on PATH, so 'command -v mempalace-mcp' can return THIS script and exec'ing it would
+# self-recurse into a hang. Prefer the uv path; exclude self.
+MP_BIN="$HOME/.local/bin/mempalace-mcp"
+if [[ ! -x "$MP_BIN" || "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]]; then
+  MP_BIN="$(command -v mempalace-mcp 2>/dev/null || true)"
+fi
+[[ -n "$MP_BIN" && -x "$MP_BIN" && ! "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]] || { echo "mempalace-mcp tool not found (only the wrapper is on PATH) — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
+
+_key="$(_mp_get_env MEMPALACE_LITELLM_KEY)"
+export MEMPALACE_EMBEDDING_MODEL="${MEMPALACE_EMBEDDING_MODEL:-minilm}"
+export MEMPALACE_EMBEDDING_DEVICE="${MEMPALACE_EMBEDDING_DEVICE:-coreml}"
+# LiteLLM-routed LLM (openai-compat + closet_llm env contracts):
+export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://litellm:4000/v1}"
+export OPENAI_API_KEY="${OPENAI_API_KEY:-$_key}"
+export LLM_ENDPOINT="${LLM_ENDPOINT:-http://litellm:4000/v1}"
+export LLM_KEY="${LLM_KEY:-$_key}"
+export LLM_MODEL="${LLM_MODEL:-claude-opus-sub-xhigh}"
+exec "$MP_BIN" "$@"

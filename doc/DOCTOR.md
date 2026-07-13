@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 74 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 75 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -853,6 +853,18 @@ Skips cleanly (passes) when `HERMES_SLACK_BOT_TOKEN` isn't set — Slack is an o
 | Auto-fix | `AUTOHEAL=1` — idempotent `docker compose up -d` in `hermes-workspace/` (compose starts the agent first via `depends_on`, then re-joins the workspace to its netns). Worktree-guarded, non-destructive, bounded wait. |
 
 Skips cleanly (passes) when the workspace isn't installed or isn't on the netns model, and when the agent itself is down (that's a full-stop / general-census concern, check 53 — not the netns split). Never touches volumes.
+
+---
+
+## 74 · Fleet memory — claude-cli MCP wiring (opt-in, Phase 39)
+
+| | |
+|---|---|
+| Asserts | when Phase 39 (`install fleet_memory`) is installed and the `claude` CLI is present, the host Claude session has BOTH memory MCPs registered (user scope): `mempalace` (verbatim recall via the `bin/mempalace-mcp` env-injecting wrapper) and `docs-mcp` (doc-RAG `search_documents` on :8765). |
+| Fails when | either MCP is missing from `claude mcp list` after Phase 39 has stamped. With `FLEET_MEMORY_DEEP_CHECK=1` it additionally fails when Qdrant is unreachable or the `ai-stack-docs` collection holds **0 points** — a registered-but-empty docs-mcp answers every query with nothing. |
+| Auto-fix | none (reports the command): `vz-ai-stack.sh install fleet_memory`; populate doc-RAG with `cd ingestor && python ingest.py`. |
+
+Skips cleanly (passes) when Phase 39 isn't installed (opt-in) or the `claude` CLI isn't on PATH. Static by default (wiring only); the corpus-population probe is opt-in behind `FLEET_MEMORY_DEEP_CHECK=1` so routine runs never touch Qdrant.
 
 ---
 

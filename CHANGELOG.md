@@ -4,6 +4,39 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-13 — feat(memory): Phase 39 fleet-memory — make the memory subsystems usable by the fleet (slice 1: claude-cli)
+
+Makes the stack's memory subsystems (Honcho, MemPalace, doc-RAG/Qdrant, FalkorDB) actually
+usable by the fleet consumers (claude-cli · pi · hermes-fleet · hermes-workspace), not merely
+running. Grounded in the 2026-07-13 enablement audit + a §24 two-reviewer council (architect +
+adversarial security) on the design; delivered in reversible, opt-in slices to avoid thrashing.
+
+**This slice — claude-cli memory (opt-in Phase 39, `vz-ai-stack.sh install fleet_memory`):**
+- New `installer/lib/memory_mcp.sh` — idempotent host-Claude (`claude mcp add -s user`) MCP
+  registration helpers (remove-then-add; claude-absent → non-fatal skip).
+- New `bin/mempalace-mcp` — env-injecting wrapper (sibling of `bin/mempalace`) that starts the
+  29-tool MemPalace MCP server with the on-device-embedding + LiteLLM-refiner env it needs,
+  reading the minted key from `.env` at runtime so no secret is baked into `~/.claude.json`.
+- New Phase 39 — registers the MemPalace MCP (via the wrapper, verbatim recall) + the doc-RAG
+  HTTP MCP (`docs-mcp` :8765, `search_documents`) with the host Claude session. MemPalace
+  auto-capture (Stop/PreCompact hooks) is printed as an explicit opt-in — NEVER auto-applied
+  (it changes live harness behavior).
+- New doctor check 74 — verifies claude-cli MCP wiring; skip-clean when Phase 39 isn't installed.
+  `FLEET_MEMORY_DEEP_CHECK=1` asserts the `ai-stack-docs` collection holds **> 0 points** (live
+  Qdrant `points_count`, not directory existence — a registered-but-empty docs-mcp answers
+  nothing, the llm_guard false-green trap).
+- New offline smoke `installer/smoke/39.sh` — hermetic (stub `claude`, no services/models):
+  proves claude-absent skip, remove-then-add idempotence, HTTP flag shape, and doctor 74
+  skip-clean/flag/pass. Two-reviewer §24 council (security + QA) → APPROVE_WITH_CHANGES; the
+  4 consensus must-fixes (point-count probe, env wrapper, entrypoint verified, doc sweep) folded in.
+
+Later slices (tracked): doc-RAG + honcho for pi/hermes via a host-side scoped MCP gateway that
+atomically retires the pre-existing unrestricted honcho :8000 sandbox egress; a minimal FalkorDB
+graph-memory MCP (gated on the honcho slice). Operator decisions: full-shared memory pool; build
+minimal FalkorDB now.
+
+Reversible: `claude mcp remove -s user mempalace` / `... docs-mcp` ; `rm installer/state/phase_39.done`.
+
 ## 2026-07-05 — fix(hardening): doctor (and all diagnostic/query commands) no longer misfire the ERR trap
 
 User report: "the script failed when I called the doctor command multiple times." `vz-ai-stack.sh doctor`
