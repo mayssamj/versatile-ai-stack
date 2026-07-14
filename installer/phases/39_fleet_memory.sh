@@ -37,6 +37,7 @@ source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/worktree.sh"
 source "$AI_STACK/installer/lib/memory_mcp.sh"
+source "$AI_STACK/installer/lib/mcp.sh"          # configure_hermes_mcp_docs (untokened doc-RAG)
 
 PHASE=39
 NAME=fleet_memory
@@ -49,17 +50,20 @@ MEMPALACE_MCP_WRAPPER="$AI_STACK/bin/mempalace-mcp"
 # rely on the stamp for the skip so the phase still runs once to print guidance.)
 # `claude mcp list` does live per-server health probing, so call it ONCE.
 precheck() {
-  command -v claude >/dev/null 2>&1 || return 0
-  local listing; listing="$(claude mcp list 2>/dev/null)"
-  grep -q '^mempalace[: ]' <<<"$listing" && grep -q '^docs-mcp[: ]' <<<"$listing"
+  # claude-cli MCPs (skip this part when claude is absent).
+  if command -v claude >/dev/null 2>&1; then
+    local listing; listing="$(claude mcp list 2>/dev/null)"
+    grep -q '^mempalace[: ]' <<<"$listing" || return 1
+    grep -q '^docs-mcp[: ]'  <<<"$listing" || return 1
+  fi
+  # ALSO require hermes-fleet doc-RAG wiring IF a fleet sandbox is Ready — otherwise a
+  # re-run after the fleet was built later would skip before the hermes block ever runs.
+  # (Returns ok when no fleet sandbox is Ready — nothing to wire yet.)
+  _mem_hermes_docs_wired "$(_mem_resolve_openshell)"
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
-  if command -v claude >/dev/null 2>&1; then
-    ok "Phase 39 (fleet_memory) already wired for claude-cli — skipping. (Re-run 'reset' first to rewire.)"
-  else
-    ok "Phase 39 (fleet_memory) — claude CLI absent; nothing to wire for claude-cli. (Stamped.)"
-  fi
+  ok "Phase 39 (fleet_memory) already wired (claude-cli + hermes-fleet where a fleet sandbox is present) — skipping. (Re-run 'reset' first to rewire.)"
   exit 0
 fi
 
@@ -97,5 +101,21 @@ note "  bin/mempalace-hooks install --apply            # repo-local .claude/sett
 note "  bin/mempalace-hooks install --apply --global   # ~/.claude/settings.json"
 note "  bin/mempalace-hooks status | uninstall --apply # inspect / roll back"
 
+# 4. hermes-fleet · doc-RAG search (untokened docs-mcp) ------------------------------
+# Egress to :8765 already ships in hermes-fleet-v1.yaml; wire it per-profile if a fleet
+# sandbox exists now. A fleet built/rebuilt LATER is covered by 04f, which re-wires docs
+# gated on `stamp_check 39` (stays opt-in but survives rebuilds).
+OSH_BIN="$(_mem_resolve_openshell)"   # brew-first (avoids the uv-tool-shadow relay outage)
+HERMES_SB="hermes-fleet-v1"
+if [[ -n "$OSH_BIN" ]] && "$OSH_BIN" sandbox list 2>/dev/null | grep -q "$HERMES_SB"; then
+  configure_hermes_mcp_docs "$OSH_BIN" "$HERMES_SB" "$DOCS_MCP_PORT" || warn "Hermes fleet doc-RAG wiring incomplete (non-fatal)."
+else
+  note "Hermes fleet sandbox '$HERMES_SB' not present — skipping fleet doc-RAG wiring."
+  note "  (Install the fleet, then re-run 'install fleet_memory'; or it auto-wires on the next 'install 04f'.)"
+fi
+
+# pi sandbox doc-RAG: pi's runtime ships NO MCP client, so it needs a dedicated pi
+# extension that bridges to docs-mcp — tracked as a separate slice; not wired here yet.
+
 stamp_mark "$PHASE"
-ok "Phase 39 (fleet_memory) — claude-cli memory wired (MemPalace recall + doc-RAG search)."
+ok "Phase 39 (fleet_memory) — claude-cli memory wired; hermes-fleet doc-RAG wired when the fleet sandbox is present."

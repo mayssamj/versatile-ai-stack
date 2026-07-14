@@ -646,6 +646,14 @@ fi
 # Phase 27 via lib/mcp.sh so install order (SG-first vs fleet-first) doesn't matter.
 configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "Sourcegraph MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install 04f' after fixing)"
 
+# --- Wire the fleet to the doc-RAG MCP — ONLY if fleet-memory was opted in ---------
+# docs-mcp is untokened, so gate on the Phase 39 stamp: a plain fleet rebuild must NOT
+# silently add doc-RAG, but if the operator DID `install fleet_memory`, re-wire it here
+# so a rebuild doesn't lose it (mirrors how SG survives rebuilds via this same phase).
+if stamp_check 39; then
+  configure_hermes_mcp_docs "$OSH" "$SANDBOX" || warn "doc-RAG MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install fleet_memory')"
+fi
+
 stamp_mark "$PHASE"
 record "phase 04·F complete: $_EXPECT hermes profiles bootstrapped + routed to LiteLLM ($HERMES_MODEL) in sandbox $SANDBOX"
 ok "Phase 04·F — Hermes fleet — complete"

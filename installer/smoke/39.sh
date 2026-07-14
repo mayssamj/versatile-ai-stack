@@ -56,6 +56,7 @@ ok "C: http register flag shape correct"
 #    probe reads our temp state dir, not the real one. Arrays declared so `set -u` sourcing is safe.
 declare -a CHECKS=(); declare -A CHECK_TITLE=()
 source "$AI_STACK/installer/doctor/checks/74_fleet_memory_mcp.sh"
+_fm_resolve_openshell() { echo ""; }   # hermetic: stub out the live hermes-fleet sandbox probe
 mkdir -p "$TMP/installer/state"
 
 # D1. unstamped → skip-clean (0), even with claude present.

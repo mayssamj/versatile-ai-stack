@@ -4,6 +4,25 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-14 — feat(memory): fleet-memory slice 2a — hermes-fleet doc-RAG wiring
+
+Extends opt-in `install fleet_memory` to wire the doc-RAG MCP to the Hermes fleet:
+- `installer/lib/mcp.sh` — new `configure_hermes_mcp_docs`: untokened HTTP MCP wiring
+  (docs-mcp is unauthenticated), mirrors the Sourcegraph/Understand host-loopback rail
+  minus the token/`.env`-seed/`Authorization`; per-profile via one uploaded in-sandbox
+  script. Egress to :8765 already ships in `hermes-fleet-v1.yaml`.
+- Phase 39 wires the fleet when a `hermes-fleet-v1` sandbox is present; `04f_hermes_fleet.sh`
+  re-wires it on a fleet rebuild GATED on `stamp_check 39` (stays opt-in, survives rebuilds).
+- doctor check 74 now also asserts a representative fleet profile carries
+  `mcp_servers.docs` → `host.docker.internal:8765` when the fleet sandbox is Ready.
+- smoke 39 stubs the openshell resolver to stay hermetic.
+
+NOT included: **pi** doc-RAG — the pi runtime ships no MCP client, so it needs a dedicated
+pi extension (a `registerTool` bridge to docs-mcp), tracked as the next slice. Doc-RAG
+returns nothing until the `ai-stack-docs` collection is populated (`cd ingestor && python
+ingest.py`); the `docs` embedder can be re-pointed to a cloud route (`embed-openai-small`
+via LiteLLM) to populate without loading a local model.
+
 ## 2026-07-13 — feat(memory): Phase 39 fleet-memory — make the memory subsystems usable by the fleet (slice 1: claude-cli)
 
 Makes the stack's memory subsystems (Honcho, MemPalace, doc-RAG/Qdrant, FalkorDB) actually

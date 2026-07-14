@@ -249,3 +249,80 @@ WIRE
   fi
   return 0
 }
+
+# ── doc-RAG MCP (Phase 39 / fleet memory) ───────────────────────────────────────────
+# Wire the Hermes fleet to the host's docs-mcp HTTP server (semantic search over the
+# ai-stack-docs Qdrant collection). Same host-loopback rail as Sourcegraph/Understand,
+# but docs-mcp is UNAUTHENTICATED (ingestor/mcp_server.py has no auth) — so this wires
+# url + connect_timeout + enabled only, NO .env seed and NO Authorization header. Egress
+# to :8765 already ships in hermes-fleet-v1.yaml. Kept OPT-IN by the CALLER (Phase 39 wires
+# it on `install fleet_memory`; 04f re-wires it only when stamp_check 39 is set) — this fn
+# itself always attempts when invoked. Returns 0 wired/skipped; 1 the mcp SDK could not be
+# made importable. Note: doc-RAG returns nothing until the ai-stack-docs collection is
+# populated (`cd ingestor && python ingest.py`).
+DOCS_MCP_PORT_DEFAULT=8765
+
+# configure_hermes_mcp_docs <osh> <sandbox> [port]
+configure_hermes_mcp_docs() {
+  local osh="$1" sb="$2" port="${3:-$DOCS_MCP_PORT_DEFAULT}"
+  local url="http://host.docker.internal:${port}/mcp"
+  log "Wiring Hermes fleet -> doc-RAG MCP ($url)…"
+  if ! _sg_mcp_ensure_extra "$osh" "$sb"; then
+    warn "doc-RAG MCP: could not enable the mcp SDK in the sandbox — wiring skipped (re-run after fixing PyPI egress)."
+    return 1
+  fi
+
+  # Stage the per-profile wiring script. URL is arg 1 (port-templated on the host).
+  # No token: docs-mcp is unauthenticated, so no .env seed and no Authorization header.
+  local stage="${AI_STACK:-$HOME/ai-stack}/openshell/fleet-bootstrap"
+  mkdir -p "$stage"
+  cat > "$stage/docs-mcp-wire.sh" <<'WIRE'
+#!/bin/sh
+# Wire default + each profile in "$@" (after URL) to the doc-RAG MCP server.
+# Usage: docs-mcp-wire.sh <URL> [profile ...]   (no token — docs-mcp is unauthenticated)
+URL="$1"; shift
+[ -n "$URL" ] || { echo "docs-mcp-wire: empty URL" >&2; exit 1; }
+_wire() {  # $1=HERMES_HOME dir   $2=profile-flag ("" or "--profile <name>")
+  home="$1"; pflag="$2"
+  mkdir -p "$home"
+  hermes $pflag config set mcp_servers.docs.url "$URL" >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.docs.connect_timeout 5 >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.docs.enabled true >/dev/null 2>&1 || return 1
+}
+n=0; okc=0
+n=$((n+1)); if _wire "$HOME/.hermes" ""; then okc=$((okc+1)); echo "ok default"; else echo "FAIL default"; fi
+for p in "$@"; do
+  n=$((n+1))
+  if _wire "$HOME/.hermes/profiles/$p" "--profile $p"; then okc=$((okc+1)); echo "ok $p"; else echo "FAIL $p"; fi
+done
+echo "WIRED $okc/$n"
+[ "$okc" -ge 1 ]
+WIRE
+  chmod 600 "$stage/docs-mcp-wire.sh"
+
+  "$osh" sandbox exec -n "$sb" --no-tty --timeout 30 </dev/null -- /bin/sh -c 'mkdir -p /sandbox/fleet-boot' >/dev/null 2>&1 || true
+  if ! "$osh" sandbox upload --no-git-ignore "$sb" "$stage/docs-mcp-wire.sh" /sandbox/fleet-boot/ >/dev/null 2>&1; then
+    warn "doc-RAG MCP: could not upload the wiring script to the sandbox — skipped."
+    return 0
+  fi
+
+  local roster; roster="$(_sg_roster "$osh" "$sb" | tr '\n' ' ')"
+  local out
+  # </dev/null: docs-mcp-wire.sh reads no stdin (no token), so close it to avoid the
+  # stdin-contention bug (installer/lib/fleet.sh:22, doctor.sh stdin note). understand/SG
+  # instead FEED a token on stdin; this one must explicitly detach it.
+  out="$("$osh" sandbox exec -n "$sb" --no-tty --timeout 90 </dev/null -- \
+    /bin/sh /sandbox/fleet-boot/docs-mcp-wire.sh "$url" $roster 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
+  local summary; summary="$(grep -oE 'WIRED [0-9]+/[0-9]+' <<<"$out" | tail -1)"
+  if [[ -n "$summary" ]]; then
+    grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
+    if grep -q '^FAIL ' <<<"$out"; then
+      warn "doc-RAG MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install fleet_memory')"
+    else
+      ok "doc-RAG MCP: $summary profiles wired"
+    fi
+  else
+    warn "doc-RAG MCP: wiring produced no summary (relay issue?). Output: $(tail -1 <<<"$out")"
+  fi
+  return 0
+}

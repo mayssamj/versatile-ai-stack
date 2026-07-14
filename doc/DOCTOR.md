@@ -856,15 +856,15 @@ Skips cleanly (passes) when the workspace isn't installed or isn't on the netns 
 
 ---
 
-## 74 · Fleet memory — claude-cli MCP wiring (opt-in, Phase 39)
+## 74 · Fleet memory — claude-cli + hermes-fleet MCP wiring (opt-in, Phase 39)
 
 | | |
 |---|---|
-| Asserts | when Phase 39 (`install fleet_memory`) is installed and the `claude` CLI is present, the host Claude session has BOTH memory MCPs registered (user scope): `mempalace` (verbatim recall via the `bin/mempalace-mcp` env-injecting wrapper) and `docs-mcp` (doc-RAG `search_documents` on :8765). |
-| Fails when | either MCP is missing from `claude mcp list` after Phase 39 has stamped. With `FLEET_MEMORY_DEEP_CHECK=1` it additionally fails when Qdrant is unreachable or the `ai-stack-docs` collection holds **0 points** — a registered-but-empty docs-mcp answers every query with nothing. |
+| Asserts | when Phase 39 (`install fleet_memory`) is installed: (a) if the `claude` CLI is present, the host Claude session has BOTH memory MCPs registered (user scope) — `mempalace` (verbatim recall via the `bin/mempalace-mcp` env-injecting wrapper) and `docs-mcp` (doc-RAG `search_documents` on :8765); (b) if a `hermes-fleet-v1` sandbox is Ready, a representative fleet profile carries `mcp_servers.docs` → `host.docker.internal:8765` (fleet doc-RAG wired). |
+| Fails when | a claude-cli MCP is missing from `claude mcp list`, or the fleet profile lacks the `docs` MCP server, after Phase 39 has stamped. With `FLEET_MEMORY_DEEP_CHECK=1` it additionally fails when Qdrant is unreachable or the `ai-stack-docs` collection holds **0 points** — a registered-but-empty docs-mcp answers every query with nothing. |
 | Auto-fix | none (reports the command): `vz-ai-stack.sh install fleet_memory`; populate doc-RAG with `cd ingestor && python ingest.py`. |
 
-Skips cleanly (passes) when Phase 39 isn't installed (opt-in) or the `claude` CLI isn't on PATH. Static by default (wiring only); the corpus-population probe is opt-in behind `FLEET_MEMORY_DEEP_CHECK=1` so routine runs never touch Qdrant.
+Skips cleanly (passes) when Phase 39 isn't installed (opt-in); the claude-cli sub-check is skipped when the `claude` CLI isn't on PATH, and the hermes sub-check when no fleet sandbox is Ready. Static by default (wiring only); the corpus-population probe is opt-in behind `FLEET_MEMORY_DEEP_CHECK=1` so routine runs never touch Qdrant.
 
 ---
 
