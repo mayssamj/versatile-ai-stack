@@ -13,11 +13,11 @@
 #                 PI_LITELLM_KEY is the current working pattern; migrate to
 #                 inference.local when OpenShell fixes the provider. See
 #                 CHANGELOG 2026-05-29.
-#   - Honcho    : ALLOWED. Pi writes to its own `pi` peer namespace
-#                 (helper: installer/lib/honcho.sh::honcho_peer_ensure).
-#                 Honcho v3 has NO API-key-scoped peer enforcement; cross-
-#                 peer read isolation depends on Pi not querying foreign
-#                 peer IDs. Doctor check 25 reflects this honestly.
+#   - Honcho    : DENIED. The raw :8000 egress was RETIRED (the auth-off Honcho REST
+#                 hole is closed — §24 security fix). Pi's runtime ships no MCP client,
+#                 so it gets no honcho path until a Pi honcho extension ships (slice 2b),
+#                 which will route through the host-side honcho-mcp shim (:7082, token-
+#                 gated), NEVER the raw :8000 API. Doctor check 25 asserts :8000 denied.
 #   - docs-mcp  : ALLOWED. The MCP server's tool surface is itself read-
 #                 only (Docling+LlamaIndex+Qdrant search/list/get); there
 #                 are no state-changing endpoints to gate at the TCP level.
@@ -70,17 +70,10 @@ network_policies:
     binaries:
       - { path: "/**" }
 
-  # Honcho memory API — Pi writes to its own `pi` peer namespace
-  # (see HONCHO_PEER_NAMESPACE env in 15_pi.sh). Hermes peers and Pi
-  # peer share the same Honcho instance but cannot read each other's
-  # state.
-  honcho_memory:
-    name: honcho-memory
-    endpoints:
-      - host: host.docker.internal
-        port: 8000
-    binaries:
-      - { path: "/**" }
+  # Honcho memory: Pi's raw :8000 egress was RETIRED (the auth-off Honcho REST hole is
+  # closed — §24 security fix). Pi's runtime ships no MCP client, so it gets NO honcho
+  # egress at all until a Pi honcho extension ships (slice 2b); at that point add a
+  # honcho_mcp :7082 stanza here, mirroring hermes-fleet-v1.yaml. Do NOT re-open :8000.
 
   # docs MCP server — host-bound on 0.0.0.0:8765 (Phase 06).
   # The MCP tool surface is read-only (Docling+LlamaIndex+Qdrant search).

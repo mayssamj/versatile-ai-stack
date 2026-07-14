@@ -326,3 +326,86 @@ WIRE
   fi
   return 0
 }
+
+# ── Honcho memory MCP (Phase 40 / fleet memory) ─────────────────────────────────────
+# Wire the Hermes fleet to the host-side honcho-mcp SHIM (host.docker.internal:7082) so
+# fleet agents get Honcho memory (honcho_remember/recall/ask/search) as MCP tools. The
+# shim is the ONLY sandbox path to Honcho — the raw auth-off :8000 egress is retired
+# (Phase 40 / 04_openshell.sh). TOKENED like understand: gated on HONCHO_MCP_TOKEN in .env
+# (absent -> skip+warn, return 0). Full-shared workspace: each profile passes its own peer.
+HONCHO_MCP_PORT_DEFAULT=7082
+
+# configure_hermes_mcp_honcho <osh> <sandbox> [port]
+configure_hermes_mcp_honcho() {
+  local osh="$1" sb="$2" port="${3:-$HONCHO_MCP_PORT_DEFAULT}"
+  local token; token="$(get_env HONCHO_MCP_TOKEN '')"
+  if [[ -z "$token" ]]; then
+    note "Honcho MCP: HONCHO_MCP_TOKEN absent from .env — skipping fleet wiring."
+    note "  Install + wire it with:  vz-ai-stack.sh install honcho_mcp"
+    return 0
+  fi
+  local url="http://host.docker.internal:${port}/mcp"
+  log "Wiring Hermes fleet -> Honcho MCP ($url)…"
+  if ! _sg_mcp_ensure_extra "$osh" "$sb"; then
+    warn "Honcho MCP: could not enable the mcp SDK in the sandbox — wiring skipped (re-run after fixing PyPI egress)."
+    return 1
+  fi
+
+  # Stage the per-profile wiring script. URL is arg 1; token via STDIN (never argv). The
+  # literal ${MCP_HONCHO_TOKEN} is single-quoted so the in-sandbox sh does NOT expand it
+  # (Hermes interpolates it from that profile's .env at connect time).
+  local stage="${AI_STACK:-$HOME/ai-stack}/openshell/fleet-bootstrap"
+  mkdir -p "$stage"
+  cat > "$stage/honcho-mcp-wire.sh" <<'WIRE'
+#!/bin/sh
+# Wire default + each profile in "$@" (after URL) to the Honcho MCP server.
+# Usage: honcho-mcp-wire.sh <URL> [profile ...]   (token on STDIN)
+URL="$1"; shift
+read -r T
+[ -n "$T" ] || { echo "honcho-mcp-wire: empty token on STDIN" >&2; exit 1; }
+[ -n "$URL" ] || { echo "honcho-mcp-wire: empty URL" >&2; exit 1; }
+_wire() {  # $1=HERMES_HOME dir   $2=profile-flag ("" or "--profile <name>")
+  home="$1"; pflag="$2"
+  mkdir -p "$home"; touch "$home/.env"
+  grep -v '^MCP_HONCHO_TOKEN=' "$home/.env" > "$home/.env.new" 2>/dev/null || true
+  printf 'MCP_HONCHO_TOKEN=%s\n' "$T" >> "$home/.env.new"
+  mv "$home/.env.new" "$home/.env"; chmod 600 "$home/.env"
+  hermes $pflag config set mcp_servers.honcho.url "$URL" >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.honcho.headers.Authorization 'Bearer ${MCP_HONCHO_TOKEN}' >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.honcho.connect_timeout 5 >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.honcho.enabled true >/dev/null 2>&1 || return 1
+}
+n=0; okc=0
+n=$((n+1)); if _wire "$HOME/.hermes" ""; then okc=$((okc+1)); echo "ok default"; else echo "FAIL default"; fi
+for p in "$@"; do
+  n=$((n+1))
+  if _wire "$HOME/.hermes/profiles/$p" "--profile $p"; then okc=$((okc+1)); echo "ok $p"; else echo "FAIL $p"; fi
+done
+echo "WIRED $okc/$n"
+[ "$okc" -ge 1 ]
+WIRE
+  chmod 600 "$stage/honcho-mcp-wire.sh"
+
+  "$osh" sandbox exec -n "$sb" --no-tty --timeout 30 </dev/null -- /bin/sh -c 'mkdir -p /sandbox/fleet-boot' >/dev/null 2>&1 || true
+  if ! "$osh" sandbox upload --no-git-ignore "$sb" "$stage/honcho-mcp-wire.sh" /sandbox/fleet-boot/ >/dev/null 2>&1; then
+    warn "Honcho MCP: could not upload the wiring script to the sandbox — skipped."
+    return 0
+  fi
+
+  local roster; roster="$(_sg_roster "$osh" "$sb" | tr '\n' ' ')"
+  local out
+  out="$(printf '%s\n' "$token" | "$osh" sandbox exec -n "$sb" --no-tty --timeout 90 -- \
+    /bin/sh /sandbox/fleet-boot/honcho-mcp-wire.sh "$url" $roster 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
+  local summary; summary="$(grep -oE 'WIRED [0-9]+/[0-9]+' <<<"$out" | tail -1)"
+  if [[ -n "$summary" ]]; then
+    grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
+    if grep -q '^FAIL ' <<<"$out"; then
+      warn "Honcho MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install honcho_mcp')"
+    else
+      ok "Honcho MCP: $summary profiles wired"
+    fi
+  else
+    warn "Honcho MCP: wiring produced no summary (relay issue?). Output: $(tail -1 <<<"$out")"
+  fi
+  return 0
+}

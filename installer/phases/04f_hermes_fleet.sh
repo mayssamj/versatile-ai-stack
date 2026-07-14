@@ -654,6 +654,14 @@ if stamp_check 39; then
   configure_hermes_mcp_docs "$OSH" "$SANDBOX" || warn "doc-RAG MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install fleet_memory')"
 fi
 
+# --- Wire the fleet to the honcho memory MCP — ONLY if honcho_mcp was opted in --------
+# Gated on the Phase 40 stamp (same opt-in-survives-rebuild pattern as docs above). The
+# honcho shim + token + retired :8000 egress are Phase 40's job; here we just re-assert the
+# per-profile wiring so a fleet rebuild doesn't lose it.
+if stamp_check 40; then
+  configure_hermes_mcp_honcho "$OSH" "$SANDBOX" || warn "honcho MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install honcho_mcp')"
+fi
+
 stamp_mark "$PHASE"
 record "phase 04·F complete: $_EXPECT hermes profiles bootstrapped + routed to LiteLLM ($HERMES_MODEL) in sandbox $SANDBOX"
 ok "Phase 04·F — Hermes fleet — complete"

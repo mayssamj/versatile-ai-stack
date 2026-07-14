@@ -159,9 +159,11 @@ honcho_unset_env LLM_OPENAI_MODEL
 # reasoning levels, summary, both dream specialists) uses the platform default
 # claude-opus-sub-xhigh (Claude subscription via Meridian). transport stays
 # the default "openai", so calls route through LiteLLM via LLM_OPENAI_BASE_URL
-# above; LiteLLM falls back to local only if Meridian is down. Embeddings
-# stay on text-embedding-3-small (not a chat model). Override per-deploy with
-# HONCHO_MODEL in the stack .env.
+# above; LiteLLM falls back to local only if Meridian is down. Embeddings ALSO route
+# through LiteLLM (set below) — honcho's embedding base_url has NO fallback to the chat
+# var, so it MUST be set explicitly or honcho embeds against platform.openai.com with the
+# local key -> 401 -> search/recall/ingest 500. Override per-deploy with HONCHO_MODEL /
+# HONCHO_EMBED_MODEL in the stack .env.
 HONCHO_MODEL="$(get_env HONCHO_MODEL "claude-opus-sub-xhigh")"
 for _hk in \
   DERIVER_MODEL_CONFIG__MODEL \
@@ -175,6 +177,16 @@ for _hk in \
   DREAM_INDUCTION_MODEL_CONFIG__MODEL; do
   honcho_set_env "$_hk" "$HONCHO_MODEL"
 done
+# Embeddings: point honcho's embedding client at LiteLLM. These are NESTED (EMBEDDING_
+# prefix, __ delimiter) unlike the flat chat vars, and the embedding base_url has NO
+# fallback to LLM_OPENAI_BASE_URL — so WITHOUT these honcho embeds against
+# platform.openai.com with the local key and every search/recall/ingest 500s. Model is the
+# LiteLLM route name embed-openai-small (NOT the raw text-embedding-3-small id, which LiteLLM
+# does not expose); 1536-dim matches honcho's migration-pinned vector(1536) schema so there
+# is ZERO migration. api_key auto-falls-back to LLM_OPENAI_API_KEY (the LiteLLM master key).
+honcho_set_env EMBEDDING_MODEL_CONFIG__TRANSPORT           "openai"
+honcho_set_env EMBEDDING_MODEL_CONFIG__MODEL               "$(get_env HONCHO_EMBED_MODEL embed-openai-small)"
+honcho_set_env EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL "http://litellm.ai-stack:4000/v1"
 honcho_set_env AUTH_USE_AUTH       "false"
 ok "patched $HONCHO_DIR/.env to use LiteLLM"
 

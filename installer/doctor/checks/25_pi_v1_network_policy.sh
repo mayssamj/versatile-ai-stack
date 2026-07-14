@@ -17,7 +17,7 @@
 #   - That a prompt-injected Pi can't *try* to query forbidden services —
 #     the policy just makes those attempts fail at the network layer
 CHECKS+=(pi_v1_network_policy)
-CHECK_TITLE[pi_v1_network_policy]="pi-v1 network policy: LiteLLM/Honcho/docs-mcp reachable, ai-stack DBs denied"
+CHECK_TITLE[pi_v1_network_policy]="pi-v1 network policy: LiteLLM/docs-mcp reachable; raw Honcho :8000 + ai-stack DBs denied"
 
 _pi_v1_np_resolve_openshell() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
@@ -66,7 +66,6 @@ pi_v1_network_policy_diagnose() {
   # Allowlisted destinations per openshell/policies/pi-v1.yaml.
   local positives=(
     "host.docker.internal:4000:LiteLLM"
-    "host.docker.internal:8000:Honcho"
     "host.docker.internal:8765:docs-mcp"
   )
   local entry host port label result
@@ -82,6 +81,8 @@ pi_v1_network_policy_diagnose() {
   # ─── NEGATIVE probes (slow; only run with --all / OPENSHELL_DOCTOR_SLOW=1) ───
   if [[ "${OPENSHELL_DOCTOR_SLOW:-0}" == "1" ]] || [[ "${DOCTOR_ALL:-0}" == "1" ]]; then
     local negatives=(
+      "host.docker.internal:8000:Honcho-raw"
+      "host.docker.internal:7082:honcho-mcp"
       "host.docker.internal:6006:Phoenix"
       "host.docker.internal:6333:Qdrant"
       "host.docker.internal:6379:FalkorDB"

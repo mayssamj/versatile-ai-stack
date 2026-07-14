@@ -152,13 +152,15 @@ network_policies:
     binaries:
       - { path: "/**" }
 
-  # Honcho memory API — reached over Docker bridge via host.docker.internal.
-  # Requires Honcho to bind 0.0.0.0:8000 (see Phase 03 compose override).
-  honcho_memory:
-    name: honcho-memory
+  # Honcho memory via the host-side honcho-mcp SHIM (host.docker.internal:7082, Phase 40).
+  # The RAW Honcho REST API (:8000, AUTH_USE_AUTH=false) is intentionally NOT reachable
+  # from the sandbox — the token-gated MCP shim is the only memory path. Retiring the raw
+  # :8000 stanza is the security half of the honcho slice (a §24 must-fix); do NOT re-add it.
+  honcho_mcp:
+    name: honcho-mcp
     endpoints:
       - host: host.docker.internal
-        port: 8000
+        port: 7082
     binaries:
       - { path: "/**" }
 
