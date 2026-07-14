@@ -13,6 +13,7 @@ source "$AI_STACK/installer/lib/common.sh"
 source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/docker.sh"
 source "$AI_STACK/installer/lib/validate.sh"
+source "$AI_STACK/installer/lib/honcho.sh"   # honcho_ensure_embedding_env, honcho_is_up
 
 PHASE=03
 HONCHO_DIR="$AI_STACK/honcho"
@@ -22,6 +23,9 @@ precheck() {
   [[ -f "$HONCHO_DIR/docker-compose.yml" ]] || return 1
   [[ -f "$HONCHO_DIR/docker-compose.override.yml" ]] || return 1
   [[ -f "$HONCHO_DIR/.env" ]] || return 1
+  # Embedding must be pointed at LiteLLM (else honcho search/recall/ingest 401→500). If a
+  # pre-existing install lacks it, fail precheck so `install 03` re-runs + applies it.
+  grep -q '^EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL=' "$HONCHO_DIR/.env" 2>/dev/null || return 1
   # Try alias first (post-refactor), then loopback fallback.
   local hb; hb="${HONCHO_BASE_URL:-$(get_env HONCHO_BASE_URL http://honcho:8000)}"
   wait_http "${hb}/health" 5 || wait_http http://127.0.10.6:8000/health 5 || return 1
@@ -184,9 +188,7 @@ done
 # LiteLLM route name embed-openai-small (NOT the raw text-embedding-3-small id, which LiteLLM
 # does not expose); 1536-dim matches honcho's migration-pinned vector(1536) schema so there
 # is ZERO migration. api_key auto-falls-back to LLM_OPENAI_API_KEY (the LiteLLM master key).
-honcho_set_env EMBEDDING_MODEL_CONFIG__TRANSPORT           "openai"
-honcho_set_env EMBEDDING_MODEL_CONFIG__MODEL               "$(get_env HONCHO_EMBED_MODEL embed-openai-small)"
-honcho_set_env EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL "http://litellm.ai-stack:4000/v1"
+honcho_ensure_embedding_env || true   # nested EMBEDDING_* vars -> LiteLLM (shared helper, lib/honcho.sh)
 honcho_set_env AUTH_USE_AUTH       "false"
 ok "patched $HONCHO_DIR/.env to use LiteLLM"
 

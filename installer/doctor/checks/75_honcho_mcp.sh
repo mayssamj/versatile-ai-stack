@@ -34,6 +34,9 @@ honcho_mcp_diagnose() {
   grep -qE '^[[:space:]]*honcho_memory:' "$fpol" 2>/dev/null && fails+=("  SECURITY: raw honcho_memory (:8000) egress is BACK in hermes-fleet-v1.yaml — must stay retired")
   grep -qE '^[[:space:]]*honcho_memory:' "$ppol" 2>/dev/null && fails+=("  SECURITY: raw honcho_memory (:8000) egress is BACK in pi-v1.yaml — must stay retired")
   grep -qE '^[[:space:]]*honcho_mcp:' "$fpol" 2>/dev/null || fails+=("  honcho_mcp (:7082) shim egress MISSING from hermes-fleet-v1.yaml — re-run 'vz-ai-stack.sh install 04'")
+  # PORT-based guard (name-independent): a renamed stanza pointing at :8000 must not slip past
+  # the name grep above — assert NO sandbox-policy endpoint targets port 8000 (raw honcho REST).
+  grep -qE '^[[:space:]]*port:[[:space:]]*8000\b' "$fpol" "$ppol" 2>/dev/null && fails+=("  SECURITY: a sandbox-policy endpoint targets port 8000 (raw honcho REST) — must stay retired regardless of the stanza name")
 
   # (2) claude-cli registration (if the claude CLI is present).
   if command -v claude >/dev/null 2>&1; then
@@ -58,6 +61,25 @@ honcho_mcp_diagnose() {
       'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "honcho:" "$f" && grep -q "host.docker.internal:7082" "$f" && echo WIRED || echo MISSING' \
       2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
     [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to honcho MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install honcho_mcp")
+  fi
+
+  # (5) LIVE negative probe (slow / --all): the running fleet sandbox must be DENIED raw
+  # honcho:8000 at the network layer. The static drift-guard above only catches SOURCE drift;
+  # this catches a flaky Phase-40 live policy-apply that left the pre-retirement policy live
+  # (committed files correct, running sandbox still exposed). Mirrors check 25's probe.
+  if [[ "${OPENSHELL_DOCTOR_SLOW:-0}" == "1" ]] || [[ "${DOCTOR_ALL:-0}" == "1" ]]; then
+    if [[ -n "$osh" ]] && "$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
+         | awk 'NR>1 && $1=="hermes-fleet-v1" && $NF=="Ready"{ok=1} END{exit !ok}'; then
+      local body; body="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 15 </dev/null -- \
+        curl -s --connect-timeout 3 --max-time 6 -w '\n__C_%{http_code}' http://host.docker.internal:8000/ 2>/dev/null || echo '__C_000')"
+      if grep -q 'policy_denied' <<<"$body" || grep -qE '__C_(000|403|502|503|522)$' <<<"$body"; then
+        : # denied at the network layer — good
+      else
+        fails+=("  LIVE-SECURITY: hermes-fleet-v1 can still REACH raw honcho:8000 (egress NOT denied — Phase 40's live policy-apply likely failed). Re-apply: vz-ai-stack.sh install 04")
+      fi
+    fi
+  else
+    echo "  (static drift-guard only; set OPENSHELL_DOCTOR_SLOW=1 for the LIVE :8000-denied probe from inside the fleet)"
   fi
 
   if (( ${#fails[@]} > 0 )); then

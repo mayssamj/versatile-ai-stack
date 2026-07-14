@@ -26,6 +26,7 @@ source "$AI_STACK/installer/lib/env.sh"
 source "$AI_STACK/installer/lib/worktree.sh"
 source "$AI_STACK/installer/lib/memory_mcp.sh"
 source "$AI_STACK/installer/lib/mcp.sh"
+source "$AI_STACK/installer/lib/honcho.sh"   # honcho_ensure_embedding_env (self-heal, no deadlock)
 
 PHASE=40
 NAME=honcho_mcp
@@ -61,11 +62,13 @@ fi
 
 worktree_guard "install honcho_mcp"
 
-# 0. Hard dependency: the Phase-03 honcho embedding fix must be applied, else honcho embeds
-#    against platform.openai.com and search/recall/ingest 401→500 (a wired-but-broken shim).
-if ! grep -q '^EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL=' "$AI_STACK/honcho/.env" 2>/dev/null; then
-  err "Honcho embedding is not pointed at LiteLLM — honcho would 401 on every search/recall."
-  err "Apply the Phase 03 fix first:  vz-ai-stack.sh install 03   (re-applies honcho/.env + restarts honcho)"
+# 0. Ensure honcho's embedding is pointed at LiteLLM, else honcho embeds against
+#    platform.openai.com and search/recall/ingest 401→500 (a wired-but-broken shim). Apply it
+#    HERE directly + reload honcho if it changed (honcho_ensure_embedding_env force-recreates
+#    only api+deriver) — do NOT defer to 'install 03', which is a NO-OP on an already-stamped
+#    honcho (its precheck short-circuits). Fails only if honcho isn't installed at all.
+if ! honcho_ensure_embedding_env; then
+  err "Honcho is not installed (no honcho/.env). Install it first:  vz-ai-stack.sh install 03"
   err "then re-run:  HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp"
   exit 1
 fi

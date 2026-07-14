@@ -7,7 +7,8 @@
 # stack (Hermes fleet, AutoFyn, Paperclip, etc.) cannot see what Pi sees,
 # and Pi can only reach a tight allowlist:
 #   - inference.local        (LiteLLM via gateway L7 rewrite — no key exposure)
-#   - host.docker.internal:8000  (Honcho memory; Pi uses peer `pi`)
+#   - (Honcho :8000 egress RETIRED — auth-off REST hole closed; Pi honcho deferred to a
+#     dedicated Pi extension, slice 2b. Pi peer `pi` is still pre-created host-side below.)
 #   - host.docker.internal:8765  (docs-mcp; read-only by virtue of the
 #                                  MCP tool surface)
 #   - npm/pypi/github            (extension installs + reference repo clones)

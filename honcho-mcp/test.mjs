@@ -86,6 +86,8 @@ async function httpE2E(honchoPort) {
     await waitFor(`http://127.0.0.1:${port}/healthz`, 5000);
     const un = await rpc(port, null, { jsonrpc: "2.0", id: 1, method: "tools/list" });
     check("http rejects missing token (401)", un.status === 401, "status " + un.status);
+    const wrong = await rpc(port, "wrong-token-xyz", { jsonrpc: "2.0", id: 1, method: "tools/list" });
+    check("http rejects WRONG token (401)", wrong.status === 401, "status " + wrong.status);
     const init = await rpc(port, token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } } });
     check("http initialize ok (honcho-memory)", init.status === 200 && init.json?.result?.serverInfo?.name === "honcho-memory", JSON.stringify(init.json));
     const call = await rpc(port, token, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "honcho_recall", arguments: { peer: "pi" } } });
