@@ -4,6 +4,41 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-14 — feat(memory): honcho memory MCP (Phase 40) — shim + atomic egress retirement + embedding fix (slice 3)
+
+Makes Honcho memory usable by claude-cli + the Hermes fleet via a host-side token-gated MCP
+shim, and atomically closes the raw auth-off Honcho REST hole to the sandboxes. Opt-in (**NOT**
+in `install all`) and — because it changes the security posture — gated behind an explicit
+flag so even `--include-optionals` cannot flip it silently:
+`HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp`.
+
+- **`honcho-mcp` shim** (`honcho-mcp/bin.mjs` + `lib.mjs`) — a headless Node MCP server wrapping
+  Honcho's v3 REST API as four tools (`honcho_remember` / `honcho_recall` / `honcho_ask` /
+  `honcho_search`). Two transports: **stdio** for local clients (host Claude Code, Pi) and a
+  **token-gated http** daemon on `127.0.0.1:7082` (`bin/start-honcho_mcp.sh`) that the Hermes
+  fleet dials via `host.docker.internal:7082`. Fails closed — refuses `--http` without
+  `HONCHO_MCP_TOKEN`. FULL-SHARED workspace (operator decision, §24 council 2026-07-13).
+- **Phase 03 embedding fix** — points Honcho's embedder at LiteLLM
+  (`EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL`); previously it embedded against
+  `platform.openai.com` and 401'd, silently breaking `search` / `recall` / ingest. Phase 40
+  hard-depends on this fix and aborts with the remedy if it is absent.
+- **Atomic egress retirement** — removes the raw `honcho_memory` (:8000) egress from both
+  committed sandbox policies (`hermes-fleet-v1.yaml`, `pi-v1.yaml`) + the `04_openshell.sh`
+  generator, adds the `honcho_mcp` (:7082) stanza to the fleet policy, and live-applies the
+  retired policies to running sandboxes. The token-gated shim is now the only in-sandbox path
+  to Honcho.
+- **doctor check 75** (`installer/doctor/checks/75_honcho_mcp.sh`) — skip-clean when Phase 40
+  isn't installed; centerpiece is an always-on security drift-guard (raw :8000 must stay retired
+  in the generator + both policies) plus shim health, claude-cli stdio registration, and
+  per-profile fleet wiring. Doctor total 75 → **76**.
+- **Docs swept** — `services.yml` (`honcho_mcp`), `doc/EXPLORE.html` (memory tier, 61 → 62 cards),
+  `doc/PORTS.md` (:7082 row + :8000-retirement), `doc/DOCTOR.md` (§75, 75 → 76),
+  `doc/COMPONENTS.md`, `doc/AGENT-ONBOARDING.md`, `doc/TUTORIAL.md`/`.html` (Act III · L8),
+  and the opt-in-extras help line in `vz-ai-stack.sh`.
+
+**Deferred:** **pi** honcho — the pi runtime ships no MCP client, so it needs a dedicated pi
+extension (tracked with pi doc-RAG, slice 2b); pi's raw :8000 egress is retired regardless.
+
 ## 2026-07-14 — feat(memory): fleet-memory slice 2a — hermes-fleet doc-RAG wiring
 
 Extends opt-in `install fleet_memory` to wire the doc-RAG MCP to the Hermes fleet:

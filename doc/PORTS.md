@@ -224,6 +224,7 @@ reasons are spelled out in the comment block at the foot of `aliases.tsv`:
 | claw3d UI        | `http://localhost:4310`              | 4310 | 19    | claw3d REFUSES to bind a public host without `STUDIO_ACCESS_TOKEN` (its own security), so it binds `127.0.0.1`.  |
 | claw3d-bridge    | `http://localhost:7780`              | 7780 | 19    | Auth-less and can drive **all 9 agents** → loopback-only by design (never expose it under a named address).       |
 | understand-mcp   | `host.docker.internal:7081` (token)  | 7081 | 30    | Reached from the **Hermes fleet containers** via host-gateway (token-gated); local clients use the stdio entrypoint. |
+| honcho-mcp       | `host.docker.internal:7082` (token)  | 7082 | 40    | Reached from the **Hermes fleet containers** via host-gateway (token-gated); local clients use the stdio entrypoint. Now the ONLY sandbox path to Honcho — the raw `honcho:8000` egress was retired. |
 | lmstudio         | `host.docker.internal:1234` (OPT-IN) | 1234 | 25    | Reached from the LiteLLM **container**, so it uses host-gateway (`host.docker.internal`), not a host `lo0` alias. |
 
 Detail:
@@ -241,6 +242,14 @@ Detail:
   entrypoint instead. The interactive browser graph is a separate
   foreground serve: `vz-ai-stack.sh understand-dashboard` (Vite, ephemeral
   port). Not a container / not on the `ai-stack` bridge.
+- **honcho-mcp (`:7082`)** — Phase 40 (opt-in) `honcho_mcp`. A host-loopback
+  node daemon (`bin/start-honcho_mcp.sh`) that wraps Honcho's REST API as MCP
+  memory tools (`honcho_remember`/`recall`/`ask`/`search`); the Hermes fleet
+  dials it at `host.docker.internal:7082` (token-gated by `HONCHO_MCP_TOKEN`,
+  same mechanism as understand-mcp/Sourcegraph). Host Claude Code / Pi use the
+  **stdio** entrypoint instead. Phase 40 **retires the raw auth-off Honcho REST
+  egress (`:8000`) from the sandboxes**, so this shim is the ONLY in-sandbox
+  path to Honcho. Not a container / not on the `ai-stack` bridge.
 - **lmstudio (`:1234`)** is an OPT-IN extra (Phase 25 — install by name).
   When enabled, LM Studio's OpenAI server is bound `0.0.0.0:1234` on the
   host and LiteLLM dials it from inside its container via
@@ -406,7 +415,7 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 ### `openshell` (CLI + sandbox runtime)
 
 - **Listens**: no host port. Sandboxes (`hermes-fleet-v1`, `pi-v1`) are reached via `openshell sandbox exec ...`.
-- **Sandbox-internal**: `inference.local:443` (L7 proxy to LiteLLM); the sandbox is allowed to reach `honcho:8000`, `docs-mcp:8765`, and a small egress allowlist. It does NOT join the `ai-stack` Docker network (design D4).
+- **Sandbox-internal**: `inference.local:443` (L7 proxy to LiteLLM); the sandbox is allowed to reach `docs-mcp:8765` and a small egress allowlist. The raw `honcho:8000` egress was **RETIRED** (Phase 40, opt-in) — the fleet now reaches Honcho only via the host-side `honcho-mcp` shim (`host.docker.internal:7082`, token-gated). It does NOT join the `ai-stack` Docker network (design D4).
 - **Source**: `services.yml` (`openshell`), `installer/phases/04_openshell.sh`
 
 ### `hermes_fleet` (hermes-profiles inside sandbox)
@@ -515,6 +524,14 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 - **Healthcheck**: `curl -s http://127.0.0.1:7081/healthz`
 - **Source**: `services.yml` (`understand`), `bin/start-understand.sh`, `installer/phases/30_understand.sh`
 
+### `honcho_mcp` / `honcho-mcp` (node-bg) — Phase 40 (opt-in)
+
+- **Listens**: `127.0.0.1:7082` — the `honcho-mcp` HTTP daemon (`bin/start-honcho_mcp.sh`), a thin MCP shim over Honcho's REST API. The Hermes fleet containers dial it at `host.docker.internal:7082` (token-gated by `HONCHO_MCP_TOKEN`). Host Claude Code / Pi use the **stdio** entrypoint (`honcho-mcp/bin.mjs --stdio`, no port). NOT aliased (reached from containers via host-gateway, same pattern as understand-mcp/lmstudio). Not on the ai-stack bridge.
+- **Callers**: host Claude Code (stdio, registered via `claude mcp add`) + the Hermes fleet profiles (http, `host.docker.internal:7082`). Pi honcho is **deferred** (Pi ships no MCP client).
+- **Egress retirement**: Phase 40 **retires the raw auth-off Honcho REST egress (`honcho:8000`) from both sandbox policies** (`hermes-fleet-v1.yaml`, `pi-v1.yaml`) — this token-gated shim is the ONLY in-sandbox path to Honcho.
+- **Healthcheck**: `curl -s http://127.0.0.1:7082/healthz` (also reports Honcho backend reachability).
+- **Source**: `services.yml` (`honcho_mcp`), `bin/start-honcho_mcp.sh`, `honcho-mcp/bin.mjs`, `honcho-mcp/lib.mjs`, `installer/phases/40_honcho_mcp.sh`, `installer/doctor/checks/75_honcho_mcp.sh`
+
 ### `chatdev` (docker) — Phase 35 (opt-in)
 
 - **Listens**: `127.0.10.18:5274:5173` ⚠ (host `5274` → container `5173`; Mac dials `http://chatdev:5274`). Vue+FastAPI web app; role agents collaborate to build software. On the `ai-stack` bridge.
@@ -555,7 +572,7 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 ### `pi` (openshell-sandbox) — Phase 15
 
 - **Listens**: nothing on the host. Pi runs inside the `pi-v1` OpenShell sandbox; launch via `bin/pi`.
-- **Egress**: per `openshell/policies/pi-v1.yaml` — Pi can reach `host.docker.internal:4000` (LiteLLM), `:8000` (Honcho), `:8765` (docs-mcp), and npm/pypi/github. All else returns HTTP 403 `{"error":"policy_denied"}`.
+- **Egress**: per `openshell/policies/pi-v1.yaml` — Pi can reach `host.docker.internal:4000` (LiteLLM), `:8765` (docs-mcp), and npm/pypi/github. All else returns HTTP 403 `{"error":"policy_denied"}`. The raw `:8000` (Honcho) egress was **RETIRED** (Phase 40); Pi honcho is **deferred** (Pi ships no MCP client), so it currently has no Honcho egress — a future pi extension will route through the `honcho-mcp` shim (`:7082`). Doctor check 25 asserts `:8000` stays denied.
 - **Auth**: `PI_LITELLM_KEY` (minted in Phase 15). Assigned model is `local`. Pi never sees `LITELLM_MASTER_KEY`.
 - **Stop / kill**: `bin/pi-kill`.
 - **Source**: `services.yml` (`pi`), `installer/phases/15_pi.sh`, `bin/pi`, `openshell/policies/pi-v1.yaml`
@@ -619,6 +636,7 @@ These ports are declared in `services.yml` / `aliases.tsv` but only listen when 
 | 25808 | `aionui`           | Opt-in Phase 28; loopback launchd daemon.                                                          |
 | 8787  | `openwork`         | Opt-in Phase 29; loopback launchd daemon (first start downloads OpenCode sidecars).                |
 | 7081  | `understand-mcp`   | Opt-in Phase 30; loopback daemon dialed by the fleet via host-gateway.                             |
+| 7082  | `honcho-mcp`       | Opt-in Phase 40; loopback daemon dialed by the fleet via host-gateway (token-gated).               |
 | 5274  | `chatdev`          | Opt-in Phase 35; host `5274` → container `5173`.                                                    |
 | 5273  | `aitown`           | Opt-in Phase 36; host `5273` → container `5173`.                                                    |
 | 5275  | `agentscope-studio`| Opt-in (`AGENTSCOPE_STUDIO=1`); binds `0.0.0.0` (see security note).                                |

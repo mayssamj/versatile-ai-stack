@@ -56,7 +56,7 @@ Three things to burn in:
 |---|---|---|
 | Services | **51** in `services.yml` (~25 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
 | Doctor checks | **68** (dynamic — a new check file auto-bumps it) | `bash vz-ai-stack.sh doctor` |
-| Phase files | **47** (00–39 + sub-phases; 29 core / 18 opt-in) | `bash vz-ai-stack.sh phases` |
+| Phase files | **48** (00–40 + sub-phases; 29 core / 19 opt-in) | `bash vz-ai-stack.sh phases` |
 | Chat-model routes | **20** across **6 runtimes** | `bash vz-ai-stack.sh model list` |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash vz-ai-stack.sh status` |
 
@@ -333,7 +333,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **74 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **76 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.
