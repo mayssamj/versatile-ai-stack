@@ -56,7 +56,14 @@ services:
     image: ghcr.io/berriai/litellm:main-stable
     port: 4000
     bind: 127.0.0.1
-    health: http://127.0.0.1:4000/health
+    # Readiness, NOT /health: LiteLLM's /health actively PINGS every configured model
+    # (a real call per route), which LOADS local ollama/lmstudio models — forbidden by the
+    # never-load-local-models directive, and slow enough (30+ routes) to time out the probe
+    # and false-'warn'. /health/readiness is static+fast (~30ms, no model call) and returns
+    # {"status":"healthy","db":"connected"} — so it ALSO catches litellm's documented
+    # Prisma-DB SPOF (PG down → 503s), which a bare liveness ping would miss. Correct signal
+    # for "did the upgrade leave litellm actually serviceable" (reverify/status).
+    health: http://127.0.0.1:4000/health/readiness
     depends_on: [ollama]
     phase: "01"
     alias: litellm

@@ -154,7 +154,7 @@ print_summary() {
     IFS=$'\t' read -r svc strat res ver rev <<<"$row"
     printf "$fmt" "$svc" "$strat" "$res" "$ver" "$rev"
   done
-  note "VERSION: a value = installed (unchanged) · a→b = moved · - = unverifiable.   REVERIFY: ok = probe passed · warn = probe RAN and failed after a bounded readiness grace → RESULT becomes 'FAILED (unhealthy: …)' and the run exits non-zero · n/a = no probe for this type (NOT a failure) · - = not probed (failed/skipped/dry-run)."
+  note "VERSION: a value = installed (unchanged) · a→b = moved · - = unverifiable.   REVERIFY: ok = probe passed · warn = probe RAN and failed after a bounded readiness grace (on a service THIS run UPGRADED → RESULT becomes 'FAILED (unhealthy: upgraded)' and the run exits non-zero; on an untouched up-to-date/re-asserted service it is informational only — use doctor/status for ambient health) · n/a = no probe for this type (NOT a failure) · - = not probed (failed/skipped/dry-run)."
 }
 
 # upgrade_on_exit — EXIT-trap safety net. GUARANTEES the honesty summary is printed even
@@ -206,7 +206,13 @@ check_one() {
       CHECK_STATUS="$(check_image "$image")"
       local l; l="$(img_local_digest "$image")"; [[ -n "$l" ]] && CHECK_CUR="${l:0:19}…"
       if [[ "$CHECK_STATUS" == "update-available" ]]; then
-        local r; r="$(img_remote_digest "$image")"; [[ -n "$r" ]] && CHECK_AVAIL="${r:0:19}…"
+        # This `if` is the docker arm's TERMINAL statement, so its body's last command is
+        # check_one's return value. `[[ -n "$r" ]] && CHECK_AVAIL=…` returns 1 when the
+        # (redundant, best-effort) 2nd registry fetch flakes to empty — which under a
+        # Zscaler-MITM proxy is an ordinary transient — aborting the bare check_one call in
+        # the --check/--outdated/preflight paths. Use if/fi so an empty digest just leaves
+        # CHECK_AVAIL='-' (display-only) instead of crashing the run. (2026-07-14 crash fix.)
+        local r; r="$(img_remote_digest "$image")"; if [[ -n "$r" ]]; then CHECK_AVAIL="${r:0:19}…"; fi
       fi
       ;;
     compose|docker-compose)
@@ -287,6 +293,10 @@ print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else
       fi
       ;;
   esac
+  # check_one communicates via the CHECK_* globals; callers never read its exit code.
+  # Explicit success so no arm's terminal construct can ever return non-zero and abort
+  # the bare `check_one "$svc"` call under set -Eeuo pipefail (crash-class guard).
+  return 0
 }
 
 # collect_targets <out-array-name> [target] — fill an array with the enabled
@@ -297,18 +307,24 @@ collect_targets() {
   if [[ "$target" == "all" ]]; then
     while IFS= read -r name; do
       [[ -z "$name" ]] && continue
-      [[ "$(svc_enabled "$name")" == "true" ]] && _out+=("$name")
+      if [[ "$(svc_enabled "$name")" == "true" ]]; then _out+=("$name"); fi
     done < <(yq -r '.services | keys | .[]' "$SERVICES_YML")
   elif [[ "$target" == "hermes" ]]; then
     # Group alias — DATA-DRIVEN: every enabled service tagged `group: hermes` in services.yml
     # (tag a new hermes surface → it auto-joins; no hardcoded list to drift out of sync).
     while IFS= read -r name; do
       [[ -z "$name" ]] && continue
-      [[ "$(svc_enabled "$name")" == "true" ]] && _out+=("$name")
+      if [[ "$(svc_enabled "$name")" == "true" ]]; then _out+=("$name"); fi
     done < <(yq -r '.services | to_entries | .[] | select(.value.group == "hermes") | .key' "$SERVICES_YML")
   else
     _out=("$target")
   fi
+  # Explicit success: the while bodies now use if/fi (not `[[ ]] && _out+=`, whose false
+  # result on the LAST-iterated disabled service made the while — hence this function —
+  # return 1, aborting the bare `collect_targets …` call under set -Eeuo pipefail; a
+  # latent sibling of the up_npm_global crash). Belt-and-suspenders so no future edit
+  # reintroduces a non-zero fall-through. (2026-07-14.)
+  return 0
 }
 
 # print_check_report — render CHECK_ROWS as a table (or JSON) + a next-step footer.
@@ -376,7 +392,15 @@ print_check_report() {
 resolve_phase_script_inline() {
   local id="$1"
   local m=( "$AI_STACK/installer/phases/${id}_"*.sh )
-  [[ -e "${m[0]}" ]] && printf '%s' "${m[0]}"
+  # nullglob → a no-match leaves m EMPTY, so bare `${m[0]}` is an UNBOUND-VARIABLE abort
+  # under set -u (config drift: a typo'd services.yml `phase:`, or a phase script renamed/
+  # deleted without updating services.yml — a failure class this repo has already hit).
+  # Guard the array access AND end with `return 0`, so a no-match is a normal empty result
+  # (every caller already handles "" via `if [[ -z "$script" ]]; then … RESULT=FAILED …`),
+  # never a non-zero that aborts the bare `script="$(resolve_phase_script_inline …)"` call
+  # under set -Eeuo pipefail (same crash class as the up_npm_global/collect_targets fixes).
+  (( ${#m[@]} )) && [[ -e "${m[0]}" ]] && printf '%s' "${m[0]}"
+  return 0
 }
 
 # Recreate a docker service via its per-service start script (lock-free).
@@ -909,7 +933,15 @@ up_npm_global() {
   if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else err "$svc: npm install -g ${pkg}@latest failed"; RESULT=FAILED; return 0; fi
   # Only restart the dependent service if the npm upgrade actually succeeded —
   # restarting after a FAILED upgrade would just recreate on the old artifact + mask the failure.
-  [[ "$RESULT" == "upgraded" && "$restart" != "-" && -n "$restart" ]] && { note "$svc: restarting $restart"; recreate_via_start_script "$restart" || warn "$svc: restart of $restart returned non-zero (non-fatal)"; }
+  # MUST be an `if` (not a trailing `[[ ]] && {…}`): as the function's LAST statement the
+  # `&&` list returns 1 whenever there's no restart (restart="-", the common case, e.g.
+  # byterover_cli) — and a non-zero return from this function, called bare by up_by_method,
+  # trips `set -Eeuo pipefail`+the ERR trap and ABORTS the whole `upgrade all` run. An `if`
+  # with a false condition returns 0, so the function ends clean. (2026-07-14 crash fix.)
+  if [[ "$RESULT" == "upgraded" && "$restart" != "-" && -n "$restart" ]]; then
+    note "$svc: restarting $restart"
+    recreate_via_start_script "$restart" || warn "$svc: restart of $restart returned non-zero (non-fatal)"
+  fi
 }
 
 # up_uv_venv <svc> — uv pip install --python <upgrade.venv>/bin/python -U <upgrade.pkg>.
@@ -1087,17 +1119,20 @@ upgrade_one() {
     case "$RESULT" in
       FAILED*|skipped*|manual|planned) rev="-" ;;
       *) rev="$(reverify "$svc" "$STRATEGY")"
-         # A real liveness/health probe that RAN and FAILED ('warn') means the upgrade
-         # did NOT leave the service verified-healthy — so the RESULT must become a
-         # FAILED* value, otherwise the exit gate (which inspects RESULT, field 3, at
-         # the end of upgrade_main) returns 0 and a cron wrapping `--outdated` reads
-         # "success" on a degraded stack (SOUL §4/§18 end-to-end DoD). 'n/a' (no probe
-         # exists for this strategy) and 'ok' are NOT failures and are left untouched.
-         # VER (verdisp) is already computed above, so the summary still shows the
-         # version that moved — the row reads e.g. 'FAILED (unhealthy: upgraded)  0.1→0.2  warn'.
-         # Explicit `if` (not `[[ ]] && …`) so the arm's exit status is unambiguously 0
-         # under set -Eeuo pipefail + the ERR trap (no errexit surprise).
-         if [[ "$rev" == "warn" ]]; then RESULT="FAILED (unhealthy: ${RESULT})"; fi
+         # Fail the run ONLY when THIS run actually CHANGED the artifact and the post-change
+         # probe RAN and FAILED ('warn') — "the mutation we just did left the service unhealthy"
+         # (SOUL §4/§18 end-to-end DoD; the exit gate reads RESULT, field 3). Two RESULT values
+         # mean a real mutation ran: 'upgraded' (confirmed move) and 'done (unverified)' (a real
+         # npm/git/brew/rebuild/in-sandbox-pip ran but the version couldn't be read back — still
+         # a change). Both trip the gate. We must NOT fail a no-op: 'up-to-date' (digest unchanged,
+         # never recreated) and 're-asserted' (a phase re-run that commonly SHORT-CIRCUITS on its
+         # precheck, changing nothing) are not this run's verdict — flagging them was the false
+         # alarm that red-flagged an untouched up-to-date litellm (2026-07-14). Their warn stays
+         # visible in the REVERIFY column (informational) but doesn't fail the exit; doctor/status
+         # own ambient health. 'ok'/'n/a' are never failures. Explicit `if` so the arm returns 0.
+         if [[ "$rev" == "warn" && ( "$RESULT" == "upgraded" || "$RESULT" == "done (unverified)" ) ]]; then
+           RESULT="FAILED (unhealthy: ${RESULT})"
+         fi
          ;;
     esac
   fi

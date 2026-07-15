@@ -4,6 +4,15 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-14
+
+### Bug Fixes
+
+- upgrade: closed the trailing-&& crash class (up_npm_global/byterover_cli, collect_targets, resolve_phase_script_inline, check_one docker) that aborted 'upgrade all'/--outdated; F1 no longer false-FAILs untouched up-to-date/re-asserted services (only real mutations); litellm health probe /health→/health/readiness (bare /health loaded local models). §24 3-reviewer round 2026-07-14.
+
+---
+
+
 ## 2026-07-14 — feat(memory): FalkorDB graph memory MCP (Phase 41) — minimal graph-memory shim (slice 4)
 
 Makes FalkorDB (until now *reserved for future graph-memory work*, reachable by no agent) usable
