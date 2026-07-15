@@ -312,17 +312,27 @@ print_versions_view() {
             elif [[ "$avail" != "-" ]]; then status="update-available"
             else                             status="up-to-date"; fi ;;
           *)
-            # ONE upstream probe, then classify from the already-read inst+avail
-            # (version_classify is pure — no re-fetch).
-            avail="$(svc_available_version "$name" 2>/dev/null || echo -)"
-            status="$(version_classify "$type" "$inst" "$avail" 2>/dev/null || echo -)" ;;
+            # Parity with `upgrade --check` (the shared-classifier invariant):
+            # declared pin → 'pinned' (no probe — held regardless of upstream);
+            # config-only surface → 'config'; else ONE upstream probe, then
+            # classify from the already-read inst+avail (version_classify is pure).
+            local _vs_pin; _vs_pin="$(svc_upgrade_pin "$name" 2>/dev/null || echo -)"
+            if [[ -n "$_vs_pin" && "$_vs_pin" != "-" ]]; then
+              status="pinned"; avail="pinned"
+              [[ "$inst" == "-" ]] && inst="pin:${_vs_pin}"
+            elif svc_config_only "$name" 2>/dev/null; then
+              status="config"; avail="-"
+            else
+              avail="$(svc_available_version "$name" 2>/dev/null || echo -)"
+              status="$(version_classify "$type" "$inst" "$avail" 2>/dev/null || echo -)"
+            fi ;;
         esac
       fi
       printf "$fmt" "$name" "$type" "$inst" "$avail" "$status"
     done
   done
   printf '\n'
-  note "STATUS: up-to-date · update-available · pinned (fixed tag, won't auto-move) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'vz-ai-stack.sh upgrade <svc>'."
+  note "STATUS: up-to-date · update-available · pinned (fixed tag or declared upgrade.pin — held, never auto-swept) · config (configuration surface — versions with the stack repo or its owning service) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'vz-ai-stack.sh upgrade <svc>'."
 }
 
 # `--legend` alone: print the legend and exit BEFORE print_header and before any

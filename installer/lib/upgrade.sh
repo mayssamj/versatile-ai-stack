@@ -81,8 +81,10 @@ vz-ai-stack.sh upgrade <service|all> [--dry-run]   upgrade a service (or all ena
 vz-ai-stack.sh upgrade hermes                      GROUP: upgrade EVERY hermes surface to latest
                                                    (fleet pip + workspace UI image + Telegram/Slack gateways)
 vz-ai-stack.sh upgrade --check [service|all|hermes] READ-ONLY: show which have an update available
-vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY services found outdated (docker/
-                                                   compose/brew CURRENCY only — NOT the fleet/pip plane)
+vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY services VERIFIED behind: docker/
+                                                   compose/brew currency + every service with a
+                                                   declared upgrade: oracle (npm/pip/uv-tool/git/
+                                                   sandbox-pip) — pins are never swept
 vz-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
                                                    (--all has NO effect with --outdated)
 vz-ai-stack.sh upgrade --check --json              machine-readable availability report
@@ -90,15 +92,20 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
   brew→brew upgrade, openshell→in-sandbox update + phase re-assert. Every other
   service is EXHAUSTIVE now: a declared `upgrade:` block version-bumps it directly
-  (npm-global / uv-venv / git-pull / rebuild), else its install phase is re-run
-  (AI_STACK_UPGRADE=1) to re-assert/upgrade — nothing is a silent no-op. Bare
-  `upgrade all` also upgrades the host npm globals (meridian, claude-code; codex is
-  npx-always-latest). `upgrade <meridian|claude-code>` upgrades one host global.
+  (npm-global / uv-venv / uv-tool / git-pull [+build+verified restart] /
+  sandbox-pip / rebuild), else its install phase is re-run (AI_STACK_UPGRADE=1)
+  to re-assert/upgrade — nothing is a silent no-op. A declared `upgrade.pin`
+  HOLDS a service at that version on every path (sweep, all, named target) —
+  bump the pin in its install phase to move it. Bare `upgrade all` also upgrades
+  the host npm globals (meridian, claude-code; codex is npx-always-latest).
+  `upgrade <meridian|claude-code>` upgrades one host global.
 
   --check is non-mutating: docker/compose by registry manifest DIGEST, ollama by
-  `brew outdated`, and npm/pip(uv-venv)/git-clone services by npm/PyPI/git ls-remote
-  (bounded — a blocked registry degrades to 'unknown', never hangs). Only services
-  with no version oracle (config-only / sandbox CLIs) stay 'manual'.
+  `brew outdated`, and npm/pip(uv-venv/uv-tool)/git-clone/sandbox-pip services by
+  npm/PyPI/git ls-remote/docker-exec (bounded — a blocked registry degrades to
+  'unknown', never hangs; on a fully proxy-blocked host a full scan can take a
+  few quiet minutes of probe timeouts — not a hang). 'config' = nothing
+  independently versioned; 'manual' = real artifact, no oracle yet.
 
   Every upgrade run first prints an installed→available version report (skip with
   --no-check), and the summary's VERSION column shows what actually moved — a no-op
@@ -111,11 +118,11 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   Set AI_STACK_ASSUME_YES=1 to auto-accept the version-pinned re-pull prompt.
   See installed vs available anytime:  vz-ai-stack.sh status --versions
 
-  --outdated is a fast docker/compose/brew CURRENCY sweep. It does NOT reach the
-  sandbox/CLI/pip/fleet plane (in-sandbox hermes agent, pi, mempalace, docs_mcp) or
-  the host npm globals — those read 'manual' and can never hit the outdated gate. It
-  prints a footer naming what it skipped. For the true "upgrade everything" motion
-  (incl. the fleet brain), use `upgrade all`; for just the hermes surfaces, `upgrade hermes`.
+  --outdated applies only updates we can VERIFY you are behind on (a version
+  oracle said so); `upgrade all` exhaustively re-asserts/upgrades every enabled
+  service + host globals, including what --outdated cannot version-check. The
+  scan footer names every bucket it did NOT sweep: pinned (held), config-only,
+  no-oracle-yet, and currency-unconfirmed.
 
   Typical flow:
     vz-ai-stack.sh upgrade --check        # see what's available
@@ -193,7 +200,10 @@ _arm_upgrade_traps() {
 # logic. up_docker/up_compose/check_one call them from there unchanged.
 
 # check_one <svc> — sets CHECK_STATUS / CHECK_CUR / CHECK_AVAIL.
-# CHECK_STATUS ∈ update-available | up-to-date | pinned | rebuild | manual | unknown
+# CHECK_STATUS ∈ update-available | up-to-date | pinned | rebuild | manual | unknown | config
+#   pinned = deliberately held (fixed docker tag, or a declared upgrade.pin) — never swept
+#   config = configuration surface, nothing independently versioned (versions with the
+#            stack repo or its owning service)
 check_one() {
   local svc="$1" type; type="$(svc_type "$svc")"
   CHECK_STATUS="manual"; CHECK_CUR="-"; CHECK_AVAIL="-"
@@ -218,7 +228,10 @@ check_one() {
     compose|docker-compose)
       local dir; dir="$(svc_path "$svc")"
       { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]] || (( DOCKER_OK == 0 )); } && { CHECK_STATUS="manual"; return 0; }
-      local imgs; imgs="$( cd "$dir" && docker compose config --images 2>/dev/null || true )"
+      # _compose_images honors compose_file:/upgrade.check_env: (deer-flow keeps its
+      # compose in docker/ and needs 5 substitution vars) — shared with _iv_compose
+      # and version_status so all three consumers see the same image list.
+      local imgs; imgs="$(_compose_images "$svc")"
       [[ -z "$imgs" ]] && { CHECK_STATUS="manual"; return 0; }
       local im st any_update=0 any_unknown=0 any_build=0 n=0
       while IFS= read -r im; do
@@ -276,12 +289,41 @@ print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else
       ;;
     *)
       # Previously a blanket 'manual'. Now consult the shared oracle: npm-global,
-      # pip/uv-venv, and clone/git services (and any cli-only with a declared
-      # upgrade: block) DO have a version — surface installed + upstream instead of
-      # hiding them (council finding #7). A type with no oracle stays 'manual';
-      # installed-known-but-upstream-unreachable is honest 'unknown', not a false
-      # 'up-to-date'.
-      local inst avail
+      # pip/uv-venv/uv-tool, sandbox-pip and clone/git services (any type with a
+      # declared upgrade: block) DO have a version — surface installed + upstream
+      # instead of hiding them (council finding #7). Classification precedence
+      # mirrors version_status (parity invariant): declared pin → 'pinned';
+      # config-only surface → 'config'; then the oracle. A type with no oracle
+      # stays 'manual'; installed-known-but-upstream-unreachable is honest
+      # 'unknown', not a false 'up-to-date'.
+      local inst avail vpin
+      vpin="$(svc_upgrade_pin "$svc")"
+      if [[ -n "$vpin" && "$vpin" != "-" ]]; then
+        CHECK_STATUS="pinned"
+        inst="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+        if [[ -n "$inst" && "$inst" != "-" ]]; then
+          CHECK_CUR="$inst"
+          # measured != declared pin → drift warn. Prefix tolerance ONLY for hex-SHA
+          # pins (ace declares the full 40-char SHA, the git oracle reads the short
+          # one); dotted versions compare EXACTLY — '0.8.20 vs pin 0.8.2' is real
+          # drift, not a prefix match (impl-council false-negative fix).
+          local _pin_drift=0
+          if [[ "$vpin" =~ ^[0-9a-f]{7,40}$ ]]; then
+            if [[ "$inst" != "$vpin"* && "$vpin" != "$inst"* ]]; then _pin_drift=1; fi
+          elif [[ "$inst" != "$vpin" ]]; then _pin_drift=1; fi
+          if (( _pin_drift )); then
+            warn "$svc: installed ($inst) != declared pin ($vpin) — pin drift; align services.yml upgrade.pin with the phase's pin variable"
+          fi
+        else
+          # No oracle can measure it: show the DECLARED value, visibly marked as a
+          # declaration — never let a pin masquerade as a measured version.
+          CHECK_CUR="pin:${vpin}"
+        fi
+        avail="$(svc_available_version "$svc" 2>/dev/null || echo -)"
+        if [[ -n "$avail" && "$avail" != "-" ]]; then CHECK_AVAIL="$avail"; fi
+        return 0
+      fi
+      if svc_config_only "$svc"; then CHECK_STATUS="config"; return 0; fi
       inst="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
       if [[ -z "$inst" || "$inst" == "-" ]]; then CHECK_STATUS="manual"; return 0; fi
       CHECK_CUR="$inst"
@@ -296,6 +338,23 @@ print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else
   # check_one communicates via the CHECK_* globals; callers never read its exit code.
   # Explicit success so no arm's terminal construct can ever return non-zero and abort
   # the bare `check_one "$svc"` call under set -Eeuo pipefail (crash-class guard).
+  return 0
+}
+
+# outdated_bucket <status> -> sweep | manual | unconfirmed | pinned | config | ignore
+# The --outdated selection semantics, factored PURE (no globals, no side effects)
+# so a behavioral test can drive the REAL mapping — 'pinned is never swept' must
+# be guarded by a test, not a grep. 'ignore' = statuses --outdated has nothing to
+# say about (up-to-date, docker fixed-tag 'pinned' is NOT ignored — it reports).
+outdated_bucket() {
+  case "$1" in
+    update-available) echo sweep ;;
+    manual)           echo manual ;;
+    unknown|rebuild)  echo unconfirmed ;;
+    pinned)           echo pinned ;;
+    config)           echo config ;;
+    *)                echo ignore ;;
+  esac
   return 0
 }
 
@@ -351,10 +410,10 @@ print_check_report() {
   local -a outdated=(); local hidden=0 unconfirmed=0
   for row in "${CHECK_ROWS[@]}"; do
     IFS=$'\t' read -r svc type cur avail status <<<"$row"
-    # Hide non-checkable ('manual') rows unless --all — they carry no signal. The
-    # pre-upgrade preflight shows every targeted service (the operator asked to see
-    # what's about to change).
-    if [[ "$status" == "manual" ]] && (( ALL_ROWS == 0 )) && (( PREFLIGHT == 0 )); then hidden=$((hidden+1)); continue; fi
+    # Hide no-signal rows unless --all: 'manual' (no oracle) and 'config' (nothing
+    # independently versioned — by design, not a gap). The pre-upgrade preflight
+    # shows every targeted service (the operator asked to see what's about to change).
+    if [[ "$status" == "manual" || "$status" == "config" ]] && (( ALL_ROWS == 0 )) && (( PREFLIGHT == 0 )); then hidden=$((hidden+1)); continue; fi
     printf "$fmt" "$svc" "$type" "$cur" "$avail" "$status"
     case "$status" in
       update-available) outdated+=("$svc") ;;
@@ -363,7 +422,7 @@ print_check_report() {
   done
   printf '\n'
   if (( hidden )); then
-    note "$hidden service(s) not version-checkable (sandbox/CLI/npm/pip) hidden — use --check --all to list them."
+    note "$hidden service(s) hidden (config-only, or real artifact with no version oracle yet) — use --check --all to list them."
   fi
   if (( ${#outdated[@]} )); then
     ok "${#outdated[@]} update(s) available: ${outdated[*]}"
@@ -384,7 +443,7 @@ print_check_report() {
   elif (( unconfirmed )); then
     note "$unconfirmed additional service(s) could not be verified (unknown/rebuild) — currency not confirmed for those."
   fi
-  note "Legend: pinned=fixed tag (no rolling updates) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=no version oracle · unknown=registry/proxy unreachable or no local image · up-to-date/update-available=installed vs upstream latest"
+  note "Legend: pinned=deliberately held at a declared version (fixed docker tag or upgrade.pin) — shown, never auto-swept; 'upgrade <svc>' prints its exact bump path · config=configuration surface — versioned by the stack repo or its owning service (hermes surfaces version with hermes_fleet) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=real artifact, no version oracle yet — upgrade by hand (see 'help <svc>') · unknown=registry/proxy unreachable or no local image · up-to-date/update-available=installed vs upstream latest"
 }
 
 # --- phase / start-script resolution (lock-free recreate paths) --------------
@@ -407,15 +466,47 @@ resolve_phase_script_inline() {
 # Tries both key forms: bin/start-<key>.sh then bin/start-<key//_/->.sh.
 # Echoes ok/warn into the caller's RESULT via return code (0 ok, 1 fail).
 recreate_via_start_script() {
-  local svc="$1" script
+  local svc="$1" script rc
   for script in "$AI_STACK/bin/start-${svc}.sh" "$AI_STACK/bin/start-${svc//_/-}.sh"; do
     if [[ -x "$script" ]]; then
-      "$BASH" "$script" --recreate
-      return $?
+      "$BASH" "$script" --recreate; rc=$?
+      # Subcommand-style scripts (start-openwork.sh) reject --recreate with their
+      # usage arm's exit 2 — fall back to their native `restart` verb. ONLY exit 2:
+      # any other non-zero is a real failure, not an argument rejection.
+      if (( rc == 2 )); then "$BASH" "$script" restart; rc=$?; fi
+      return "$rc"
     fi
   done
   err "$svc: no start script (tried bin/start-${svc}.sh, bin/start-${svc//_/-}.sh); recreate manually"
   return 1
+}
+
+# restart_and_verify <svc> — recycle a daemon via its start script and POSITIVELY
+# verify adoption where possible. An exit-0 no-op (idempotent script that leaves a
+# healthy daemon untouched) must NOT read as a restart — that is the 'upgraded'-
+# with-stale-daemon lie (F1 honesty class). Where a stack pidfile exists the PID
+# must CHANGE; for launchd/subcommand-managed daemons (no pidfile, e.g. openwork)
+# the script's exit code is the criterion and reverify's health probe covers the
+# rest. Returns 0 = verified recycled, 1 = failed or unverifiable.
+restart_and_verify() {
+  local svc="$1" pidfile pid_before="" pid_after=""
+  pidfile="$AI_STACK/installer/state/${svc}.pid"
+  if [[ -f "$pidfile" ]]; then pid_before="$(cat "$pidfile" 2>/dev/null || true)"; fi
+  if ! recreate_via_start_script "$svc"; then return 1; fi
+  if [[ -f "$pidfile" ]]; then
+    pid_after="$(cat "$pidfile" 2>/dev/null || true)"
+    if [[ -z "$pid_after" ]]; then return 1; fi
+    if [[ -n "$pid_before" && "$pid_after" == "$pid_before" ]]; then
+      # Same PID after a supposed recycle → the script no-opped; not a restart.
+      return 1
+    fi
+  elif [[ -n "$pid_before" ]]; then
+    # The daemon HAD a pidfile and the script exited without presenting a new one
+    # → the recycle is unverifiable (a rm-pidfile-and-exit-0 script must not be
+    # blessed as a restart — impl-council latent-hole fix).
+    return 1
+  fi
+  return 0
 }
 
 # --- reverify (deterministic; registers NO doctor checks) --------------------
@@ -924,13 +1015,22 @@ up_phase_rerun() {
 
 # up_npm_global <svc> — npm install -g <upgrade.target>@latest (+ optional restart).
 up_npm_global() {
-  local svc="$1" pkg restart
+  local svc="$1" pkg restart npmb
   pkg="$(svc_upgrade "$svc" target)"; restart="$(svc_upgrade "$svc" restart)"
   STRATEGY=npm-global
   [[ "$pkg" == "-" || -z "$pkg" ]] && { err "$svc: upgrade.method npm-global needs upgrade.target (npm pkg)"; RESULT=FAILED; return 0; }
-  if (( DRY )); then note "PLAN $svc npm-global: npm install -g ${pkg}@latest$([[ "$restart" != "-" ]] && echo "  (then restart $restart)")"; RESULT="planned"; return 0; fi
-  command -v npm >/dev/null 2>&1 || { warn "$svc: npm not on PATH — skipping"; RESULT="skipped (no npm)"; return 0; }
-  if npm install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else err "$svc: npm install -g ${pkg}@latest failed"; RESULT=FAILED; return 0; fi
+  # Same npm as the oracle (_iv_npm/_av_npm): upgrade.npm_bin pins it when the
+  # ambient prefix lies (OpenAgents' portable Node hijacks rc PATH — an ambient
+  # `npm i -g` would land portless in the WRONG prefix and _iv_npm would then read
+  # the new version from that wrong prefix: a false 'upgraded').
+  npmb="$(_svc_npm_bin "$svc")"
+  if [[ "$npmb" == "npm_bin-missing" ]]; then
+    warn "$svc: declared upgrade.npm_bin is missing/not executable — skipping (fail-closed; ambient npm would install into the wrong prefix)"
+    RESULT="skipped (npm_bin missing)"; return 0
+  fi
+  if (( DRY )); then note "PLAN $svc npm-global: $npmb install -g ${pkg}@latest$([[ "$restart" != "-" ]] && echo "  (then restart $restart)")"; RESULT="planned"; return 0; fi
+  command -v "$npmb" >/dev/null 2>&1 || { warn "$svc: npm ($npmb) not available — skipping"; RESULT="skipped (no npm)"; return 0; }
+  if "$npmb" install -g "${pkg}@latest" 2>&1 | tail -3; then RESULT="upgraded"; else err "$svc: $npmb install -g ${pkg}@latest failed"; RESULT=FAILED; return 0; fi
   # Only restart the dependent service if the npm upgrade actually succeeded —
   # restarting after a FAILED upgrade would just recreate on the old artifact + mask the failure.
   # MUST be an `if` (not a trailing `[[ ]] && {…}`): as the function's LAST statement the
@@ -938,37 +1038,119 @@ up_npm_global() {
   # byterover_cli) — and a non-zero return from this function, called bare by up_by_method,
   # trips `set -Eeuo pipefail`+the ERR trap and ABORTS the whole `upgrade all` run. An `if`
   # with a false condition returns 0, so the function ends clean. (2026-07-14 crash fix.)
+  # A DECLARED restart that fails or can't be verified ⇒ FAILED (council R2d): the
+  # binary moved on disk but the daemon still runs the old one — 'upgraded' would lie.
   if [[ "$RESULT" == "upgraded" && "$restart" != "-" && -n "$restart" ]]; then
     note "$svc: restarting $restart"
-    recreate_via_start_script "$restart" || warn "$svc: restart of $restart returned non-zero (non-fatal)"
+    if ! restart_and_verify "$restart"; then
+      err "$svc: restart of $restart failed or could not be verified — daemon may still run the OLD package"
+      RESULT=FAILED
+    fi
   fi
+  return 0
 }
 
 # up_uv_venv <svc> — uv pip install --python <upgrade.venv>/bin/python -U <upgrade.pkg>.
-# For UNPINNED libs only (a version-pinned service should use phase-rerun instead).
+# For UNPINNED libs only (a version-pinned service is HELD by the upgrade_one pin
+# gate before this ever dispatches). Optional upgrade.restart for python-bg daemons.
 up_uv_venv() {
-  local svc="$1" venv pkg py
-  venv="$(svc_upgrade "$svc" venv)"; pkg="$(svc_upgrade "$svc" pkg)"
+  local svc="$1" venv pkg py restart
+  venv="$(svc_upgrade "$svc" venv)"; pkg="$(svc_upgrade "$svc" pkg)"; restart="$(svc_upgrade "$svc" restart)"
   STRATEGY=uv-venv
   { [[ "$venv" == "-" || -z "$venv" ]] || [[ "$pkg" == "-" || -z "$pkg" ]]; } && { err "$svc: uv-venv needs upgrade.venv + upgrade.pkg"; RESULT=FAILED; return 0; }
   py="$AI_STACK/$venv/bin/python"
-  if (( DRY )); then note "PLAN $svc uv-venv: uv pip install --python $venv/bin/python -U $pkg"; RESULT="planned"; return 0; fi
+  if (( DRY )); then note "PLAN $svc uv-venv: uv pip install --python $venv/bin/python -U $pkg$([[ "$restart" != "-" ]] && echo "  (then restart $restart)")"; RESULT="planned"; return 0; fi
   command -v uv >/dev/null 2>&1 || { warn "$svc: uv not on PATH — skipping"; RESULT="skipped (no uv)"; return 0; }
   [[ -x "$py" ]] || { warn "$svc: venv missing ($py) — run its install phase first"; RESULT="skipped (no venv)"; return 0; }
   # shellcheck disable=SC2086 -- pkg may carry pip specifiers; intentional word-split.
   if uv pip install --python "$py" -U $pkg 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; return 0; fi
+  # A DECLARED restart that fails/can't be verified ⇒ FAILED — a live daemon on a
+  # freshly-upgraded venv keeps its stale imports until recycled (F1 honesty class).
+  if [[ "$restart" != "-" && -n "$restart" ]]; then
+    note "$svc: restarting $restart"
+    if ! restart_and_verify "$restart"; then
+      err "$svc: restart of $restart failed or could not be verified — daemon may run stale imports"
+      RESULT=FAILED
+    fi
+  fi
+  return 0
 }
 
-# up_git_pull <svc> — git -C <upgrade.dir|target> pull --ff-only (clone-only artifacts).
+# up_uv_tool <svc> — uv tool install --upgrade <upgrade.pkg>. The idiomatic verb
+# for uv-MANAGED tool venvs (mempalace, halo): `uv pip install` into a tool venv
+# desyncs uv's receipt (uv tool list would keep reporting the old version).
+# `uv tool install --upgrade` exits 0 on already-current, so upgrade_one's
+# reconcile (uv-tool IS in its STRATEGY list) turns the no-op into 'up-to-date'.
+up_uv_tool() {
+  local svc="$1" pkg
+  pkg="$(svc_upgrade "$svc" pkg)"; [[ "$pkg" == "-" || -z "$pkg" ]] && pkg="$svc"
+  STRATEGY=uv-tool
+  if (( DRY )); then note "PLAN $svc uv-tool: uv tool install --upgrade ${pkg}"; RESULT="planned"; return 0; fi
+  command -v uv >/dev/null 2>&1 || { warn "$svc: uv not on PATH — skipping"; RESULT="skipped (no uv)"; return 0; }
+  if uv tool install --upgrade "$pkg" 2>&1 | tail -3; then RESULT="upgraded"; else err "$svc: uv tool install --upgrade $pkg failed"; RESULT=FAILED; fi
+  return 0
+}
+
+# up_git_pull <svc> — the HONEST clone chain: guard → pull → build → verified
+# restart. Any failure after HEAD moves sets FAILED *before* upgrade_one's
+# reconcile can bless the moved SHA; the running service is only ever called
+# 'upgraded' when pull AND build AND (declared) restart all verifiably landed.
 up_git_pull() {
-  local svc="$1" dir abs
+  local svc="$1" dir abs build restart bt pre_sha post_sha
   dir="$(svc_upgrade "$svc" dir)"; [[ "$dir" == "-" ]] && dir="$(svc_upgrade "$svc" target)"
+  build="$(svc_upgrade "$svc" build)"; restart="$(svc_upgrade "$svc" restart)"
+  bt="$(svc_upgrade "$svc" build_timeout)"; [[ "$bt" == "-" || -z "$bt" ]] && bt=600
   STRATEGY=git-pull
   [[ "$dir" == "-" || -z "$dir" ]] && { err "$svc: git-pull needs upgrade.dir (or upgrade.target)"; RESULT=FAILED; return 0; }
-  abs="$AI_STACK/$dir"
-  if (( DRY )); then note "PLAN $svc git-pull: git -C $dir pull --ff-only"; RESULT="planned"; return 0; fi
+  abs="$AI_STACK/$dir"; [[ "$dir" == /* ]] && abs="$dir"
+  if (( DRY )); then
+    note "PLAN $svc git-pull: git -C $dir pull --ff-only$([[ "$build" != "-" && -n "$build" ]] && echo " && $build")$([[ "$restart" != "-" && -n "$restart" ]] && echo "  (then restart $restart)")"
+    RESULT="planned"; return 0
+  fi
   [[ -d "$abs/.git" ]] || { warn "$svc: $abs is not a git clone — run its install phase first"; RESULT="skipped (no clone)"; return 0; }
-  if git -C "$abs" pull --ff-only 2>&1 | tail -3; then RESULT="upgraded"; else RESULT=FAILED; return 0; fi
+  # Build tool present BEFORE any mutation — discovering it missing post-pull would
+  # leave HEAD moved with no build: the invisible half-upgrade (next --check reads
+  # HEAD==upstream ⇒ clean while the daemon runs stale deps forever).
+  if [[ "$build" != "-" && -n "$build" ]]; then
+    local _tool="${build%% *}"
+    command -v "$_tool" >/dev/null 2>&1 || { warn "$svc: build tool '$_tool' not on PATH — skipping (nothing mutated)"; RESULT="skipped (no $_tool)"; return 0; }
+  fi
+  # RUNTIME dirty-tree guard BEFORE the pull (council A1): pull/reset on a tree
+  # with local modifications can destroy uncommitted work, and dirtiness is
+  # DYNAMIC (tools/paperclip went dirty after design-time discovery). Never
+  # mutate a dirty clone from an unattended sweep.
+  if [[ -n "$(git -C "$abs" status --porcelain 2>/dev/null | head -1)" ]]; then
+    warn "$svc: clone has local changes (git -C $dir status) — skipped; commit/clean them, then 'upgrade $svc'"
+    RESULT="skipped (dirty tree)"; return 0
+  fi
+  pre_sha="$(git -C "$abs" rev-parse HEAD 2>/dev/null || true)"
+  if ! git -C "$abs" pull --ff-only 2>&1 | tail -3; then
+    err "$svc: git pull --ff-only failed"; RESULT=FAILED; return 0
+  fi
+  # HEAD unchanged → clean no-op: no build, no gratuitous daemon bounce.
+  post_sha="$(git -C "$abs" rev-parse HEAD 2>/dev/null || true)"
+  if [[ -n "$pre_sha" && "$post_sha" == "$pre_sha" ]]; then RESULT="up-to-date"; return 0; fi
+  if [[ "$build" != "-" && -n "$build" ]]; then
+    note "$svc: build: $build (bounded ${bt}s)"
+    if ! ( cd "$abs" && _vz_bounded "$bt" bash -c "$build" ) 2>&1 | tail -5; then
+      # Roll back so the clone stays consistent AND the update stays visible to the
+      # next scan. `reset --keep` (not --hard): aborts rather than clobbering local
+      # changes — in this guarded clean flow it always succeeds, and if anything
+      # appeared mid-run it refuses instead of destroying it.
+      err "$svc: post-pull build failed — rolling back to ${pre_sha:0:7} (git reset --keep)"
+      git -C "$abs" reset --keep "$pre_sha" 2>/dev/null || warn "$svc: rollback refused — clone left at ${post_sha:0:7} with a FAILED build; fix manually"
+      RESULT=FAILED; return 0
+    fi
+  fi
+  if [[ "$restart" != "-" && -n "$restart" ]]; then
+    note "$svc: restarting $restart"
+    if ! restart_and_verify "$restart"; then
+      err "$svc: restart of $restart failed or could not be verified — the running daemon may be on stale code"
+      RESULT=FAILED; return 0
+    fi
+  fi
+  RESULT="upgraded"
+  return 0
 }
 
 # up_by_method <svc> — dispatch on services.yml `upgrade.method`; no block → phase re-run.
@@ -980,6 +1162,19 @@ up_by_method() {
     npm-global)  up_npm_global "$svc" ;;
     uv-venv)     up_uv_venv "$svc" ;;
     git-pull)    up_git_pull "$svc" ;;
+    uv-tool)     up_uv_tool "$svc" ;;
+    sandbox-pip)
+      # Oracle-carrying method whose MUTATION is the type's own honest handler:
+      # up_openshell already does the in-sandbox pip -U with VER_OVERRIDE and the
+      # config re-assert. Delegation keeps a single method axis without hijacking
+      # the openshell lifecycle (council R3).
+      up_openshell "$svc" ;;
+    none|-|'')
+      # Config-only marker (or a metadata-only block with no method): nothing
+      # independently versioned — keep today's behavior (phase re-assert), NO
+      # unknown-method warn noise (council R4). The 'config' display status
+      # comes from the shared classifier, not from here.
+      up_phase_rerun "$svc" ;;
     rebuild)
       STRATEGY=rebuild
       if (( DRY )); then note "PLAN $svc rebuild: bash bin/start-$svc.sh --recreate"; RESULT="planned"; return 0; fi
@@ -988,6 +1183,85 @@ up_by_method() {
     phase-rerun) up_phase_rerun "$svc" ;;
     *) warn "$svc: unknown upgrade.method '$method' — falling back to phase re-run"; up_phase_rerun "$svc" ;;
   esac
+  return 0
+}
+
+# pin_hold_check <svc> <method> — the R1 pin gate, on EVERY mutate path (sweep,
+# `upgrade all`, explicit `upgrade <svc>`). A declared `upgrade.pin` HOLDS the
+# service against every VERSION-MUTATING method — npm@latest / pip -U / git pull
+# would silently advance past a deliberate, reasoned pin (openwork 0.17.1,
+# metagpt 0.8.2, concordia 2.4.0, ace's supply-chain SHA). Pin-PRESERVING
+# handlers (none/phase-rerun/absent → the phase re-asserts the pinned version)
+# still run: `upgrade all` keeps its config-heal value for lumen/aionui/pi.
+# Returns 0 = held (RESULT/STRATEGY set; caller records the row and stops),
+# 1 = proceed to dispatch.
+pin_hold_check() {
+  local svc="$1" method="$2" pin bump
+  pin="$(svc_upgrade "$svc" pin)"
+  if [[ -z "$pin" || "$pin" == "-" ]]; then return 1; fi
+  case "$method" in
+    npm-global|uv-venv|uv-tool|git-pull|sandbox-pip) ;;
+    *) return 1 ;;
+  esac
+  STRATEGY="pinned"
+  RESULT="pinned (held at ${pin})"
+  # Print the ACTUAL bump recipe (upgrade.bump — data, single source), never a
+  # pointer that might not hold it (impl-council: the 'help <svc>' pointer was a
+  # dead reference — help doesn't render the upgrade: block).
+  bump="$(svc_upgrade "$svc" bump)"
+  if [[ -n "$bump" && "$bump" != "-" ]]; then
+    note "$svc: held at declared pin ${pin} — not auto-upgraded. Bump: ${bump}"
+  else
+    note "$svc: held at declared pin ${pin} — not auto-upgraded (bump the pin in its install phase, then align services.yml upgrade.pin)"
+  fi
+  return 0
+}
+
+# up_by_type <svc> <type> — the TYPE-default handler table (factored out of
+# upgrade_one so dispatch_upgrade can route to it from more than one arm and a
+# behavioral test can drive the real dispatch).
+up_by_type() {
+  local svc="$1" type="$2"
+  case "$type" in
+    docker)                                  up_docker "$svc" ;;
+    compose|docker-compose)                  up_compose "$svc" ;;
+    brew-service)                            up_brew "$svc" ;;
+    openshell|hermes-profiles)               up_openshell "$svc" ;;
+    sandbox-daemon)                          up_openshell "$svc" ;;
+    cli-only|clone-only|npm-global|pip-package|litellm-feature|agent-pattern|paperclip-plugin|litellm-virtual-key)
+                                             up_by_method "$svc" ;;
+    # python-bg / node-bg are host background daemons (docs_mcp, paperclip, claw3d,
+    # unsloth, aionui, openwork, understand). No pullable artifact / compose stack;
+    # "upgrade" = version-bump via a declared upgrade: block, else re-run the install
+    # phase (AI_STACK_UPGRADE=1) to re-assert config + restart. up_by_method routes both.
+    python-bg|node-bg)                       up_by_method "$svc" ;;
+    *)
+      STRATEGY="$type"
+      RESULT="skipped (unknown type)"
+      warn "$svc: unknown type '$type'; skipping"
+      ;;
+  esac
+  return 0
+}
+
+# dispatch_upgrade <svc> <type> <method> — method-aware dispatch (council R4/C1).
+# An upgrade: block reroutes the handler ONLY when its method is a real dispatch-
+# table member; a metadata-only block (pin/check_env, no method) falls through to
+# the type handler — so an oracle/pin marker can never hijack up_openshell's
+# lifecycle (the upgrade.sh:1074 hazard). A SET-but-unknown method still warns
+# (diagnosability) before taking the safe type default.
+dispatch_upgrade() {
+  local svc="$1" type="$2" method="$3"
+  case "$method" in
+    npm-global|uv-venv|git-pull|uv-tool|sandbox-pip|rebuild|phase-rerun|none)
+      up_by_method "$svc" ;;
+    ''|-)
+      up_by_type "$svc" "$type" ;;
+    *)
+      warn "$svc: unknown upgrade.method '$method' — using the type's default handler"
+      up_by_type "$svc" "$type" ;;
+  esac
+  return 0
 }
 
 # --- host npm globals not modeled as services.yml services -------------------
@@ -1060,6 +1334,18 @@ upgrade_one() {
   RESULT=""
   STRATEGY=""
 
+  # R1 pin gate — BEFORE any version probe or dispatch. A held service records its
+  # row and stops: no handler, no reverify probe (a held-but-down service this run
+  # never touched must not warn — the up-to-date/re-asserted false-alarm class).
+  local _method=""
+  if svc_has_upgrade "$svc"; then _method="$(svc_upgrade "$svc" method)"; fi
+  if pin_hold_check "$svc" "$_method"; then
+    local _held_cur; _held_cur="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+    if [[ -z "$_held_cur" || "$_held_cur" == "-" ]]; then _held_cur="pin:$(svc_upgrade "$svc" pin)"; fi
+    record_row "$svc" "$STRATEGY" "$RESULT" "-" "$_held_cur"
+    return 0
+  fi
+
   # Capture the installed version BEFORE the mutation so we can prove afterwards
   # whether it actually moved (council finding #1: the summary must never imply a
   # bump that didn't happen). Local/cheap probe; "-" when not knowable.
@@ -1067,31 +1353,10 @@ upgrade_one() {
   VER_BEFORE="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
   VER_OVERRIDE=""   # a handler (e.g. up_openshell) may set the observed new version (global, reset per svc)
 
-  # Override hook: an explicit `upgrade:` block in services.yml WINS over the type's
-  # default handler (e.g. hermes_workspace is 'compose' but must phase-rerun to re-resolve
-  # the latest agent image, not blind-pull the old pin). Manual types already route to
-  # up_by_method, so this only changes docker/compose/brew/openshell services that opt in.
-  if svc_has_upgrade "$svc"; then up_by_method "$svc"; else
-  case "$type" in
-    docker)                                  up_docker "$svc" ;;
-    compose|docker-compose)                  up_compose "$svc" ;;
-    brew-service)                            up_brew "$svc" ;;
-    openshell|hermes-profiles)               up_openshell "$svc" ;;
-    sandbox-daemon)                          up_openshell "$svc" ;;
-    cli-only|clone-only|npm-global|pip-package|litellm-feature|agent-pattern|paperclip-plugin|litellm-virtual-key)
-                                             up_by_method "$svc" ;;
-    # python-bg / node-bg are host background daemons (docs_mcp, paperclip, claw3d,
-    # unsloth, aionui, openwork, understand). No pullable artifact / compose stack;
-    # "upgrade" = version-bump via a declared upgrade: block, else re-run the install
-    # phase (AI_STACK_UPGRADE=1) to re-assert config + restart. up_by_method routes both.
-    python-bg|node-bg)                       up_by_method "$svc" ;;
-    *)
-      STRATEGY="$type"
-      RESULT="skipped (unknown type)"
-      warn "$svc: unknown type '$type'; skipping"
-      ;;
-  esac
-  fi
+  # Method-aware dispatch (council R4/C1): an explicit `upgrade:` block WINS over
+  # the type's default handler ONLY when it carries a real method — a metadata-only
+  # block (pin/check_env) can no longer hijack up_openshell/up_compose.
+  dispatch_upgrade "$svc" "$type" "$_method"
 
   # Reconcile the OPTIMISTIC handlers (they set 'upgraded' on any exit-0) against
   # the observed installed-version delta, so a no-op can't masquerade as a bump.
@@ -1100,7 +1365,11 @@ upgrade_one() {
   # set an honest RESULT from pip's real outcome; phase-rerun stays 're-asserted'.
   VER_AFTER="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
   case "$STRATEGY" in
-    brew|npm-global|uv-venv|git-pull|compose)
+    # uv-tool included (council A6): `uv tool install --upgrade` exits 0 on an
+    # already-current tool — without reconcile that no-op would read 'upgraded'.
+    # sandbox-pip deliberately EXCLUDED: up_openshell sets an honest RESULT +
+    # VER_OVERRIDE from pip's real outcome.
+    brew|npm-global|uv-venv|uv-tool|git-pull|compose)
       RESULT="$(reconcile_result "$RESULT" "$VER_BEFORE" "$VER_AFTER")"
       ;;
   esac
@@ -1117,7 +1386,9 @@ upgrade_one() {
   local rev="-"
   if (( DRY == 0 )); then
     case "$RESULT" in
-      FAILED*|skipped*|manual|planned) rev="-" ;;
+      # pinned* is belt-and-braces: the pin gate early-returns before this block,
+      # but if a future edit reorders that, a held row must never probe (A2).
+      FAILED*|skipped*|manual|planned|pinned*) rev="-" ;;
       *) rev="$(reverify "$svc" "$STRATEGY")"
          # Fail the run ONLY when THIS run actually CHANGED the artifact and the post-change
          # probe RAN and FAILED ('warn') — "the mutation we just did left the service unhealthy"
@@ -1210,35 +1481,48 @@ upgrade_main() {
     # Run the same read-only check across all enabled, then upgrade only the
     # ones that came back 'update-available'.
     local -a list=(); collect_targets list "${target:-all}"
-    local svc; local -a skipped_manual=() unconfirmed=()
+    local svc; local -a skipped_manual=() unconfirmed=() pinned_held=() config_svcs=()
     hdr "Scanning for available updates…"
     for svc in "${list[@]}"; do
       check_one "$svc"
-      case "$CHECK_STATUS" in
-        update-available)
+      case "$(outdated_bucket "$CHECK_STATUS")" in
+        sweep)
           targets+=("$svc")
           note "  $svc: $CHECK_STATUS ($CHECK_CUR → $CHECK_AVAIL)" ;;
         manual)
-          # No version oracle for --outdated (docker/compose/brew currency only): the
-          # sandbox/CLI/pip/fleet plane — the in-sandbox hermes agent, pi, mempalace,
-          # docs_mcp, etc. NEVER upgraded by --outdated (can't reach the gate above).
+          # Real artifact, no version oracle yet — NEVER upgraded by --outdated
+          # (can't reach the sweep gate above). Disclosed below with an HONEST
+          # remediation (a blanket 'run upgrade all' was false for several: their
+          # phases short-circuit on precheck and never bump anything).
           skipped_manual+=("$svc") ;;
-        unknown|rebuild)
+        unconfirmed)
           # Currency NOT confirmed: a docker/compose image whose registry digest we
           # couldn't read (proxy/Zscaler-blocked, or docker down → DOCKER_OK=0) or a
           # locally-built image. --outdated leaves these untouched too — disclose them
           # SEPARATELY so a proxy-blocked registry can't masquerade as full coverage
           # (parity with --check's print_check_report 'unconfirmed' warning; audit F3).
           unconfirmed+=("$svc") ;;
+        pinned)
+          # Deliberately held (upgrade.pin / fixed tag surfaced by the shared
+          # classifier). Never swept — but never silently invisible either.
+          pinned_held+=("$svc") ;;
+        config)
+          config_svcs+=("$svc") ;;
       esac
     done
     # ALWAYS disclose what --outdated could NOT act on — not only when nothing is
     # outdated. A rolling upstream (litellm/phoenix/qdrant/…) almost always shows >=1
     # outdated, so the old disclosure (gated on targets==0) effectively never printed
-    # and a green summary implied a coverage it never had (audit F3). Two honest buckets:
+    # and a green summary implied a coverage it never had (audit F3). Honest buckets:
+    if (( ${#pinned_held[@]} )); then
+      note "${#pinned_held[@]} pinned service(s) held at their declared versions — never auto-swept: ${pinned_held[*]} (run 'vz-ai-stack.sh upgrade <svc>' to print a pin's exact bump path)."
+    fi
+    if (( ${#config_svcs[@]} )); then
+      note "${#config_svcs[@]} config-only service(s) — nothing independently versioned (they version with the stack repo or their owning service): ${config_svcs[*]}"
+    fi
     if (( ${#skipped_manual[@]} )); then
-      note "${#skipped_manual[@]} service(s) NOT version-checkable by --outdated — the sandbox/CLI/pip/fleet plane (in-sandbox hermes agent, pi, mempalace, docs_mcp …): ${skipped_manual[*]}"
-      note "  → for those (plus the host globals meridian/claude-code, which aren't modeled as services) run 'vz-ai-stack.sh upgrade all', or 'upgrade hermes' for the hermes surfaces, or upgrade one by name."
+      note "${#skipped_manual[@]} service(s) with a real artifact but no version oracle yet — NOT swept: ${skipped_manual[*]}"
+      note "  → in-sandbox surfaces upgrade for real via 'vz-ai-stack.sh upgrade hermes' (or 'upgrade all', which also covers the host globals meridian/claude-code); for the rest 'vz-ai-stack.sh help <svc>' names the manual path."
     fi
     if (( ${#unconfirmed[@]} )); then
       warn "${#unconfirmed[@]} service(s) with currency NOT confirmed (registry/proxy unreachable or locally-built) — NOT upgraded by --outdated: ${unconfirmed[*]}. Re-check when the registry is reachable, or 'upgrade <svc>' to rebuild/pull explicitly."

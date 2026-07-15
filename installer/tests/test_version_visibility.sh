@@ -23,7 +23,7 @@ grep -q 'source "\$AI_STACK/installer/lib/versions.sh"' "$STAT" && ok "status so
 grep -q -- '--local' "$STAT"           && ok "status --versions has a --local fast path" || bad "no --local"
 
 echo "== upgrade --check no longer blanket-'manual's npm/pip/git =="
-if grep -q 'consult the shared oracle' "$UPG" && grep -A16 'consult the shared oracle' "$UPG" | grep -q 'version_classify'; then ok "check_one catch-all consults the oracle (installed+available, not blanket-manual)"; else bad "check_one still blanket-manual"; fi
+if grep -q 'consult the shared oracle' "$UPG" && grep -A45 'consult the shared oracle' "$UPG" | grep -q 'version_classify'; then ok "check_one catch-all consults the oracle (installed+available, not blanket-manual)"; else bad "check_one still blanket-manual (or the pin/config block displaced version_classify)"; fi
 
 echo "== upgrade prints a pre-upgrade version report =="
 grep -q 'PREFLIGHT=1; print_check_report' "$UPG" && ok "pre-upgrade report wired into the mutate path" || bad "no pre-upgrade report"

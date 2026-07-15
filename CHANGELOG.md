@@ -4,6 +4,24 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-15
+
+### Bug Fixes
+
+- upgrade: start-paperclip.sh --recreate additionally drains a lingering :3100 listener before restarting — ONLY when the listener's cwd is inside tools/paperclip (pnpm dev's node child can outlive its parent; a foreign process on the port is never touched — the start path refuses it and the upgrade reports FAILED)
+
+---
+
+
+## 2026-07-15
+
+### Features
+
+- upgrade: `--outdated` coverage broadened — ~10 more services auto-sweepable via new/extended upgrade methods (rlm/agentscope/oasis uv-venv; portless npm-global with pinned npm_bin; skillspector/paperclip/claw3d git-pull with post-pull build + verified daemon restart; mempalace/halo uv-tool; hermes_fleet sandbox-pip oracle). 7 deliberately-pinned services (openwork 0.17.1, metagpt 0.8.2, concordia 2.4.0, ace SHA-pin, lumen_mcp 0.0.41, aionui 2.1.21, pi 0.77.0) are now VISIBLE in `upgrade --check` as `pinned` but HELD on every upgrade path — `upgrade all` cannot trample them. New honest status vocabulary: `pinned` (held at a declared version) + `config` (configuration surface — versions with the stack repo or its owning service; 11 rows), shared by `status --versions` and `upgrade --check` through one classifier. Safety: runtime dirty-tree guard (a clone with local changes is skipped, never mutated), build-failure rollback via git reset --keep, PID-verified restarts (start-paperclip.sh / start-claw3d.sh gained real --recreate arms; a failed declared restart => FAILED, non-zero exit). deerflow compose file is now discovered via services.yml compose_file + upgrade.check_env, so it appears in `--check` (rebuild bucket) instead of silently manual. NOTE: the FIRST `upgrade --outdated` after this change may upgrade ~9 newly covered services in one go and will restart the paperclip (:3100) and claw3d (:4310) daemons if they moved.
+
+---
+
+
 ## 2026-07-15 — fix(docs): 06 heredoc generator drift + docs embedder → embed-openai-small
 
 - **Generator drift closed:** the `installer/phases/06_documents.sh` ingest.py heredoc still carried
