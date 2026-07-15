@@ -8,31 +8,75 @@
 // TOOLS take a `getGraph` async provider (returns {graph}|{error}) so the offline test can
 // inject a mock graph with no real FalkorDB.
 //
-// Env: FALKORDB_URL (default redis://falkordb:6379), FALKORDB_GRAPH (default fleet-memory).
+// Env: FALKORDB_URL (default redis://falkordb:6379), FALKORDB_GRAPH (default fleet-memory),
+//   FALKORDB_MCP_TIMEOUT_MS (connect budget, default 5000),
+//   FALKORDB_MCP_AUDIT_LOG (append-only graph_write audit, default ~/.ai-stack/falkordb-writes.jsonl).
+import { appendFile, mkdir } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 export const DEFAULT_GRAPH = process.env.FALKORDB_GRAPH || "fleet-memory";
 
+const _connectMs = () => { const n = parseInt(process.env.FALKORDB_MCP_TIMEOUT_MS || "5000", 10); return Number.isFinite(n) && n > 0 ? n : 5000; };
+
 // makeGraphProvider — lazy, cached connect to FalkorDB + select the shared graph. Only bin.mjs
-// uses this; tests pass their own provider. Returns {graph}|{error}; never throws.
+// uses this; tests pass their own provider. Returns {graph}|{error}; never throws AND never hangs:
+// the connect is bounded by FALKORDB_MCP_TIMEOUT_MS via Promise.race, so a resolvable-but-black-
+// holed host yields a fast {error} instead of blocking on the OS TCP timeout (which would stall
+// /healthz past doctor's `curl --max-time 3` and any concurrent tool call). This mirrors honcho-
+// mcp's AbortController discipline — race, not AbortController, since the falkordb client is
+// redis-based, not fetch-based.
 export function makeGraphProvider() {
   let cached = null;
   return async () => {
     if (cached) return { graph: cached };
+    const url = process.env.FALKORDB_URL || "redis://falkordb:6379";
+    const ms = _connectMs();
+    let timer;
     try {
       const { FalkorDB } = await import("falkordb");
-      const db = await FalkorDB.connect({ url: process.env.FALKORDB_URL || "redis://falkordb:6379" });
+      const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`connect timed out after ${ms}ms`)), ms); });
+      const db = await Promise.race([FalkorDB.connect({ url }), timeout]);
       cached = db.selectGraph(DEFAULT_GRAPH);
       return { graph: cached };
     } catch (e) {
-      return { error: `falkordb connect failed (${process.env.FALKORDB_URL || "redis://falkordb:6379"}): ${e?.message || e}` };
+      return { error: `falkordb connect failed (${url}): ${e?.message || e}` };
+    } finally {
+      clearTimeout(timer);
     }
   };
+}
+
+// _audit — append-only record of every graph_write (the destructive tool) so a bad/injected write
+// against the shared, un-isolated, un-backed-up graph is at least replayable. Best-effort: an audit
+// failure warns on stderr but never blocks the write (the log is a compensating control, not a gate).
+const _auditPath = () => process.env.FALKORDB_MCP_AUDIT_LOG || path.join(os.homedir(), ".ai-stack", "falkordb-writes.jsonl");
+async function _audit(tool, cypher, params) {
+  const p = _auditPath();
+  const line = JSON.stringify({ ts: new Date().toISOString(), tool, cypher, params: params || {} }) + "\n";
+  try {
+    await appendFile(p, line, "utf8");
+  } catch (e) {
+    if (e?.code === "ENOENT") {
+      try { await mkdir(path.dirname(p), { recursive: true }); await appendFile(p, line, "utf8"); return; }
+      catch (e2) { process.stderr.write(`[falkordb-mcp] audit append failed (${p}): ${e2?.message || e2}\n`); return; }
+    }
+    process.stderr.write(`[falkordb-mcp] audit append failed (${p}): ${e?.message || e}\n`);
+  }
 }
 
 // A Cypher write clause anywhere → not allowed via the read-only tool.
 const _hasWrite = (q) => /\b(CREATE|MERGE|SET|DELETE|REMOVE|DROP|CALL\s+db\.)\b/i.test(q);
 // Labels + relationship types CANNOT be Cypher params — validate to a safe identifier charset.
 const _ident = (s) => (typeof s === "string" && /^[A-Za-z][A-Za-z0-9_]*$/.test(s)) ? s : null;
+// Optional label: ABSENT (undefined/null/empty) → default "Entity"; PRESENT-but-invalid → error
+// (never silently coerced — a caller's typo would otherwise fragment node identity, e.g. a
+// mistyped :Persn silently becoming :Entity so MERGE can't match the real :Person node).
+const _label = (v, which) => {
+  if (v === undefined || v === null || v === "") return { label: "Entity" };
+  const ok = _ident(v);
+  return ok ? { label: ok } : { error: `${which} '${v}' is not a valid node label (letters/digits/_ , must start with a letter — it cannot be a Cypher param)` };
+};
 const _rows = (r) => (r && typeof r === "object" && "data" in r) ? r.data : r;
 
 export const TOOLS = {
@@ -46,6 +90,9 @@ export const TOOLS = {
 
   async graph_write(getGraph, { cypher, params }) {
     if (!cypher) return { error: "cypher is required" };
+    // DESTRUCTIVE, SHARED, UN-BACKED-UP graph → audit every write BEFORE executing, so even a
+    // write that then throws is on the record and an injected wipe is replayable/attributable.
+    await _audit("graph_write", cypher, params);
     const g = await getGraph(); if (g.error) return { error: g.error };
     try { const r = await g.graph.query(cypher, { params: params || {} }); return { ok: true, rows: _rows(r), stats: r?.metadata }; }
     catch (e) { return { error: String(e?.message || e) }; }
@@ -55,8 +102,9 @@ export const TOOLS = {
   // ENTIRE inline pattern, so merging on name-only avoids duplicate nodes when other props differ.
   async remember_fact(getGraph, { subject, predicate, object, subject_label, object_label }) {
     if (!subject || !predicate || !object) return { error: "subject, predicate and object are required" };
-    const sl = _ident(subject_label) || "Entity";
-    const ol = _ident(object_label) || "Entity";
+    const s0 = _label(subject_label, "subject_label"); if (s0.error) return { error: s0.error };
+    const o0 = _label(object_label, "object_label"); if (o0.error) return { error: o0.error };
+    const sl = s0.label, ol = o0.label;
     const rel = _ident(predicate);
     if (!rel) return { error: `predicate '${predicate}' is not a valid relationship type (letters/digits/_ , must start with a letter — it cannot be a Cypher param)` };
     const g = await getGraph(); if (g.error) return { error: g.error };
@@ -85,8 +133,8 @@ export function registerTools(server, getGraph, z) {
   }, async (a) => text(await TOOLS.graph_query(getGraph, a)));
 
   server.registerTool("graph_write", {
-    title: "Write Cypher (CREATE/MERGE/SET) to the shared fleet graph",
-    description: "Run a write Cypher statement (GRAPH.QUERY). Prefer remember_fact for simple subject-predicate-object facts. Use `params` for values.",
+    title: "Write Cypher to the shared fleet graph — DESTRUCTIVE, no isolation, no backup",
+    description: "⚠️ DESTRUCTIVE & SHARED: runs arbitrary write Cypher (GRAPH.QUERY) against the ONE fleet-memory graph that every agent shares — there is NO per-agent isolation and NO backup, so an unbounded `MATCH (n) DETACH DELETE n` / `DROP` irrecoverably wipes the entire fleet's memory. ALWAYS scope destructive MATCHes with a WHERE and a LIMIT; prefer remember_fact for simple (subject)-[predicate]->(object) facts. Every call is audit-logged. Use `params` for values (not string interpolation).",
     inputSchema: { cypher: z.string(), params: z.record(z.any()).optional() },
   }, async (a) => text(await TOOLS.graph_write(getGraph, a)));
 

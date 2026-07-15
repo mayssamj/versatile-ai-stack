@@ -21,7 +21,7 @@ const valOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1
 
 function buildServer(getGraph) {
   const server = new McpServer({ name: "falkordb-graph-memory", version: "0.1.0" }, {
-    instructions: "Shared fleet graph memory via FalkorDB. remember_fact stores (subject)-[predicate]->(object); recall_related returns an entity's neighbors; graph_query/graph_write run Cypher. One shared graph (fleet-memory); no per-agent isolation.",
+    instructions: "Shared fleet graph memory via FalkorDB. remember_fact stores (subject)-[predicate]->(object); recall_related returns an entity's neighbors; graph_query runs read-only Cypher. One shared graph (fleet-memory); no per-agent isolation. graph_write runs ARBITRARY write Cypher against that one shared, un-backed-up graph and can irrecoverably wipe fleet memory — prefer remember_fact, and scope any destructive MATCH with WHERE/LIMIT.",
   });
   registerTools(server, getGraph, z);
   return server;
@@ -57,7 +57,11 @@ async function runHttp() {
 
   const httpServer = http.createServer(async (req, res) => {
     if (req.url?.split("?")[0] === "/healthz") {
-      const g = await getGraph();
+      // Bound the probe to under doctor's `curl --max-time 3`: makeGraphProvider already caps the
+      // connect (~5s), but a black-holed backend must degrade to falkordb:false FAST, not stall the
+      // probe so doctor misreads it as "shim not answering" rather than "backend down".
+      const probeTimeout = new Promise((resolve) => { const t = setTimeout(() => resolve({ error: "healthz probe timed out" }), 2500); t.unref?.(); });
+      const g = await Promise.race([getGraph(), probeTimeout]);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, falkordb: !g.error, error: g.error || null, graph: DEFAULT_GRAPH }));
       return;

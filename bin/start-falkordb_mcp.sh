@@ -23,6 +23,8 @@ SHIM="$AI_STACK/falkordb-mcp/bin.mjs"
 # Env the shim reads (per-key from .env; passed inline to the nohup below).
 FALKORDB_URL="$(get_env FALKORDB_URL 'redis://falkordb:6379')"
 FALKORDB_GRAPH="$(get_env FALKORDB_GRAPH 'fleet-memory')"
+# Append-only audit of every graph_write (the destructive tool) → durable, operator-known path.
+AUDIT_LOG="$(get_env FALKORDB_MCP_AUDIT_LOG "$STATE_DIR/falkordb-writes.jsonl")"
 
 _alive() {
   local p
@@ -62,6 +64,7 @@ FALKORDB_MCP_PORT="$PORT" \
 FALKORDB_MCP_HOST="$HOSTB" \
 FALKORDB_URL="$FALKORDB_URL" \
 FALKORDB_GRAPH="$FALKORDB_GRAPH" \
+FALKORDB_MCP_AUDIT_LOG="$AUDIT_LOG" \
 nohup node "$SHIM" --http --port "$PORT" --host "$HOSTB" >>"$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
 

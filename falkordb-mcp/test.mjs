@@ -2,7 +2,15 @@
 // FalkorDB, no Redis, no models), then an HTTP E2E for the token gate + initialize (which do
 // NOT touch FalkorDB, so no dead-connection hang). Run: node test.mjs. Exits non-zero on fail.
 import http from "node:http";
+import { readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { TOOLS } from "./lib.mjs";
+
+// Point the graph_write audit at a scratch file (never the real ~/.ai-stack default) — set BEFORE
+// any graph_write, and inherited by the httpE2E child via {...process.env}. Cleaned up at exit.
+const AUDIT = path.join(os.tmpdir(), `falkordb-mcp-audit-test-${process.pid}.jsonl`);
+process.env.FALKORDB_MCP_AUDIT_LOG = AUDIT;
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -35,6 +43,13 @@ console.log("falkordb-mcp offline test");
   const r = await TOOLS.graph_write(getGraph, { cypher: "CREATE (n:X {name:'a'})" });
   check("graph_write ok + uses query (RW)", r.ok === true && seen.some(s => s.rw === "query"), JSON.stringify(r)); }
 
+{ const { getGraph } = mockProvider();
+  await TOOLS.graph_write(getGraph, { cypher: "CREATE (n:X {name:$n})", params: { n: "audit-me" } });
+  const logtxt = await readFile(AUDIT, "utf8").catch(() => "");
+  let rec = {}; try { rec = JSON.parse(logtxt.trim().split("\n").pop() || "{}"); } catch { /* */ }
+  check("graph_write is AUDIT-LOGGED (cypher + params, append-only JSONL)",
+    rec.tool === "graph_write" && /CREATE \(n:X/.test(rec.cypher || "") && rec.params?.n === "audit-me", logtxt); }
+
 { const { getGraph, seen } = mockProvider();
   const r = await TOOLS.remember_fact(getGraph, { subject: "pi", predicate: "DEPLOYED", object: "service-x" });
   check("remember_fact ok", r.remembered === true, JSON.stringify(r));
@@ -45,6 +60,20 @@ console.log("falkordb-mcp offline test");
 { const { getGraph } = mockProvider();
   const r = await TOOLS.remember_fact(getGraph, { subject: "a", predicate: "BAD REL) DELETE (x", object: "b" });
   check("remember_fact REJECTS an injection-y predicate (labels/reltypes can't be params)", !!r.error, JSON.stringify(r)); }
+
+{ const { getGraph, seen } = mockProvider();
+  const r = await TOOLS.remember_fact(getGraph, { subject: "a", predicate: "R", object: "b", subject_label: "Person" });
+  const q = seen.find(s => s.rw === "query") || {};
+  check("remember_fact honors a VALID label", r.remembered === true && /MERGE \(a:Person \{name:\$s\}\)/.test(q.cy || ""), q.cy); }
+
+{ const { getGraph } = mockProvider();
+  const r = await TOOLS.remember_fact(getGraph, { subject: "a", predicate: "R", object: "b", subject_label: "bad label) DROP" });
+  check("remember_fact REJECTS a present-but-invalid label (no silent coerce to Entity)", !!r.error && /not a valid node label/.test(r.error), JSON.stringify(r)); }
+
+{ const { getGraph, seen } = mockProvider();
+  const r = await TOOLS.remember_fact(getGraph, { subject: "a", predicate: "R", object: "b" });
+  const q = seen.find(s => s.rw === "query") || {};
+  check("remember_fact defaults an ABSENT label to Entity", r.remembered === true && /MERGE \(a:Entity \{name:\$s\}\)/.test(q.cy || ""), q.cy); }
 
 { const { getGraph } = mockProvider();
   const r = await TOOLS.recall_related(getGraph, { name: "pi" });
@@ -59,6 +88,7 @@ check("remember_fact requires subject/predicate/object", !!(await TOOLS.remember
 
 await httpE2E();
 
+await rm(AUDIT, { force: true }).catch(() => {});
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);
 

@@ -36,7 +36,25 @@ so it is a NORMAL opt-in (**NOT** in `install all`, but installs with `--include
 - **Docs swept** — `services.yml` (`falkordb_mcp`), `doc/EXPLORE.html` (memory tier, 62 → 63 cards;
   falkordb data-tier card's "reserved" note updated), `doc/PORTS.md` (:7083 row + section + falkordb
   Callers), `doc/DOCTOR.md` (§76, 76 → 77), `doc/COMPONENTS.md`, `doc/AGENT-ONBOARDING.md`,
-  `doc/TUTORIAL.md`/`.html` (Act III · L10), and the opt-in-extras help line in `vz-ai-stack.sh`.
+  `doc/TUTORIAL.md`/`.html` (Act III · L10), the four stale check-count references
+  (`ARCHITECTURE.md`/`INSTALL.md`/`ONBOARDING.md`/`TROUBLESHOOTING.md` → 77), and the opt-in-extras
+  help line in `vz-ai-stack.sh`.
+- **§24 council hardening** (three-reviewer adversarial pass + debate, 2026-07-14) — `graph_write`
+  is a net-new *destructive* primitive with no honcho precedent (arbitrary Cypher against the ONE
+  shared, un-isolated, un-backed-up graph), so the council's proportionate floor was applied:
+  (a) an explicit **blast-radius warning** in the `graph_write` tool description + server
+  instructions (the text the calling LLM reads), and (b) an **append-only audit log** of every
+  `graph_write` (cypher + params → `installer/state/falkordb-writes.jsonl`, path via
+  `FALKORDB_MCP_AUDIT_LOG`) so an injected/erroneous wipe is replayable. Also: a **connect timeout**
+  (`FALKORDB_MCP_TIMEOUT_MS`, default 5s) on the lazy provider + a bounded `/healthz` probe so a
+  black-holed backend degrades to `falkordb:false` fast instead of hanging past doctor's probe
+  (matches honcho-mcp's never-hang discipline); `remember_fact` now **rejects a present-but-invalid
+  label** instead of silently coercing it to `Entity` (a typo could otherwise fragment node
+  identity); and check 76 gained a **live Redis-PING negative probe** (under `--all` /
+  `OPENSHELL_DOCTOR_SLOW`) asserting the fleet sandbox cannot reach raw `:6379`. Offline test
+  15 → **18** checks. **Deferred** to a documented follow-up (exceeds D2's "minimal" mandate; same
+  tier as the already-accepted service-volume backup gap): a periodic `GRAPH.COPY`/snapshot job and
+  a `confirm:true` gate on unbounded destructive patterns.
 
 ---
 
