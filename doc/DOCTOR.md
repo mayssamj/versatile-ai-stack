@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 77 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 78 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -98,7 +98,23 @@ installer/doctor/checks/
 ├── 58_agentscope.sh                         (opt-in Phase 33; AgentScope venv + scoped key + optional Studio GUI :5275 — pass-as-skip)
 ├── 59_oasis.sh                              (opt-in Phase 34; OASIS venv + scoped key — pass-as-skip when Phase 34 hasn't run)
 ├── 60_chatdev.sh                            (opt-in Phase 35; ChatDev web app :5274 + scoped key — pass-as-skip when Phase 35 hasn't run)
-└── 61_aitown.sh                             (opt-in Phase 36; AI Town compose stack + frontend :5273 + scoped key — pass-as-skip)
+├── 61_aitown.sh                             (opt-in Phase 36; AI Town compose stack + frontend :5273 + scoped key — pass-as-skip)
+├── 62_audit_drift.sh                        (core; bin/audit.sh in sync with its 04g generator heredoc)
+├── 63_loopback_publish.sh                   (core; every managed container publishes loopback-only (no 0.0.0.0/[::]))
+├── 64_hostname_alias_coverage.sh            (core; services.yml hostname open_urls all have aliases.tsv rows)
+├── 65_models_console.sh                     (core; Model & Agent Console (models-serve) present + wired)
+├── 66_concordia.sh                          (opt-in Phase 37; Concordia venv + scoped key — pass-as-skip)
+├── 67_hermes_slack.sh                       (Phase 38; Hermes Slack gateway running (Socket Mode))
+├── 68_hermes_gateway_config.sh              (Hermes gateway config complete + self-heal from host snapshot)
+├── 69_autofyn_agent.sh                      (opt-in; AutoFyn agent healthy — /workspace-shadow ImportError self-heal)
+├── 70_corp_ca.sh                            (corporate TLS-interception readiness (Zscaler CA trust))
+├── 71_rendered_artifact_routability.sh      (bin wrappers + deerflow picker route to real LiteLLM models)
+├── 72_no_glued_multibyte_var.sh             (no bare $var glued to a multibyte char in shell code (${var} required))
+├── 73_hermes_workspace_pair.sh              (Phase 05; Hermes Workspace <-> agent netns pair intact + self-heal)
+├── 74_fleet_memory_mcp.sh                   (opt-in Phase 39; claude-cli + hermes-fleet memory MCP wiring)
+├── 75_honcho_mcp.sh                         (opt-in Phase 40; Honcho memory MCP shim wired + raw :8000 egress retired)
+├── 76_falkordb_mcp.sh                       (opt-in Phase 41; FalkorDB graph memory MCP shim wired + raw :6379 denied)
+└── 77_embedding_dim_consistency.sh          (embedding dim consistency: live store dim == assigned-model dim; skip-clean when a store is absent; opt-in DEEP round-trip)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -889,6 +905,18 @@ Skips cleanly (passes) when Phase 40 isn't installed (opt-in — no `phase_40*.d
 | Auto-fix | none (reports the command): `vz-ai-stack.sh install falkordb_mcp`; if a policy gained a raw `falkordb` :6379 endpoint, revert it (it MUST stay denied) + `install 04`. |
 
 Skips cleanly (passes) when Phase 41 isn't installed (opt-in — no `phase_41*.done` stamp), so it never red-bars a stack that didn't opt into graph memory. The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but FalkorDB backend unreachable per `/healthz`" state is a NOTE, not a failure. **Unlike check 75 (honcho) there is NO retired-egress to assert — slice 4 is purely additive** (FalkorDB was never fleet-reachable) — but the always-on **"no raw :6379 sandbox egress" guard** keeps it that way, so the shim stays the only in-sandbox path to the graph.
+
+---
+
+## 77 · Embedding dim consistency (canonical 768)
+
+| | |
+|---|---|
+| Asserts | for every dim-pinned embedding consumer, the LIVE store's vector dim equals the dim of the embedder assigned to it in `models.yml` (`.embedding_assignments.<svc>` → `.embeddings[m].dim`). Covers **docs** (the Qdrant `ai-stack-docs` collection `vectors.size` AND the deployed `ingestor/ingest.py` `EMBED_DIM` literal that populates it) and **honcho** (the pgvector column typmod on the base tables `documents` + `message_embeddings`, filtered `relkind='r'` so the HNSW index relations don't surface as phantom columns). |
+| Fails when | a **present** store's dim disagrees with its assigned embedder — docs: `ai-stack-docs` `vectors.size` ≠ assigned dim, or the deployed `ingest.py` `EMBED_DIM` ≠ assigned dim (the next populate would write wrong-dim vectors); honcho: a pgvector `embedding` column dim ≠ assigned dim. Under `EMBEDDING_DIM_DEEP=1` (or `DOCTOR_ALL=1`) it additionally fails when a live embedder route emits a vector whose length ≠ the store dim (a store at that dim would reject every insert). |
+| Auto-fix | none (reports the command): **docs** → flip `.embedding_assignments.docs` in `models.yml`, `install 06`, then recreate the collection with `AI_STACK_FORCE_RECREATE=1` ingest; **honcho** → set `EMBEDDING_VECTOR_DIMENSIONS` to the assigned dim + run honcho `scripts/configure_embeddings.py --yes` (wired via `install honcho_mcp`). |
+
+A store that is absent/unreachable is **SKIP-CLEAN** (a distinct, benign state from present-but-wrong-dim = FAIL), so an unpopulated docs collection or a stopped honcho DB never red-bars the stack. The routine run is cheap — schema / registry / code only, **no model load**. Under `EMBEDDING_DIM_DEEP=1` (or `DOCTOR_ALL=1`) it also does a live 1-vector round-trip per consumer and asserts the emitted length == store dim — this catches a route that silently emits the wrong dim (e.g. a cloud route missing its `dimensions` param) that a schema-only check would miss; the round-trip touches **embedders only, never a chat model**, and is opt-in so routine doctor never cold-starts. openwebui / lumen self-manage their own index dim, mempalace is on-device 384, and ai-town is an isolated opt-in sim — all out of scope.
 
 ---
 

@@ -101,13 +101,29 @@ embeddings:
   embed-minilm: {runtime: onnx, served: minilm, dim: 384, via: ondevice, device: coreml, kind: text}
   embed-gemma: {runtime: onnx, served: embeddinggemma, dim: 384, via: ondevice, device: coreml, kind: text, unverified: true}
   embed-openai-small: {runtime: openai, served: text-embedding-3-small, dim: 1536, via: litellm, route: embed-openai-small, kind: text}
+  # text-embedding-3-small truncated to 768 via OpenAI `dimensions` param (Matryoshka;
+  # the model is MRL-trained so the 768 sub-vector is a valid retrieval space). This is
+  # the CANONICAL-768 CLOUD route — a schema-compatible drop-in for local embed-nomic(768):
+  # swapping docs/honcho between embed-nomic and this needs only a RE-INDEX (recompute),
+  # never a collection/column rebuild. NOTE: same dim != same vector space (nomic-768 and
+  # openai-768 are different geometries) so a family swap still requires re-embedding.
+  # `dimensions:768` is wired in the litellm/config.yaml + prompts/config.yaml route.
+  embed-openai-small-768: {runtime: openai, served: text-embedding-3-small, dim: 768, via: litellm, route: embed-openai-small-768, kind: text}
   embed-openai-large: {runtime: openai, served: text-embedding-3-large, dim: 3072, via: litellm, route: embed-openai-large, kind: text}
 # Per-service embedder assignments. Read at install time by each owning phase
 # (06_documents / 16_lumen / 26_mempalace / bin/start-openwebui) with the phase's
 # current hardcoded value as the fallback, so a missing section never breaks a
 # phase. Re-point with `vz-ai-stack.sh embedding assign <service> <model>`.
+# CANONICAL TEXT-EMBEDDING DIM = 768 (operator default; §24 council 2026-07-15). Cross-queryable
+# text consumers TARGET a 768-dim embedder so cloud<->local is swap-safe at the SCHEMA level (no
+# destructive rebuild — only a re-index on a model-FAMILY change, because same dim != same vector
+# space). docs + openwebui are 768 now; honcho reconciles to 768 with the honcho unit (still 1536
+# until then). Local default = embed-nomic(768); the cloud drop-in is embed-openai-small-768
+# (text-embedding-3-small @ dimensions=768). mempalace stays 384 (on-device, isolated, never
+# cross-queried). Enforced by doctor check `embedding_dim` (77): live store dim must == the
+# assigned model's dim.
 embedding_assignments:
-  docs: embed-openai-small
+  docs: embed-nomic
   openwebui: embed-nomic
   lumen: embed-jina-code
   mempalace: embed-minilm

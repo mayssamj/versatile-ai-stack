@@ -165,6 +165,17 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       mode: embedding
+  # Canonical-768 cloud route: text-embedding-3-small truncated to 768 dims via the
+  # OpenAI `dimensions` param (LiteLLM forwards it for text-embedding-3* — verified:
+  # utils.py allowlist + openai.py **optional_params). Schema-compatible drop-in for
+  # local embed-nomic(768); different vector space => re-index on family swap.
+  - model_name: embed-openai-small-768
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+      dimensions: 768
+    model_info:
+      mode: embedding
   - model_name: embed-openai-large
     litellm_params:
       model: openai/text-embedding-3-large

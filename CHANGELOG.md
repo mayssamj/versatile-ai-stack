@@ -4,6 +4,38 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-15 — feat(memory): platform embedding CANONICAL DIM = 768 + cloud/local interchangeability (docs unit)
+
+§24 4-reviewer design council (adversarial + ML-architect + QA/infra + PM) → unanimous
+APPROVE_WITH_CHANGES; all consensus must-fixes folded in. **Supersedes the same-day
+`docs embedder → embed-openai-small` change below** — docs goes back to a 768 embedder as
+the canonical local default.
+
+- **Canonical text-embedding dim = 768.** Cross-queryable text consumers TARGET a 768-dim
+  embedder so cloud↔local is swap-safe at the SCHEMA level — a model-FAMILY swap needs only a
+  RE-INDEX (recompute), never a destructive collection/column rebuild (same dim ≠ same vector
+  space). Status after THIS commit: **docs + openwebui at 768**; **honcho reconcile lands in the
+  companion commit** (still vector(1536) until then); lumen's `embed-jina-code` 768 is marked
+  `unverified` in models.yml. mempalace stays 384 (on-device, isolated, never cross-queried);
+  ai-town is an isolated opt-in sim (out of scope).
+- **`embedding_assignments.docs`: embed-openai-small → embed-nomic** (local nomic-embed-text,
+  768). Local by default: keeps doc content on-host, no OpenAI egress, no key dependency,
+  matches the operator's stated default and future local-only direction. `install 06` renders
+  ingest.py/mcp_server.py at embed-local/768 (byte-identical to the committed files).
+- **New cloud drop-in route `embed-openai-small-768`** = `text-embedding-3-small` truncated to
+  768 via the OpenAI `dimensions` param (Matryoshka; LiteLLM forwards it for `text-embedding-3*`
+  — verified live: `dimensions:768` → a real 768-length vector). Added to BOTH `litellm/config.yaml`
+  and the clean-install template `prompts/config.yaml`, and registered in `models.yml .embeddings`
+  (dim 768). Schema-compatible drop-in for embed-nomic; re-index on family swap.
+- **New doctor check 77 (`embedding_dim`)**: asserts each dim-pinned consumer's LIVE store dim ==
+  its assigned model's dim (docs = Qdrant `ai-stack-docs` vectors.size + deployed ingest.py
+  EMBED_DIM; honcho = pgvector column typmod on base tables). Skip-clean when a store is absent;
+  opt-in `EMBEDDING_DIM_DEEP=1` adds a live emitted-vector-length round-trip (embedders only).
+  Doctor now counts 78 checks.
+- Companion **honcho reconcile → 768** (via honcho's own `scripts/configure_embeddings.py`, wired
+  idempotently into provision) lands as a follow-up commit this session; re-index runbook +
+  canonical-768 notes added to TROUBLESHOOTING.
+
 ## 2026-07-15 — fix(docs): 06 heredoc generator drift + docs embedder → embed-openai-small
 
 - **Generator drift closed:** the `installer/phases/06_documents.sh` ingest.py heredoc still carried

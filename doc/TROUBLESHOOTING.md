@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the doctor's 77 checks, see [DOCTOR.md](DOCTOR.md).
+For the doctor's 78 checks, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 ---
@@ -693,6 +693,59 @@ bash ~/ai-stack/bin/start-hermes-slack.sh
   slack.com *directly* (not through the relay), so it survives relay idle-timeouts;
   but if the sandbox was recreated (`reset … hard` + `install`), re-run `install 38`.
   If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).
+
+---
+
+## Embedding dimensionality (canonical 768) + cloud/local interchangeability
+
+Vector stores require **index-dim == query-dim**, and the platform standardises on a
+**canonical text-embedding dim of 768** so cloud and local embedders are interchangeable
+*at the schema level*. Every cross-queryable text consumer (docs-RAG Qdrant `ai-stack-docs`,
+honcho pgvector, openwebui, lumen) uses a 768-dim embedder; **mempalace** stays 384
+(on-device, isolated, never cross-queried) and **ai-town** (opt-in sim) manages its own.
+
+**Same dim ≠ same vector space.** `nomic-embed-text` at 768 and `text-embedding-3-small`
+truncated to 768 (via the OpenAI `dimensions` param — Matryoshka) produce *different*
+vectors. So swapping model FAMILY (local↔cloud, or nomic↔jina) needs a **re-index**
+(recompute every vector) — but **no schema/collection rebuild**. That is exactly what the
+single canonical dim buys you.
+
+Assignments live in `installer/models.yml .embedding_assignments`; re-point with
+`vz-ai-stack.sh embedding assign <svc> <model>`. The 768 embedders are `embed-nomic`
+(local default) and `embed-openai-small-768` (cloud drop-in = `text-embedding-3-small`
+@ `dimensions=768`). Doctor **check 77** (`embedding_dim`) fails if any live store's dim
+drifts from its assigned model's dim; `EMBEDDING_DIM_DEEP=1 vz-ai-stack.sh doctor`
+additionally round-trips a live vector and checks its emitted length.
+
+### Re-index procedure (future local-only switch, or any model-family swap)
+
+Do this whenever you change a consumer's embedder to a *different family at the same 768*
+(e.g. cloud `embed-openai-small-768` → local `embed-nomic` for a fully-local box). No
+schema rebuild is needed because the dim is unchanged — you only recompute vectors.
+
+**docs (Qdrant `ai-stack-docs`):**
+```bash
+vz-ai-stack.sh embedding assign docs embed-nomic     # or embed-openai-small-768
+vz-ai-stack.sh install 06                             # re-bakes ingest.py/mcp_server.py to the new route (dim stays 768)
+# recompute all vectors over the same corpus (the same 768 collection is reused):
+cd ~/ai-stack/ingestor && AI_STACK_FORCE_RECREATE=1 python ingest.py
+```
+
+**honcho (pgvector):**
+```bash
+vz-ai-stack.sh embedding assign honcho embed-nomic   # or embed-openai-small-768
+HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp   # sets EMBEDDING_VECTOR_DIMENSIONS + runs honcho scripts/configure_embeddings.py, reloads api+deriver
+```
+The honcho path drives the pgvector schema through honcho's OWN `scripts/configure_embeddings.py`
+(idempotent — survives a volume reset, where an Alembic migration otherwise re-pins the column to
+1536). On a true *dim* change it quiesces the deriver and re-asserts the column to match
+`EMBEDDING_VECTOR_DIMENSIONS`.
+
+> **nomic task-prefix note:** `nomic-embed-text` is trained for asymmetric prefixes
+> (`search_document:` at ingest, `search_query:` at retrieval). The docs pipeline currently
+> embeds raw text — functional, a few points below nomic's peak recall. If doc-RAG recall is
+> weak, this is the first knob to try (or flip docs to `embed-openai-small-768` — same 768
+> schema, just a re-index).
 
 ---
 
