@@ -5,8 +5,9 @@
 # /sandbox/node_modules/.bin/pi inside the pi-v1 sandbox (see Phase 15).
 # The sandbox's network policy denies everything except:
 #   - inference.local      (LiteLLM L7-rewritten by the OpenShell gateway)
-#   - host.docker.internal:8000  (Honcho, with `pi` peer namespace)
+#   - host.docker.internal:7082  (honcho-mcp shim, token-gated) + :7083 (falkordb-mcp shim)
 #   - host.docker.internal:8765  (docs-mcp, read-only)
+#     (raw Honcho :8000 + raw falkordb:6379 stay DENIED — the token-gated shims are the only path)
 #   - pypi/npm/github            (extension installs, reference repo clones)
 #
 # Pi cannot see phoenix, qdrant, falkordb, openwebui, workspace, unsloth,
@@ -51,7 +52,13 @@ if [[ -f "$AI_STACK/.env" ]]; then
   # shellcheck disable=SC1091
   source "$AI_STACK/installer/lib/env.sh" 2>/dev/null
   PI_LITELLM_KEY="$(get_env PI_LITELLM_KEY '')"
+  # slice 2b — fleet-memory shim tokens (best-effort; absent → the extension skips those tools).
+  HONCHO_MCP_TOKEN="$(get_env HONCHO_MCP_TOKEN '')"
+  FALKORDB_MCP_TOKEN="$(get_env FALKORDB_MCP_TOKEN '')"
 fi
+# Defensive defaults so `set -u` + the exec line below never trip when .env is missing or a shim isn't installed.
+HONCHO_MCP_TOKEN="${HONCHO_MCP_TOKEN:-}"
+FALKORDB_MCP_TOKEN="${FALKORDB_MCP_TOKEN:-}"
 if [[ -z "${PI_LITELLM_KEY:-}" ]]; then
   echo "PI_LITELLM_KEY missing from .env — re-run 'bash vz-ai-stack.sh install 15' to mint it." >&2
   exit 1
@@ -91,4 +98,4 @@ fi
 # `-- "$@"` passes our (possibly model-prepended) argv as $1.. to the inner
 # /bin/sh, which forwards them verbatim to pi via "$@".
 exec "$OSH" sandbox exec -n pi-v1 --workdir /sandbox --tty -- \
-  /bin/sh -c "PI_LITELLM_KEY='$PI_LITELLM_KEY' HOME=/sandbox exec /sandbox/node_modules/.bin/pi \"\$@\"" -- "$@"
+  /bin/sh -c "PI_LITELLM_KEY='$PI_LITELLM_KEY' HONCHO_MCP_TOKEN='$HONCHO_MCP_TOKEN' FALKORDB_MCP_TOKEN='$FALKORDB_MCP_TOKEN' HOME=/sandbox exec /sandbox/node_modules/.bin/pi \"\$@\"" -- "$@"

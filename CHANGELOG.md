@@ -4,6 +4,27 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-15 — feat(memory): pi fleet-memory MCP bridge (slice 2b)
+
+pi (OpenShell-sandboxed, ships NO MCP client) can now use the fleet memory shims via a TypeScript
+extension that speaks MCP-over-HTTP directly (verified `pi.registerTool` API, pi 0.77.0).
+
+- `pi/pi-memory-tools.ts`: registers `search_documents` (docs-mcp :8765), `honcho_remember/recall/
+  ask/search` (honcho-mcp :7082), `remember_fact/recall_related/graph_query` (falkordb-mcp :7083),
+  all over host.docker.internal. Stateless bare `tools/call` POST (no `initialize` handshake —
+  matches the shims' own tests); TypeBox params; global `fetch` (no MCP SDK in the pi runtime).
+  `graph_write` (destructive) is WITHHELD unless `PI_MEMORY_ALLOW_GRAPH_WRITE=1` (pi is the most
+  prompt-injectable agent). Each tool self-skips when its token is absent.
+- `openshell/policies/pi-v1.yaml`: additive egress to :7082 (honcho-mcp) + :7083 (falkordb-mcp).
+  Raw Honcho :8000 + raw falkordb:6379 stay DENIED — the token-gated shims are the only path (§24).
+- `15_pi.sh` uploads the extension; `bin/pi` injects `HONCHO_MCP_TOKEN` + `FALKORDB_MCP_TOKEN`
+  (best-effort; absent → the tool self-skips). docs-mcp needs no token.
+- doctor check 25: :7082/:7083 promoted to positive (reachable) probes; :8000/:6379 stay denied;
+  asserts `pi-memory-tools.ts` is uploaded.
+- **UNTESTABLE OFFLINE** (pi sandbox down + no tsc on the box): landed code + static/§24 review;
+  E2E needs the operator to bring pi-v1 up + run the runbook (`openshell policy set pi-v1 --wait`;
+  `install 15`; `bin/pi -p 'use remember_fact ... then recall_related'`).
+
 ## 2026-07-15 — feat(memory): canonical-768 embedding reconcile — honcho unit (STEP 3b)
 
 Companion to the docs unit below; §24 diff council. honcho now reconciled to the canonical 768

@@ -13,11 +13,12 @@
 #                 PI_LITELLM_KEY is the current working pattern; migrate to
 #                 inference.local when OpenShell fixes the provider. See
 #                 CHANGELOG 2026-05-29.
-#   - Honcho    : DENIED. The raw :8000 egress was RETIRED (the auth-off Honcho REST
-#                 hole is closed — §24 security fix). Pi's runtime ships no MCP client,
-#                 so it gets no honcho path until a Pi honcho extension ships (slice 2b),
-#                 which will route through the host-side honcho-mcp shim (:7082, token-
-#                 gated), NEVER the raw :8000 API. Doctor check 25 asserts :8000 denied.
+#   - Honcho    : via the host-side honcho-mcp SHIM (host.docker.internal:7082, token-gated;
+#                 slice 2b — pi-memory-tools.ts consumes it, bin/pi injects the token). The raw
+#                 :8000 REST API (auth-off) stays DENIED — the shim is the only memory path (§24).
+#   - FalkorDB  : graph memory via the falkordb-mcp SHIM (:7083, token-gated). Raw falkordb:6379
+#                 stays DENIED. graph_write withheld unless PI_MEMORY_ALLOW_GRAPH_WRITE=1.
+#                 Doctor check 25 asserts :7082/:7083 reachable + :8000/:6379 denied.
 #   - docs-mcp  : ALLOWED. The MCP server's tool surface is itself read-
 #                 only (Docling+LlamaIndex+Qdrant search/list/get); there
 #                 are no state-changing endpoints to gate at the TCP level.
@@ -70,10 +71,30 @@ network_policies:
     binaries:
       - { path: "/**" }
 
-  # Honcho memory: Pi's raw :8000 egress was RETIRED (the auth-off Honcho REST hole is
-  # closed — §24 security fix). Pi's runtime ships no MCP client, so it gets NO honcho
-  # egress at all until a Pi honcho extension ships (slice 2b); at that point add a
-  # honcho_mcp :7082 stanza here, mirroring hermes-fleet-v1.yaml. Do NOT re-open :8000.
+  # Honcho memory via the host-side honcho-mcp SHIM (host.docker.internal:7082, slice 2b).
+  # The RAW Honcho REST API (:8000, AUTH_USE_AUTH=false) stays intentionally UNREACHABLE from
+  # pi-v1 — the token-gated MCP shim is the ONLY memory path (§24 security fix; do NOT re-open
+  # :8000). pi-memory-tools.ts POSTs JSON-RPC tools/call here with a Bearer HONCHO_MCP_TOKEN that
+  # bin/pi injects; absent token → the extension self-skips the honcho tools.
+  honcho_mcp:
+    name: honcho-mcp
+    endpoints:
+      - host: host.docker.internal
+        port: 7082
+    binaries:
+      - { path: "/**" }
+
+  # FalkorDB graph memory via the host-side falkordb-mcp SHIM (host.docker.internal:7083, slice
+  # 2b). Raw falkordb:6379 stays DENIED — the token-gated shim is the only graph-memory path.
+  # Additive/opt-in; harmless when falkordb_mcp isn't installed. graph_write (destructive) is
+  # withheld at the extension unless PI_MEMORY_ALLOW_GRAPH_WRITE=1 (the stanza is r/w-agnostic).
+  falkordb_mcp:
+    name: falkordb-mcp
+    endpoints:
+      - host: host.docker.internal
+        port: 7083
+    binaries:
+      - { path: "/**" }
 
   # docs MCP server — host-bound on 0.0.0.0:8765 (Phase 06).
   # The MCP tool surface is read-only (Docling+LlamaIndex+Qdrant search).

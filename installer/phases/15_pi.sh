@@ -35,6 +35,7 @@ SANDBOX=pi-v1
 POLICY="$AI_STACK/openshell/policies/${SANDBOX}.yaml"
 PI_DIR="$AI_STACK/pi"
 PI_EXT_SRC="$PI_DIR/inference-local.ts"
+PI_MEM_EXT_SRC="$PI_DIR/pi-memory-tools.ts"   # slice 2b — fleet-memory MCP tools bridge (docs/honcho/falkordb)
 HONCHO_BASE="${HONCHO_BASE_URL:-http://honcho:8000}"
 HONCHO_WORKSPACE="${HONCHO_WORKSPACE_ID:-default}"
 PI_PEER_ID="pi"
@@ -51,6 +52,7 @@ precheck() {
   [[ -n "$osh" ]] || return 1
   [[ -f "$POLICY" ]] || return 1
   [[ -f "$PI_EXT_SRC" ]] || return 1
+  [[ -f "$PI_MEM_EXT_SRC" ]] || return 1
   # Sandbox must exist and be Ready.
   "$osh" sandbox list 2>/dev/null \
     | awk -v s="$SANDBOX" 'NR>1 && $1==s && $NF=="Ready" {ok=1} END{exit !ok}' \
@@ -69,9 +71,9 @@ precheck() {
   # just assert the LiteLLM provider is wired (was "Model: local-heavy",
   # which broke after local-heavy stopped being the gateway default).
   "$osh" inference get 2>/dev/null | grep -q "Provider: litellm" || return 1
-  # Extension file in place inside the sandbox.
+  # Extension files in place inside the sandbox (both slice extensions).
   "$osh" sandbox exec -n "$SANDBOX" --no-tty -- \
-    /bin/sh -c 'test -f /sandbox/.pi/extensions/inference-local.ts' 2>/dev/null \
+    /bin/sh -c 'test -f /sandbox/.pi/extensions/inference-local.ts && test -f /sandbox/.pi/extensions/pi-memory-tools.ts' 2>/dev/null \
     || return 1
   return 0
 }
@@ -87,6 +89,7 @@ OSH="$(resolve_openshell)"
 [[ -n "$OSH" ]] || { err "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first."; exit 1; }
 [[ -f "$POLICY" ]] || { err "missing policy file: $POLICY"; exit 1; }
 [[ -f "$PI_EXT_SRC" ]] || { err "missing Pi extension source: $PI_EXT_SRC"; exit 1; }
+[[ -f "$PI_MEM_EXT_SRC" ]] || { err "missing Pi memory extension source: $PI_MEM_EXT_SRC"; exit 1; }
 
 # --- LiteLLM virtual key for Pi -------------------------------------------
 # Pi calls http://host.docker.internal:4000/v1 directly with PI_LITELLM_KEY.
@@ -263,6 +266,15 @@ log "Installing Pi extension (inference-local.ts)..."
 "$OSH" sandbox upload "$SANDBOX" "$PI_EXT_SRC" /sandbox/.pi/extensions/ 2>&1 | tail -3 \
   || { err "extension upload failed"; exit 1; }
 ok "extension at /sandbox/.pi/extensions/inference-local.ts"
+
+# slice 2b — fleet-memory MCP tools bridge (docs/honcho/falkordb over host.docker.internal).
+# Small text file (~20 KB) → single upload is safe (well under the ~4 MB gRPC cap that forces
+# the tar chunking above). The tools self-gate on HONCHO_MCP_TOKEN / FALKORDB_MCP_TOKEN being
+# present in the sandbox env (bin/pi injects them), so uploading it is harmless even before
+# those shims are installed (docs-mcp needs no token).
+"$OSH" sandbox upload "$SANDBOX" "$PI_MEM_EXT_SRC" /sandbox/.pi/extensions/ 2>&1 | tail -3 \
+  || { err "memory extension upload failed"; exit 1; }
+ok "extension at /sandbox/.pi/extensions/pi-memory-tools.ts"
 
 # --- Honcho peer for Pi (best-effort; non-fatal) --------------------------
 # Pi writes to its own peer namespace so its memory is namespace-isolated

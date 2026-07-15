@@ -17,7 +17,7 @@
 #   - That a prompt-injected Pi can't *try* to query forbidden services —
 #     the policy just makes those attempts fail at the network layer
 CHECKS+=(pi_v1_network_policy)
-CHECK_TITLE[pi_v1_network_policy]="pi-v1 network policy: LiteLLM/docs-mcp reachable; raw Honcho :8000 + ai-stack DBs denied"
+CHECK_TITLE[pi_v1_network_policy]="pi-v1 network policy: LiteLLM/docs-mcp/honcho-mcp/falkordb-mcp reachable; raw Honcho :8000 + raw FalkorDB :6379 + ai-stack DBs denied"
 
 _pi_v1_np_resolve_openshell() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
@@ -67,6 +67,8 @@ pi_v1_network_policy_diagnose() {
   local positives=(
     "host.docker.internal:4000:LiteLLM"
     "host.docker.internal:8765:docs-mcp"
+    "host.docker.internal:7082:honcho-mcp"
+    "host.docker.internal:7083:falkordb-mcp"
   )
   local entry host port label result
   for entry in "${positives[@]}"; do
@@ -82,8 +84,6 @@ pi_v1_network_policy_diagnose() {
   if [[ "${OPENSHELL_DOCTOR_SLOW:-0}" == "1" ]] || [[ "${DOCTOR_ALL:-0}" == "1" ]]; then
     local negatives=(
       "host.docker.internal:8000:Honcho-raw"
-      "host.docker.internal:7082:honcho-mcp"
-      "host.docker.internal:7083:falkordb-mcp"
       "host.docker.internal:6006:Phoenix"
       "host.docker.internal:6333:Qdrant"
       "host.docker.internal:6379:FalkorDB"
@@ -103,7 +103,14 @@ pi_v1_network_policy_diagnose() {
       esac
     done
   else
-    echo "  (positive probes only; set OPENSHELL_DOCTOR_SLOW=1 to also run 9 negative probes)"
+    echo "  (positive probes only; set OPENSHELL_DOCTOR_SLOW=1 to also run 10 negative probes)"
+  fi
+
+  # ─── Extension presence (slice 2b): the memory-tools bridge must be uploaded ───
+  # Cheap `test -f`; a missing file means the egress is open but nothing consumes it.
+  if ! "$osh" sandbox exec -n pi-v1 --no-tty --timeout 15 -- \
+       /bin/sh -c 'test -f /sandbox/.pi/extensions/pi-memory-tools.ts' 2>/dev/null; then
+    fails+=("  pi-memory-tools.ts not in /sandbox/.pi/extensions (re-run 'install 15')")
   fi
 
   if (( ${#fails[@]} > 0 )); then
