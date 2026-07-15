@@ -164,6 +164,17 @@ network_policies:
     binaries:
       - { path: "/**" }
 
+  # FalkorDB graph memory via the host-side falkordb-mcp SHIM (host.docker.internal:7083,
+  # Phase 41). Raw falkordb:6379 stays DENIED to the sandbox — the token-gated shim is the only
+  # graph-memory path. Additive/opt-in; harmless when falkordb_mcp isn't installed (nothing dials 7083).
+  falkordb_mcp:
+    name: falkordb-mcp
+    endpoints:
+      - host: host.docker.internal
+        port: 7083
+    binaries:
+      - { path: "/**" }
+
   # docs MCP server — also host-bound on 0.0.0.0:8765 (see Phase 06).
   docs_mcp:
     name: docs-mcp

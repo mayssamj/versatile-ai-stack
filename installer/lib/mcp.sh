@@ -409,3 +409,82 @@ WIRE
   fi
   return 0
 }
+
+# ── FalkorDB graph-memory MCP (Phase 41 / fleet memory) ─────────────────────────────
+# Wire the Hermes fleet to the host-side falkordb-mcp SHIM (host.docker.internal:7083) so
+# fleet agents get graph memory (remember_fact/recall_related/graph_query) as MCP tools. The
+# shim is the ONLY sandbox path to FalkorDB — raw falkordb:6379 stays denied to sandboxes.
+# TOKENED like honcho/understand: gated on FALKORDB_MCP_TOKEN in .env (absent -> skip+warn, 0).
+FALKORDB_MCP_PORT_DEFAULT=7083
+
+# configure_hermes_mcp_falkordb <osh> <sandbox> [port]
+configure_hermes_mcp_falkordb() {
+  local osh="$1" sb="$2" port="${3:-$FALKORDB_MCP_PORT_DEFAULT}"
+  local token; token="$(get_env FALKORDB_MCP_TOKEN '')"
+  if [[ -z "$token" ]]; then
+    note "FalkorDB MCP: FALKORDB_MCP_TOKEN absent from .env — skipping fleet wiring."
+    note "  Install + wire it with:  vz-ai-stack.sh install falkordb_mcp"
+    return 0
+  fi
+  local url="http://host.docker.internal:${port}/mcp"
+  log "Wiring Hermes fleet -> FalkorDB MCP ($url)…"
+  if ! _sg_mcp_ensure_extra "$osh" "$sb"; then
+    warn "FalkorDB MCP: could not enable the mcp SDK in the sandbox — wiring skipped (re-run after fixing PyPI egress)."
+    return 1
+  fi
+
+  local stage="${AI_STACK:-$HOME/ai-stack}/openshell/fleet-bootstrap"
+  mkdir -p "$stage"
+  cat > "$stage/falkordb-mcp-wire.sh" <<'WIRE'
+#!/bin/sh
+# Wire default + each profile in "$@" (after URL) to the FalkorDB MCP server.
+# Usage: falkordb-mcp-wire.sh <URL> [profile ...]   (token on STDIN)
+URL="$1"; shift
+read -r T
+[ -n "$T" ] || { echo "falkordb-mcp-wire: empty token on STDIN" >&2; exit 1; }
+[ -n "$URL" ] || { echo "falkordb-mcp-wire: empty URL" >&2; exit 1; }
+_wire() {  # $1=HERMES_HOME dir   $2=profile-flag ("" or "--profile <name>")
+  home="$1"; pflag="$2"
+  mkdir -p "$home"; touch "$home/.env"
+  grep -v '^MCP_FALKORDB_TOKEN=' "$home/.env" > "$home/.env.new" 2>/dev/null || true
+  printf 'MCP_FALKORDB_TOKEN=%s\n' "$T" >> "$home/.env.new"
+  mv "$home/.env.new" "$home/.env"; chmod 600 "$home/.env"
+  hermes $pflag config set mcp_servers.falkordb.url "$URL" >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.falkordb.headers.Authorization 'Bearer ${MCP_FALKORDB_TOKEN}' >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.falkordb.connect_timeout 5 >/dev/null 2>&1 || return 1
+  hermes $pflag config set mcp_servers.falkordb.enabled true >/dev/null 2>&1 || return 1
+}
+n=0; okc=0
+n=$((n+1)); if _wire "$HOME/.hermes" ""; then okc=$((okc+1)); echo "ok default"; else echo "FAIL default"; fi
+for p in "$@"; do
+  n=$((n+1))
+  if _wire "$HOME/.hermes/profiles/$p" "--profile $p"; then okc=$((okc+1)); echo "ok $p"; else echo "FAIL $p"; fi
+done
+echo "WIRED $okc/$n"
+[ "$okc" -ge 1 ]
+WIRE
+  chmod 600 "$stage/falkordb-mcp-wire.sh"
+
+  "$osh" sandbox exec -n "$sb" --no-tty --timeout 30 </dev/null -- /bin/sh -c 'mkdir -p /sandbox/fleet-boot' >/dev/null 2>&1 || true
+  if ! "$osh" sandbox upload --no-git-ignore "$sb" "$stage/falkordb-mcp-wire.sh" /sandbox/fleet-boot/ >/dev/null 2>&1; then
+    warn "FalkorDB MCP: could not upload the wiring script to the sandbox — skipped."
+    return 0
+  fi
+
+  local roster; roster="$(_sg_roster "$osh" "$sb" | tr '\n' ' ')"
+  local out
+  out="$(printf '%s\n' "$token" | "$osh" sandbox exec -n "$sb" --no-tty --timeout 90 -- \
+    /bin/sh /sandbox/fleet-boot/falkordb-mcp-wire.sh "$url" $roster 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
+  local summary; summary="$(grep -oE 'WIRED [0-9]+/[0-9]+' <<<"$out" | tail -1)"
+  if [[ -n "$summary" ]]; then
+    grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
+    if grep -q '^FAIL ' <<<"$out"; then
+      warn "FalkorDB MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install falkordb_mcp')"
+    else
+      ok "FalkorDB MCP: $summary profiles wired"
+    fi
+  else
+    warn "FalkorDB MCP: wiring produced no summary (relay issue?). Output: $(tail -1 <<<"$out")"
+  fi
+  return 0
+}

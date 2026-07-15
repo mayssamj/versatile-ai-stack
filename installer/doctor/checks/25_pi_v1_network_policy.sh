@@ -83,6 +83,7 @@ pi_v1_network_policy_diagnose() {
     local negatives=(
       "host.docker.internal:8000:Honcho-raw"
       "host.docker.internal:7082:honcho-mcp"
+      "host.docker.internal:7083:falkordb-mcp"
       "host.docker.internal:6006:Phoenix"
       "host.docker.internal:6333:Qdrant"
       "host.docker.internal:6379:FalkorDB"

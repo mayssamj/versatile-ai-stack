@@ -662,6 +662,11 @@ if stamp_check 40; then
   configure_hermes_mcp_honcho "$OSH" "$SANDBOX" || warn "honcho MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install honcho_mcp')"
 fi
 
+# --- Wire the fleet to the FalkorDB graph-memory MCP — ONLY if falkordb_mcp was opted in ----
+if stamp_check 41; then
+  configure_hermes_mcp_falkordb "$OSH" "$SANDBOX" || warn "FalkorDB MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install falkordb_mcp')"
+fi
+
 stamp_mark "$PHASE"
 record "phase 04·F complete: $_EXPECT hermes profiles bootstrapped + routed to LiteLLM ($HERMES_MODEL) in sandbox $SANDBOX"
 ok "Phase 04·F — Hermes fleet — complete"
