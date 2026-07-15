@@ -4,6 +4,21 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-15 — fix(docs): 06 heredoc generator drift + docs embedder → embed-openai-small
+
+- **Generator drift closed:** the `installer/phases/06_documents.sh` ingest.py heredoc still carried
+  the pre-2026-07-05 clobbering `shutil.move(DONE / src.name)` — every `install 06` silently
+  REVERTED the committed never-clobber/preserve-subtree fix in `ingestor/ingest.py` (this is what
+  kept re-dirtying the working tree). The heredoc now renders **byte-identical** to the committed
+  file (verified by extract-and-diff). Same class as the slice-4 hermes-fleet-v1.yaml mirror drift.
+- **Docs embedder repointed** (operator decision 2026-07-14): `embedding_assignments.docs`
+  `embed-nomic` → `embed-openai-small` (cloud text-embedding-3-small via LiteLLM, dim 768 → 1536)
+  so the empty `ai-stack-docs` Qdrant collection can be populated without loading a local model.
+  Live LiteLLM `/v1/embeddings` round-trip verified (dim 1536). Re-render + re-ingest happen via
+  `install 06` + `ingestor/ingest.py` from main (collection recreated at the new dim).
+
+---
+
 ## 2026-07-14
 
 ### Bug Fixes

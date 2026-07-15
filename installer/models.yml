@@ -107,7 +107,7 @@ embeddings:
 # current hardcoded value as the fallback, so a missing section never breaks a
 # phase. Re-point with `vz-ai-stack.sh embedding assign <service> <model>`.
 embedding_assignments:
-  docs: embed-nomic
+  docs: embed-openai-small
   openwebui: embed-nomic
   lumen: embed-jina-code
   mempalace: embed-minilm
