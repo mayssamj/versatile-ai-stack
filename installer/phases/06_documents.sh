@@ -249,7 +249,7 @@ COLL = "ai-stack-docs"
 EMBED_MODEL = "embed-local"
 # Bind 0.0.0.0 so the docs-mcp alias (127.0.10.4) reaches us. FastMCP defaults
 # to 127.0.0.1, which makes the alias unreachable even with lo0 bound.
-mcp = FastMCP("ai-stack-docs", host="0.0.0.0", port=8765)
+mcp = FastMCP("ai-stack-docs", host="0.0.0.0", port=8765, stateless_http=True)  # stateless: accept a bare tools/call (pi's SDK-less MCP-over-HTTP client, no initialize handshake); SDK clients (claude/hermes) still work
 
 LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "http://litellm:4000")
 QDRANT_URL       = os.environ.get("QDRANT_URL", "http://qdrant:6333")

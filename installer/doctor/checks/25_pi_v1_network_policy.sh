@@ -67,9 +67,13 @@ pi_v1_network_policy_diagnose() {
   local positives=(
     "host.docker.internal:4000:LiteLLM"
     "host.docker.internal:8765:docs-mcp"
-    "host.docker.internal:7082:honcho-mcp"
-    "host.docker.internal:7083:falkordb-mcp"
   )
+  # honcho-mcp (:7082) / falkordb-mcp (:7083) egress is ADDITIVE/opt-in (Phase 40/41). Only assert
+  # it's reachable when the shim is actually running on the host — otherwise a box without those
+  # opt-in shims would false-fail (the egress stanza is harmless when the shim is absent). The
+  # NEGATIVE sweep still proves raw :8000/:6379 stay denied regardless.
+  if curl -s -o /dev/null --max-time 2 http://localhost:7082/healthz 2>/dev/null; then positives+=("host.docker.internal:7082:honcho-mcp"); fi
+  if curl -s -o /dev/null --max-time 2 http://localhost:7083/healthz 2>/dev/null; then positives+=("host.docker.internal:7083:falkordb-mcp"); fi
   local entry host port label result
   for entry in "${positives[@]}"; do
     IFS=: read -r host port label <<<"$entry"
