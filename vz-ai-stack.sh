@@ -282,8 +282,12 @@ ai-stack-installer — usage:
     vz-ai-stack.sh upgrade --check [service|all]   READ-ONLY: installed vs available per service
                                         (docker registry digest / brew / npm / PyPI / git ls-remote;
                                         downloads nothing). npm/pip/git now show real versions, not 'manual'.
-    vz-ai-stack.sh upgrade --outdated [--dry-run]   upgrade ONLY the services --check finds outdated
+    vz-ai-stack.sh upgrade --outdated [--dry-run]   upgrade ONLY services --check finds outdated —
+                                        docker/compose/brew CURRENCY only; does NOT reach the
+                                        sandbox/CLI/pip/fleet plane or host globals (it names what
+                                        it skipped). For those, use 'upgrade all' or 'upgrade hermes'.
     vz-ai-stack.sh upgrade --check --all    include non-checkable (manual: sandbox/CLI/config) rows too
+                                        (--all is inert with --outdated — warns if combined)
     vz-ai-stack.sh upgrade --check --json   machine-readable availability report
                                         (--dry-run prints the plan and changes nothing;
                                          AI_STACK_ASSUME_YES=1 auto-accepts the pinned-tag re-pull prompt)

@@ -81,8 +81,10 @@ vz-ai-stack.sh upgrade <service|all> [--dry-run]   upgrade a service (or all ena
 vz-ai-stack.sh upgrade hermes                      GROUP: upgrade EVERY hermes surface to latest
                                                    (fleet pip + workspace UI image + Telegram/Slack gateways)
 vz-ai-stack.sh upgrade --check [service|all|hermes] READ-ONLY: show which have an update available
-vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY the services found outdated
+vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY services found outdated (docker/
+                                                   compose/brew CURRENCY only — NOT the fleet/pip plane)
 vz-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
+                                                   (--all has NO effect with --outdated)
 vz-ai-stack.sh upgrade --check --json              machine-readable availability report
 
   Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
@@ -109,9 +111,16 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   Set AI_STACK_ASSUME_YES=1 to auto-accept the version-pinned re-pull prompt.
   See installed vs available anytime:  vz-ai-stack.sh status --versions
 
+  --outdated is a fast docker/compose/brew CURRENCY sweep. It does NOT reach the
+  sandbox/CLI/pip/fleet plane (in-sandbox hermes agent, pi, mempalace, docs_mcp) or
+  the host npm globals — those read 'manual' and can never hit the outdated gate. It
+  prints a footer naming what it skipped. For the true "upgrade everything" motion
+  (incl. the fleet brain), use `upgrade all`; for just the hermes surfaces, `upgrade hermes`.
+
   Typical flow:
     vz-ai-stack.sh upgrade --check        # see what's available
-    vz-ai-stack.sh upgrade --outdated     # upgrade everything that's behind
+    vz-ai-stack.sh upgrade --outdated     # pull the docker/compose/brew images that moved
+    vz-ai-stack.sh upgrade all            # exhaustive: also the fleet pip + host globals
     vz-ai-stack.sh upgrade openwebui      # or upgrade selectively from the list
 EOF
 }
@@ -145,7 +154,7 @@ print_summary() {
     IFS=$'\t' read -r svc strat res ver rev <<<"$row"
     printf "$fmt" "$svc" "$strat" "$res" "$ver" "$rev"
   done
-  note "VERSION: a value = installed (unchanged) · a→b = moved · - = unverifiable.   REVERIFY: ok = probe passed · warn = probe RAN and failed · n/a = no probe for this type (NOT a failure) · - = not probed (failed/skipped/dry-run)."
+  note "VERSION: a value = installed (unchanged) · a→b = moved · - = unverifiable.   REVERIFY: ok = probe passed · warn = probe RAN and failed after a bounded readiness grace → RESULT becomes 'FAILED (unhealthy: …)' and the run exits non-zero · n/a = no probe for this type (NOT a failure) · - = not probed (failed/skipped/dry-run)."
 }
 
 # upgrade_on_exit — EXIT-trap safety net. GUARANTEES the honesty summary is printed even
@@ -389,22 +398,42 @@ recreate_via_start_script() {
 # Echoes "ok", "warn" (probe RAN and failed), or "n/a" (no probe for this strategy);
 # never aborts the run. "n/a" must NOT read as a failure — it means "nothing to probe".
 reverify() {
-  local svc="$1" strategy="$2" h
+  local svc="$1" strategy="$2" h; local -i attempt
+  # F1 promotes this from an advisory column to the EXIT-CODE oracle (a 'warn' now
+  # fails the run). A service that was just pulled+recreated can legitimately need a
+  # moment to become healthy — litellm alone documents a 60s+ uvicorn/Prisma cold
+  # start (bin/start-litellm.sh) and NO start script waits for readiness — so an
+  # instant single-shot probe would false-FAIL a successful upgrade and train the
+  # operator to distrust the exit code (§24 council: architect+adversarial). We give
+  # a FAILING probe a bounded readiness grace: retry a few times, a few seconds apart.
+  #   - A healthy service returns on attempt 1 → NO extra probes (so litellm's
+  #     /health model-pings are NOT amplified; the grace loop only spins while failing).
+  #   - A genuinely-broken service still ends 'warn' after the window → still FAILED.
+  #   - Bounded, never unbounded: ~5 attempts × 4s (typical cold-start ~16s; the
+  #     pathological all-timeout case is capped by curl --max-time, still finite).
+  local -i tries=5 gap=4
   h="$(svc_health "$svc")"
   if [[ "$h" != "-" && -n "$h" ]]; then
-    if curl -fsS --max-time 10 "$h" >/dev/null 2>&1; then echo ok; else echo warn; fi
-    return 0
+    for (( attempt=1; attempt<=tries; attempt++ )); do
+      curl -fsS --max-time 10 "$h" >/dev/null 2>&1 && { echo ok; return 0; }
+      if (( attempt < tries )); then sleep "$gap"; fi
+    done
+    echo warn; return 0
   fi
   case "$strategy" in
     docker)
-      if container_running "$svc"; then echo ok; else echo warn; fi
+      for (( attempt=1; attempt<=tries; attempt++ )); do
+        container_running "$svc" && { echo ok; return 0; }
+        if (( attempt < tries )); then sleep "$gap"; fi
+      done
+      echo warn
       ;;
     compose)
-      if docker ps --format '{{.Names}}' | grep -qE "^$(svc_project "$svc")(-|$)"; then
-        echo ok
-      else
-        echo warn
-      fi
+      for (( attempt=1; attempt<=tries; attempt++ )); do
+        docker ps --format '{{.Names}}' | grep -qE "^$(svc_project "$svc")(-|$)" && { echo ok; return 0; }
+        if (( attempt < tries )); then sleep "$gap"; fi
+      done
+      echo warn
       ;;
     *)
       echo "n/a"   # brew/openshell/phase-rerun w/ no health: URL — no probe exists (NOT a failure)
@@ -1057,7 +1086,19 @@ upgrade_one() {
   if (( DRY == 0 )); then
     case "$RESULT" in
       FAILED*|skipped*|manual|planned) rev="-" ;;
-      *) rev="$(reverify "$svc" "$STRATEGY")" ;;
+      *) rev="$(reverify "$svc" "$STRATEGY")"
+         # A real liveness/health probe that RAN and FAILED ('warn') means the upgrade
+         # did NOT leave the service verified-healthy — so the RESULT must become a
+         # FAILED* value, otherwise the exit gate (which inspects RESULT, field 3, at
+         # the end of upgrade_main) returns 0 and a cron wrapping `--outdated` reads
+         # "success" on a degraded stack (SOUL §4/§18 end-to-end DoD). 'n/a' (no probe
+         # exists for this strategy) and 'ok' are NOT failures and are left untouched.
+         # VER (verdisp) is already computed above, so the summary still shows the
+         # version that moved — the row reads e.g. 'FAILED (unhealthy: upgraded)  0.1→0.2  warn'.
+         # Explicit `if` (not `[[ ]] && …`) so the arm's exit status is unambiguously 0
+         # under set -Eeuo pipefail + the ERR trap (no errexit surprise).
+         if [[ "$rev" == "warn" ]]; then RESULT="FAILED (unhealthy: ${RESULT})"; fi
+         ;;
     esac
   fi
   record_row "$svc" "$STRATEGY" "$RESULT" "$rev" "$verdisp"
@@ -1087,6 +1128,14 @@ upgrade_main() {
 
   if (( CHECK && OUTDATED )); then
     err "--check and --outdated are mutually exclusive."; upgrade_usage; exit 2
+  fi
+  # --all (ALL_ROWS) is only consumed by print_check_report (the bare `--check` table);
+  # the --outdated path never renders that table, so --all is inert here. Warn (don't
+  # abort — the command is still valid) so `upgrade --all --outdated` doesn't leave the
+  # operator believing --all widened the sweep. The exhaustive "everything" motion is
+  # `upgrade all` (a target), not the `--all` flag.
+  if (( ALL_ROWS && OUTDATED )); then
+    warn "--all has no effect with --outdated (it only affects a bare '--check' listing); --outdated already scans every enabled service. Did you mean 'vz-ai-stack.sh upgrade all'?"
   fi
 
   # Docker-info guard: only blocks docker/compose handlers, not brew/openshell.
@@ -1126,18 +1175,41 @@ upgrade_main() {
     # Run the same read-only check across all enabled, then upgrade only the
     # ones that came back 'update-available'.
     local -a list=(); collect_targets list "${target:-all}"
-    local svc
+    local svc; local -a skipped_manual=() unconfirmed=()
     hdr "Scanning for available updates…"
     for svc in "${list[@]}"; do
       check_one "$svc"
-      if [[ "$CHECK_STATUS" == "update-available" ]]; then
-        targets+=("$svc")
-        note "  $svc: $CHECK_STATUS ($CHECK_CUR → $CHECK_AVAIL)"
-      fi
+      case "$CHECK_STATUS" in
+        update-available)
+          targets+=("$svc")
+          note "  $svc: $CHECK_STATUS ($CHECK_CUR → $CHECK_AVAIL)" ;;
+        manual)
+          # No version oracle for --outdated (docker/compose/brew currency only): the
+          # sandbox/CLI/pip/fleet plane — the in-sandbox hermes agent, pi, mempalace,
+          # docs_mcp, etc. NEVER upgraded by --outdated (can't reach the gate above).
+          skipped_manual+=("$svc") ;;
+        unknown|rebuild)
+          # Currency NOT confirmed: a docker/compose image whose registry digest we
+          # couldn't read (proxy/Zscaler-blocked, or docker down → DOCKER_OK=0) or a
+          # locally-built image. --outdated leaves these untouched too — disclose them
+          # SEPARATELY so a proxy-blocked registry can't masquerade as full coverage
+          # (parity with --check's print_check_report 'unconfirmed' warning; audit F3).
+          unconfirmed+=("$svc") ;;
+      esac
     done
+    # ALWAYS disclose what --outdated could NOT act on — not only when nothing is
+    # outdated. A rolling upstream (litellm/phoenix/qdrant/…) almost always shows >=1
+    # outdated, so the old disclosure (gated on targets==0) effectively never printed
+    # and a green summary implied a coverage it never had (audit F3). Two honest buckets:
+    if (( ${#skipped_manual[@]} )); then
+      note "${#skipped_manual[@]} service(s) NOT version-checkable by --outdated — the sandbox/CLI/pip/fleet plane (in-sandbox hermes agent, pi, mempalace, docs_mcp …): ${skipped_manual[*]}"
+      note "  → for those (plus the host globals meridian/claude-code, which aren't modeled as services) run 'vz-ai-stack.sh upgrade all', or 'upgrade hermes' for the hermes surfaces, or upgrade one by name."
+    fi
+    if (( ${#unconfirmed[@]} )); then
+      warn "${#unconfirmed[@]} service(s) with currency NOT confirmed (registry/proxy unreachable or locally-built) — NOT upgraded by --outdated: ${unconfirmed[*]}. Re-check when the registry is reachable, or 'upgrade <svc>' to rebuild/pull explicitly."
+    fi
     if (( ${#targets[@]} == 0 )); then
-      ok "Nothing to upgrade — all auto-checkable services are up to date."
-      note "(sandbox/CLI/npm/pip services aren't version-checked; upgrade those by name if needed.)"
+      ok "Nothing auto-checkable is outdated — docker/compose/brew currency is up to date."
       return 0
     fi
     ok "${#targets[@]} service(s) to upgrade: ${targets[*]}"

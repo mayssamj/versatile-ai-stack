@@ -58,6 +58,14 @@ so it is a NORMAL opt-in (**NOT** in `install all`, but installs with `--include
 
 ---
 
+## 2026-07-14
+
+### Bug Fixes
+
+- upgrade: F1 unhealthy reverify ('warn', after a bounded readiness grace) now downgrades RESULT to FAILED* so 'upgrade --outdated'/'all' exits non-zero on a degraded service (was exit 0); F3 --outdated ALWAYS discloses the sandbox/CLI/pip/fleet plane + unknown/rebuild currency it cannot reach (routes to 'upgrade all'); F4 warns --all is inert with --outdated. §24 audit + 3-reviewer council 2026-07-14.
+
+---
+
 ## 2026-07-14 — feat(memory): honcho memory MCP (Phase 40) — shim + atomic egress retirement + embedding fix (slice 3)
 
 Makes Honcho memory usable by claude-cli + the Hermes fleet via a host-side token-gated MCP
