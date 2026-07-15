@@ -123,6 +123,38 @@ ensure_relay() {
   fi
 }
 
+# --- --recreate / restart: stop the pidfile-owned daemon FIRST, then fall
+# through to the normal idempotent start below. The upgrade funnel's verified-
+# recycle contract needs a REAL recycle: without this arm the script was a
+# healthy no-op exit 0 after a git-pull upgrade, so the daemon kept running
+# stale code while the summary said 'upgraded' (council R2a, 2026-07-15).
+if [[ "${1:-}" == "--recreate" || "${1:-}" == "restart" ]]; then
+  if [[ -f "$PID_FILE" ]]; then
+    _rpid="$(cat "$PID_FILE" 2>/dev/null || echo "")"
+    if pid_is_ours "$_rpid"; then
+      log "recreate: stopping paperclip (pid $_rpid)"
+      kill "$_rpid" 2>/dev/null || true
+      _i=0
+      while (( _i < 10 )) && kill -0 "$_rpid" 2>/dev/null; do sleep 1; _i=$((_i+1)); done
+      if kill -0 "$_rpid" 2>/dev/null; then kill -9 "$_rpid" 2>/dev/null || true; sleep 1; fi
+    fi
+    rm -f "$PID_FILE"
+  fi
+  # pnpm dev's node child can outlive its parent and keep :3100 bound — the
+  # fresh start below would then refuse ("port owned by someone else"). Drain:
+  # kill a lingering listener ONLY if its cwd is OUR clone (same anchor as
+  # pid_is_ours — never a foreign process that happens to own the port).
+  _i=0
+  while (( _i < 5 )) && port_listening "$PORT"; do
+    _lpid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+    if [[ "$_lpid" =~ ^[0-9]+$ ]]; then
+      _lcwd="$(lsof -a -d cwd -p "$_lpid" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
+      if [[ -n "$_lcwd" && "$_lcwd" == "$PC_DIR"* ]]; then kill "$_lpid" 2>/dev/null || true; fi
+    fi
+    sleep 1; _i=$((_i+1))
+  done
+fi
+
 # --- Already running + serving? Then no-op (idempotent re-entry).
 if [[ -f "$PID_FILE" ]]; then
   pid="$(cat "$PID_FILE" 2>/dev/null || echo "")"

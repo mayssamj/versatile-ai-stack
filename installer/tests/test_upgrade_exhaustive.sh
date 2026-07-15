@@ -72,7 +72,11 @@ done
 (( presolve_gap == 0 )) && ok "every phase-rerun service resolves to exactly one phase script"
 
 echo "== declared upgrade: blocks parse to a supported method =="
-VALID=" npm-global uv-venv git-pull rebuild phase-rerun "
+# v2 (2026-07-15 coverage broadening): uv-tool (mempalace/halo), sandbox-pip
+# (hermes_fleet — oracle + delegate-to-up_openshell), none (config-only marker /
+# pin-only holds), and '-' (a metadata-only block: deerflow carries compose
+# check_env with NO method — the TYPE handler stays in charge by design).
+VALID=" npm-global uv-venv git-pull rebuild phase-rerun uv-tool sandbox-pip none - "
 mapfile -t withup < <(yq -r '.services | to_entries | .[] | select(.value.upgrade) | .key' "$SVC")
 for s in "${withup[@]}"; do
   m="$(yq -r ".services.\"$s\".upgrade.method // \"-\"" "$SVC")"
@@ -120,9 +124,13 @@ grep -q 'collect_targets targets hermes' "$UPG" \
 [[ "$(yq -r '.services.hermes_workspace.upgrade.method // "-"' "$SVC")" == "phase-rerun" ]] \
   && ok "hermes_workspace declares upgrade.method=phase-rerun (re-resolve latest, not blind pull)" \
   || bad "hermes_workspace missing upgrade.method=phase-rerun → upgrade would blind-pull the frozen pin"
-# upgrade_one must honor that override (svc_has_upgrade → up_by_method BEFORE the type case).
-grep -q 'if svc_has_upgrade "$svc"; then up_by_method "$svc"; else' "$UPG" \
-  && ok "upgrade_one routes an explicit upgrade: block over the type default" \
-  || bad "upgrade_one ignores explicit upgrade: blocks (hermes_workspace would hit up_compose)"
+# upgrade_one must honor that override — v2: via dispatch_upgrade, whose real-method
+# arm routes to up_by_method BEFORE the type case (metadata-only blocks fall through).
+grep -q 'dispatch_upgrade "$svc" "$type" "$_method"' "$UPG" \
+  && ok "upgrade_one routes through the method-aware dispatcher" \
+  || bad "upgrade_one no longer calls dispatch_upgrade (explicit blocks may be ignored)"
+grep -qE 'npm-global\|uv-venv\|git-pull\|uv-tool\|sandbox-pip\|rebuild\|phase-rerun\|none\)' "$UPG" \
+  && ok "dispatcher's real-method arm covers phase-rerun (hermes_workspace stays overridden)" \
+  || bad "dispatcher method list lost phase-rerun (hermes_workspace would hit up_compose)"
 
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

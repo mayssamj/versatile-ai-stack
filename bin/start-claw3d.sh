@@ -52,6 +52,25 @@ pid_is_ours() {
 # → it reported a DOWN service as healthy, silently defeating the composite gate.
 http_ok() { local code; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null)" || code="000"; [[ "$code" =~ ^[23] ]]; }
 
+# --- --recreate / restart: stop the pidfile-owned UI FIRST, then fall through
+# to the normal composite start (bridge health-gate included). Council R2a: a
+# post-upgrade "restart" must actually recycle the daemon — this script used to
+# ignore all arguments and no-op exit 0 when healthy, so an upgraded clone kept
+# serving stale code while the summary said 'upgraded'. (2026-07-15)
+if [[ "${1:-}" == "--recreate" || "${1:-}" == "restart" ]]; then
+  if [[ -f "$PID_FILE" ]]; then
+    _rpid="$(cat "$PID_FILE" 2>/dev/null || echo "")"
+    if pid_is_ours "$_rpid"; then
+      log "recreate: stopping claw3d UI (pid $_rpid)"
+      kill "$_rpid" 2>/dev/null || true
+      _i=0
+      while (( _i < 10 )) && kill -0 "$_rpid" 2>/dev/null; do sleep 1; _i=$((_i+1)); done
+      if kill -0 "$_rpid" 2>/dev/null; then kill -9 "$_rpid" 2>/dev/null || true; sleep 1; fi
+    fi
+    rm -f "$PID_FILE"
+  fi
+fi
+
 # --- Idempotency: if the UI is already running, confirm the bridge is healthy too
 # (the composite invariant: never leave UI-up / bridge-dead → broken Connect).
 # UI up + bridge healthy → done. UI up + bridge dead → (re)start ONLY the bridge,

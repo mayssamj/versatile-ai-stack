@@ -94,12 +94,63 @@ check_image() {
   [[ "$l" == "$r" ]] && echo up-to-date || echo update-available
 }
 
+# --- pin / config awareness (shared: check_one AND status --versions) --------
+# svc_upgrade_pin <svc> — the declared `upgrade.pin` hold-marker, or "-".
+# The PHASE variable (LUMEN_VERSION, OW_VERSION, …) stays enforcement truth;
+# this is a display/hold marker only — never a measured version.
+svc_upgrade_pin() { svc_upgrade "$1" pin; }
+
+# Types with NO independently versioned artifact BY DEFINITION (derived, so a
+# future litellm-feature can't be forgotten): guardrails/agent-pattern/virtual-
+# key/plugin are pure config; sandbox-daemon surfaces (hermes_telegram/slack)
+# version with their owning service (hermes_fleet's in-sandbox hermes-agent).
+VZ_CONFIG_ONLY_TYPES="litellm-feature agent-pattern litellm-virtual-key paperclip-plugin sandbox-daemon"
+
+# svc_config_only <svc> — true (0) when the service is a configuration surface
+# (config-only type, or an explicit `upgrade.method: none` on an ambiguous type).
+# Gates `if`s — like is_host_global, returns 1 for "not config" ON PURPOSE.
+svc_config_only() {
+  local svc="$1" type t m
+  type="$(svc_type "$svc")"
+  for t in $VZ_CONFIG_ONLY_TYPES; do
+    if [[ "$type" == "$t" ]]; then return 0; fi
+  done
+  m="$(svc_upgrade "$svc" method)"
+  [[ "$m" == "none" ]]
+}
+
+# _compose_images <svc> — the compose stack's image list, honoring the optional
+# services.yml keys `compose_file:` (path relative to the service dir — deer-flow
+# keeps its compose at docker/docker-compose.yaml, invisible to a bare
+# `docker compose config`) and `upgrade.check_env:` (VAR: value map exported ONLY
+# for this read-only parse; %DIR% expands to the resolved service dir — deer-flow
+# hard-fails `config` without 5 substitution vars incl. DEER_FLOW_DOCKER_SOCKET).
+# Read-only: `config --images` parses, never pulls. Empty output on any miss.
+_compose_images() {
+  local svc="$1" dir cf kv
+  dir="$(svc_path "$svc")"
+  { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]]; } && return 0
+  local -a args=() envs=()
+  cf="$(yq -r ".services.$svc.compose_file // \"-\"" "$SERVICES_YML" 2>/dev/null || true)"
+  if [[ -n "$cf" && "$cf" != "-" ]]; then args=(-f "$cf"); fi
+  while IFS= read -r kv; do
+    # Shape-validate: only NAME=value lines may reach `env`'s argv — a malformed
+    # or multi-line YAML value would otherwise split into a fragment WITHOUT '='
+    # which env treats as the COMMAND to execute (impl-council hardening).
+    if [[ "$kv" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then envs+=("${kv//\%DIR\%/$dir}"); fi
+  done < <(yq -r "(.services.$svc.upgrade.check_env // {}) | to_entries | .[] | .key + \"=\" + (.value|tostring)" "$SERVICES_YML" 2>/dev/null || true)
+  ( cd "$dir" && env "${envs[@]}" docker compose "${args[@]}" config --images 2>/dev/null ) || true
+  return 0
+}
+
 # version_status <svc> — unified currency word over ALL types, so status.sh and
 # upgrade.sh agree. docker/compose use the digest comparison (check_image); every
-# other type uses installed-vs-available string classification.
+# other type uses installed-vs-available string classification, with declared
+# pins ('pinned') and config-only surfaces ('config') classified BEFORE the
+# oracle so both consumers render the same word.
 #   docker  -> pinned|build|up-to-date|update-available|unknown
 #   compose -> up-to-date|update-available|rebuild|unknown|manual
-#   other   -> up-to-date|update-available|no-oracle|unknown
+#   other   -> pinned|config|up-to-date|update-available|no-oracle|unknown
 version_status() {
   local svc="$1" type; type="$(svc_type "$svc")"
   case "$type" in
@@ -113,7 +164,7 @@ version_status() {
       { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]]; } && { echo manual; return 0; }
       command -v docker >/dev/null 2>&1 || { echo unknown; return 0; }
       local imgs im st any_update=0 any_unknown=0 any_build=0 n=0
-      imgs="$( cd "$dir" && docker compose config --images 2>/dev/null || true )"
+      imgs="$(_compose_images "$svc")"
       [[ -z "$imgs" ]] && { echo manual; return 0; }
       while IFS= read -r im; do
         [[ -z "$im" ]] && continue; n=$((n+1)); st="$(check_image "$im")"
@@ -135,6 +186,11 @@ version_status() {
       [[ -n "$bavail" && "$bavail" != "-" ]] && echo update-available || echo up-to-date
       ;;
     *)
+      # Declared pin wins (even over method:none — 'pinned' is the more precise
+      # word for a held-but-versioned artifact); config-only next; then the oracle.
+      local _vsp; _vsp="$(svc_upgrade_pin "$svc")"
+      if [[ -n "$_vsp" && "$_vsp" != "-" ]]; then echo pinned; return 0; fi
+      if svc_config_only "$svc"; then echo config; return 0; fi
       version_classify "$type" "$(svc_installed_version "$svc")" "$(svc_available_version "$svc")"
       ;;
   esac
@@ -166,7 +222,7 @@ _iv_compose() {
   local svc="$1" dir imgs im d n=0 digs=""
   dir="$(svc_path "$svc")"
   { [[ -z "$dir" || "$dir" == "-" || ! -d "$dir" ]] || ! command -v docker >/dev/null 2>&1; } && { echo "-"; return 0; }
-  imgs="$( cd "$dir" && docker compose config --images 2>/dev/null || true )"
+  imgs="$(_compose_images "$svc")"
   [[ -z "$imgs" ]] && { echo "-"; return 0; }
   while IFS= read -r im; do
     [[ -z "$im" ]] && continue
@@ -232,11 +288,28 @@ _iv_brew() {
   printf '%s' "${out:--}"
 }
 
+# _svc_npm_bin <svc> — the npm binary the oracle AND handler must SHARE.
+# `upgrade.npm_bin` pins it when the ambient prefix lies: OpenAgents' portable
+# Node hijacks the rc PATH (~/.openagents/nodejs), so portless — installed under
+# the homebrew npm — is invisible to (and would be mis-installed by) ambient npm.
+# FAIL-CLOSED: a DECLARED npm_bin that is missing/broken echoes the sentinel
+# 'npm_bin-missing' (an impossible command) so the oracle reads '-' and the
+# handler skips — silently falling back to ambient npm would reintroduce the
+# exact wrong-prefix mis-install the key exists to prevent.
+_svc_npm_bin() {
+  local b; b="$(svc_upgrade "$1" npm_bin)"
+  if [[ -z "$b" || "$b" == "-" ]]; then printf 'npm'
+  elif [[ -x "$b" ]]; then printf '%s' "$b"
+  else printf 'npm_bin-missing'; fi
+  return 0
+}
+
 _iv_npm() {
-  local svc="$1" pkg out
+  local svc="$1" pkg out npmb
   pkg="$(svc_upgrade "$svc" target)"; [[ "$pkg" == "-" || -z "$pkg" ]] && pkg="$svc"
-  command -v npm >/dev/null 2>&1 || { echo "-"; return 0; }
-  out="$(npm ls -g "$pkg" --depth=0 2>/dev/null | sed -n "s/.*${pkg}@\\([0-9][^[:space:]]*\\).*/\\1/p" | head -1 || true)"
+  npmb="$(_svc_npm_bin "$svc")"
+  command -v "$npmb" >/dev/null 2>&1 || { echo "-"; return 0; }
+  out="$("$npmb" ls -g "$pkg" --depth=0 2>/dev/null | sed -n "s/.*${pkg}@\\([0-9][^[:space:]]*\\).*/\\1/p" | head -1 || true)"
   printf '%s' "${out:--}"
 }
 
@@ -275,15 +348,48 @@ _iv_git() {
   printf '%s' "${out:--}"
 }
 
+# _iv_uvtool <svc> — installed version of a uv-managed TOOL (uv tool install).
+# `uv pip show` against the tool venv would desync from uv's receipt; the receipt
+# (`uv tool list`) is truth. Output is 'pkg vX.Y.Z' (v-prefixed — verified live);
+# strip the v so the classify comparison against PyPI's bare version can converge
+# (else every --outdated re-selects an already-current tool forever).
+_iv_uvtool() {
+  local svc="$1" pkg out
+  pkg="$(svc_upgrade "$svc" pkg)"; [[ "$pkg" == "-" || -z "$pkg" ]] && pkg="$svc"
+  command -v uv >/dev/null 2>&1 || { echo "-"; return 0; }
+  out="$(uv tool list 2>/dev/null | awk -v p="$pkg" '$1==p {sub(/^v/,"",$2); print $2; exit}' || true)"
+  printf '%s' "${out:--}"
+}
+
+# _iv_sandbox_pip <svc> — installed version of upgrade.pkg INSIDE the service's
+# openshell sandbox (host pip/uv cannot see /sandbox/.venv). Bounded docker exec
+# against a RUNNING container matching the `upgrade.container` name prefix; any
+# miss (docker down, container Exited, exec failure) degrades to '-' — honest
+# 'unknown', never a hang. SELF-CONTAINED docker gate: ${DOCKER_OK:-1}, because
+# status --versions sources this file without upgrade.sh's DOCKER_OK probe and a
+# bare $DOCKER_OK would be a set -u unbound abort (check-72 crash family).
+_iv_sandbox_pip() {
+  local svc="$1" pkg pref c out
+  pkg="$(svc_upgrade "$svc" pkg)"; pref="$(svc_upgrade "$svc" container)"
+  { [[ "$pkg" == "-" || -z "$pkg" ]] || [[ "$pref" == "-" || -z "$pref" ]]; } && { echo "-"; return 0; }
+  if (( ${DOCKER_OK:-1} == 0 )) || ! command -v docker >/dev/null 2>&1; then echo "-"; return 0; fi
+  c="$(_vz_bounded 10 docker ps --filter "name=$pref" --filter "status=running" --format '{{.Names}}' 2>/dev/null | head -1 || true)"
+  [[ -z "$c" ]] && { echo "-"; return 0; }
+  out="$(_vz_bounded 10 docker exec "$c" /sandbox/.venv/bin/pip show "$pkg" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
+  printf '%s' "${out:--}"
+}
+
 # manual-typed services (cli-only/node-bg/python-bg/…) route on their declared
 # upgrade.method — the same dispatch up_by_method uses.
 _iv_by_method() {
   local svc="$1" m; m="$(svc_upgrade "$svc" method)"
   case "$m" in
-    npm-global) _iv_npm "$svc" ;;
-    uv-venv)    _iv_pip "$svc" ;;
-    git-pull)   _iv_git "$svc" ;;
-    *)          echo "-" ;;
+    npm-global)  _iv_npm "$svc" ;;
+    uv-venv)     _iv_pip "$svc" ;;
+    git-pull)    _iv_git "$svc" ;;
+    uv-tool)     _iv_uvtool "$svc" ;;
+    sandbox-pip) _iv_sandbox_pip "$svc" ;;
+    *)           echo "-" ;;
   esac
 }
 
@@ -322,10 +428,11 @@ print(f[0]['current_version'] if f else '')" 2>/dev/null || true)"
 }
 
 _av_npm() {
-  local svc="$1" pkg out
+  local svc="$1" pkg out npmb
   pkg="$(svc_upgrade "$svc" target)"; [[ "$pkg" == "-" || -z "$pkg" ]] && pkg="$svc"
-  command -v npm >/dev/null 2>&1 || { echo "-"; return 0; }
-  out="$(_vz_bounded 12 npm view "$pkg" version 2>/dev/null | tail -1 || true)"
+  npmb="$(_svc_npm_bin "$svc")"
+  command -v "$npmb" >/dev/null 2>&1 || { echo "-"; return 0; }
+  out="$(_vz_bounded 12 "$npmb" view "$pkg" version 2>/dev/null | tail -1 || true)"
   printf '%s' "${out:--}"
 }
 
@@ -340,23 +447,34 @@ except Exception: print('')" 2>/dev/null || true)"
 }
 
 _av_git() {
-  local svc="$1" dir abs out
+  local svc="$1" dir abs out br=""
   dir="$(svc_upgrade "$svc" dir)"; [[ "$dir" == "-" || -z "$dir" ]] && dir="$(svc_upgrade "$svc" target)"
   [[ "$dir" == "-" || -z "$dir" ]] && dir="$(svc_path "$svc")"
   [[ "$dir" == "-" || -z "$dir" ]] && { echo "-"; return 0; }
   abs="$AI_STACK/$dir"; [[ "$dir" == /* ]] && abs="$dir"
   { [[ ! -d "$abs/.git" ]] || ! command -v git >/dev/null 2>&1; } && { echo "-"; return 0; }
-  out="$(_vz_bounded 12 git -C "$abs" ls-remote origin HEAD 2>/dev/null | awk '{print $1}' | head -1 || true)"
+  # Compare against the TRACKED branch, not the remote's default HEAD: a clone
+  # sitting on a non-default branch (or an upstream that moved its default) would
+  # otherwise read update-available forever while `pull --ff-only` no-ops — a
+  # nag loop that never converges. Fall back to origin HEAD when detached.
+  br="$(git -C "$abs" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+  if [[ -n "$br" ]]; then
+    out="$(_vz_bounded 12 git -C "$abs" ls-remote origin "refs/heads/$br" 2>/dev/null | awk '{print $1}' | head -1 || true)"
+  fi
+  [[ -z "${out:-}" ]] && out="$(_vz_bounded 12 git -C "$abs" ls-remote origin HEAD 2>/dev/null | awk '{print $1}' | head -1 || true)"
   [[ -n "$out" ]] && printf '%s' "${out:0:7}" || echo "-"
 }
 
 _av_by_method() {
   local svc="$1" m; m="$(svc_upgrade "$svc" method)"
   case "$m" in
-    npm-global) _av_npm "$svc" ;;
-    uv-venv)    _av_pip "$svc" ;;
-    git-pull)   _av_git "$svc" ;;
-    *)          echo "-" ;;
+    npm-global)          _av_npm "$svc" ;;
+    uv-venv)             _av_pip "$svc" ;;
+    git-pull)            _av_git "$svc" ;;
+    # uv-tool and sandbox-pip artifacts both live on PyPI (upgrade.pkg) — the
+    # upstream probe is the same bounded PyPI JSON read.
+    uv-tool|sandbox-pip) _av_pip "$svc" ;;
+    *)                   echo "-" ;;
   esac
 }
 

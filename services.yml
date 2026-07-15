@@ -264,6 +264,13 @@ services:
     desc: "The 9-role Hermes engineering-team fleet in the hermes-fleet-v1 OpenShell sandbox"
     profiles: [hermes_manager, hermes_techlead, hermes_frontend_engineer, hermes_backend_engineer, hermes_ml_engineer, hermes_qa_test_engineer, hermes_reviewing_engineer, hermes_sre_engineer, hermes_incident_manager]
     phase: "04f"
+    upgrade:
+      # ORACLE-carrying method whose MUTATION delegates to up_openshell's in-sandbox
+      # pip (the already-honest handler). Do NOT change to uv-venv/npm-global — the
+      # host cannot see /sandbox/.venv and would hijack the openshell lifecycle.
+      method: sandbox-pip
+      pkg: hermes-agent
+      container: openshell-hermes-fleet-v1
     network: openshell
     help:
       "what": The 9-role Hermes engineering-team fleet -- manager, techlead, frontend/backend/ml engineers, qa-test, reviewing, sre, incident-manager -- running as OpenShell profiles in the hermes-fleet-v1 sandbox.
@@ -601,6 +608,11 @@ services:
     port: 3100
     bind: 127.0.0.1
     phase: "08"
+    upgrade:
+      method: git-pull
+      dir: tools/paperclip
+      build: "pnpm install"     # pull alone leaves new deps uninstalled
+      restart: paperclip        # pnpm dev hot-reloads source but NOT new deps
     open_url: http://paperclip:3100
     alias: paperclip
     host_ip: 127.0.10.14
@@ -689,6 +701,9 @@ services:
     type: cli-only
     desc: "Local-first verbatim conversation memory + temporal KG; Claude Code session recall"
     phase: "26"
+    upgrade:                    # uv-MANAGED tool: `uv tool install --upgrade` is the
+      method: uv-tool           # idiomatic verb (pip into the tool venv desyncs uv's receipt)
+      pkg: mempalace            # PyPI only — mempalace.tech is a malware squat (phase 26)
     network: none
     # Embeddings run ON-DEVICE (CoreML ONNX embedding-gemma-300m) — never cloud,
     # never through LiteLLM. The OPTIONAL entity-refinement LLM routes via the
@@ -719,6 +734,19 @@ services:
     # can find them. 2-agent root cause 2026-05-29.
     project: deer-flow
     phase: "10"
+    compose_file: docker/docker-compose.yaml   # compose lives in docker/, not the repo root
+    upgrade:
+      # VISIBILITY only (no method → the docker-compose type handler stays in charge):
+      # these vars are exported ONLY for the read-only `docker compose config --images`
+      # parse — deer-flow's compose hard-fails on 5 unset substitution vars (incl. the
+      # docker socket). %DIR% expands to the resolved service dir. A real deerflow
+      # upgrade is still: git pull + re-apply patches + deploy (phase 10).
+      check_env:
+        DEER_FLOW_HOME: "%DIR%/backend/.deer-flow"
+        DEER_FLOW_REPO_ROOT: "%DIR%"
+        DEER_FLOW_CONFIG_PATH: "%DIR%/config.yaml"
+        DEER_FLOW_EXTENSIONS_CONFIG_PATH: "%DIR%/extensions_config.json"
+        DEER_FLOW_DOCKER_SOCKET: /var/run/docker.sock
     open_url: http://deerflow:2026
     network: ai-stack
     alias: deerflow
@@ -743,6 +771,9 @@ services:
     type: cli-only
     desc: "CLI agent reading a LiteLLM trace to find failures and propose fixes"
     phase: "11"
+    upgrade:                    # fixes a real never-upgrades gap: phase 11 installs
+      method: uv-tool           # WITHOUT --upgrade and gates on already-installed
+      pkg: halo-engine
     network: none
     help:
       "what": An LLM agent runtime (halo-engine, exposes a `halo` CLI) that reads a JSONL OTel/LiteLLM trace and reasons over it with an agent loop to find failure patterns and propose fixes, routed through LiteLLM.
@@ -784,6 +815,12 @@ services:
     type: cli-only
     desc: "Batch CLI that evolves reusable agent-context playbooks via LiteLLM"
     phase: "17"
+    upgrade:
+      method: git-pull          # oracle only — the pin below HOLDS every mutation
+      dir: ace
+      # HOLD: deliberate supply-chain SHA pin (ACE_PIN, phase 17 + .env).
+      pin: "bcb7cea0504afad6f55fec4845dd4864c9f9eee7"
+      bump: "set ACE_PIN in .env to the vetted new SHA, vz-ai-stack.sh install 17, align upgrade.pin here"
     network: none
     # Routes via LiteLLM virtual key ACE_LITELLM_KEY (minted by Phase 17).
     # Every LLM call appears in Phoenix project ai-stack for free.
@@ -805,6 +842,10 @@ services:
     type: cli-only
     desc: "CLI + library for recursive long-context inference over huge inputs"
     phase: "18"
+    upgrade:                    # PyPI lib in a repo venv — same shape as remnic_hermes
+      method: uv-venv
+      venv: rlm/.venv
+      pkg: rlms
     network: none
     # Routes via LiteLLM virtual key RLM_LITELLM_KEY (minted by Phase 18).
     # REPL (model-generated code) runs in a Docker sandbox (python:3.11-slim),
@@ -829,6 +870,8 @@ services:
     type: python-bg
     desc: "Host daemon exposing every stack agent on one OpenAI-style endpoint"
     phase: "19"
+    upgrade:
+      method: none              # first-party stack source (claw3d-bridge/bridge.py)
     process_pattern: claw3d-bridge/bridge.py
     network: host
     # claw3d's custom HTTP runtime: /health,/state,/registry,/v1/chat/completions.
@@ -853,6 +896,11 @@ services:
     type: node-bg
     desc: "Next.js 3D virtual-office UI to visualize and chat with stack agents"
     phase: "19"
+    upgrade:
+      method: git-pull
+      dir: claw3d
+      build: "npm install"
+      restart: claw3d           # node server/index.js has no watcher — stale until recycled
     open_url: http://localhost:4310
     process_pattern: claw3d/server/index.js
     network: host
@@ -940,6 +988,12 @@ services:
     desc: "Earendil's tree-branching TUI coding agent in its own pi-v1 sandbox"
     sandbox: pi-v1
     phase: "15"
+    upgrade:
+      # Pin-only block (NO method — the openshell type handler keeps pi's dedicated
+      # up_openshell arm): pinned + tarball-staged (sandbox proxy 403s scoped npm).
+      # The pin is enforced in the GENERATED pi/package.json (phase 15).
+      pin: "0.77.0"
+      bump: "rm -f pi/pi-bootstrap.tar.gz pi/package-lock.json && vz-ai-stack.sh install 15"
     network: openshell
     # No host alias; TUI is launched via `bin/pi` (openshell sandbox exec).
     # Pi calls http://host.docker.internal:4000 (LiteLLM) with PI_LITELLM_KEY.
@@ -983,6 +1037,12 @@ services:
     type: cli-only
     desc: "Ory's Lumen: semantic code search as a CLI or stdio MCP server"
     phase: "16"
+    upgrade:
+      method: none              # pinned GitHub-release binary — no method-upgradable artifact
+      # HOLD: LUMEN_VERSION + SHA256 in 16_lumen.sh; a bump also invalidates the
+      # version-keyed indexes (re-index required).
+      pin: "0.0.41"
+      bump: "edit LUMEN_VERSION+LUMEN_SHA256 in installer/phases/16_lumen.sh, vz-ai-stack.sh install 16 (indexes rebuild), align upgrade.pin here"
     network: none
     # Reads from Ollama for embeddings; index lives in ~/.local/share/lumen/.
     consumes_env:
@@ -1008,6 +1068,13 @@ services:
     type: cli-only
     desc: "Agent-aware local dev proxy mapping named HTTPS URLs to dev servers"
     phase: "21"
+    upgrade:
+      method: npm-global
+      target: portless
+      # OpenAgents' portable Node hijacks the ambient npm prefix (~/.openagents/nodejs);
+      # portless lives under the HOMEBREW npm — pin the binary so the version oracle
+      # and the installer act on the SAME prefix (else: false 'upgraded' into the wrong one).
+      npm_bin: /opt/homebrew/bin/npm
     network: none
     # Global npm CLI on the host; ships a Claude Code skill (portless get/list).
     # Node 24+ recommended (runs under 22). `vz-ai-stack.sh install portless`.
@@ -1056,6 +1123,12 @@ services:
     type: cli-only
     desc: "NVIDIA offline-first scanner vetting a skill/MCP server before install"
     phase: "23"
+    upgrade:
+      method: git-pull
+      dir: skillspector
+      # Editable install (-e): code is live on pull, but NEW upstream deps need the
+      # editable reinstall — the build runs in the clone dir after every real pull.
+      build: "uv pip install --python .venv/bin/python -e ."
     network: none
     # Vendored clone (gitignored) + uv venv + bin/skillspector wrapper (--no-llm
     # default). Optional LLM stage can point at LiteLLM. `vz-ai-stack.sh install skillspector`.
@@ -1169,6 +1242,11 @@ services:
     type: node-bg
     desc: "AionUi — desktop + browser Cowork workspace over your stack (LiteLLM models + Hermes agent via ACP)"
     phase: "28"
+    upgrade:
+      method: none              # pinned GitHub-release tarball (SHA-verified by phase 28)
+      # HOLD: AW_VERSION in 28_aionui.sh (phase variable = truth).
+      pin: "2.1.21"
+      bump: "AIONUI_WEB_VERSION=<new|latest> vz-ai-stack.sh install aionui, then align upgrade.pin here"
     # Host service: the desktop app is a brew cask; the WebUI server is the prebuilt
     # `aionui-web` standalone binary run as a loopback launchd daemon
     # (bin/start-aionui.sh). NOT a container / NOT on the ai-stack bridge → doctor
@@ -1200,6 +1278,13 @@ services:
     type: node-bg
     desc: "OpenWork — headless OpenCode-powered Cowork workspace over your stack (browser UI, LiteLLM models, skills/plugins/MCP, approval-gated)"
     phase: "29"
+    upgrade:
+      method: npm-global
+      target: openwork-orchestrator
+      restart: openwork
+      # HOLD: phase 29 pins OW_VERSION for reproducibility (phase variable = truth).
+      pin: "0.17.1"
+      bump: "OPENWORK_VERSION=<new|latest> vz-ai-stack.sh install 29, then align upgrade.pin here"
     # Host service: the headless orchestrator (npm-installed prebuilt `openwork`
     # binary) run as a loopback launchd daemon (bin/start-openwork.sh). It self-
     # manages OpenCode (downloads its sidecars) — NOT a container, NOT on the
@@ -1232,6 +1317,9 @@ services:
     type: node-bg
     desc: "Understand-Anything — codebase knowledge graph, queryable from Claude Code, Pi, and the Hermes fleet (MCP)"
     phase: "30"
+    upgrade:
+      method: none              # engine = Claude Code PLUGIN (/plugin update, out-of-band);
+                                # the understand-mcp shim rides the ai-stack repo
     # Host-loopback node daemon (bin/start-understand.sh): the understand-mcp HTTP
     # server the Hermes fleet dials at host.docker.internal:7081. Local clients (Claude
     # Code, Pi) use the stdio entrypoint instead. NOT a container / NOT on the ai-stack
@@ -1264,6 +1352,14 @@ services:
     type: cli-only
     desc: "MetaGPT — multi-agent software-company sim (PM→architect→engineer→QA), run via bin/metagpt"
     phase: "32"
+    upgrade:
+      method: uv-venv           # oracle only — the pin below HOLDS every mutation
+      venv: metagpt/.venv
+      pkg: metagpt
+      # HOLD: 32_metagpt.sh pins 0.8.2 (repro; a bump needs --prerelease=allow AND the
+      # typer>=0.12 post-fix baked into the phase).
+      pin: "0.8.2"
+      bump: "edit the metagpt pin in installer/phases/32_metagpt.sh, vz-ai-stack.sh install 32, align upgrade.pin here"
     network: none
     consumes_env:
       - METAGPT_LITELLM_KEY
@@ -1284,6 +1380,10 @@ services:
     type: cli-only
     desc: "OASIS — large-scale social-media agent swarm simulation (CAMEL), run via bin/oasis"
     phase: "34"
+    upgrade:                    # dist name is camel-oasis (import name is oasis)
+      method: uv-venv
+      venv: oasis/.venv
+      pkg: camel-oasis
     network: none
     consumes_env:
       - OASIS_LITELLM_KEY
@@ -1304,6 +1404,13 @@ services:
     type: cli-only
     desc: "Concordia — DeepMind generative agent-based modeling (GABM) with a Game Master, run via bin/concordia"
     phase: "37"
+    upgrade:
+      method: uv-venv           # oracle only — the pin below HOLDS every mutation
+      venv: concordia/.venv
+      pkg: gdm-concordia
+      # HOLD: 37_concordia.sh pins 2.4.0 (the seeded sim's prefab keys track this API).
+      pin: "2.4.0"
+      bump: "edit the gdm-concordia pin in installer/phases/37_concordia.sh, vz-ai-stack.sh install 37, align upgrade.pin here"
     network: none
     consumes_env:
       - CONCORDIA_LITELLM_KEY
@@ -1324,6 +1431,10 @@ services:
     type: cli-only
     desc: "AgentScope — multi-agent simulation framework (build/scale your own agent swarms), run via bin/agentscope"
     phase: "33"
+    upgrade:                    # core lib is deliberately UNPINNED (phase 33 --upgrade)
+      method: uv-venv
+      venv: agentscope/.venv
+      pkg: agentscope
     network: none
     consumes_env:
       - AGENTSCOPE_LITELLM_KEY
@@ -1418,6 +1529,8 @@ services:
     type: node-bg
     desc: "Honcho memory MCP shim — wraps Honcho's REST API as MCP tools (honcho_remember/recall/ask/search) for claude-cli (stdio) and the Hermes fleet (http)"
     phase: "40"
+    upgrade:
+      method: none              # in-repo shim — versions with the ai-stack repo itself
     # Host-loopback node daemon (bin/start-honcho_mcp.sh): the honcho-mcp HTTP server the
     # Hermes fleet dials at host.docker.internal:7082 (token-gated by HONCHO_MCP_TOKEN).
     # Local clients (host Claude Code, Pi) use the stdio entrypoint instead (honcho-mcp/
@@ -1453,6 +1566,8 @@ services:
     type: node-bg
     desc: "FalkorDB graph-memory MCP shim — wraps FalkorDB's Cypher (over Redis) as minimal graph-memory tools (remember_fact/recall_related/graph_query/graph_write) for claude-cli (stdio) and the Hermes fleet (http)"
     phase: "41"
+    upgrade:
+      method: none              # in-repo shim — versions with the ai-stack repo itself
     # Host-loopback node daemon (bin/start-falkordb_mcp.sh): the falkordb-mcp HTTP server the
     # Hermes fleet dials at host.docker.internal:7083 (token-gated by FALKORDB_MCP_TOKEN).
     # Local clients (host Claude Code, Pi) use the stdio entrypoint instead (falkordb-mcp/

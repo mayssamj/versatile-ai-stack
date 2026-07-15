@@ -1713,7 +1713,7 @@ vz-ai-stack.sh status --versions          # installed vs available version per s
 
 # UPGRADE — read-only "what has an update?" first; then upgrade only what's behind.
 vz-ai-stack.sh upgrade --check            # READ-ONLY: installed vs available (npm/pip/git now checked too)
-vz-ai-stack.sh upgrade --check --all      # include non-checkable (manual) services
+vz-ai-stack.sh upgrade --check --all      # include the hidden no-signal rows too (manual / config-only)
 vz-ai-stack.sh upgrade --outdated --dry-run   # show what --outdated WOULD upgrade
 # Every `upgrade` prints a pre-run version report + a VERSION column showing what
 # actually moved — a no-op reads 'up-to-date', never a false 'upgraded' (--no-check to skip).
@@ -1733,7 +1733,7 @@ vz-ai-stack.sh cleanup            # DRY-RUN: shows what it WOULD reclaim
 vz-ai-stack.sh cleanup --yes      # actually delete (safe: git-ignored regenerables only)
 ```
 
-**Expected.** `doctor` ends with `Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.` — many checks **auto-fix** and re-verify rather than just complaining. `upgrade --check` prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; sandbox/CLI/npm/pip rows are hidden unless `--all`). `history` prints a chronological record of every install decision.
+**Expected.** `doctor` ends with `Doctor done: N checks, X passed, Y fixed, Z remaining failed, W skipped.` — many checks **auto-fix** and re-verify rather than just complaining. `upgrade --check` prints a table of current-vs-available with nothing mutated (docker/compose are compared by digest; the npm/pip/git/uv and sandbox planes are version-checked through a shared oracle; deliberately **`pinned`** services are shown but held — no upgrade path auto-sweeps them; only the no-signal rows — `manual` (real artifact, no version oracle yet) and `config` (a configuration surface that versions with the stack repo or its owning service) — are hidden unless `--all`). `history` prints a chronological record of every install decision.
 
 **Doctor deep dive.** Each `installer/doctor/checks/NN_*.sh` registers a `<name>_diagnose` (and often an auto-fix) and runs detached from stdin so an inherited pipe can't make a check falsely fail. They cover the foundations (OrbStack up, `host.docker.internal`, `.env` valid, loopback aliases, the ai-stack network, `/etc/hosts` block, alias→container routing) and each service (Pi sandbox + its network policy + LiteLLM key allowlist, Lumen, DeerFlow, ACE, RLM, Hermes routing + Telegram, the opt-in extras 34–38, models binding 40, Meridian/Claude-subscription 41, the agent fleet 42, the watchdog alert 43, MemPalace 44, the Sourcegraph fleet MCP 49, AionUi 50, OpenWork 51, Understand-Anything 52, and the always-on container-liveness census 53). Check **39 (`openshell_storm`)** is special: it detects the OpenShell expired-token reconnect storm and is the in-band counterpart to the watchdog below; **check 43 (`watchdog_alert`)** surfaces any pending alert the watchdog left behind. **Check 44 (`mempalace`)** pass-as-skips until Phase 26 has run (it's now part of `install all`); **checks 49 / 50 / 51 / 52 (`sourcegraph_mcp` / `aionui` / `openwork` / `understand`)** skip-clean until the Phase 27 / 28 / 29 / 30 opt-in extras are installed. **Check 05a (`litellm_keystore`)** runs before the key checks and AUTO-HEALS the LiteLLM key-store (honcho Postgres) if it's down — so a 503 no longer cascades into false 'key rejected' errors.
 
@@ -1755,7 +1755,7 @@ vz-ai-stack.sh reset --confirm hard --yes     # backs up data/, tears down conta
 
 **Lesson.** The operational loop is: **`status`** (what's declared vs running) → **`doctor`** (what's broken, auto-fix where possible) → **`upgrade --check`** then **`upgrade --outdated`** (stay current without surprises) → **`history`** when you need to remember *why*. Destructive verbs are tiered and always print their blast radius first; the watchdog handles the one failure mode that would otherwise burn CPU while you're away.
 
-**Go deeper.** `doc/DOCTOR.md` documents every check (asserts / fails-when / auto-fix); `doc/OPERATIONS.md` is the day-2 runbook; `doc/TROUBLESHOOTING.md` maps symptoms to fixes. `upgrade` runs as its own process and owns the install lock, so it never deadlocks and never loads a model (binary/image only).
+**Go deeper.** `doc/DOCTOR.md` documents every check (asserts / fails-when / auto-fix); `doc/OPERATIONS.md` is the day-2 runbook; `doc/TROUBLESHOOTING.md` maps symptoms to fixes. `upgrade` runs as its own process and owns the install lock, so it never deadlocks and never loads a model (it touches artifacts only — images, binaries, venvs, clones).
 
 ---
 
