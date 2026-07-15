@@ -1,0 +1,19 @@
+{
+  "name": "@ai-stack/falkordb-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Thin MCP server exposing minimal FalkorDB graph memory (remember_fact / recall_related / graph_query / graph_write) over stdio and HTTP, for cross-runtime consumption (host Claude Code/Pi + Hermes fleet). Token-gated HTTP; sandboxes reach the shim, never raw falkordb:6379.",
+  "bin": {
+    "falkordb-mcp": "bin.mjs"
+  },
+  "scripts": {
+    "start:stdio": "node bin.mjs --stdio",
+    "start:http": "node bin.mjs --http",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "falkordb": "^6.2.7"
+  }
+}
