@@ -43,7 +43,7 @@ MODELS_YML="${MODELS_YML:-$AI_STACK/installer/models.yml}"
 #   openwebui -> bin/start-openwebui.sh (restart Open WebUI)
 #   lumen     -> install 16   (code-specific; its own index)
 #   mempalace -> install 26   (on-device CoreML embeddings)
-#   honcho    -> install 03   (via LiteLLM OpenAI-compat transport)
+#   honcho    -> install honcho_mcp / install 03  (honcho.sh reads the assignment + reconciles the pgvector dim)
 EMBED_SERVICES=(docs openwebui lumen mempalace honcho)
 
 # GENERAL-TEXT, shareable services that `global` is allowed to fan out to. lumen
@@ -138,7 +138,7 @@ owning_phase() {
     openwebui) echo "bash bin/start-openwebui.sh   (restart Open WebUI)" ;;
     lumen)     echo "vz-ai-stack.sh install 16   (re-pulls + re-points Lumen)" ;;
     mempalace) echo "vz-ai-stack.sh install 26   (re-renders the mempalace wrapper)" ;;
-    honcho)    echo "(none yet — phase 03 does NOT read this assignment; recorded only, see WARN below)" ;;
+    honcho)    echo "vz-ai-stack.sh install honcho_mcp   (honcho.sh reads .embedding_assignments.honcho + reconciles the pgvector dim via configure_embeddings.py; 'install 03' on a fresh box)" ;;
     *)         echo "vz-ai-stack.sh install <owning-phase>" ;;
   esac
 }
@@ -150,7 +150,7 @@ coupling_note() {
     openwebui) echo "general-purpose RAG embedder (Ollama-served)" ;;
     lumen)     echo "code-specific; Lumen keeps its OWN on-disk index" ;;
     mempalace) echo "ON-DEVICE (CoreML, no LiteLLM hop); minilm/embeddinggemma both yield 384-dim at runtime" ;;
-    honcho)    echo "RECORDED ONLY (no phase reads it yet); honcho embeds via the LiteLLM OpenAI-compat transport" ;;
+    honcho)    echo "honcho embeds via the LiteLLM OpenAI-compat transport; a DIM change re-pins honcho's pgvector schema (configure_embeddings.py) on apply" ;;
     *)         echo "" ;;
   esac
 }
@@ -349,13 +349,12 @@ cmd_assign() {
 
   note "assign embedding: $svc  ${before:-(unset)} -> $model  (dim=$(emb_dim "$model"), kind=$(emb_kind "$model"))"
 
-  # honcho is RECORDED-ONLY: phase 03 does not (yet) read embedding_assignments.honcho,
-  # so the write below changes the registry but NOTHING applies it. Be honest — don't
-  # let the operator believe `install 03` will re-point honcho's embedder.
+  # honcho is now CONSUMED: honcho.sh honcho_ensure_embedding_env() reads
+  # embedding_assignments.honcho (Phase 03 + Phase 40) and reconciles honcho's pgvector schema
+  # dim via honcho's own scripts/configure_embeddings.py, so this assignment DOES apply on install.
   if [[ "$svc" == "honcho" ]]; then
-    warn "honcho assignment is RECORDED ONLY — no phase consumes it yet. This writes models.yml"
-    warn "but does NOT change honcho's live embedder; 'install 03' will NOT apply it until phase-03"
-    warn "is wired to read it (and honcho needs a 1536->768 pgvector migration to switch to a local embedder)."
+    note "honcho: apply with 'vz-ai-stack.sh install honcho_mcp' (reloads honcho + reconciles the"
+    note "  pgvector dim). A DIM change needs 0 non-null embeddings, else configure_embeddings.py refuses."
   fi
 
   # Run the GUARD. A refusal (return 1) blocks the write unless --force.

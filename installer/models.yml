@@ -117,8 +117,8 @@ embeddings:
 # CANONICAL TEXT-EMBEDDING DIM = 768 (operator default; §24 council 2026-07-15). Cross-queryable
 # text consumers TARGET a 768-dim embedder so cloud<->local is swap-safe at the SCHEMA level (no
 # destructive rebuild — only a re-index on a model-FAMILY change, because same dim != same vector
-# space). docs + openwebui are 768 now; honcho reconciles to 768 with the honcho unit (still 1536
-# until then). Local default = embed-nomic(768); the cloud drop-in is embed-openai-small-768
+# space). docs + openwebui + honcho are all 768 (honcho re-pins its pgvector schema via its own
+# scripts/configure_embeddings.py). Local default = embed-nomic(768); the cloud drop-in is embed-openai-small-768
 # (text-embedding-3-small @ dimensions=768). mempalace stays 384 (on-device, isolated, never
 # cross-queried). Enforced by doctor check `embedding_dim` (77): live store dim must == the
 # assigned model's dim.
@@ -127,7 +127,7 @@ embedding_assignments:
   openwebui: embed-nomic
   lumen: embed-jina-code
   mempalace: embed-minilm
-  honcho: embed-openai-small
+  honcho: embed-nomic
 default: local
 # primary = the model an UNASSIGNED agent renders. Any runtime is allowed; it
 # availability-gates to `default` (the always-on ollama fallback) ONLY when its

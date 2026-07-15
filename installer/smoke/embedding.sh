@@ -98,15 +98,17 @@ run "$t" assign mempalace embed-gemma; out="$OUT"
 rm -f "$t" "$t.bak"
 ok "real write path mutates copy + writes .bak"
 
-# --- 9. honcho assign is honestly flagged RECORDED-ONLY ----------------------
-log "assign honcho embed-nomic --dry-run → RECORDED-ONLY warning (honest contract)"
+# --- 9. honcho assign surfaces the apply-note (honcho is now CONSUMED, not recorded-only) -----
+# honcho defaults to embed-nomic, so assign a DIFFERENT embedder to force a real change that
+# reaches the honcho apply-note (install honcho_mcp + pgvector dim reconcile).
+log "assign honcho embed-openai-small --dry-run → apply-note points at install honcho_mcp + pgvector reconcile"
 t="$(fresh_yml)"
-run "$t" assign honcho embed-nomic --dry-run; out="$OUT"
+run "$t" assign honcho embed-openai-small --dry-run; out="$OUT"
 [[ "$RC" == 0 ]] || { err "honcho dry-run should exit 0, got $RC: $out"; exit 1; }
-grep -qi 'RECORDED ONLY' <<<"$out" || { err "honcho assign must warn RECORDED ONLY: $out"; exit 1; }
-grep -qi 'does NOT' <<<"$out" || { err "honcho warning must say it does NOT apply: $out"; exit 1; }
+grep -qi 'install honcho_mcp' <<<"$out" || { err "honcho assign must point to 'install honcho_mcp': $out"; exit 1; }
+grep -qi 'pgvector' <<<"$out" || { err "honcho assign note must mention the pgvector dim reconcile: $out"; exit 1; }
 rm -f "$t"
-ok "honcho recorded-only honestly surfaced"
+ok "honcho apply-note honestly surfaced (consumed, not recorded-only)"
 
 # --- 10. global refuses a CODE embedder ---------------------------------------
 log "global embed-jina-code (kind: code) → REFUSED, exit 2"

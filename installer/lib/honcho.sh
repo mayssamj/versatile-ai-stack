@@ -21,20 +21,54 @@ honcho_is_up() {
   curl -sf --max-time 3 "$HONCHO_BASE_URL/health" >/dev/null 2>&1
 }
 
-# honcho_ensure_embedding_env — idempotently point honcho's embedding client at LiteLLM.
-# honcho's embedding base_url has NO fallback to the chat var (LLM_OPENAI_BASE_URL), so
-# without these NESTED EMBEDDING_* vars honcho embeds against platform.openai.com with the
-# local key -> 401 -> every search/recall/ingest 500s. Model is the LiteLLM route name
-# embed-openai-small (1536-dim, matches honcho's migration-pinned vector(1536) => zero
-# migration). If it CHANGES honcho/.env AND honcho is running, force-recreate ONLY api+deriver
-# (NOT database/redis — the database is LiteLLM's keystore SPOF) so the new env actually loads.
-# Idempotent: no change -> no restart. Returns 1 only if honcho isn't installed (no .env).
-# Shared by Phase 03 (fresh install) + Phase 40 (opt-in honcho memory) so both self-heal.
+# honcho_ensure_embedding_env — idempotently point honcho's embedding client at LiteLLM AND keep
+# honcho's pgvector schema dim in sync with the assigned embedder (§24 council 2026-07-15).
+# honcho's embedding base_url has NO fallback to the chat var (LLM_OPENAI_BASE_URL), so without
+# these NESTED EMBEDDING_* vars honcho embeds against platform.openai.com with the local key ->
+# 401 -> every search/recall/ingest 500s. The embedder is resolved from models.yml
+# .embedding_assignments.honcho (HONCHO_EMBED_MODEL overrides; embed-openai-small back-compat
+# fallback): EMBEDDING_MODEL_CONFIG__MODEL takes the LiteLLM ROUTE (NOT the registry key — they
+# differ, e.g. embed-nomic -> route embed-local), EMBEDDING_VECTOR_DIMENSIONS takes the model DIM.
+# DIMENSIONS_MODE=never: honcho sizes its pgvector schema from EMBEDDING_VECTOR_DIMENSIONS but
+# never forwards a `dimensions=` param to the embed call (local nomic is natively 768; the cloud
+# embed-openai-small-768 route bakes dimensions:768 at the LiteLLM layer).
+#
+# CRITICAL ORDERING (why this is not a simple env flip): honcho's api AND deriver run a boot-time
+# embedding-schema validator (src/main.py lifespan + deriver/__main__.py) that RAISES and
+# crash-loops (restart=unless-stopped, no bypass) whenever the configured dim != the physical
+# pgvector dim. So we must reconcile the SCHEMA to $dim BEFORE any api boots at $dim. We do that
+# with ONE-OFF containers that run the script directly (`--entrypoint /app/.venv/bin/python`,
+# because docker/entrypoint.sh hardcodes `fastapi run` and ignores args): provision_db.py (Alembic
+# — creates vector(1536) on a fresh volume, no-op otherwise) then configure_embeddings.py (idempotent
+# ALTER to $dim; snapshots+replays the exact HNSW indexdef; refuses on non-null embeddings). The
+# reconcile is driven off the LIVE pgvector dim (NOT the .env `changed` flag) so a re-run self-heals
+# a half-applied state. On a fresh box (api not yet up) we reconcile the schema and let the CALLER
+# (Phase 03, after it sets AUTH_USE_AUTH) boot the api at the now-matching dim; on an existing box
+# (api up) we recreate the api ourselves so it reloads the new route/dim + re-validates.
+# database/redis are NEVER recreated — the database is LiteLLM's keystore SPOF.
+# Returns 1 only if honcho isn't installed (no .env). Shared by Phase 03 + Phase 40.
 honcho_ensure_embedding_env() {
   local hdir="${AI_STACK:-$HOME/ai-stack}/honcho" envf changed=0
+  local myml="${AI_STACK:-$HOME/ai-stack}/installer/models.yml"
   envf="$hdir/.env"
   [[ -f "$envf" ]] || return 1
-  local model; model="$(get_env HONCHO_EMBED_MODEL embed-openai-small 2>/dev/null)"; [[ -n "$model" ]] || model="embed-openai-small"
+  # Resolve embedder: HONCHO_EMBED_MODEL override -> models.yml assignment -> embed-openai-small.
+  local mkey route dim
+  mkey="$(get_env HONCHO_EMBED_MODEL '' 2>/dev/null || true)"
+  if [[ -z "$mkey" ]]; then
+    if command -v yq >/dev/null 2>&1; then
+      mkey="$(yq -r '.embedding_assignments.honcho // ""' "$myml" 2>/dev/null || true)"
+    else
+      warn "yq not found — cannot read models.yml .embedding_assignments.honcho; using embed-openai-small (schema stays 1536). Install yq to honor the assignment."
+    fi
+  fi
+  [[ -z "$mkey" || "$mkey" == "null" ]] && mkey="embed-openai-small"
+  if command -v yq >/dev/null 2>&1; then
+    route="$(yq -r ".embeddings[\"$mkey\"].route // \"\"" "$myml" 2>/dev/null || true)"
+    dim="$(yq -r ".embeddings[\"$mkey\"].dim // \"\"" "$myml" 2>/dev/null || true)"
+  fi
+  [[ -z "$route" || "$route" == "null" ]] && route="$mkey"   # key doubles as route for openai-small
+  [[ "$dim" =~ ^[0-9]+$ ]] || dim=""
   _hset_embed() {  # KEY VALUE — upsert into honcho/.env; sets changed=1 on modify
     local key="$1" val="$2" cur
     cur="$(grep -E "^${key}=" "$envf" 2>/dev/null | head -1 | cut -d= -f2-)"
@@ -44,18 +78,57 @@ honcho_ensure_embedding_env() {
     mv "$envf.tmp" "$envf"; changed=1
   }
   _hset_embed EMBEDDING_MODEL_CONFIG__TRANSPORT           "openai"
-  _hset_embed EMBEDDING_MODEL_CONFIG__MODEL               "$model"
+  _hset_embed EMBEDDING_MODEL_CONFIG__MODEL               "$route"
   _hset_embed EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL "http://litellm.ai-stack:4000/v1"
+  _hset_embed EMBEDDING_MODEL_CONFIG__DIMENSIONS_MODE     "never"
+  [[ -n "$dim" ]] && _hset_embed EMBEDDING_VECTOR_DIMENSIONS "$dim"
   chmod 600 "$envf" 2>/dev/null || true
-  if (( changed )); then
-    ok "honcho embedding -> LiteLLM ($model)."
-    if honcho_is_up 2>/dev/null || docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^honcho-api'; then
-      log "Reloading honcho api+deriver to load the embedding env (database left UP — it is LiteLLM's keystore)…"
-      ( cd "$hdir" && docker compose up -d --force-recreate api deriver >/dev/null 2>&1 ) \
-        || warn "honcho api/deriver force-recreate failed — reload manually: (cd $hdir && docker compose up -d --force-recreate api deriver)"
-      local hb; hb="${HONCHO_BASE_URL:-http://honcho:8000}"
-      wait_http "${hb}/health" 60 >/dev/null 2>&1 || wait_http http://127.0.10.6:8000/health 60 >/dev/null 2>&1 || warn "honcho /health slow after reload — check 'docker logs honcho-api-1'"
+
+  # No reconcile possible without docker / compose files / a target dim.
+  command -v docker >/dev/null 2>&1 || { (( changed )) && ok "honcho embedding env -> route '$route' (docker absent; pgvector schema unchanged)."; return 0; }
+  { [[ -f "$hdir/docker-compose.yml" ]] || [[ -f "$hdir/compose.yaml" ]] || [[ -f "$hdir/docker-compose.yaml" ]]; } || return 0
+  [[ -n "$dim" ]] || { (( changed )) && ok "honcho embedding env -> route '$route' (no dim resolved; pgvector schema left as-is)."; return 0; }
+
+  # Was the api already up? existing box -> we recreate it; fresh box -> caller boots it after AUTH.
+  local api_was_up=0
+  docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^honcho-api' && api_was_up=1
+
+  # Ensure database/redis up (needed for the one-off provision/configure), then ensure the schema
+  # EXISTS (Alembic one-off; creates vector(1536) on a fresh volume, no-op otherwise).
+  ( cd "$hdir" && docker compose up -d database redis >/dev/null 2>&1 ) || warn "honcho database/redis up failed — pgvector reconcile may fail"
+  ( cd "$hdir" && docker compose run --rm --no-deps --entrypoint /app/.venv/bin/python api scripts/provision_db.py >/dev/null 2>&1 ) \
+    || warn "honcho provision (alembic) one-off failed — pgvector schema may be absent"
+
+  # Read the LIVE physical pgvector dim (relkind='r' excludes HNSW index relations).
+  local cur
+  cur="$(docker exec honcho-database-1 psql -U postgres -d postgres -tAc "SELECT DISTINCT regexp_replace(format_type(a.atttypid,a.atttypmod),'[^0-9]','','g') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname='public' AND c.relname IN ('documents','message_embeddings') AND a.attname='embedding' AND NOT a.attisdropped;" 2>/dev/null | tr -d ' ' | grep -v '^$' | head -1 || true)"
+
+  # Reconcile the schema to $dim via a one-off (bypasses the crashing validator) — driven off the
+  # LIVE dim so a re-run self-heals. Deriver (the embed writer) is quiesced during the ALTER.
+  if [[ -n "$cur" && "$cur" != "$dim" ]]; then
+    log "honcho pgvector dim $cur -> $dim: quiescing deriver + reconciling via scripts/configure_embeddings.py…"
+    ( cd "$hdir" && docker compose stop deriver >/dev/null 2>&1 ) || true
+    if ( cd "$hdir" && docker compose run --rm --no-deps -e EMBEDDING_VECTOR_DIMENSIONS="$dim" --entrypoint /app/.venv/bin/python api scripts/configure_embeddings.py --yes >/dev/null 2>&1 ); then
+      ok "honcho pgvector schema reconciled $cur -> $dim."
+    else
+      warn "configure_embeddings.py could NOT reconcile $cur -> $dim (it refuses when non-null embeddings exist). Keeping honcho at dim=$cur so it stays bootable — clear the embeddings and re-run 'install honcho_mcp' to migrate, or accept $cur."
+      _hset_embed EMBEDDING_VECTOR_DIMENSIONS "$cur"   # keep .env matching the physical schema -> api boots
+      dim="$cur"
     fi
+  fi
+
+  # Bring the api to the (now-matching) dim. If it was up, recreate so it reloads config + revalidates;
+  # if it was down (fresh box), DON'T boot it here — Phase 03 boots it next (after AUTH_USE_AUTH).
+  if (( api_was_up )); then
+    log "honcho: recreate api at dim=$dim + restart deriver…"
+    ( cd "$hdir" && docker compose up -d --force-recreate api >/dev/null 2>&1 ) \
+      || warn "honcho api force-recreate failed — reload manually: (cd $hdir && docker compose up -d --force-recreate api)"
+    local hb; hb="${HONCHO_BASE_URL:-http://honcho:8000}"
+    wait_http "${hb}/health" 60 >/dev/null 2>&1 || wait_http http://127.0.10.6:8000/health 60 >/dev/null 2>&1 || warn "honcho /health slow after reload — check 'docker logs honcho-api-1'"
+    ( cd "$hdir" && docker compose up -d deriver >/dev/null 2>&1 ) || warn "honcho deriver restart failed — start manually: (cd $hdir && docker compose up -d deriver)"
+    ok "honcho embedding -> route '$route' (pgvector dim=$dim)."
+  else
+    ok "honcho embedding env -> route '$route' (pgvector dim=$dim); api boots at this dim on the caller's compose up."
   fi
   return 0
 }

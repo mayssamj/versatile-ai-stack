@@ -4,6 +4,26 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-15 — feat(memory): canonical-768 embedding reconcile — honcho unit (STEP 3b)
+
+Companion to the docs unit below; §24 diff council. honcho now reconciled to the canonical 768
+dim, matching the fleet — so every cross-queryable text consumer is finally at 768.
+
+- **`embedding_assignments.honcho`: embed-openai-small(1536) → embed-nomic(768)** (local; keeps
+  agent-memory content — incl. external Telegram/Slack PII in the shared pool — on-host, no OpenAI
+  embedding egress).
+- **honcho.sh `honcho_ensure_embedding_env()` now READS the assignment** (was RECORDED-ONLY): it
+  resolves the LiteLLM ROUTE + DIM from models.yml and sets `EMBEDDING_MODEL_CONFIG__MODEL`=route,
+  `EMBEDDING_VECTOR_DIMENSIONS`=dim, `DIMENSIONS_MODE=never` (nomic is native-768; the cloud
+  embed-openai-small-768 route bakes its own dimensions). On change it QUIESCES the deriver,
+  force-recreates api, then drives the pgvector 1536→768 re-pin through honcho's OWN
+  `scripts/configure_embeddings.py` (idempotent; snapshots+replays the exact HNSW indexdef;
+  survives a volume reset where Alembic would otherwise re-pin vector(1536) under a 768 config).
+- embeddings.sh: dropped the honcho "RECORDED-ONLY" warning (honcho is now consumed);
+  owning_phase / coupling_note / apply hints updated. Doctor check 77 now asserts honcho @ 768.
+
+---
+
 ## 2026-07-15 — feat(memory): platform embedding CANONICAL DIM = 768 + cloud/local interchangeability (docs unit)
 
 §24 4-reviewer design council (adversarial + ML-architect + QA/infra + PM) → unanimous

@@ -184,10 +184,11 @@ done
 # Embeddings: point honcho's embedding client at LiteLLM. These are NESTED (EMBEDDING_
 # prefix, __ delimiter) unlike the flat chat vars, and the embedding base_url has NO
 # fallback to LLM_OPENAI_BASE_URL — so WITHOUT these honcho embeds against
-# platform.openai.com with the local key and every search/recall/ingest 500s. Model is the
-# LiteLLM route name embed-openai-small (NOT the raw text-embedding-3-small id, which LiteLLM
-# does not expose); 1536-dim matches honcho's migration-pinned vector(1536) schema so there
-# is ZERO migration. api_key auto-falls-back to LLM_OPENAI_API_KEY (the LiteLLM master key).
+# platform.openai.com with the local key and every search/recall/ingest 500s. The embedder is
+# resolved from models.yml .embedding_assignments.honcho -> its LiteLLM ROUTE + DIM; the shared
+# helper also re-pins honcho's pgvector schema to that dim via honcho's own
+# scripts/configure_embeddings.py (Alembic hardcodes vector(1536), so this keeps the dim correct
+# even after a volume reset). api_key auto-falls-back to LLM_OPENAI_API_KEY (the LiteLLM master key).
 honcho_ensure_embedding_env || true   # nested EMBEDDING_* vars -> LiteLLM (shared helper, lib/honcho.sh)
 honcho_set_env AUTH_USE_AUTH       "false"
 ok "patched $HONCHO_DIR/.env to use LiteLLM"
