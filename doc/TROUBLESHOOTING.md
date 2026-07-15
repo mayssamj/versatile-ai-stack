@@ -729,6 +729,9 @@ vz-ai-stack.sh embedding assign docs embed-nomic     # or embed-openai-small-768
 vz-ai-stack.sh install 06                             # re-bakes ingest.py/mcp_server.py to the new route (dim stays 768)
 # recompute all vectors over the same corpus (the same 768 collection is reused):
 cd ~/ai-stack/ingestor && AI_STACK_FORCE_RECREATE=1 python ingest.py
+# docs-mcp caches its Qdrant index handle at startup — a recreate leaves it stale (search returns
+# 0 hits on a populated corpus). Restart it so it re-binds to the fresh collection:
+bash ~/ai-stack/bin/start-docs_mcp.sh   # detects the stale pid + relaunches
 ```
 
 **honcho (pgvector):**

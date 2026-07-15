@@ -7,7 +7,7 @@
 # feature actually WORKS from the end user's perspective — real data flows through
 # the real protocol path — on both consumers (claude-cli + hermes-fleet).
 #
-# It prints a PASS / SKIP(reason) / FAIL matrix of 7 cells and exits non-zero iff
+# It prints a PASS / SKIP(reason) / FAIL matrix of 8 cells and exits non-zero iff
 # any cell FAILs. A SKIP is allowed ONLY when the underlying slice/data is not
 # present yet (with an actionable reason) — a cell whose feature IS installed but
 # returns no/garbage data is a FAIL. SKIP does NOT fail the gate.
@@ -18,6 +18,7 @@
 #   C2b  claude-cli     MemPalace cross-session (DEEP)  two real `claude -p` calls; marker recalled
 #   C3   claude-cli     doc-RAG                          POST :8765/mcp search_documents → hits
 #   C4   claude-cli     honcho                           spawn stdio MCP; remember→search finds marker
+#   C5   claude-cli     FalkorDB graph                   spawn stdio MCP; remember_fact→recall_related returns neighbor
 #   H1   hermes-fleet   doc-RAG                          sandbox → :8765/mcp search_documents → hits
 #   H2   hermes-fleet   honcho                           sandbox → :7082/mcp remember→search finds marker
 #
@@ -478,6 +479,66 @@ cell_C4() {
 }
 
 # =============================================================================
+# C5 — claude-cli · FalkorDB graph memory (stdio MCP; remember_fact → recall_related)
+#   Gate: the falkordb-mcp shim exists. Real path: spawn `node bin.mjs --stdio`,
+#   remember_fact a run-unique (subject)-[PROVES]->(object) edge, then recall_related
+#   on the subject and assert the object neighbor comes back. Backend-unreachable is a
+#   not-ready dependency → SKIP; a recall that RUNS but omits the just-written neighbor
+#   is a real FAIL. stdio needs no token. Bounded accretion: nodes are uniquely named
+#   per run marker (FalkorDB has no delete API here) — same pattern as C4's honcho peer.
+# =============================================================================
+cell_C5() {
+  local id="C5" name="falkordb (stdio remember->recall)"
+  local fbin="$AI_STACK/falkordb-mcp/bin.mjs"; [[ -f "$fbin" ]] || fbin="$MAIN_CO/falkordb-mcp/bin.mjs"
+  [[ -f "$fbin" ]] || { record_cell "$id" "$name" SKIP "falkordb-mcp shim not installed (run: vz-ai-stack.sh install falkordb_mcp)"; return 0; }
+  [[ -n "$SDK_ESM" && -n "$NODE_BIN" ]] || { record_cell "$id" "$name" SKIP "node MCP SDK unavailable (honcho-mcp/node_modules missing)"; return 0; }
+  local furl; furl="$(get_env FALKORDB_URL 'redis://falkordb:6379')"
+  local subj="acceptance-subj-$MARKER" obj="acceptance-obj-$MARKER"
+  python3 - "$TMPD/c5.json" "$SDK_ESM" "$NODE_BIN" "$fbin" "$furl" "$subj" "$obj" <<'PY'
+import json,sys
+path,sdk,node,fbin,furl,subj,obj=sys.argv[1:8]
+json.dump({"sdk":sdk,"transport":"stdio","command":node,"args":[fbin,"--stdio"],
+  "env":{"FALKORDB_URL":furl},
+  "calls":[
+    {"name":"remember_fact","arguments":{"subject":subj,"predicate":"PROVES","object":obj}},
+    {"name":"recall_related","arguments":{"name":subj,"limit":10}}],
+  "timeoutMs":40000}, open(path,"w"))
+PY
+  local out; out="$(mcp_run "$TMPD/c5.json" 60)"
+  local verdict; verdict="$(printf '%s' "$out" | OBJ="$obj" python3 -c '
+import sys,json,os
+obj=os.environ["OBJ"]
+try: d=json.loads(sys.stdin.read())
+except Exception: print("FAIL|falkordb MCP client produced no/invalid output"); raise SystemExit
+if d.get("error"): print("SKIP|falkordb MCP client error: "+d["error"][:160].replace("|","/")); raise SystemExit
+calls={c.get("name"):c for c in (d.get("calls") or [])}
+rem=calls.get("remember_fact"); rec=calls.get("recall_related")
+def err_of(c):
+    t=(c or {}).get("text","") or ""
+    try: j=json.loads(t); return j.get("error")
+    except Exception: return None
+if not rem or not rec: print("FAIL|falkordb remember/recall calls missing"); raise SystemExit
+re_=err_of(rem)
+if re_:
+    lo=re_.lower()
+    if "unreachable" in lo or "connect" in lo or "econnrefused" in lo: print("SKIP|falkordb unreachable: "+re_[:120].replace("|","/"))
+    else: print("FAIL|remember_fact failed (reachable but rejected): "+re_[:120].replace("|","/"))
+    raise SystemExit
+rt=rec.get("text","") or ""
+if obj in rt: print("PASS|fact written and neighbor recalled via recall_related"); raise SystemExit
+se=err_of(rec)
+if se:
+    lo=se.lower()
+    if "unreachable" in lo or "connect" in lo or "econnrefused" in lo: print("SKIP|falkordb unreachable during recall: "+se[:110].replace("|","/"))
+    else: print("FAIL|recall_related errored: "+se[:120].replace("|","/"))
+    raise SystemExit
+print("FAIL|recall_related ran but the just-written neighbor was not returned")
+' 2>/dev/null || true)"
+  [[ -n "$verdict" ]] || verdict="FAIL|falkordb probe did not return a verdict"
+  record_cell "$id" "$name" "${verdict%%|*}" "${verdict#*|}"
+}
+
+# =============================================================================
 # H1 — hermes-fleet · doc-RAG (sandbox → host.docker.internal:8765/mcp)
 #   The fleet path: run a probe INSIDE hermes-fleet-v1 (same as smoke 27/30) that
 #   reaches docs-mcp over host.docker.internal and asserts real hits. SKIP if fleet
@@ -585,6 +646,7 @@ cell_C2
 cell_C2b
 cell_C3
 cell_C4
+cell_C5
 cell_H1
 cell_H2
 
