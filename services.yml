@@ -1441,6 +1441,42 @@ services:
         "at": "2026-07-14T00:00:00Z"
         "source": phase-40-honcho_mcp
         "reviewed": true
+  falkordb_mcp:
+    enabled: true # Phase 41 (opt-in) — FalkorDB graph-memory MCP shim (claude-cli + Hermes fleet)
+    type: node-bg
+    desc: "FalkorDB graph-memory MCP shim — wraps FalkorDB's Cypher (over Redis) as minimal graph-memory tools (remember_fact/recall_related/graph_query/graph_write) for claude-cli (stdio) and the Hermes fleet (http)"
+    phase: "41"
+    # Host-loopback node daemon (bin/start-falkordb_mcp.sh): the falkordb-mcp HTTP server the
+    # Hermes fleet dials at host.docker.internal:7083 (token-gated by FALKORDB_MCP_TOKEN).
+    # Local clients (host Claude Code, Pi) use the stdio entrypoint instead (falkordb-mcp/
+    # bin.mjs --stdio, registered via `claude mcp add`). NOT a container / NOT on the
+    # ai-stack bridge → doctor check 16 (bridge membership) does not apply. Sandboxes reach
+    # the shim over host.docker.internal; the raw falkordb:6379 endpoint stays DENIED to them
+    # (the token-gated shim is the only in-sandbox path to the graph). Purely ADDITIVE — unlike
+    # honcho_mcp there is NO egress to retire (FalkorDB was never fleet-reachable).
+    network: host
+    bind: 127.0.0.1
+    port: 7083
+    health: http://127.0.0.1:7083/healthz
+    consumes_env:
+      - FALKORDB_MCP_TOKEN
+      - FALKORDB_MCP_PORT
+      - FALKORDB_URL
+      - FALKORDB_GRAPH
+    help:
+      "what": "A host-side, headless Node MCP shim (falkordb-mcp/bin.mjs) that wraps FalkorDB's Cypher (GRAPH.QUERY / GRAPH.RO_QUERY over the Redis protocol) as four minimal graph-memory TOOLS — remember_fact (idempotent subject-[predicate]->object edge), recall_related (an entity's neighbors), graph_query (READ-ONLY Cypher), graph_write (write Cypher). Served two ways: stdio for local clients (host Claude Code, Pi) and a token-gated http daemon on 127.0.0.1:7083 (/healthz, /mcp) that the Hermes fleet dials via host.docker.internal:7083. ONE shared graph (FALKORDB_GRAPH=fleet-memory, no per-agent isolation) — the graph analog of honcho-mcp's one shared workspace. NO auto-extraction: a deliberate minimal primitive (operator decision D2)."
+      "why": "Reach for it to give agents durable, cross-session GRAPH memory as MCP tools from ANY runtime — relationships/connectivity (who-knows-who, depends-on, cites) that a vector store can't express — with no per-client FalkorDB glue. It is the graph-memory sibling of honcho-mcp (derived cross-agent facts) and MemPalace (verbatim session recall). PURELY ADDITIVE: FalkorDB was never fleet-reachable, so this opens a NEW capability without retiring any egress (unlike honcho_mcp) — the raw falkordb:6379 endpoint stays denied to sandboxes, and this token-gated shim is the only in-sandbox path to the graph."
+      "usage":
+        - "vz-ai-stack.sh install falkordb_mcp   # opt-in: mints token, wires claude + fleet (additive — no egress retired)"
+        - "vz-ai-stack.sh start falkordb_mcp   # the http daemon the fleet dials (:7083)"
+        - "curl -s http://127.0.0.1:7083/healthz   # -> ok:true falkordb:true graph:fleet-memory"
+        - "claude mcp list   # host Claude Code stdio registration (falkordb)"
+        - vz-ai-stack.sh stop falkordb_mcp
+      "config_notes": "OPT-IN and NOT in `install all` — but UNLIKE honcho_mcp it is a NORMAL opt-in (no extra security-flag gate) because it is purely ADDITIVE: FalkorDB was never reachable from the sandboxes, so nothing is retired and no security posture flips. It installs with `install all --include-optionals`. Needs node on PATH (deps) and the Phase-02 FalkorDB container running (redis://falkordb:6379). Uses the official `falkordb` npm client; the DB connect is LAZY + cached (first tool call), so a down FalkorDB surfaces as {error} per call rather than a startup crash — registering the server is always safe. The http daemon FAILS CLOSED: it refuses --http without FALKORDB_MCP_TOKEN (bound 127.0.0.1 only, but the fleet reaches it via host.docker.internal, so an unauthenticated server would be a real exposure); stdio needs no token. graph_query is READ-ONLY (rejects CREATE/MERGE/SET/DELETE — use graph_write for writes). ONE shared graph (fleet-memory); no per-agent isolation. Pi FalkorDB is DEFERRED (Pi ships no MCP client); Pi's raw :6379 access stays denied regardless. Doctor check 76 (76_falkordb_mcp.sh) covers it: a drift-guard that the falkordb_mcp (:7083) shim egress is present in the fleet policy AND no sandbox policy targets raw :6379, plus shim health, claude-cli stdio registration, and per-profile fleet wiring. Rollback: claude mcp remove -s user falkordb; vz-ai-stack.sh stop falkordb_mcp; rm installer/state/phase_41.done."
+      "_gen":
+        "at": "2026-07-14T00:00:00Z"
+        "source": phase-41-falkordb_mcp
+        "reviewed": true
 # Memory-mode profiles. `stack profile coding` enables coding-mode set
 # and disables everything else. Saves remembering 12 container names.
 profiles:

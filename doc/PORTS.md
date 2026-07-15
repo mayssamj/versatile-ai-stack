@@ -225,6 +225,7 @@ reasons are spelled out in the comment block at the foot of `aliases.tsv`:
 | claw3d-bridge    | `http://localhost:7780`              | 7780 | 19    | Auth-less and can drive **all 9 agents** → loopback-only by design (never expose it under a named address).       |
 | understand-mcp   | `host.docker.internal:7081` (token)  | 7081 | 30    | Reached from the **Hermes fleet containers** via host-gateway (token-gated); local clients use the stdio entrypoint. |
 | honcho-mcp       | `host.docker.internal:7082` (token)  | 7082 | 40    | Reached from the **Hermes fleet containers** via host-gateway (token-gated); local clients use the stdio entrypoint. Now the ONLY sandbox path to Honcho — the raw `honcho:8000` egress was retired. |
+| falkordb-mcp     | `host.docker.internal:7083` (token)  | 7083 | 41    | Reached from the **Hermes fleet containers** via host-gateway (token-gated); local clients use the stdio entrypoint. The ONLY sandbox path to the graph — the raw `falkordb:6379` egress stays denied to sandboxes (purely additive: nothing retired). |
 | lmstudio         | `host.docker.internal:1234` (OPT-IN) | 1234 | 25    | Reached from the LiteLLM **container**, so it uses host-gateway (`host.docker.internal`), not a host `lo0` alias. |
 
 Detail:
@@ -250,6 +251,16 @@ Detail:
   **stdio** entrypoint instead. Phase 40 **retires the raw auth-off Honcho REST
   egress (`:8000`) from the sandboxes**, so this shim is the ONLY in-sandbox
   path to Honcho. Not a container / not on the `ai-stack` bridge.
+- **falkordb-mcp (`:7083`)** — Phase 41 (opt-in) `falkordb_mcp`. A host-loopback
+  node daemon (`bin/start-falkordb_mcp.sh`) that wraps FalkorDB's Cypher (over the
+  Redis protocol) as minimal graph-memory MCP tools (`remember_fact` /
+  `recall_related` / `graph_query` / `graph_write`); the Hermes fleet dials it at
+  `host.docker.internal:7083` (token-gated by `FALKORDB_MCP_TOKEN`, same mechanism
+  as honcho-mcp/understand-mcp). Host Claude Code / Pi use the **stdio** entrypoint
+  instead. **Purely additive** — unlike Phase 40 it retires NO egress: the raw
+  `falkordb:6379` endpoint was never reachable from the sandboxes and **stays
+  denied**, so this token-gated shim is the ONLY in-sandbox path to the graph. Not
+  a container / not on the `ai-stack` bridge.
 - **lmstudio (`:1234`)** is an OPT-IN extra (Phase 25 — install by name).
   When enabled, LM Studio's OpenAI server is bound `0.0.0.0:1234` on the
   host and LiteLLM dials it from inside its container via
@@ -382,7 +393,7 @@ Each entry: ports listened on, what calls in, healthcheck command.
 
 - **Listens**: `127.0.10.7:6379:6379` (Mac dials `redis://falkordb:6379`) → `falkordb:6379` (Redis RESP). Browser UI on `127.0.10.8:3000:3000` → `falkordb-ui` alias (distinct IP resolves the `:3000` collision with `workspace`).
 - **Internal**: none
-- **Callers**: No callers currently wired in services.yml; reserved for future graph-memory work
+- **Callers**: the `falkordb-mcp` graph-memory shim (opt-in Phase 41) — host Claude Code (stdio) + the Hermes fleet (http, via `host.docker.internal:7083`). Sandboxes reach the graph ONLY through that shim; the raw `falkordb:6379` endpoint stays denied to them.
 - **Healthcheck**: `(echo > /dev/tcp/falkordb/6379) 2>/dev/null && echo ok` (TCP-level), or `curl http://falkordb-ui:3000/` for browser
 - **Source**: `services.yml` (`falkordb`), `bin/start-falkordb.sh`, `installer/lib/aliases.tsv`
 
@@ -532,6 +543,14 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 - **Healthcheck**: `curl -s http://127.0.0.1:7082/healthz` (also reports Honcho backend reachability).
 - **Source**: `services.yml` (`honcho_mcp`), `bin/start-honcho_mcp.sh`, `honcho-mcp/bin.mjs`, `honcho-mcp/lib.mjs`, `installer/phases/40_honcho_mcp.sh`, `installer/doctor/checks/75_honcho_mcp.sh`
 
+### `falkordb_mcp` / `falkordb-mcp` (node-bg) — Phase 41 (opt-in)
+
+- **Listens**: `127.0.0.1:7083` — the `falkordb-mcp` HTTP daemon (`bin/start-falkordb_mcp.sh`), a thin MCP shim over FalkorDB's Cypher (`GRAPH.QUERY` / `GRAPH.RO_QUERY` on the Redis endpoint). The Hermes fleet containers dial it at `host.docker.internal:7083` (token-gated by `FALKORDB_MCP_TOKEN`). Host Claude Code / Pi use the **stdio** entrypoint (`falkordb-mcp/bin.mjs --stdio`, no port). NOT aliased (reached from containers via host-gateway, same pattern as honcho-mcp/understand-mcp). Not on the ai-stack bridge.
+- **Callers**: host Claude Code (stdio, registered via `claude mcp add` as `falkordb`) + the Hermes fleet profiles (http, `host.docker.internal:7083`). Pi is **deferred** (Pi ships no MCP client).
+- **Additive, no egress retired**: unlike Phase 40, Phase 41 retires nothing — FalkorDB was never fleet-reachable. The fleet policy gains an **additive** `falkordb_mcp` (:7083) egress; the raw `falkordb:6379` endpoint **stays denied** to both sandbox policies, so this token-gated shim is the ONLY in-sandbox path to the graph.
+- **Healthcheck**: `curl -s http://127.0.0.1:7083/healthz` (also reports FalkorDB backend reachability + the shared graph name).
+- **Source**: `services.yml` (`falkordb_mcp`), `bin/start-falkordb_mcp.sh`, `falkordb-mcp/bin.mjs`, `falkordb-mcp/lib.mjs`, `installer/phases/41_falkordb_mcp.sh`, `installer/doctor/checks/76_falkordb_mcp.sh`
+
 ### `chatdev` (docker) — Phase 35 (opt-in)
 
 - **Listens**: `127.0.10.18:5274:5173` ⚠ (host `5274` → container `5173`; Mac dials `http://chatdev:5274`). Vue+FastAPI web app; role agents collaborate to build software. On the `ai-stack` bridge.
@@ -637,6 +656,7 @@ These ports are declared in `services.yml` / `aliases.tsv` but only listen when 
 | 8787  | `openwork`         | Opt-in Phase 29; loopback launchd daemon (first start downloads OpenCode sidecars).                |
 | 7081  | `understand-mcp`   | Opt-in Phase 30; loopback daemon dialed by the fleet via host-gateway.                             |
 | 7082  | `honcho-mcp`       | Opt-in Phase 40; loopback daemon dialed by the fleet via host-gateway (token-gated).               |
+| 7083  | `falkordb-mcp`     | Opt-in Phase 41; loopback daemon dialed by the fleet via host-gateway (token-gated).               |
 | 5274  | `chatdev`          | Opt-in Phase 35; host `5274` → container `5173`.                                                    |
 | 5273  | `aitown`           | Opt-in Phase 36; host `5273` → container `5173`.                                                    |
 | 5275  | `agentscope-studio`| Opt-in (`AGENTSCOPE_STUDIO=1`); binds `0.0.0.0` (see security note).                                |

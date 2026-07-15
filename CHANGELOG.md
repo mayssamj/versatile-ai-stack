@@ -4,6 +4,42 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-14 — feat(memory): FalkorDB graph memory MCP (Phase 41) — minimal graph-memory shim (slice 4)
+
+Makes FalkorDB (until now *reserved for future graph-memory work*, reachable by no agent) usable
+by claude-cli + the Hermes fleet as MCP tools, via a host-side token-gated shim over FalkorDB's
+Cypher. **Purely additive** — unlike Phase 40 it retires no egress and flips no security posture,
+so it is a NORMAL opt-in (**NOT** in `install all`, but installs with `--include-optionals`):
+`vz-ai-stack.sh install falkordb_mcp`.
+
+- **`falkordb-mcp` shim** (`falkordb-mcp/bin.mjs` + `lib.mjs`) — a headless Node MCP server
+  wrapping FalkorDB's Cypher (`GRAPH.QUERY` / `GRAPH.RO_QUERY` over the Redis protocol) as four
+  minimal graph-memory tools: `remember_fact` (idempotent `(subject)-[predicate]->(object)` edge,
+  MERGE on `name` identity), `recall_related` (an entity's neighbors), `graph_query` (READ-ONLY
+  Cypher — rejects write clauses), `graph_write` (write Cypher). Two transports: **stdio** for
+  local clients (host Claude Code, Pi) and a **token-gated http** daemon on `127.0.0.1:7083`
+  (`bin/start-falkordb_mcp.sh`) that the Hermes fleet dials via `host.docker.internal:7083`.
+  Fails closed — refuses `--http` without `FALKORDB_MCP_TOKEN`. ONE shared graph
+  (`FALKORDB_GRAPH=fleet-memory`, no per-agent isolation) — the graph analog of honcho-mcp's one
+  shared workspace. NO auto-extraction (deliberate minimal primitive, operator decision D2). Uses
+  the official `falkordb` npm client; the DB connect is lazy + cached, so a down FalkorDB is an
+  `{error}` per call, never a startup crash.
+- **Additive fleet wiring** — Phase 41 adds an `falkordb_mcp` (:7083) egress to the fleet policy
+  and registers the `falkordb` stdio MCP with the host Claude session. Nothing is retired: the raw
+  `falkordb:6379` endpoint was never reachable from the sandboxes and **stays denied**, so the
+  token-gated shim is the only in-sandbox path to the graph. Pi is **deferred** (no MCP client);
+  Pi's raw :6379 stays denied regardless.
+- **doctor check 76** (`installer/doctor/checks/76_falkordb_mcp.sh`) — skip-clean when Phase 41
+  isn't installed; a drift-guard that the `falkordb_mcp` (:7083) shim egress is present in the
+  fleet policy AND no sandbox policy targets raw `falkordb` :6379, plus shim health, claude-cli
+  stdio registration, and per-profile fleet wiring. Doctor total 76 → **77**.
+- **Docs swept** — `services.yml` (`falkordb_mcp`), `doc/EXPLORE.html` (memory tier, 62 → 63 cards;
+  falkordb data-tier card's "reserved" note updated), `doc/PORTS.md` (:7083 row + section + falkordb
+  Callers), `doc/DOCTOR.md` (§76, 76 → 77), `doc/COMPONENTS.md`, `doc/AGENT-ONBOARDING.md`,
+  `doc/TUTORIAL.md`/`.html` (Act III · L10), and the opt-in-extras help line in `vz-ai-stack.sh`.
+
+---
+
 ## 2026-07-14 — feat(memory): honcho memory MCP (Phase 40) — shim + atomic egress retirement + embedding fix (slice 3)
 
 Makes Honcho memory usable by claude-cli + the Hermes fleet via a host-side token-gated MCP

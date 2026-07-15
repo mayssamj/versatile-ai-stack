@@ -72,9 +72,9 @@ network_policies:
       - { path: "/**" }
 
   # Honcho memory via the host-side honcho-mcp SHIM (host.docker.internal:7082, Phase 40).
-  # The RAW Honcho REST API (:8000, AUTH_USE_AUTH=false) is intentionally NOT reachable from
-  # the sandbox — the token-gated MCP shim is the only memory path. (Generated from the
-  # 04_openshell.sh heredoc — edit there; this is a mirror.)
+  # The RAW Honcho REST API (:8000, AUTH_USE_AUTH=false) is intentionally NOT reachable
+  # from the sandbox — the token-gated MCP shim is the only memory path. Retiring the raw
+  # :8000 stanza is the security half of the honcho slice (a §24 must-fix); do NOT re-add it.
   honcho_mcp:
     name: honcho-mcp
     endpoints:
@@ -83,9 +83,9 @@ network_policies:
     binaries:
       - { path: "/**" }
 
-  # FalkorDB graph memory via the host-side falkordb-mcp shim (host.docker.internal:7083,
-  # Phase 41). Raw falkordb:6379 stays DENIED — the token-gated shim is the only path.
-  # (Generated from the 04_openshell.sh heredoc — edit there; this is a mirror.)
+  # FalkorDB graph memory via the host-side falkordb-mcp SHIM (host.docker.internal:7083,
+  # Phase 41). Raw falkordb:6379 stays DENIED to the sandbox — the token-gated shim is the only
+  # graph-memory path. Additive/opt-in; harmless when falkordb_mcp isn't installed (nothing dials 7083).
   falkordb_mcp:
     name: falkordb-mcp
     endpoints:

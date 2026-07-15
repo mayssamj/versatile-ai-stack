@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 76 checks and offers a per-check auto-fix
+`bash vz-ai-stack.sh doctor` runs all 77 checks and offers a per-check auto-fix
 when one fails. This doc lists every check, what it asserts, when it fails,
 and what the fix does.
 
@@ -877,6 +877,18 @@ Skips cleanly (passes) when Phase 39 isn't installed (opt-in); the claude-cli su
 | Auto-fix | none (reports the command): `HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp`; if a policy regained `honcho_memory` (:8000), revert it (it MUST stay retired) + `install 04`. |
 
 Skips cleanly (passes) when Phase 40 isn't installed (opt-in — no `phase_40*.done` stamp), so it never red-bars a stack that didn't opt into honcho memory. The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but Honcho backend unreachable per `/healthz`" state is a NOTE, not a failure. The centerpiece is the always-on **security drift-guard**: the raw :8000 egress must stay retired so the token-gated shim remains the only in-sandbox path to Honcho.
+
+---
+
+## 76 · FalkorDB graph memory MCP — shim wired + raw :6379 denied (opt-in, Phase 41)
+
+| | |
+|---|---|
+| Asserts | when Phase 41 (`install falkordb_mcp`) is installed: **(a) DRIFT-GUARD** — the `falkordb_mcp` (:7083) shim egress is PRESENT in the fleet policy (`hermes-fleet-v1.yaml`) AND **no** sandbox policy (`hermes-fleet-v1.yaml`, `pi-v1.yaml`) targets the raw `falkordb` :6379 endpoint; **(b)** if the `claude` CLI is present, the host session has the `falkordb` stdio MCP registered; **(c)** the http shim answers on `127.0.0.1:7083/healthz`; **(d)** if a `hermes-fleet-v1` sandbox is Ready, `hermes_manager` carries the FalkorDB MCP wired to `host.docker.internal:7083`. |
+| Fails when | the `falkordb_mcp` shim egress is missing from the fleet policy, or a sandbox policy targets raw `falkordb` :6379 (sandboxes must reach the graph ONLY via the token-gated :7083 shim), or the claude-cli `falkordb` MCP is unregistered, or the shim isn't answering on :7083, or the fleet profile isn't wired — after Phase 41 has stamped. |
+| Auto-fix | none (reports the command): `vz-ai-stack.sh install falkordb_mcp`; if a policy gained a raw `falkordb` :6379 endpoint, revert it (it MUST stay denied) + `install 04`. |
+
+Skips cleanly (passes) when Phase 41 isn't installed (opt-in — no `phase_41*.done` stamp), so it never red-bars a stack that didn't opt into graph memory. The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but FalkorDB backend unreachable per `/healthz`" state is a NOTE, not a failure. **Unlike check 75 (honcho) there is NO retired-egress to assert — slice 4 is purely additive** (FalkorDB was never fleet-reachable) — but the always-on **"no raw :6379 sandbox egress" guard** keeps it that way, so the shim stays the only in-sandbox path to the graph.
 
 ---
 
