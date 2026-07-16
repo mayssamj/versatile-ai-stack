@@ -717,6 +717,25 @@ Assignments live in `installer/models.yml .embedding_assignments`; re-point with
 drifts from its assigned model's dim; `EMBEDDING_DIM_DEEP=1 vz-ai-stack.sh doctor`
 additionally round-trips a live vector and checks its emitted length.
 
+**The family stamp — why "green" no longer means "dim matches".** Dim equality cannot
+see a *same-dim family swap*, and that was the dangerous case: re-point `docs` between
+the two 768 families, run `install 06` (which re-bakes `EMBED_MODEL`, satisfying the
+code-drift guard) but forget the re-index, and everything reported green while the store
+held one geometry and queries were embedded in another. `ingest.py` therefore stamps the
+models.yml **registry key of the embedder that produced each vector** into that point's
+payload (`embedder`), and check 77 counts any point not carrying the assigned embedder:
+an entirely-unstamped store is **skip-clean** (it pre-dates the stamp — re-index to arm
+the guard), any wrong-family point **fails**, and a partially-stamped store **fails** as
+mixed geometry. Because the stamp is written by the same call that computes the vector,
+it cannot drift; because it dies with the collection, it never goes stale.
+`ingest.py` also **refuses** to append a different family onto a populated collection
+unless `AI_STACK_FORCE_RECREATE=1`.
+
+`honcho` is **deliberately not stamped** — it owns its embedding pipeline upstream, so
+stamping it means patching code an upgrade overwrites. Its dim guard + boot validator
+cover the dim case; for honcho, a same-dim family swap is caught only by following the
+re-index procedure below.
+
 ### Re-index procedure (future local-only switch, or any model-family swap)
 
 Do this whenever you change a consumer's embedder to a *different family at the same 768*
@@ -727,11 +746,29 @@ schema rebuild is needed because the dim is unchanged — you only recompute vec
 ```bash
 vz-ai-stack.sh embedding assign docs embed-nomic     # or embed-openai-small-768
 vz-ai-stack.sh install 06                             # re-bakes ingest.py/mcp_server.py to the new route (dim stays 768)
+
+# `install 06` re-bakes CODE but NEVER re-embeds. The re-index below is the step that
+# actually matters — skipping it is precisely what check 77's family stamp now catches.
+
+# ingest MOVES its input inbox/ -> processed/, so a re-index needs the corpus back in inbox/.
+# Use mv (not cp): a cp re-run collides with the same basenames already in processed/ and
+# accumulates AGENT-ONBOARDING.1.md style duplicates via the no-clobber rename.
+mv ~/ai-stack/ingestor/processed/ai-stack-doc/* ~/ai-stack/ingestor/inbox/ai-stack-doc/
+
 # recompute all vectors over the same corpus (the same 768 collection is reused):
-cd ~/ai-stack/ingestor && AI_STACK_FORCE_RECREATE=1 python ingest.py
+cd ~/ai-stack/ingestor
+export LITELLM_MASTER_KEY="$(grep -E '^LITELLM_MASTER_KEY=' ~/ai-stack/.env | cut -d= -f2-)"
+AI_STACK_FORCE_RECREATE=1 .venv/bin/python ingest.py   # FORCE_RECREATE is required on a family swap
+
 # docs-mcp caches its Qdrant index handle at startup — a recreate leaves it stale (search returns
-# 0 hits on a populated corpus). Restart it so it re-binds to the fresh collection:
-bash ~/ai-stack/bin/start-docs_mcp.sh   # detects the stale pid + relaunches
+# 0 hits on a populated corpus) — and it also holds the OLD mcp_server.py code. Recycle it:
+bash ~/ai-stack/bin/start-docs_mcp.sh --recreate
+# NOTE: a BARE `start-docs_mcp.sh` is idempotent — it no-ops with "already running" whenever the
+# pid is alive and bound, and only relaunches a pid that is alive but NOT bound to :8765.
+# `--recreate` (or `restart`) is the arm that actually stops and restarts the daemon.
+
+# verify: real hits + a green family guard
+EMBEDDING_DIM_DEEP=1 vz-ai-stack.sh doctor embedding_dim
 ```
 
 **honcho (pgvector):**
@@ -744,11 +781,23 @@ The honcho path drives the pgvector schema through honcho's OWN `scripts/configu
 1536). On a true *dim* change it quiesces the deriver and re-asserts the column to match
 `EMBEDDING_VECTOR_DIMENSIONS`.
 
-> **nomic task-prefix note:** `nomic-embed-text` is trained for asymmetric prefixes
-> (`search_document:` at ingest, `search_query:` at retrieval). The docs pipeline currently
-> embeds raw text — functional, a few points below nomic's peak recall. If doc-RAG recall is
-> weak, this is the first knob to try (or flip docs to `embed-openai-small-768` — same 768
-> schema, just a re-index).
+> **nomic task prefixes (SHIPPED).** `nomic-embed-text` is trained for asymmetric prefixes,
+> and the docs pipeline now applies them: `ingest.py` embeds each chunk as
+> `search_document: <text>` and `mcp_server.py` embeds each query as `search_query: <text>`.
+> The two are baked from the same `EMBED_NAME` literal, so they cannot drift apart — and a
+> chunk stored under `search_document:` is only correctly retrieved by a `search_query:`
+> query, which is why they move together.
+>
+> The prefixes are **family-conditional, not unconditional**: they apply only when the
+> assigned embedder is `embed-nomic`. OpenAI's `text-embedding-3-*` have no prefix
+> convention and would be *hurt* by one, so under `embed-openai-small-768` both prefixes are
+> empty and the code path is an exact no-op. Flipping the family therefore flips prefixing
+> automatically — there is no separate switch to forget.
+>
+> **Consequence for re-indexing:** because the stored vectors now carry the
+> `search_document:` geometry, a corpus ingested *before* this shipped is not
+> prefix-consistent with today's queries. Re-index (procedure above) — which also stamps the
+> collection and arms check 77's family guard.
 
 ---
 

@@ -21,6 +21,59 @@ COLL = "ai-stack-docs"
 # collection in sync with the active embedder.
 EMBED_MODEL = "embed-local"
 EMBED_DIM   = 768
+# models.yml registry KEY of the assigned embedder (NOT its LiteLLM route). This is the
+# FAMILY identity stamped onto every point below, and what doctor check 77 compares
+# against .embedding_assignments.docs. Dim equality does NOT prove a store is queryable:
+# embed-nomic and embed-openai-small-768 are both 768 but are different vector SPACES,
+# so re-pointing between them without a re-index collapses recall silently. The key
+# (not the route) is the identity because it separates embed-openai-small (1536) from
+# embed-openai-small-768 — same served model, different geometry via MRL truncation.
+EMBED_NAME  = "embed-nomic"
+
+# --- Asymmetric task prefixes (nomic family only) -----------------------------------
+# nomic-embed-text is TRAINED with task prefixes: corpus chunks embed as
+# "search_document: <text>", queries as "search_query: <text>". Omitting them costs
+# recall. They are nomic-FAMILY-SPECIFIC — OpenAI's text-embedding-3-* have no prefix
+# convention and prepending these would HURT them — so they are CONDITIONAL on the
+# assigned family, never an unconditional prepend.
+# ingest.py and mcp_server.py MUST stay in lockstep: a chunk stored under
+# "search_document: " is only correctly retrieved by a query embedded "search_query: ".
+_NOMIC_FAMILIES = {"embed-nomic"}
+_DOC_PREFIX   = "search_document: " if EMBED_NAME in _NOMIC_FAMILIES else ""
+_QUERY_PREFIX = "search_query: "    if EMBED_NAME in _NOMIC_FAMILIES else ""
+
+
+class PrefixedEmbedding(OpenAILikeEmbedding):
+    """OpenAILikeEmbedding + optional asymmetric task prefixes.
+
+    The installed llama-index OpenAILikeEmbedding exposes NO query_instruction /
+    text_instruction ctor arg, so the supported extension point is overriding the
+    _get_*_embedding hooks BaseEmbedding dispatches into (its own get_text_embedding
+    docstring describes exactly this instruction-prepend pattern). Empty prefixes make
+    every override an exact no-op, so non-nomic families are byte-for-byte unaffected.
+    """
+
+    doc_prefix: str = ""
+    query_prefix: str = ""
+
+    def _get_query_embedding(self, query: str):
+        return super()._get_query_embedding(self.query_prefix + query)
+
+    async def _aget_query_embedding(self, query: str):
+        return await super()._aget_query_embedding(self.query_prefix + query)
+
+    def _get_text_embedding(self, text: str):
+        return super()._get_text_embedding(self.doc_prefix + text)
+
+    async def _aget_text_embedding(self, text: str):
+        return await super()._aget_text_embedding(self.doc_prefix + text)
+
+    def _get_text_embeddings(self, texts):
+        return super()._get_text_embeddings([self.doc_prefix + t for t in texts])
+
+    async def _aget_text_embeddings(self, texts):
+        return await super()._aget_text_embeddings([self.doc_prefix + t for t in texts])
+
 
 # Env-var-driven endpoints. Defaults assume the /etc/hosts alias scheme is in
 # place (Phase 00·N) so host-side processes can dial bare aliases on :80.
@@ -32,7 +85,7 @@ _qdrant_host = _q.hostname or "qdrant"
 _qdrant_port = _q.port or (80 if _q.scheme == "http" else 6333)
 
 client = QdrantClient(host=_qdrant_host, port=_qdrant_port)
-embed = OpenAILikeEmbedding(
+embed = PrefixedEmbedding(
     # LiteLLM routes `embed-local` to ollama/nomic-embed-text — fully on-host.
     # OpenAILikeEmbedding doesn't validate against the OpenAI-canonical model
     # enum, so non-OpenAI model names work via the LiteLLM proxy.
@@ -44,6 +97,8 @@ embed = OpenAILikeEmbedding(
     # Default httpx timeout for OpenAILikeEmbedding is 60s — bump to 180s so
     # a slow first call (model swap into VRAM, host under load) doesn't 504.
     timeout=180.0,
+    doc_prefix=_DOC_PREFIX,
+    query_prefix=_QUERY_PREFIX,
 )
 # Warm-up: trigger model load before the (potentially slow) Docling parse so
 # the first real embed call doesn't pay the cold-load cost.
@@ -77,6 +132,39 @@ if COLL in _existing:
         print(f"recreating {COLL}: existing dim={_current_dim} != desired dim={EMBED_DIM} (n_points={_n_points})")
         client.delete_collection(COLL)
         _existing.discard(COLL)
+
+
+def _stored_family(coll):
+    """Embedder family stamped on the points already in `coll` ("" when empty/unstamped)."""
+    _pts, _ = client.scroll(coll, limit=1, with_payload=True, with_vectors=False)
+    if not _pts:
+        return ""
+    return (_pts[0].payload or {}).get("embedder", "") or ""
+
+
+# FAMILY coherence — the same-dim sibling of the dim guard above. Re-pointing docs
+# between two 768 families (embed-nomic <-> embed-openai-small-768) leaves the dim
+# guard blind: the vectors already in the collection are in the OLD geometry, so
+# appending new-family vectors produces a MIXED collection where every cross-family
+# similarity is noise. Refuse it on the same terms as the dim migration.
+if COLL in _existing:
+    _stored_fam = _stored_family(COLL)
+    if _stored_fam and _stored_fam != EMBED_NAME:
+        _n_points = client.count(COLL).count
+        if os.environ.get("AI_STACK_FORCE_RECREATE") != "1":
+            raise SystemExit(
+                f"\nERROR: collection {COLL!r} was populated by embedder {_stored_fam!r} "
+                f"(holds {_n_points} embedded chunks) but the configured embedder is "
+                f"{EMBED_NAME!r}.\n"
+                f"Both may share dim {EMBED_DIM}, but they are DIFFERENT VECTOR SPACES — "
+                "appending would mix geometries and silently destroy recall.\n"
+                "Re-embedding the whole corpus is the only correct migration:\n"
+                f"  AI_STACK_FORCE_RECREATE=1 python {sys.argv[0]}\n"
+                "(restore the source docs from ingestor/processed/ to ingestor/inbox/ first)"
+            )
+        print(f"recreating {COLL}: stored family={_stored_fam} != configured {EMBED_NAME} (n_points={_n_points})")
+        client.delete_collection(COLL)
+        _existing.discard(COLL)
 if COLL not in _existing:
     client.create_collection(
         collection_name=COLL,
@@ -101,7 +189,18 @@ for src in sorted(INBOX.rglob("*")):
     except Exception as e:
         print(f"  skip (Docling fail): {src.name}: {e}", file=sys.stderr)
         continue
-    docs = [Document(text=text, metadata={"source": str(src)})]
+    # Stamp the embedder FAMILY onto every point (doctor check 77 reads it back via a
+    # Qdrant `must_not match(embedder=assigned)` count). The stamp rides in the SAME
+    # write that computes the vector, so it cannot drift from what it describes, and it
+    # dies with the collection — an absent stamp is skip-clean, never a false green.
+    # Both excluded_* keys are REQUIRED: llama_index prepends metadata into the embedded
+    # text by default, so an un-excluded stamp would pollute the vector space it audits.
+    docs = [Document(
+        text=text,
+        metadata={"source": str(src), "embedder": EMBED_NAME},
+        excluded_embed_metadata_keys=["embedder"],
+        excluded_llm_metadata_keys=["embedder"],
+    )]
     VectorStoreIndex.from_documents(docs, storage_context=sctx, embed_model=embed)
     # Move to processed/ PRESERVING the inbox subtree, and NEVER clobber. Using the
     # basename (DONE / src.name) flattened subdirs, so two files with the same name in
