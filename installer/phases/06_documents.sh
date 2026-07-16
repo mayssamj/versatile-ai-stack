@@ -30,12 +30,26 @@ precheck() {
   return 0
 }
 
-if precheck 2>/dev/null && stamp_check "$PHASE"; then
+# On `upgrade` (AI_STACK_UPGRADE=1) NEVER early-exit — the rerun re-resolves the
+# models.yml embedder assignment, re-bakes the generated files, re-satisfies the
+# requirements floors and (only when the bake changed something) recycles
+# docs_mcp so the new code actually loads. A plain re-run stays stamp-gated.
+# The version BUMP of the 7 requirements is owned by docs_mcp's uv-reqs method,
+# not by this phase (its `uv pip install -r` has no -U and never moves them).
+# No metered/local-model risk: this phase never embeds or infers (the only
+# embed call lives INSIDE ingest.py's heredoc, run manually by the operator).
+if [[ "${AI_STACK_UPGRADE:-}" != "1" ]] && precheck 2>/dev/null && stamp_check "$PHASE"; then
   ok "phase $PHASE already complete (documents)"
   exit 0
 fi
 
 hdr "Phase 06 — Documents (Docling + LlamaIndex + MCP)"
+
+# Fingerprint the two GENERATED files before this run rewrites them, so the
+# upgrade path can recycle docs_mcp ONLY when the bake actually changed
+# something (council A-B5 — never bounce a live LAN-reachable daemon for a
+# byte-identical regeneration).
+_docs_fp_before="$(cksum "$AI_STACK/ingestor/ingest.py" "$AI_STACK/ingestor/mcp_server.py" 2>/dev/null | cksum | awk '{print $1}' || true)"
 
 # Ingestion drop dirs live UNDER the ingestor/ engine dir (ingestor/inbox,
 # ingestor/processed) so all document-ingestion state is in one place and there
@@ -294,7 +308,15 @@ _bake_embed_literals mcp_server.py
 # port-bound check, idempotent restart). User explicitly requested all
 # services enabled by default.
 if [[ -x "$AI_STACK/bin/start-docs_mcp.sh" ]]; then
-  bash "$AI_STACK/bin/start-docs_mcp.sh" || warn "docs_mcp daemon start failed — see $STATE_DIR/docs_mcp.log"
+  _docs_fp_after="$(cksum "$AI_STACK/ingestor/ingest.py" "$AI_STACK/ingestor/mcp_server.py" 2>/dev/null | cksum | awk '{print $1}' || true)"
+  if [[ "${AI_STACK_UPGRADE:-}" == "1" && -n "$_docs_fp_after" && "$_docs_fp_after" != "$_docs_fp_before" ]]; then
+    # Upgrade path ONLY, and ONLY on a real change: a running daemon keeps its
+    # old imports until recycled — a re-baked mcp_server.py must actually load.
+    note "upgrade re-assert: generated files changed — recycling docs_mcp so the new code loads"
+    bash "$AI_STACK/bin/start-docs_mcp.sh" --recreate || warn "docs_mcp recycle failed — see $STATE_DIR/docs_mcp.log"
+  else
+    bash "$AI_STACK/bin/start-docs_mcp.sh" || warn "docs_mcp daemon start failed — see $STATE_DIR/docs_mcp.log"
+  fi
 else
   warn "$AI_STACK/bin/start-docs_mcp.sh missing — docs_mcp not auto-started"
 fi

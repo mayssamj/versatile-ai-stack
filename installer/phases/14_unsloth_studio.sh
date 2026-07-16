@@ -46,7 +46,13 @@ precheck() {
   return 0
 }
 
-if precheck 2>/dev/null && stamp_check "$PHASE"; then
+# On `upgrade` (AI_STACK_UPGRADE=1) NEVER early-exit — the rerun re-runs the
+# idempotent daemonizer + version probe (a real HEAL, not a lie). It can NEVER
+# re-download: the GB-scale curl|sh installer below is additionally guarded to
+# refuse under the flag (a routine sweep must not pull 1-3 GB of PyTorch).
+# NOTE: unsloth has no version oracle — the official installer manages its own
+# env; a genuine version bump is a deliberate `install 14` on a cleaned host.
+if [[ "${AI_STACK_UPGRADE:-}" != "1" ]] && precheck 2>/dev/null && stamp_check "$PHASE"; then
   ok "phase $PHASE already complete (unsloth studio up on :8898)"
   exit 0
 fi
@@ -56,6 +62,13 @@ hdr "Phase 14 — Unsloth Studio"
 # --- Install the CLI if missing ---
 UNSLOTH_BIN="$(resolve_unsloth)"
 if [[ -z "$UNSLOTH_BIN" ]]; then
+  if [[ "${AI_STACK_UPGRADE:-}" == "1" ]]; then
+    # A stamped host whose CLI vanished (PATH break, ~/.local/bin wipe) must NOT
+    # get the 1-3 GB installer from an unattended sweep (council A-SF): heal
+    # refuses loudly; the summary row reads FAILED, which is the honest state.
+    err "unsloth CLI missing — an upgrade sweep never reinstalls (1-3 GB curl|sh); run: vz-ai-stack.sh install 14"
+    exit 1
+  fi
   log "Installing Unsloth Studio via the official curl|sh installer..."
   # The official script (https://unsloth.ai/install.sh) installs to
   # $UNSLOTH_STUDIO_HOME (default $HOME/.unsloth/studio) and adds the CLI

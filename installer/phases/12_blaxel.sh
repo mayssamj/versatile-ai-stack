@@ -26,6 +26,11 @@ hdr "Phase 12 — Blaxel (cloud)"
 if ! command -v bl >/dev/null 2>&1 && ! command -v blaxel >/dev/null 2>&1; then
   if command -v brew >/dev/null; then
     log "Installing Blaxel toolkit via Homebrew tap (blaxel-ai/blaxel)..."
+    # Trust the tap we are about to install FROM (idempotent; consent = this very
+    # install). Without it, modern Homebrew REFUSES `brew upgrade/outdated blaxel`
+    # ('untrusted tap'), so the upgrade funnel's brew method could neither
+    # version-check nor upgrade it. Older brews without `brew trust` fall through.
+    brew trust blaxel-ai/blaxel 2>/dev/null | tail -1 || true
     if brew tap blaxel-ai/blaxel 2>&1 | tail -3 && brew install blaxel 2>&1 | tail -5; then
       ok "blaxel CLI installed via brew"
     else

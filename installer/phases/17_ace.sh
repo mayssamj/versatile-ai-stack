@@ -48,8 +48,21 @@ source "$AI_STACK/installer/lib/validate.sh"
 PHASE=17
 ACE_DIR="$AI_STACK/ace"
 ACE_REPO="https://github.com/ace-agent/ace.git"
-# Pin a known-good SHA. Update via: cd ace && git rev-parse HEAD
-ACE_PIN="${ACE_PIN:-main}"   # Phase 17 first install captures HEAD when ACE_PIN=main
+# Pin a known-good SHA. Resolution order (council A-B6 — the old env-only read
+# meant the pin NEVER fired: env.sh doesn't export .env, so a fresh clone took
+# upstream default HEAD — the exact supply-chain hole the pin exists to close):
+#   1. shell env ACE_PIN (operator one-off override)
+#   2. .env ACE_PIN (captured by a previous install)
+#   3. services.yml .services.ace.upgrade.pin (the VETTED committed pin)
+#   4. 'main' (capture-HEAD mode) — with a LOUD warn: no vetted pin anywhere.
+if [[ -z "${ACE_PIN:-}" ]]; then ACE_PIN="$(get_env ACE_PIN "")"; fi
+if [[ -z "${ACE_PIN:-}" ]] && command -v yq >/dev/null 2>&1; then
+  ACE_PIN="$(yq -r '.services.ace.upgrade.pin // ""' "$AI_STACK/services.yml" 2>/dev/null || true)"
+fi
+if [[ -z "${ACE_PIN:-}" ]]; then
+  warn "ACE_PIN: no vetted pin in env, .env, or services.yml — falling back to upstream default branch (supply-chain: the first install will capture whatever HEAD is now)"
+  ACE_PIN="main"
+fi
 ACE_VENV="$ACE_DIR/.venv"
 ACE_RESULTS="$ACE_DIR/results"
 ACE_WRAPPER="$AI_STACK/bin/ace"

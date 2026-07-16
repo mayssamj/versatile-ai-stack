@@ -17,14 +17,14 @@
 #     lumen (phase 16) can `ollama pull` the ~150MB EMBEDDER if its precheck fails
 #     (embedding plane is kept by design) — no CHAT model is ever pulled.
 #   - EXHAUSTIVE but honest: a service with a services.yml `upgrade:` block is
-#     version-bumped by its method (npm-global/uv-venv/git-pull/rebuild); everything
-#     else RE-RUNS its install phase (AI_STACK_UPGRADE=1 is exported as a forward
-#     convention — no phase reads it yet, so today phase-rerun RE-ASSERTS config via
-#     the phase's own precheck-guarded logic and only fetches a new version where the
-#     phase is version-UNPINNED). RESULT is labeled `re-asserted` (not `upgraded`) so
-#     the summary never implies a version bump that didn't happen. NOTE: a phase-rerun
-#     of an opt-in sim (metagpt/aitown/…) runs that phase's live model smoke, which
-#     bills the subscription/metered route when its precheck doesn't short-circuit.
+#     version-bumped by its method (npm-global/uv-venv/uv-tool/uv-reqs/git-pull/
+#     sandbox-pip/brew/rebuild); everything else RE-RUNS its install phase with
+#     AI_STACK_UPGRADE=1, which SOME phases read (04f/05/06/14 DO-MORE: gate
+#     bypass / forced dep bump; 33/34/37 DO-LESS: skip live smokes) while the
+#     rest re-assert via their own precheck-guarded logic. RESULT stays
+#     `re-asserted` (not `upgraded`) so the summary never implies a version bump
+#     that didn't happen. The sim phases skip their live model smokes under the
+#     flag — a routine upgrade never does unsolicited metered/local inference.
 #   - Registers NO doctor checks → the doctor invariant is untouched.
 #
 # This runs as its OWN process (vz-ai-stack.sh dispatches `"$BASH" upgrade.sh "$@"`),
@@ -268,11 +268,13 @@ check_one() {
       # Bound `brew outdated` (it can hit the network to refresh) so the preflight,
       # which now runs check_one on the plain upgrade path, honors the all-probes-
       # bounded contract on a proxy-blocked host (council should-fix).
+      # Name passed as ARGV, never interpolated into the python source (twin of
+      # the _av_brew quoting-hazard fix — council).
       out="$(_vz_bounded 12 brew outdated --json=v2 2>/dev/null \
         | python3 -c "import sys,json
 d=json.load(sys.stdin)
-f=[x for x in d.get('formulae',[]) if x['name']=='$svc']
-print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else print('')" 2>/dev/null || true)"
+f=[x for x in d.get('formulae',[]) if x['name']==sys.argv[1]]
+print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else print('')" "$svc" 2>/dev/null || true)"
       if [[ -n "$out" ]]; then
         CHECK_CUR="$(printf '%s' "$out" | cut -f1)"
         CHECK_AVAIL="$(printf '%s' "$out" | cut -f2)"
@@ -443,7 +445,7 @@ print_check_report() {
   elif (( unconfirmed )); then
     note "$unconfirmed additional service(s) could not be verified (unknown/rebuild) — currency not confirmed for those."
   fi
-  note "Legend: pinned=deliberately held at a declared version (fixed docker tag or upgrade.pin) — shown, never auto-swept; 'upgrade <svc>' prints its exact bump path · config=configuration surface — versioned by the stack repo or its owning service (hermes surfaces version with hermes_fleet) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=real artifact, no version oracle yet — upgrade by hand (see 'help <svc>') · unknown=registry/proxy unreachable or no local image · up-to-date/update-available=installed vs upstream latest"
+  note "Legend: pinned=deliberately held at a declared version (fixed docker tag or upgrade.pin) — shown, never auto-swept; 'upgrade <svc>' prints its exact bump path · config=configuration surface — versioned by the stack repo or its owning service (hermes surfaces version with hermes_fleet) · build=locally-built docker image (no registry; 'upgrade <svc>' rebuilds it) · rebuild=compose stack with locally-built/uncheckable images (run upgrade to pull+rebuild) · manual=real artifact, no version oracle yet — upgrade by hand (see 'help <svc>') · unknown=registry/proxy unreachable, no local image, or an untrusted brew tap (fix: brew trust <tap>) · up-to-date/update-available=installed vs upstream latest"
 }
 
 # --- phase / start-script resolution (lock-free recreate paths) --------------
@@ -979,8 +981,11 @@ up_openshell() {
 # upgrade path — never on a plain `install`). It signals "upgrade mode" and drives
 # behavior in BOTH directions, so a phase reader is explicit about which:
 #   - DO-MORE: 04f_hermes_fleet re-runs `pip install --upgrade hermes-agent` even
-#     when hermes is already present (force a version bump).
-#   - DO-LESS: the opt-in sim phases (32? no — 33/34/37) SKIP their live model
+#     when hermes is already present (force a version bump); 05_uis, 06_documents
+#     and 14_unsloth_studio BYPASS their precheck/stamp gate under the flag so a
+#     rerun genuinely re-asserts (06 re-bakes embedder literals + change-gated
+#     docs_mcp recycle; 14 heals the daemon but NEVER re-runs the GB installer).
+#   - DO-LESS: the opt-in sim phases (33/34/37) SKIP their live model
 #     smoke + embedder pre-fetch (no unsolicited metered inference / local-model
 #     load on a routine `upgrade`), re-assert config, and stamp.
 # CAVEAT: `AI_STACK_UPGRADE=1 vz-ai-stack.sh install 33` therefore skips the smoke
@@ -1076,6 +1081,114 @@ up_uv_venv() {
   return 0
 }
 
+# up_uv_reqs <svc> — requirements-file venv upgrade, SCOPED to the req names
+# (--upgrade-package per name — a bare -U permits the WHOLE resolution closure,
+# torch et al, GB wheels on a routine sweep; verified live). Fingerprint pre/post
+# via the shared _iv_uvreqs: unchanged ⇒ up-to-date + NO restart (single,
+# change-gated restart owner — council A-B5); moved ⇒ verified restart, failure
+# ⇒ FAILED. FAILED posture: uv has no rollback (no reset --keep equivalent) —
+# the venv may be partially newer, the daemon keeps its old imports (consistent),
+# the fingerprint SEES the partial state so the next scan re-selects; retry via
+# 'upgrade <svc>'. Reverify: docs_mcp has no health: key → 'n/a'; correctness
+# rests on restart_and_verify's PID-change check.
+up_uv_reqs() {
+  local svc="$1" pp py rf restart name fp_before fp_after
+  STRATEGY=uv-reqs
+  pp="$(_uvreqs_paths "$svc")"
+  restart="$(svc_upgrade "$svc" restart)"
+  if [[ -z "$pp" ]]; then err "$svc: uv-reqs needs upgrade.venv + upgrade.reqs (venv python + reqs file must exist)"; RESULT=FAILED; return 0; fi
+  py="${pp%%|*}"; rf="${pp##*|}"
+  local -a upargs=()
+  while IFS= read -r name; do
+    if [[ -n "$name" ]]; then upargs+=(--upgrade-package "$name"); fi
+  done < <(_uvreqs_names "$rf")
+  if (( ${#upargs[@]} == 0 )); then err "$svc: no requirement names readable from ${rf#"$AI_STACK"/}"; RESULT=FAILED; return 0; fi
+  if (( DRY )); then
+    note "PLAN $svc uv-reqs: uv pip install --python ${py#"$AI_STACK"/} -r ${rf#"$AI_STACK"/} --upgrade-package <each req>$([[ "$restart" != "-" && -n "$restart" ]] && echo "  (then verified restart of $restart IF versions moved)")"
+    RESULT="planned"; return 0
+  fi
+  command -v uv >/dev/null 2>&1 || { warn "$svc: uv not on PATH — skipping"; RESULT="skipped (no uv)"; return 0; }
+  fp_before="$(_iv_uvreqs "$svc")"
+  if ! _vz_bounded "${AI_STACK_BUILD_TIMEOUT:-600}" uv pip install --python "$py" -r "$rf" "${upargs[@]}" 2>&1 | tail -3; then
+    err "$svc: scoped requirements upgrade failed — the venv may be PARTIALLY newer; daemon left on its old imports. Retry: 'vz-ai-stack.sh upgrade $svc'"
+    RESULT=FAILED; return 0
+  fi
+  fp_after="$(_iv_uvreqs "$svc")"
+  if [[ "$fp_after" == "$fp_before" ]]; then RESULT="up-to-date"; return 0; fi
+  RESULT="upgraded"
+  if [[ "$restart" != "-" && -n "$restart" ]]; then
+    note "$svc: restarting $restart (requirement versions moved)"
+    if ! restart_and_verify "$restart"; then
+      err "$svc: restart of $restart failed or could not be verified — daemon is on stale imports"
+      RESULT=FAILED; return 0
+    fi
+  fi
+  return 0
+}
+
+# up_brew_formula <svc> — `brew upgrade <upgrade.formula|svc>` for formula-backed
+# CLIs (blaxel_cli) and the openshell platform binary. Deliberately NOT up_brew:
+# that handler carries brew-SERVICE semantics (`brew services restart` + the
+# ollama env-patch) which are wrong for a plain formula. Untrusted-tap policy
+# (council A-B4, consent-as-DATA): a DECLARED upgrade.tap is recorded install-time
+# consent (the operator installed FROM that tap) → `brew trust` once, loudly,
+# then retry; undeclared → visible skip with the exact remedy. openshell chains
+# the phase-04 gateway re-assert UNCONDITIONALLY (A-B3 — preserves the pre-round
+# per-sweep re-assert; a client/gateway version skew breaks every sandbox exec),
+# then restores the brew RESULT/STRATEGY so reconcile + the unhealthy-exit gate
+# act on the real version delta.
+up_brew_formula() {
+  local svc="$1" formula tap out rc=0
+  formula="$(_svc_brew_formula "$svc")"
+  tap="$(svc_upgrade "$svc" tap)"
+  STRATEGY=brew
+  if (( DRY )); then
+    note "PLAN $svc brew: brew upgrade $formula$([[ "$(svc_type "$svc")" == openshell ]] && echo "  (then UNCONDITIONAL phase-04 gateway re-assert)")"
+    RESULT="planned"; return 0
+  fi
+  command -v brew >/dev/null 2>&1 || { warn "$svc: brew not on PATH — skipping"; RESULT="skipped (no brew)"; return 0; }
+  if [[ -z "$(brew list --versions "$formula" 2>/dev/null || true)" ]]; then
+    note "$svc: formula $formula not installed — skipping (this is 'upgrade', not 'install')"
+    RESULT="skipped (not installed)"; return 0
+  fi
+  out="$(brew upgrade "$formula" 2>&1)" || rc=$?
+  printf '%s\n' "$out" | tail -3
+  if (( rc != 0 )) && printf '%s' "$out" | grep -qi "untrusted tap"; then
+    if [[ -n "$tap" && "$tap" != "-" ]]; then
+      note "$svc: tap $tap is untrusted — trusting it (declared upgrade.tap = recorded install-time consent) and retrying once"
+      if brew trust "$tap" 2>&1 | tail -2; then
+        rc=0; out="$(brew upgrade "$formula" 2>&1)" || rc=$?
+        printf '%s\n' "$out" | tail -3
+      fi
+    else
+      warn "$svc: the tap for $formula is untrusted and no upgrade.tap consent is declared — run: brew trust <tap> (or its install phase)"
+      RESULT="skipped (untrusted tap — see note)"; return 0
+    fi
+  fi
+  if (( rc != 0 )); then
+    err "$svc: 'brew upgrade $formula' failed (rc=$rc) — old binary still installed"
+    RESULT=FAILED
+  else
+    RESULT="upgraded"   # reconcile downgrades a no-op via the brew version delta
+  fi
+  if [[ "$(svc_type "$svc")" == openshell ]]; then
+    # Snapshot → chain → merge (A-B3): the gateway re-assert runs on EVERY run —
+    # including after a FAILED brew step (impl-council: skipping it there would
+    # lose today's per-sweep config heal exactly when the binary state is most
+    # suspect). Chain failure wins as FAILED; on success restore the brew verdict
+    # (upgraded OR FAILED — a brew failure is never laundered by a green chain).
+    local _res="$RESULT" _strat="$STRATEGY"
+    up_openshell "$svc"
+    if [[ "$RESULT" == FAILED* ]]; then
+      err "$svc: post-brew gateway re-assert FAILED — client/gateway may be version-skewed (execs would fail); fix before relying on the sandbox"
+      RESULT=FAILED
+    else
+      RESULT="$_res"; STRATEGY="$_strat"
+    fi
+  fi
+  return 0
+}
+
 # up_uv_tool <svc> — uv tool install --upgrade <upgrade.pkg>. The idiomatic verb
 # for uv-MANAGED tool venvs (mempalace, halo): `uv pip install` into a tool venv
 # desyncs uv's receipt (uv tool list would keep reporting the old version).
@@ -1163,6 +1276,8 @@ up_by_method() {
     uv-venv)     up_uv_venv "$svc" ;;
     git-pull)    up_git_pull "$svc" ;;
     uv-tool)     up_uv_tool "$svc" ;;
+    uv-reqs)     up_uv_reqs "$svc" ;;
+    brew)        up_brew_formula "$svc" ;;
     sandbox-pip)
       # Oracle-carrying method whose MUTATION is the type's own honest handler:
       # up_openshell already does the in-sandbox pip -U with VER_OVERRIDE and the
@@ -1200,7 +1315,7 @@ pin_hold_check() {
   pin="$(svc_upgrade "$svc" pin)"
   if [[ -z "$pin" || "$pin" == "-" ]]; then return 1; fi
   case "$method" in
-    npm-global|uv-venv|uv-tool|git-pull|sandbox-pip) ;;
+    npm-global|uv-venv|uv-tool|uv-reqs|git-pull|sandbox-pip|brew) ;;
     *) return 1 ;;
   esac
   STRATEGY="pinned"
@@ -1253,7 +1368,7 @@ up_by_type() {
 dispatch_upgrade() {
   local svc="$1" type="$2" method="$3"
   case "$method" in
-    npm-global|uv-venv|git-pull|uv-tool|sandbox-pip|rebuild|phase-rerun|none)
+    npm-global|uv-venv|git-pull|uv-tool|uv-reqs|sandbox-pip|brew|rebuild|phase-rerun|none)
       up_by_method "$svc" ;;
     ''|-)
       up_by_type "$svc" "$type" ;;
@@ -1367,9 +1482,11 @@ upgrade_one() {
   case "$STRATEGY" in
     # uv-tool included (council A6): `uv tool install --upgrade` exits 0 on an
     # already-current tool — without reconcile that no-op would read 'upgraded'.
+    # uv-reqs included: its handler already self-reconciles via the fingerprint,
+    # and the driver-level delta (same _iv_uvreqs) is a consistent second check.
     # sandbox-pip deliberately EXCLUDED: up_openshell sets an honest RESULT +
     # VER_OVERRIDE from pip's real outcome.
-    brew|npm-global|uv-venv|uv-tool|git-pull|compose)
+    brew|npm-global|uv-venv|uv-tool|uv-reqs|git-pull|compose)
       RESULT="$(reconcile_result "$RESULT" "$VER_BEFORE" "$VER_AFTER")"
       ;;
   esac
@@ -1484,11 +1601,17 @@ upgrade_main() {
     local svc; local -a skipped_manual=() unconfirmed=() pinned_held=() config_svcs=()
     hdr "Scanning for available updates…"
     for svc in "${list[@]}"; do
+      # Per-service: only the uv-reqs oracle writes the behind-names file —
+      # never leak a stale list into another row's note.
+      rm -f "$(_uvreqs_behind_file)" 2>/dev/null || true
       check_one "$svc"
       case "$(outdated_bucket "$CHECK_STATUS")" in
         sweep)
           targets+=("$svc")
-          note "  $svc: $CHECK_STATUS ($CHECK_CUR → $CHECK_AVAIL)" ;;
+          # uv-reqs stashes WHICH requirements are behind (file side channel —
+          # the oracle runs in a $() subshell, a global can't cross back) — say
+          # what the sweep will move BEFORE it moves it.
+          note "  $svc: $CHECK_STATUS ($CHECK_CUR → $CHECK_AVAIL)$([[ -s "$(_uvreqs_behind_file)" ]] && echo "  [behind: $(cat "$(_uvreqs_behind_file)")]")" ;;
         manual)
           # Real artifact, no version oracle yet — NEVER upgraded by --outdated
           # (can't reach the sweep gate above). Disclosed below with an HONEST

@@ -18,8 +18,12 @@ source "$AI_STACK/installer/lib/litellm.sh"
 hdr "Smoke 01 — inference plane"
 
 # 0. REACHABILITY (pre-condition for everything that follows).
+# /health/readiness, NOT bare /health: LiteLLM's /health actively PINGS every
+# configured model — a real call per route that LOADS local ollama/lmstudio
+# models (never-load directive) and bills metered ones. Readiness is a static
+# ~30ms probe that also catches the Prisma-DB SPOF. (Same fix as services.yml.)
 log "Reachability: litellm via http://litellm:4000 (host → alias)..."
-verify_container_reachable_by_alias litellm litellm 4000 /health \
+verify_container_reachable_by_alias litellm litellm 4000 /health/readiness \
   || { err "litellm not reachable via http://litellm:4000 — refusing to claim phase complete"; exit 1; }
 ok "litellm answers on http://litellm:4000"
 
