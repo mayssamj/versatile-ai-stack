@@ -167,6 +167,67 @@ except Exception: sys.exit(1)
 sys.exit(0 if any(m.get("id")==w for m in d.get("data",[])) else 1)' "$want"
 }
 
+# effort ROUND-TRIP — FILE layer: does every models.yml `effort:` reach litellm/config.yaml?
+# Shape is runtime-specific — see lms_register_model's per-runtime branches in lib/lmstudio.sh:
+#   meridian            -> litellm_params.extra_body.effort   (Meridian reads it as body.effort)
+#   openai|codex-bridge -> litellm_params.reasoning_effort     (LiteLLM's first-class param)
+# WHY THIS EXISTS: every writer REASSIGNS .litellm_params to a fresh map, so any arg the
+# CALLER omits is DELETED from the route — the model still answers, just at the provider's
+# default reasoning. Nothing else notices. That is precisely how `openai-gpt: effort: xhigh`
+# stopped being served while models.yml still declared it: phase 01's arg-extraction is a
+# HAND-MIRROR of lib/models.sh::register_model_list (THREE copies of that extraction exist —
+# register_model_list, models.sh::_dry_run, and phase 01) and phase 01's has drifted twice,
+# both times missing openai. The tracked config.yaml was never wrong: `install inference`
+# REWRITES these rows and strips effort, and `model sync` is never auto-run by install, so the
+# degraded state is BORN AT INSTALL TIME and nothing restores it until an operator syncs.
+# smoke/models-gpt.sh asserts this contract but calls lms_register_model DIRECTLY — it tests
+# the WRITER, so it structurally cannot catch a broken CALLER. Asserting the ARTIFACT catches
+# any cause: caller drift, a 4th caller, or a hand-edit.
+# DELIBERATE OVERLAP with check 41, which also asserts extra_body.effort: 41 is RUNTIME-scoped
+# (it skips every non-meridian model) — NOT enablement-gated; its clause runs regardless of
+# daemon state. That one-sided coverage is exactly why the openai half rotted unnoticed. This
+# stays runtime-agnostic because the models.yml -> route contract is generic (a 4th
+# effort-rendering runtime lands here, not in a per-daemon suite), and because 41 greens on an
+# ABSENT key (its `-n "$got"` test) — which is this very failure mode.
+# DELIBERATELY ABOVE THE LiteLLM GATE (see the call site): this is a pure file-vs-file
+# comparison needing ZERO network. Gating it behind a live-proxy probe would report GREEN on a
+# known-broken config whenever LiteLLM is down — the exact silently-green class it exists to
+# kill. Echoes one finding per drifted model; appends inert declarations to _MB_EFFORT_ADVISORY.
+_mb_effort_file_drift() {
+  local yml="$1" cfg="$2" fail=0
+  local m rt _want_ef _got_ef _ef_path
+  _MB_EFFORT_ADVISORY=""
+  while IFS= read -r m; do
+    [[ -z "$m" ]] && continue
+    _want_ef="$(yq -r ".models.\"$m\".effort // \"\"" "$yml" 2>/dev/null || true)"
+    [[ -n "$_want_ef" && "$_want_ef" != "null" ]] || continue
+    # Absent from config.yaml entirely -> the main loop reports that; don't double-report.
+    yq -e ".model_list[] | select(.model_name == \"$m\")" "$cfg" >/dev/null 2>&1 || continue
+    rt="$(yq -r ".models.\"$m\".runtime" "$yml" 2>/dev/null || true)"
+    # LOAD-BEARING: bash `local` does NOT re-initialize on re-execution in the same scope, so
+    # without this reset a `case` matching no arm would leak the PREVIOUS model's path.
+    _ef_path=""
+    case "$rt" in
+      meridian)            _ef_path=".litellm_params.extra_body.effort" ;;
+      openai|codex-bridge) _ef_path=".litellm_params.reasoning_effort" ;;
+    esac
+    if [[ -z "$_ef_path" ]]; then
+      _MB_EFFORT_ADVISORY="${_MB_EFFORT_ADVISORY}    (advisory) model '$m' declares effort '$_want_ef' but runtime '$rt' renders no effort field (lms_register_model has no effort branch for it) — the declaration is inert\n"
+      continue
+    fi
+    # `head -1`: two routes MAY share a model_name (LiteLLM's load-balance pattern). The
+    # writer upserts keyed on model_name so it cannot produce one, but a hand-edit can —
+    # without this the value is multi-line and the finding is garbled.
+    _got_ef="$(yq -r ".model_list[] | select(.model_name == \"$m\") | $_ef_path // \"\"" "$cfg" 2>/dev/null | head -1 || true)"
+    [[ "$_got_ef" == "null" ]] && _got_ef=""
+    if [[ "$_got_ef" != "$_want_ef" ]]; then
+      echo "model '$m' declares effort '$_want_ef' (models.yml) but litellm/config.yaml renders '${_got_ef:-<absent>}' — it is NOT reasoning at the level you declared; fix: bash vz-ai-stack.sh model sync   (NOT 'install inference' — phase 01 self-gates on its stamp and exits before re-registering)"
+      fail=1
+    fi
+  done < <(yq -r '.models | keys | .[]' "$yml" 2>/dev/null || true)
+  return $fail
+}
+
 models_binding_diagnose() {
   local yml cfg; yml="$(_mb_yml)"; cfg="$(_mb_cfg)"
   command -v yq >/dev/null 2>&1 || { echo "yq not on PATH"; return 1; }
@@ -179,15 +240,25 @@ models_binding_diagnose() {
     return 1
   fi
 
-  # WARN-skip when LiteLLM is down (avoid cascade).
+  local fail=0 advisory=""
+
+  # (1.5) effort ROUND-TRIP, FILE layer — ABOVE the LiteLLM gate ON PURPOSE. It needs zero
+  # network, so a down proxy must not turn a known-broken config GREEN (proven: with LiteLLM
+  # stubbed down, the old placement returned rc=0 against a config missing all 3 efforts, and
+  # doctor.sh discards stdout on success so even the "skipping" reason never printed).
+  _mb_effort_file_drift "$yml" "$cfg" || fail=1
+
+  # WARN-skip the LIVE binding checks when LiteLLM is down (avoid cascade) — but never
+  # discard a finding the static pass already made above.
   if ! _mb_litellm_up; then
-    echo "  (LiteLLM not responding — skipping binding checks; see check 11 + Phase 01)"
-    return 0
+    echo "  (LiteLLM not responding — skipping the LIVE binding checks; see check 11 + Phase 01)"
+    [[ -n "$_MB_EFFORT_ADVISORY" ]] && printf '%b' "$_MB_EFFORT_ADVISORY"
+    return $fail
   fi
 
   local lms_up=0; _mb_lms_up && lms_up=1
   local master; master="$(get_env LITELLM_MASTER_KEY '' 2>/dev/null || echo '')"
-  local fail=0 advisory=""
+  advisory="${advisory}${_MB_EFFORT_ADVISORY}"
 
   # Snapshot ollama's PULLED (`ollama list`) + LOADED (`ollama ps`) model names
   # ONCE — both are metadata queries: no inference, no cold-start. The per-model
@@ -224,6 +295,26 @@ print("\n".join(m.get("id","") for m in d.get("data",[])))' 2>/dev/null || true 
   if [[ "$_served_ok" != "1" ]]; then
     advisory="${advisory}    (advisory) could not read LiteLLM /v1/models (master key) — remote/no-cli model presence checks skipped this run (inconclusive, not failed)\n"
   fi
+  # The effort each route is ACTUALLY SERVING, fetched ONCE from /model/info: static
+  # route metadata — no inference, no cold-start, no token burn (same directive-safe
+  # class as the /v1/models fetch above). WHY assert the proxy and not just the file:
+  # LiteLLM reads config.yaml at BOOT, and Phase 01 deliberately does NOT restart a
+  # running+serving container. "config.yaml repaired, proxy still stale" is therefore a
+  # REAL state in which a file-only assertion goes GREEN while every request still runs
+  # at provider-default reasoning — the exact silent degradation this guard exists to
+  # kill, one layer up. `|| true` so a hiccup can never abort the check.
+  local _served_effort=""
+  if [[ -n "$master" ]]; then
+    _served_effort="$( (litellm_master_curl -s --max-time 8 http://litellm:4000/model/info 2>/dev/null || true) \
+      | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for m in d.get("data",[]) or []:
+    p = m.get("litellm_params") or {}
+    eb = p.get("extra_body") or {}
+    e = p.get("reasoning_effort") or eb.get("effort") or ""
+    print("%s\t%s" % (m.get("model_name",""), e))' 2>/dev/null || true )"
+  fi
   local _deep="${MODELS_BINDING_DEEP_CHECK:-0}"
   local _default_model; _default_model="$(yq -r '.default' "$yml" 2>/dev/null)"
 
@@ -237,6 +328,37 @@ print("\n".join(m.get("id","") for m in d.get("data",[])))' 2>/dev/null || true 
     if ! yq -e ".model_list[] | select(.model_name == \"$m\")" "$cfg" >/dev/null 2>&1; then
       echo "model '$m' missing from litellm/config.yaml (run: bash vz-ai-stack.sh model sync)"
       fail=1; continue
+    fi
+    # (2a) effort ROUND-TRIP, PROXY layer — what LiteLLM is serving RIGHT NOW.
+    # The FILE layer already ran ABOVE the LiteLLM gate (_mb_effort_file_drift); this is the
+    # second, INDEPENDENT failure mode: LiteLLM reads config.yaml at BOOT and Phase 01
+    # deliberately does not restart a healthy serving container, so "file repaired, proxy
+    # still stale" is a real state in which a file-only assertion goes GREEN while every
+    # request keeps running at provider-default reasoning. Reported ONLY when the file is
+    # already correct — a file mismatch is the helper's finding, with its own remedy
+    # (model sync), so don't double-report one root cause as two.
+    local _want_ef _ef_path _file_ef _proxy_row _live_ef
+    _want_ef="$(yq -r ".models.\"$m\".effort // \"\"" "$yml" 2>/dev/null || true)"
+    if [[ -n "$_want_ef" && "$_want_ef" != "null" && -n "$_served_effort" ]]; then
+      # LOAD-BEARING reset: bash `local` does NOT re-initialize on re-execution in the same
+      # scope, so a `case` matching no arm would leak the PREVIOUS model's path.
+      _ef_path=""
+      case "$rt" in
+        meridian)            _ef_path=".litellm_params.extra_body.effort" ;;
+        openai|codex-bridge) _ef_path=".litellm_params.reasoning_effort" ;;
+      esac
+      if [[ -n "$_ef_path" ]]; then
+        _file_ef="$(yq -r ".model_list[] | select(.model_name == \"$m\") | $_ef_path // \"\"" "$cfg" 2>/dev/null | head -1 || true)"
+        [[ "$_file_ef" == "null" ]] && _file_ef=""
+        _proxy_row="$(printf '%s\n' "$_served_effort" | awk -F'\t' -v n="$m" '$1==n{print; exit}' || true)"
+        _live_ef=""
+        [[ -n "$_proxy_row" ]] && _live_ef="$(printf '%s' "$_proxy_row" | cut -f2- || true)"
+        # An absent row means the route isn't live-served at all — reported below, not here.
+        if [[ "$_file_ef" == "$_want_ef" && -n "$_proxy_row" && "$_live_ef" != "$_want_ef" ]]; then
+          echo "model '$m' declares effort '$_want_ef' and litellm/config.yaml is correct, but the RUNNING LiteLLM serves '${_live_ef:-<absent>}' (/model/info) — the proxy reads config at boot and has not picked it up; fix: bash $AI_STACK/bin/start-litellm.sh --recreate"
+          fail=1
+        fi
+      fi
     fi
     # meridian (Claude subscription): NEVER chat_ping — it bills subscription
     # tokens and needs the daemon up. Presence in config.yaml (checked above) is
