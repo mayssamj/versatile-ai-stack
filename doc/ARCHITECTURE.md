@@ -117,8 +117,9 @@ niche:
 
 - **Qdrant** `:6333` — vector store (RAG corpus; the Documents ingestor at
   Phase 06 sweeps `ingestor/inbox` → Qdrant). Document vector RAG.
-- **FalkorDB** `:6379` (+ UI `:3000`) — graph/redis memory (reserved for future
-  graph-memory work; no current callers).
+- **FalkorDB** `:6379` (+ UI `:3000`) — graph/redis memory, fronted for agents by
+  the token-gated `falkordb-mcp` shim (`:7083`, Phase 41); sandboxes never reach
+  `:6379` directly.
 - **Honcho** `:8000` — self-hosted cross-agent memory: *derived/summarized*
   facts about peers (Postgres + Redis), shared across the whole fleet. Its
   compose Postgres *also* backs the LiteLLM key store, which is why Phase 03
@@ -209,6 +210,22 @@ is assignment-driven and wires only models.yml-assigned MLX slugs. There is no
 heavy 27B local model anymore: the old Ollama `local-heavy` (`qwen3.6:27b`) is
 **removed** and `local-heavy` now maps to nemotron. Embedders — `nomic-embed-text`,
 `jina-embeddings-v2-base-code` — are unchanged.)
+
+### Canonical-768 — the embedding invariant
+
+Every **cross-queryable text consumer** (`docs`, `honcho`, `openwebui`; plus
+`lumen` on its own code-tuned index) embeds at **768 dimensions**. MemPalace is
+the deliberate exception — its 384-dim on-device store is isolated and never
+cross-queried.
+
+What the invariant buys is **cloud/local swap-safety at the schema level**: the
+cloud route `embed-openai-small-768` (`text-embedding-3-small` @ `dimensions:768`)
+is a schema-compatible drop-in for local `embed-nomic(768)`, so moving a consumer
+cloud↔local costs a **re-index**, never a collection or column rebuild. Note that
+same dim ≠ same vector space — a model-*family* swap still requires re-embedding.
+Doctor **check 77** (`embedding_dim`) enforces live-store dim == assigned-model
+dim. Assignment table in [models.md](models.md#embeddings-the-canonical-768-rule);
+re-index runbook in [TROUBLESHOOTING.md](TROUBLESHOOTING.md#embedding-dimensionality-canonical-768--cloudlocal-interchangeability).
 
 ### Availability-gating — fallback to `local`
 

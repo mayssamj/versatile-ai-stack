@@ -100,7 +100,7 @@ graph TD
 - `litellm` is the keystone. Every chat-completion path crosses it.
 - `phoenix` is a soft dep — LiteLLM keeps serving if Phoenix is down (the OTLP callback fails-soft; the call still completes).
 - `halo` (the `halo-engine` CLI, exposing `bin/halo`) routes its own LLM calls through LiteLLM (local default); it does not read `traces/litellm.jsonl`.
-- `falkordb` has no current callers in this stack (reserved for future graph-memory work).
+- `falkordb`'s only caller is the host-side `falkordb-mcp` shim (:7083), which fronts it for the sandboxed fleet; nothing dials `falkordb:6379` from a sandbox directly.
 - `mempalace` (Phase 26, CLI/MCP, no port) is local-first: its embeddings run on-device (local ONNX via CoreML, no dependency) and its only soft edge is the *optional* entity-refiner (`--extract general`), which routes through LiteLLM under `MEMPALACE_LITELLM_KEY`. Skip the refiner and MemPalace has no runtime deps at all.
 - The cloud-provider edges are dotted because each call only uses one provider, chosen by `model:` in the request.
 
@@ -113,7 +113,7 @@ Three distinct planes meet at well-defined bridge points:
 1. **macOS host** — Mac shell, browser, host-side Python (docs_ingestor, docs_mcp, halo, paperclip, rlm, lumen, mempalace), and the brew-managed `ollama` service. Reaches `ai-stack` services by alias via the `/etc/hosts` block that Phase 00·N writes (`127.0.10.x` loopback range). The host-plane bootstrap also lives here: `vz-ai-stack.sh deps` (`installer/lib/deps.sh`) verifies/installs/starts host dependencies, and `vz-ai-stack.sh setup` (`installer/lib/setup.sh`) writes optional API keys into `.env`. Both layer over `env.sh::env_ensure_baseline` — the single source of truth for the `.env` baseline (non-secret DEFAULTS + one-time `LITELLM_MASTER_KEY`/`PHOENIX_SECRET` + stale-URL migration), which is **also** what Phase 00 (`00_host.sh`) calls, so a local-only / Claude-subscription user reaches `doctor` with zero prompts.
 2. **`ai-stack` Docker bridge** (`10.99.0.0/24`) — every managed container joins via `--network ai-stack`. Docker's embedded DNS resolves bare container names to in-network IPs.
 3. **`honcho_default` Docker network** — compose-internal for the Honcho stack. `honcho-api-1` and `honcho-deriver-1` are multi-network: they're on both `honcho_default` (to reach their database and redis) and `ai-stack` (to reach LiteLLM and to be reached by other services).
-4. **OpenShell sandbox** (`hermes-fleet-v1`) — not joined to `ai-stack`; its egress is policy-controlled.
+4. **OpenShell sandboxes** (`hermes-fleet-v1`, `pi-v1`) — not joined to `ai-stack`; egress is policy-controlled. **Raw `honcho:8000` (`AUTH_USE_AUTH=false`) and raw `falkordb:6379` are DENIED to both sandboxes.** They reach memory only through token-gated HOST shims — `honcho-mcp:7082` and `falkordb-mcp:7083` (Bearer token, minted by Phases 40/41; `bin/pi` injects them for `pi-v1`) — plus the unauthenticated read-only `docs-mcp:8765`. The diagram below draws the `hermes-fleet-v1` path; `pi-v1` reaches the same three shims the same way, via `host.docker.internal`.
 
 Inter-container traffic on `ai-stack` uses bare names. Containers on multiple networks use **fully-qualified DNS** (`<service>.<network>`) for cross-network calls — bare-name resolution order across networks is unspec'd.
 
@@ -125,6 +125,8 @@ graph LR
     halo_h[halo (CLI)]
     docs_ingestor_h[docs-ingestor (bg)]
     docs_mcp_h[docs-mcp :8765]
+    honcho_mcp_h[honcho-mcp :7082 - token-gated shim]
+    falkordb_mcp_h[falkordb-mcp :7083 - token-gated shim]
     paperclip_h[paperclip :3100]
     user_h[user shell / browser]
     etc[/etc/hosts managed block/]
@@ -180,8 +182,15 @@ graph LR
 
   hermes_inside -- "inference.local" --> sbx_gw
   sbx_gw -- "policy-allowed path to litellm:4000" --> litellm_c
-  hermes_inside -. "honcho:8000 allowed" .-> honcho_api_ext
-  hermes_inside -. "docs-mcp:8765 allowed" .-> docs_mcp_h
+  hermes_inside -. "honcho-mcp:7082 allowed (Bearer token)" .-> honcho_mcp_h
+  hermes_inside -. "falkordb-mcp:7083 allowed (Bearer token)" .-> falkordb_mcp_h
+  hermes_inside -. "docs-mcp:8765 allowed (read-only, unauth)" .-> docs_mcp_h
+  %% NO sandbox edge to honcho_api_ext / falkordb_c: raw honcho:8000 + falkordb:6379
+  %% are DENIED to hermes-fleet-v1 and pi-v1 (retired in slice 3). The three shim
+  %% edges above are the ONLY memory paths out of a sandbox.
+
+  honcho_mcp_h -- "honcho:8000 (host-side only)" --> honcho_api_ext
+  falkordb_mcp_h -- "falkordb:6379 (host-side only)" --> falkordb_c
 
   docs_ingestor_h --> qdrant_c
   docs_ingestor_h --> litellm_c
@@ -237,7 +246,7 @@ URL forms below are now uniform across **vantage points**:
 - **Mac side** (host shell / browser / host-side Python) — alias + native port (`http://litellm:4000`, `redis://falkordb:6379`).
 - **Container side** on `ai-stack` — same form (`http://litellm:4000`, `http://phoenix:6006`). Docker's embedded DNS resolves bare names.
 - **Multi-network containers** (honcho-api, honcho-deriver) — fully-qualified (`http://litellm.ai-stack:4000/v1`) to avoid Docker's unspec'd multi-network resolution order.
-- **Sandbox side** — sandbox-internal name (`https://inference.local/v1`) for LiteLLM, or policy-allowed alias (`honcho:8000`, `docs-mcp:8765`).
+- **Sandbox side** — sandbox-internal name (`https://inference.local/v1`) for LiteLLM, or a policy-allowed host shim (`host.docker.internal:7082` honcho-mcp, `:7083` falkordb-mcp, `:8765` docs-mcp). Raw `honcho:8000` and `falkordb:6379` are **DENIED** from every sandbox.
 
 | Caller \ Callee       | From  | ollama (host)             | litellm                                                         | phoenix                                       | honcho                                           | qdrant                     | docs-mcp                     | Cloud LLM providers                            |
 |-----------------------|-------|---------------------------|-----------------------------------------------------------------|-----------------------------------------------|--------------------------------------------------|----------------------------|------------------------------|------------------------------------------------|
@@ -248,7 +257,7 @@ URL forms below are now uniform across **vantage points**:
 | `honcho-deriver-1`    | multi-net |                        | `http://litellm.ai-stack:4000/v1` / `LITELLM_MASTER_KEY` (fully-qualified) |                                       | `http://api:8000` (compose net)                  |                            |                              |                                                |
 | `docs_ingestor`       | Mac   |                           | `http://litellm:4000/v1` / `LITELLM_MASTER_KEY`                 |                                               |                                                  | `http://qdrant:6333` / n/a |                              |                                                |
 | `docs_mcp`            | Mac   |                           | `http://litellm:4000/v1` / `LITELLM_MASTER_KEY`                 |                                               |                                                  | `http://qdrant:6333` / n/a | self                         |                                                |
-| `hermes profile` (in sandbox) | sandbox |                  | `https://inference.local/v1` / `placeholder` (OpenShell L7 proxy enforces real auth) |                                | `http://honcho:8000` / `HONCHO_API_KEY` (policy-allowed) | | `http://docs-mcp:8765` / n/a (policy-allowed) |                                                |
+| `hermes profile` (in sandbox) | sandbox |                  | `https://inference.local/v1` / `placeholder` (OpenShell L7 proxy enforces real auth) |                                | **raw `honcho:8000` DENIED** — only via `http://host.docker.internal:7082` (honcho-mcp shim) / `Bearer HONCHO_MCP_TOKEN` | | `http://host.docker.internal:8765` / n/a (policy-allowed, read-only) |                                                |
 | `bin/audit.sh`        | Mac   |                           | `http://litellm:4000/v1/chat/completions` / `Bearer LITELLM_MASTER_KEY` |                                            |                                                  |                            |                              |                                                |
 | `halo` (`bin/halo`)   | Mac   |                           | `http://litellm:4000/v1` / `Bearer LITELLM_MASTER_KEY` (local default; cloud trace export disabled) |                                               |                                                  |                            |                              |                                                |
 | `paperclip` / `paperclip_honcho_plugin` | Mac |             | _unverified_                                                    |                                               | `http://honcho:8000` / `HONCHO_API_KEY`          |                            |                              |                                                |
@@ -257,7 +266,7 @@ URL forms below are now uniform across **vantage points**:
 | `blaxel_cli`          | Mac   |                           |                                                                 |                                               |                                                  |                            |                              | HTTPS to `api.blaxel.ai` / `BLAXEL_API_KEY`     |
 | `llm_guard`           | ai-stack |                        |                                                                 |                                               |                                                  |                            |                              | none (it's the callee; `Bearer LITELLM_MASTER_KEY` on `llm-guard:8000` / `http://llm-guard:8000` from Mac) |
 | `unsloth` (studio)    | Mac (host:0.0.0.0) | `http://ollama:11434` (host-gateway) — used for inference after fine-tuned models are exported to GGUF | n/a (doesn't talk through LiteLLM)                              |                                               |                                                  |                            |                              | `https://huggingface.co` (model + dataset pulls), pypi (Python deps) |
-| `pi` (sandboxed)      | openshell sandbox `pi-v1` | n/a (no direct ollama)        | `http://host.docker.internal:4000/v1` / `Bearer PI_LITELLM_KEY` (virtual key; allowlist=local-model superset [local, local-heavy]; Pi's assigned model is local — see models.md) | n/a                                          | `http://host.docker.internal:8000` / `pi` peer namespace (soft isolation; Honcho v3 has no per-key peer enforcement) |                            | `http://host.docker.internal:8765` / n/a | n/a (policy denies)                              |
+| `pi` (sandboxed)      | openshell sandbox `pi-v1` | n/a (no direct ollama)        | `http://host.docker.internal:4000/v1` / `Bearer PI_LITELLM_KEY` (virtual key; allowlist=local-model superset [local, local-heavy]; Pi's assigned model is local — see models.md) | n/a                                          | **raw `:8000` DENIED** — only via `http://host.docker.internal:7082` (honcho-mcp shim) / `Bearer HONCHO_MCP_TOKEN`, injected by `bin/pi`; consumed through the `pi/pi-memory-tools.ts` extension. FalkorDB likewise: raw `:6379` DENIED, only `:7083` (falkordb-mcp shim) |                            | `http://host.docker.internal:8765` / n/a (read-only) | n/a (policy denies)                              |
 | `lumen` (Phase 16)    | Mac (stdio subprocess of each MCP client) | `http://localhost:11434` (default) — uses `ordis/jina-embeddings-v2-base-code` for embeddings | n/a (no LiteLLM dependency — Lumen is local-only) | n/a | n/a | n/a | n/a | n/a (no cloud egress)                            |
 | `mempalace` (Phase 26)| Mac (CLI / MCP stdio subprocess; no port) | n/a (embeddings are on-device ONNX via CoreML — not Ollama, not LiteLLM) | `http://litellm:4000/v1` / `Bearer MEMPALACE_LITELLM_KEY` — **only** for the optional entity-refiner (`--extract general`); scoped to local models | n/a (refiner call traced in Phoenix via LiteLLM) | n/a | n/a (Qdrant backend adapter staged, not live) | n/a | n/a (no cloud egress)                            |
 
@@ -435,7 +444,7 @@ Triage table: when X is down, what visibly breaks.
 | `litellm`                     | **Everything chat-related stops.** Open WebUI shows API errors; Honcho deriver background work pauses; Hermes profiles in sandbox can't think; docs_ingestor / docs_mcp can't embed; audit.sh fails. | `vz-ai-stack.sh start litellm` (or `vz-ai-stack.sh apply-restarts`). Check `docker logs litellm` for ImportError on guardrails.py. |
 | `phoenix`                     | LiteLLM still works. OTLP HTTP exports fail-soft (logged warnings, no spans visible in UI). `halo` still works (routes via LiteLLM).            | Phoenix is a soft dep. `vz-ai-stack.sh start phoenix`. Check `docker logs phoenix` for PHOENIX_SECRET policy errors.   |
 | `qdrant`                      | `docs_ingestor` and `docs_mcp` fail on collection ops. Open WebUI's built-in RAG (if used with Qdrant) also breaks. Everything else unaffected. | `vz-ai-stack.sh start qdrant`, then `curl http://qdrant:6333/collections`.                                            |
-| `falkordb`                    | Nothing in the active stack breaks (no current callers). Future graph-memory features would break. Doctor's collision check still passes if process is gone. | `vz-ai-stack.sh start falkordb`.                                                                                      |
+| `falkordb`                    | The `falkordb-mcp` shim (:7083) starts failing per tool call (`{error}`, not a crash), so fleet/Pi graph memory — `remember_fact` / `recall_related` / `graph_query` — stops working. Nothing else in the active stack breaks. Doctor's collision check still passes if process is gone. | `vz-ai-stack.sh start falkordb`.                                                                                      |
 | `honcho-api-1`                | Cross-agent memory writes / reads fail. Hermes profiles, paperclip_honcho_plugin lose memory. Honcho-unaware code paths unaffected.              | `vz-ai-stack.sh start honcho` (or `cd honcho && docker compose up -d`). Check `curl http://honcho:8000/health`.         |
 | `honcho-database-1` (pg)     | `honcho-api-1` becomes unhealthy (compose healthcheck `pg_isready` fails). `honcho-deriver-1` also stops processing. Open WebUI / LiteLLM unaffected. | Compose `depends_on` brings db up first; if it's failing, inspect `docker logs honcho-database-1` and `~/ai-stack/data/honcho/` permissions. |
 | `honcho-redis-1`              | `honcho-api-1` healthcheck fails. Queue-backed work pauses. Same scope as db down.                                                              | `docker restart honcho-redis-1`. (No persisted state outside named volume `redis-data`.)                          |

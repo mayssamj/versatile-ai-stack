@@ -837,9 +837,12 @@ The rules:
 - **Your prompts** only leave the machine if you pick a cloud model
   (anything not a `local-*` model).
 - **Your documents** never leave the machine. Docling parses locally;
-  embeddings are computed via LiteLLM. If you pick `embed-local` (Ollama
-  nomic-embed) instead of `embed-openai-small`, even the embeddings
-  stay local.
+  embeddings are computed via LiteLLM. The default `embed-local` (Ollama
+  nomic-embed, 768-dim) keeps even the embeddings on-box; the canonical
+  cloud alternative is `embed-openai-small-768` (768-dim — the
+  schema-compatible drop-in), and picking it sends your document text to
+  OpenAI. Both sit at the canonical 768 dim, so switching costs only a
+  re-index — but a family swap still means re-embedding everything.
 - **Your memory (Honcho)** never leaves the machine. The derivations
   run via LiteLLM, so if Honcho calls a cloud model, the message
   content is sent to that model — but the derived facts stay in your
@@ -936,6 +939,8 @@ flowchart TB
     Shell["Mac shell / browser"]
     OL[ollama :11434]
     DocsM[docs-mcp :8765]
+    HonM["honcho-mcp :7082 (token-gated shim)"]
+    FkM["falkordb-mcp :7083 (token-gated shim)"]
     DocsI["docs-ingestor (bg)"]
     Etc[/etc/hosts managed block/]
   end
@@ -980,7 +985,16 @@ flowchart TB
 
   HF -- inference.local --> GW
   GW -- "policy-allowed, host-gateway path" --> LL
-  HF -. "honcho:8000 allowed" .-> HA
+  HF -. "honcho-mcp:7082 allowed (Bearer token)" .-> HonM
+  HF -. "falkordb-mcp:7083 allowed (Bearer token)" .-> FkM
+  HF -. "docs-mcp:8765 allowed (read-only, unauth)" .-> DocsM
+
+  HonM -- "honcho:8000 (host-side only)" --> HA
+  FkM -- "falkordb:6379 (host-side only)" --> FK
+
+  %% NO sandbox edge to HA / FK: raw honcho:8000 + falkordb:6379 are DENIED to
+  %% hermes-fleet-v1 and pi-v1 (retired in slice 3). The shim edges above are the
+  %% ONLY memory paths out of a sandbox.
 
   DocsM -- "http://litellm:4000 via /etc/hosts" --> LL
   DocsM -- "http://qdrant:6333 via /etc/hosts" --> QD

@@ -255,7 +255,7 @@ name and the rest of the stack does not notice.
   (writes JSONL to `traces/litellm.jsonl`), `arize_phoenix` (ships
   OTLP traces to Phoenix), `guardrails.handler` (denies obvious-bad
   prompts, redacts leaked secrets in responses).
-- **Embeddings routing.** Three embedding models are tagged with
+- **Embeddings routing.** Four embedding models are tagged with
   `mode: embedding` so the proxy sends them to `/v1/embeddings`, not
   `/v1/chat/completions`.
 
@@ -481,9 +481,11 @@ phone home to a random IP, and cannot exfiltrate the contents of
 
 **What does it do for us?** Hosts the `hermes-fleet-v1` sandbox where
 all nine Hermes profiles run. The network policy at
-`openshell/policies/hermes-fleet-v1.yaml` allows `honcho:8000` (Honcho),
-`docs-mcp:8765` (Docs MCP), and a small list of package registries and
-code hosts. Everything else is denied by default. (Note: the OpenShell
+`openshell/policies/hermes-fleet-v1.yaml` allows the token-gated host
+shims `honcho-mcp:7082` (Honcho memory) and `falkordb-mcp:7083` (graph
+memory), plus `docs-mcp:8765` (Docs MCP, read-only), and a small list of
+package registries and code hosts. Raw `honcho:8000` and `falkordb:6379`
+are **denied** — that egress was retired deliberately; do not re-add it. Everything else is denied by default. (Note: the OpenShell
 sandbox does NOT join the `ai-stack` Docker network — per design D4,
 the sandbox keeps its own egress policy. The aliases are reachable
 because the policy resolves them via `/etc/hosts` from the sandbox's
@@ -1258,7 +1260,7 @@ different niche — and none captured raw recall:
   (Postgres + Redis). Great for "what does the fleet know about Mayssam?"
 - **Qdrant** (Phase 02) — document vector RAG over your prose corpus.
 - **Lumen** (Phase 16) — code semantic search.
-- **FalkorDB** — graph memory (reserved).
+- **FalkorDB** — graph memory (live; fronted by the `falkordb-mcp` shim :7083).
 
 MemPalace fills the gap they all leave: **verbatim conversation/session
 recall** — the actual back-and-forth of a Claude Code session, searchable

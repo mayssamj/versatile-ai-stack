@@ -441,15 +441,17 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 
 ---
 
-## 25 · pi-v1 network policy: LiteLLM/Honcho/docs-mcp reachable, ai-stack DBs denied
+## 25 · pi-v1 network policy: LiteLLM/docs-mcp/honcho-mcp/falkordb-mcp reachable; raw Honcho :8000 + raw FalkorDB :6379 + ai-stack DBs denied
 
 | | |
 |---|---|
-| Asserts | From inside the `pi-v1` sandbox, the 3 allowlisted destinations (`host.docker.internal:4000` LiteLLM, `:8000` Honcho, `:8765` docs-mcp) respond with any HTTP code that's NOT a proxy-deny. The OpenShell egress proxy emits HTTP 403 with body `{"error":"policy_denied"}` when refusing; the check greps that signature to distinguish "destination reached" from "destination denied". By default only positive probes run (~6s). With `OPENSHELL_DOCTOR_SLOW=1` (or `DOCTOR_ALL=1`), also runs 9 negative probes against denied destinations — those must all return the `policy_denied` signature. |
-| Fails when | Allowlist hosts return `policy_denied` (policy file edited but not re-applied; sandbox restarted with stale policy; LiteLLM lost its 127.0.0.1:4000 dual-bind so `host.docker.internal:4000` is unreachable). In slow mode: a denied destination returns something OTHER than `policy_denied` — a policy leak. |
-| Auto-fix | Surfaces `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` for the apply case, and CHANGELOG 2026-05-29 (host.docker.internal dual-bind) for the LiteLLM case. |
+| Asserts | From inside the `pi-v1` sandbox, the allowlisted destinations respond with any HTTP code that is NOT a proxy-deny: `host.docker.internal:4000` (LiteLLM) and `:8765` (docs-mcp) ALWAYS; plus `:7082` (honcho-mcp shim) and `:7083` (falkordb-mcp shim) **only when that opt-in shim is actually listening on the host** (Phase 40/41 — the egress stanza is additive, so a box without the shim must not false-fail). The OpenShell egress proxy emits HTTP 403 with body `{"error":"policy_denied"}` when refusing; the check greps that signature to distinguish "destination reached" from "destination denied". By default only positive probes run (~6–8s). With `OPENSHELL_DOCTOR_SLOW=1` (or `DOCTOR_ALL=1`) it also runs 10 negative probes against denied destinations — those must all return the `policy_denied` signature. It additionally asserts `pi-memory-tools.ts` (slice 2b) is present in `/sandbox/.pi/extensions/` — the egress is only useful if the extension that consumes it is installed. |
+| Fails when | An allowlisted host returns `policy_denied` (policy file edited but not re-applied — the common case; sandbox restarted with a stale policy; LiteLLM lost its 127.0.0.1:4000 dual-bind). In slow mode: a denied destination returns something OTHER than `policy_denied` — a policy leak (e.g. raw Honcho `:8000` or raw FalkorDB `:6379` became reachable). Or the memory extension is missing from the sandbox. |
+| Auto-fix | Surfaces `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` for the apply case, `bash vz-ai-stack.sh install 15` for a missing extension, and CHANGELOG 2026-05-29 (host.docker.internal dual-bind) for the LiteLLM case. |
 
-**What this check does NOT prove**: Honcho peer-level isolation. Honcho v3 has no API-key-scoped peer enforcement; a compromised Pi could still POST to `/v3/workspaces/default/peers/hermes_backend_engineer/...` because the network policy allows reaching Honcho at all. The peer namespace boundary is a write-side convention, not a read-side authorization. Document this honestly in the USER-GUIDE.
+**The deliberate asymmetry this check proves** (slice 3 + 2b, §24): the RAW datastores stay DENIED — `:8000` Honcho (whose REST API runs `AUTH_USE_AUTH=false`) and `:6379` FalkorDB — while their **token-gated shim ports** (`:7082`, `:7083`) are ALLOWED. Pi reaches turn/graph memory ONLY through the shims, which require a Bearer token that `bin/pi` injects; a token-less pi simply gets fewer tools.
+
+**What this check does NOT prove**: honcho peer-level isolation. The shim forwards a caller-chosen `peer`, and honcho v3 has no API-key-scoped peer enforcement — so a compromised Pi can still read or write another agent's turns *through the shim*. The peer namespace is a write-side convention, not a read-side authorization; the FULL-SHARED memory pool is an operator-accepted property. What retiring the `:8000` egress DID remove is unauthenticated direct REST access to the entire honcho API surface.
 
 ---
 

@@ -376,7 +376,7 @@ nc -zv phoenix-otlp 4317
 
 **What.** Graph database speaking Cypher over the Redis RESP protocol. Same wire format as Redis (`redis-cli` works), but the data model is nodes + edges + properties.
 
-**When.** Graph-shaped data: who-knows-who, dependency trees, code relationships, anything where you want path queries. Not yet wired into any agent in the stack — reserved for future graph-memory work.
+**When.** Graph-shaped data: who-knows-who, dependency trees, code relationships, anything where you want path queries. Wired into the fleet via the token-gated `falkordb-mcp` shim (:7083, Phase 41) — sandboxes never reach `falkordb:6379` directly.
 
 **Try this.**
 

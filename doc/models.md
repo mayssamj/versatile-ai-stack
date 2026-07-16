@@ -79,6 +79,54 @@ deleted from an existing key's allowlist.
 Use **`local`** in any runnable example. An agent can still be pointed at
 a retired slug by hand, but it 503s unless you pull/serve it yourself.
 
+## Embeddings: the canonical-768 rule
+
+Every **cross-queryable text consumer** embeds at **768 dimensions**. This is an
+invariant, not a coincidence — a shared dim is what lets the stack swap a cloud
+embedder for a local one (or back) **without rebuilding a collection or a
+column**.
+
+| Consumer | Assigned embedder | Dim | Notes |
+|----------|-------------------|-----|-------|
+| `docs` (Qdrant `ai-stack-docs`) | `embed-nomic` (route `embed-local`) | **768** | local, Ollama `nomic-embed-text` |
+| `honcho` (pgvector) | `embed-nomic` | **768** | schema re-pinned to the assigned dim |
+| `openwebui` | `embed-nomic` | **768** | |
+| `lumen` | `embed-jina-code` | **768**\* | code-tuned; **lumen-only**, never cross-queried |
+| `mempalace` | *(none — on-device ONNX)* | 384 | **exempt**: isolated CoreML store, never cross-queried |
+
+\* `embed-jina-code`'s 768 is per the HF model card and is flagged
+`unverified: true` in `models.yml` — nothing in this repo pins it. Verify the
+live vector size before ever pointing `docs`/`openwebui` at it.
+
+`mempalace` is the deliberate exception — its embeddings never touch LiteLLM and
+its store is never queried against any other consumer's vectors, so the 768 rule
+doesn't bind it. (`ai-town` is an isolated opt-in sim and is likewise out of scope.)
+
+**The cloud drop-in.** `embed-openai-small-768` is OpenAI `text-embedding-3-small`
+pinned to `dimensions: 768` (Matryoshka truncation). It is **schema-compatible**
+with `embed-nomic`, so moving `docs` or `honcho` cloud↔local needs only a
+**re-index** — never a collection or column rebuild.
+
+> ⚠️ **Same dim ≠ same vector space.** nomic-768 and openai-768 are different
+> geometries. A model-**family** swap still requires **re-embedding every
+> document** — the schema survives, the vectors do not. Mixing families in one
+> collection silently returns garbage neighbours; nothing errors.
+
+**Enforcement.** Doctor **check 77** (`embedding_dim`) asserts the *live store's*
+dim equals the *assigned model's* dim — Qdrant's `ai-stack-docs` collection and
+the deployed `ingest.py` (`EMBED_DIM`/`EMBED_MODEL`), plus honcho's pgvector
+typmod. Opt-in `EMBEDDING_DIM_DEEP=1` adds a live emitted-vector-length
+round-trip.
+
+Honcho's pgvector schema is re-pinned to the assigned dim by honcho's **own**
+`scripts/configure_embeddings.py` (its Alembic migration hardcodes `vector(1536)`,
+so this re-pin is what survives a volume reset). When migrating dims, set
+`HONCHO_EMBED_FORCE_REINDEX=1` to clear the regenerable derived embeddings.
+
+**Re-index runbook** (and the full explainer): see
+[TROUBLESHOOTING.md § Embedding dimensionality (canonical 768) + cloud/local
+interchangeability](TROUBLESHOOTING.md#embedding-dimensionality-canonical-768--cloudlocal-interchangeability).
+
 ## LiteLLM is the only hub (`litellm:4000`)
 
 Every chat and embedding call funnels through **one** LiteLLM gateway at

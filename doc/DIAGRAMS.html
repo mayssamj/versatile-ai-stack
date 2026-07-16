@@ -988,7 +988,7 @@ sequenceDiagram
 <ul><li><strong>Your prompts</strong> only leave the machine if you pick a cloud model</li></ul>
 <p>(anything not a <code>local-*</code> model).</p>
 <ul><li><strong>Your documents</strong> never leave the machine. Docling parses locally;</li></ul>
-<p>embeddings are computed via LiteLLM. If you pick <code>embed-local</code> (Ollama nomic-embed) instead of <code>embed-openai-small</code>, even the embeddings stay local.</p>
+<p>embeddings are computed via LiteLLM. The default <code>embed-local</code> (Ollama nomic-embed, 768-dim) keeps even the embeddings on-box; the canonical cloud alternative is <code>embed-openai-small-768</code> (768-dim — the schema-compatible drop-in), and picking it sends your document text to OpenAI. Both sit at the canonical 768 dim, so switching costs only a re-index — but a family swap still means re-embedding everything.</p>
 <ul><li><strong>Your memory (Honcho)</strong> never leaves the machine. The derivations</li></ul>
 <p>run via LiteLLM, so if Honcho calls a cloud model, the message content is sent to that model — but the derived facts stay in your Postgres.</p>
 <ul><li><strong>MemPalace</strong> (Phase 26) verbatim conversation memory is</li></ul>
@@ -1087,6 +1087,8 @@ sequenceDiagram
     Shell["Mac shell / browser"]
     OL[ollama :11434]
     DocsM[docs-mcp :8765]
+    HonM["honcho-mcp :7082 (token-gated shim)"]
+    FkM["falkordb-mcp :7083 (token-gated shim)"]
     DocsI["docs-ingestor (bg)"]
     Etc[/etc/hosts managed block/]
   end
@@ -1131,7 +1133,16 @@ sequenceDiagram
 
   HF -- inference.local --> GW
   GW -- "policy-allowed, host-gateway path" --> LL
-  HF -. "honcho:8000 allowed" .-> HA
+  HF -. "honcho-mcp:7082 allowed (Bearer token)" .-> HonM
+  HF -. "falkordb-mcp:7083 allowed (Bearer token)" .-> FkM
+  HF -. "docs-mcp:8765 allowed (read-only, unauth)" .-> DocsM
+
+  HonM -- "honcho:8000 (host-side only)" --> HA
+  FkM -- "falkordb:6379 (host-side only)" --> FK
+
+  %% NO sandbox edge to HA / FK: raw honcho:8000 + falkordb:6379 are DENIED to
+  %% hermes-fleet-v1 and pi-v1 (retired in slice 3). The shim edges above are the
+  %% ONLY memory paths out of a sandbox.
 
   DocsM -- "http://litellm:4000 via /etc/hosts" --> LL
   DocsM -- "http://qdrant:6333 via /etc/hosts" --> QD</div>
