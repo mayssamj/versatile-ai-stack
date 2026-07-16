@@ -5,6 +5,7 @@
 # Uses BSD `stat -f` because macOS doesn't have GNU `stat -c`.
 CHECKS+=(etc_hosts_ownership)
 CHECK_TITLE[etc_hosts_ownership]="/etc/hosts is owned root:wheel mode 644 (OS integrity)"
+FIX_CAPABLE[etc_hosts_ownership]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 etc_hosts_ownership_diagnose() {
   # shellcheck source=../../lib/verify.sh

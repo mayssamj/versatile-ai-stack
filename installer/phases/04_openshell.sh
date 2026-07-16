@@ -57,7 +57,10 @@ precheck() {
   [[ -n "$osh" ]] || return 1
   [[ -f "$POLICY" ]] || return 1
   gateway_listening || return 1
-  "$osh" sandbox list 2>/dev/null | grep -qE "(^| )${SANDBOX}( |$)" || return 1
+  # sandbox_present (common.sh), NOT `sandbox list | grep -qE` — the grep form loses the
+  # openshell EPIPE/pipefail race and reports "absent" for a sandbox that EXISTS, which here
+  # would fail the precheck and needlessly re-enter the phase. See sandbox_present's comment.
+  sandbox_present "$osh" "$SANDBOX" || return 1
   # A listed Ready sandbox can still be DEAD if its gateway token expired. Detect
   # that via the in-container LOG signature (non-invasive) so we never declare the
   # phase "already complete" on a storming sandbox — returning 1 makes the body

@@ -1,6 +1,7 @@
 # If guardrails.handler is in callbacks list, guardrails.py must exist (else ImportError).
 CHECKS+=(guardrails_file_or_remove)
 CHECK_TITLE[guardrails_file_or_remove]="guardrails.handler callback has matching guardrails.py"
+FIX_CAPABLE[guardrails_file_or_remove]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 guardrails_file_or_remove_diagnose() {
   if ! litellm_has_callback "guardrails.handler"; then return 0; fi

@@ -47,13 +47,19 @@ falkordb_mcp_diagnose() {
   fi
 
   # (4) fleet wiring — only when a hermes-fleet-v1 sandbox is Ready.
+  # The endpoint is checked against $port (from FALKORDB_MCP_PORT, resolved at :41), NOT a
+  # hardcoded 7083: this probe used to hardcode it while (3) above honoured the env var, so a
+  # custom-port install red-barred here forever no matter how correctly the fleet was wired.
+  # $port is passed as an ARGV parameter (not interpolated into the script body) so "$HOME"
+  # still expands INSIDE the sandbox. NB: openshell's gRPC exec rejects newlines — keep the
+  # -c program on ONE line.
   local osh; osh="$(_falkordb_mcp_resolve_openshell)"
   if [[ -n "$osh" ]] && "$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
        | awk 'NR>1 && $1=="hermes-fleet-v1" && $NF=="Ready"{ok=1} END{exit !ok}'; then
     local wired
     wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 </dev/null -- bash -c \
-      'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "falkordb:" "$f" && grep -q "host.docker.internal:7083" "$f" && echo WIRED || echo MISSING' \
-      2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+      'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "falkordb:" "$f" && grep -q "host.docker.internal:$1" "$f" && echo WIRED || echo MISSING' \
+      _ "$port" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
     [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to FalkorDB MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install falkordb_mcp")
   fi
 

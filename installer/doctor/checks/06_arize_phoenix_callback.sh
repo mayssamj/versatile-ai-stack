@@ -5,6 +5,7 @@
 # of activity (fresh container, quiet success) stays green.
 CHECKS+=(arize_phoenix_callback)
 CHECK_TITLE[arize_phoenix_callback]="arize_phoenix callback in config.yaml AND OTLP exporter active"
+FIX_CAPABLE[arize_phoenix_callback]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 arize_phoenix_callback_diagnose() {
   if [[ ! -f "$AI_STACK/litellm/config.yaml" ]]; then

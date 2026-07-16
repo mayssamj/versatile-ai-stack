@@ -7,6 +7,7 @@
 # installer/models.yml.
 CHECKS+=(ollama_models)
 CHECK_TITLE[ollama_models]="Ollama running + required models pulled (nemotron-3-nano:4b, nomic-embed-text)"
+FIX_CAPABLE[ollama_models]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _OLLAMA_REQUIRED=(
   nemotron-3-nano:4b

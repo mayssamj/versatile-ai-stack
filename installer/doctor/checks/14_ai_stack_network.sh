@@ -1,6 +1,7 @@
 # ai-stack docker network exists and is bridge-driver.
 CHECKS+=(ai_stack_network)
 CHECK_TITLE[ai_stack_network]="Docker network 'ai-stack' exists (bridge driver)"
+FIX_CAPABLE[ai_stack_network]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 ai_stack_network_diagnose() {
   if ! docker network inspect ai-stack >/dev/null 2>&1; then

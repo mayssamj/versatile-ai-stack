@@ -12,6 +12,7 @@
 # keeps the older gateway log checks.
 CHECKS+=(hermes_slack)
 CHECK_TITLE[hermes_slack]="Hermes Slack gateway running (Phase 38, Socket Mode)"
+FIX_CAPABLE[hermes_slack]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _hsg_resolve_openshell() {
   if [[ -n "${HERMES_OPEN_SHELL_BIN:-}" && -x "$HERMES_OPEN_SHELL_BIN" ]]; then echo "$HERMES_OPEN_SHELL_BIN"

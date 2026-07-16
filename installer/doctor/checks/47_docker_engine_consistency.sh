@@ -2,6 +2,7 @@
 # ai-stack.managed container all live on the SELECTED engine.
 CHECKS+=(docker_engine_consistency)
 CHECK_TITLE[docker_engine_consistency]="Docker engine consistency (no split-brain)"
+FIX_CAPABLE[docker_engine_consistency]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 docker_engine_consistency_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"

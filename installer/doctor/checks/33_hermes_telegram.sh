@@ -7,6 +7,7 @@
 # reads in-sandbox `hermes gateway status` + the in-sandbox gateway log).
 CHECKS+=(hermes_telegram)
 CHECK_TITLE[hermes_telegram]="Hermes Telegram gateway running (Phase 20, @vz_hermes_controller_bot)"
+FIX_CAPABLE[hermes_telegram]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _htg_resolve_openshell() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell

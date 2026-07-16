@@ -8,6 +8,7 @@
 # <path>` builds one on demand.
 CHECKS+=(lumen)
 CHECK_TITLE[lumen]="Lumen MCP binary + ollama embedding model present (Phase 16)"
+FIX_CAPABLE[lumen]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _LUMEN_VERSION="0.0.41"
 _LUMEN_ASSET="lumen-${_LUMEN_VERSION}-darwin-arm64"

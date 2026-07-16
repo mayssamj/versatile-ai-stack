@@ -6,6 +6,7 @@
 # + would be slow) — only the bridge contract + UI liveness.
 CHECKS+=(claw3d)
 CHECK_TITLE[claw3d]="claw3d office + stack-agents bridge healthy (Phase 19)"
+FIX_CAPABLE[claw3d]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _claw3d_code() { local c; c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$1" 2>/dev/null || true)"; printf '%s' "${c:-000}"; }
 

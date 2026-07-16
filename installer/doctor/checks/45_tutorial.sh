@@ -12,6 +12,7 @@
 #   - doc/DIAGRAMS.html is in sync with a fresh build of doc/DIAGRAMS.md (no drift)
 CHECKS+=(tutorial)
 CHECK_TITLE[tutorial]="Tutorial + Diagrams pages in sync with their .md sources (doc/TUTORIAL.html, doc/DIAGRAMS.html)"
+FIX_CAPABLE[tutorial]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 tutorial_diagnose() {
   local html="$AI_STACK/doc/TUTORIAL.html"

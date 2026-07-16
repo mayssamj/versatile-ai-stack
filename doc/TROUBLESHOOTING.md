@@ -737,7 +737,7 @@ bash ~/ai-stack/bin/start-docs_mcp.sh   # detects the stale pid + relaunches
 **honcho (pgvector):**
 ```bash
 vz-ai-stack.sh embedding assign honcho embed-nomic   # or embed-openai-small-768
-HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp   # sets EMBEDDING_VECTOR_DIMENSIONS + runs honcho scripts/configure_embeddings.py, reloads api+deriver
+vz-ai-stack.sh install honcho_mcp   # sets EMBEDDING_VECTOR_DIMENSIONS + runs honcho scripts/configure_embeddings.py, reloads api+deriver
 ```
 The honcho path drives the pgvector schema through honcho's OWN `scripts/configure_embeddings.py`
 (idempotent — survives a volume reset, where an Alembic migration otherwise re-pins the column to

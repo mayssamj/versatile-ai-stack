@@ -1,6 +1,7 @@
 # Engine selection present & valid: AI_STACK_DOCKER_ENGINE set + still installed.
 CHECKS+=(docker_engine_selection)
 CHECK_TITLE[docker_engine_selection]="Docker engine selection present & valid"
+FIX_CAPABLE[docker_engine_selection]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 docker_engine_selection_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"

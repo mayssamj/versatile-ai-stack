@@ -20,6 +20,7 @@
 
 CHECKS+=(hermes_workspace_pair)
 CHECK_TITLE[hermes_workspace_pair]="Hermes Workspace ↔ agent netns pair intact + self-heal"
+FIX_CAPABLE[hermes_workspace_pair]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 AUTOHEAL[hermes_workspace_pair]=1
 
 _HWP_WS_DIR="$AI_STACK/hermes-workspace"
