@@ -548,12 +548,17 @@ How it decides — **no image is downloaded**:
 | `compose`/`docker-compose` | every image from `docker compose config --images` is digest-checked; any newer → `update-available`; locally-built/uncheckable images → `rebuild`. |
 | `brew-service` (ollama) | `brew outdated` (version compare). |
 | `npm-global` / `pip`(uv-venv) / `clone-only`(git) | **now checked** (2026-07-02) via `npm view` / PyPI JSON / `git ls-remote` (bounded — a blocked registry degrades to `unknown`, never hangs). These show real installed+available instead of `manual`. |
-| everything else (config-only / sandbox CLIs, no version oracle) | reported `manual` (hidden unless `--all`). **NOTE:** bare `upgrade all` still re-asserts them via their `upgrade:` block or a phase re-run — see the exhaustive note above. |
+| declared `upgrade:` methods — `uv-tool` (mempalace/halo) · `sandbox-pip` (hermes_fleet, read through the sandbox) · `uv-reqs` (docs_mcp — the 7 ingestor requirements, same-resolver dry-run so check and handler converge) · `brew` (openshell/blaxel, formula-aware) | **now checked** (2026-07-15/16). git-pull services with a `build:`/`restart:` also rebuild and PID-verify the daemon recycle on upgrade. |
+| deliberately **pinned** (`upgrade.pin`: openwork, metagpt, concordia, ace, lumen, aionui, pi) | shown as `pinned` with real installed versions where readable — **held on every upgrade path** (`upgrade all` cannot trample a pin); `upgrade <svc>` prints the exact bump recipe. |
+| configuration surfaces (guardrails, MCP shims, telegram/slack, …) | reported `config` — they version with the stack repo or their owning service; nothing to upgrade per-service. |
+| everything else (real artifact, no oracle yet: docs_ingestor, unsloth, cmux, lmstudio, openagents, …) | reported `manual` (hidden unless `--all`). **NOTE:** bare `upgrade all` still re-asserts them via a phase re-run — see the exhaustive note above. |
 
-Status legend: `update-available` · `up-to-date` · `pinned` (fixed tag, no
-rolling updates) · `rebuild`/`build` (locally-built — run `upgrade` to pull+rebuild) ·
-`no-oracle`/`manual` (no version source) · `unknown` (registry/proxy unreachable /
-image never pulled).
+Status legend: `update-available` · `up-to-date` · `pinned` (fixed tag or a
+declared `upgrade.pin` — held, never auto-swept) · `config` (configuration
+surface, versions with the repo/owning service) · `rebuild`/`build` (locally-built
+— run `upgrade` to pull+rebuild) · `manual` (real artifact, no version oracle yet)
+· `unknown` (registry/proxy unreachable, image never pulled, or an untrusted brew
+tap — fix: `brew trust <tap>`).
 
 **Honest results (2026-07-02).** `upgrade` never reports success it didn't verify:
 - Every run first prints an **installed → available** version report (skip with
@@ -583,10 +588,12 @@ stack upgrade all --dry-run          # plan the whole fleet, change nothing
 
 `--outdated` re-runs the same read-only scan and then upgrades **only** the
 services whose status is exactly `update-available` — `rebuild`, `unknown`,
-`pinned`, and `manual` are never auto-upgraded (so a flaky registry call can't
-trigger a surprise recreate). After each upgrade it re-verifies with a health
-probe and prints a summary. Set `AI_STACK_ASSUME_YES=1` to auto-accept the
-version-pinned re-pull prompt.
+`pinned`, `config`, and `manual` are never auto-upgraded (so a flaky registry
+call can't trigger a surprise recreate, and a declared pin is never advanced).
+Clones with local uncommitted changes are skipped (`skipped (dirty tree)`) rather
+than mutated. After each upgrade it re-verifies with a health probe — daemons
+with a declared `restart:` must provably recycle (PID change) or the run FAILS.
+Set `AI_STACK_ASSUME_YES=1` to auto-accept the version-pinned re-pull prompt.
 
 Typical flow: `stack upgrade --check` → eyeball the list → `stack upgrade
 --outdated` (everything) or `stack upgrade <service>` (selectively).
