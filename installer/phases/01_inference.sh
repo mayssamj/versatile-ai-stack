@@ -124,9 +124,18 @@ yq -e '.model_list[0]' "$AI_STACK/litellm/config.yaml" >/dev/null || {
 # So they exist BEFORE any scoped key is minted (constraint: superset-before-mint):
 #   local / local-heavy / local-nemotron3-nano-4b -> Ollama nemotron-3-nano:4b (works immediately)
 # We register straight from installer/models.yml when present (the canonical
-# source of truth), else fall back to the hardcoded local pair. lms_register_model
-# is ADD-ONLY + atomic (temp+mv) + idempotent — existing rows are untouched and
-# no model is loaded/inferenced here.
+# source of truth), else fall back to the hardcoded local pair. lms_register_model is
+# atomic (temp+mv), idempotent FOR A GIVEN ARG SET, and loads/infers nothing here.
+# It is NOT "add-only" — that claim used to live here and was FALSE: lib/lmstudio.sh
+# reassigns a model's `litellm_params` to a FRESH map, then re-adds each optional param
+# only `if [[ -n "$param" ]]`. So ANY arg this caller fails to pass is DELETED from an
+# existing row on every install. That is exactly how `reasoning_effort: xhigh` silently
+# vanished from the openai/codex-bridge routes (the case arm below listed only
+# `meridian`, so effort came through empty -> the key was dropped -> the live LiteLLM
+# served provider-default reasoning while models.yml still declared xhigh). This block
+# has now drifted from lib/models.sh::register_model_list TWICE (see the openai-compat
+# note below) — the arg extraction MUST mirror it EXACTLY; when you add a runtime or a
+# param there, change it here in the same commit.
 MODELS_YML="$AI_STACK/installer/models.yml"
 if [[ -f "$MODELS_YML" ]]; then
   while IFS= read -r _mn; do
@@ -143,7 +152,7 @@ if [[ -f "$MODELS_YML" ]]; then
     # registers on a fresh `install all`, silently leaning on the hand-authored config).
     _ef=""; _ab=""; _ke=""; _rp=""; _tp=""
     case "$_rt" in
-      meridian) _ef="$(yq -r ".models.\"$_mn\".effort // \"\"" "$MODELS_YML" 2>/dev/null)" ;;
+      meridian|openai|codex-bridge) _ef="$(yq -r ".models.\"$_mn\".effort // \"\"" "$MODELS_YML" 2>/dev/null)" ;;
       openai-compat)
         _ab="$(yq -r ".models.\"$_mn\".api_base // \"\"" "$MODELS_YML" 2>/dev/null)"
         _ke="$(yq -r ".models.\"$_mn\".key_env // \"\"" "$MODELS_YML" 2>/dev/null)"

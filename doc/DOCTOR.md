@@ -594,13 +594,42 @@ confirms the watchdog is loaded. See
 
 | | |
 |---|---|
-| Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); no rendered-vs-declared **DRIFT** across every agent surface (the 9 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
-| Fails when | A `models.yml` model is missing from `config.yaml`, a non-lmstudio model fails its chat_ping, an agent's rendered config drifts from the declared (availability-gated) model, or a scoped key's allowlist doesn't cover its agent's effective model. |
+| Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); every declared **`effort:` round-trips into the rendered route** (`extra_body.effort` for `meridian`, `reasoning_effort` for `openai`/`codex-bridge` — see below); no rendered-vs-declared **DRIFT** across every agent surface (the 9 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
+| Fails when | A `models.yml` model is missing from `config.yaml`, a non-lmstudio model fails its chat_ping, a declared `effort:` is absent from or differs in the rendered route, an agent's rendered config drifts from the declared (availability-gated) model, or a scoped key's allowlist doesn't cover its agent's effective model. |
 | Auto-fix | `bash vz-ai-stack.sh model sync`. |
 
 WARN-skips (does not fail) when LiteLLM is down or the Hermes OpenShell sandbox
 isn't Ready — both are required to verify bindings end-to-end. See
 [models.md](models.md) for the full `vz-ai-stack.sh model` workflow.
+
+**The effort round-trip.** A `models.yml` `effort:` reaches the route in a runtime-specific
+shape: `litellm_params.extra_body.effort` for `meridian` (LiteLLM merges `extra_body` into the
+request body, which Meridian reads), `litellm_params.reasoning_effort` for `openai` /
+`codex-bridge` (LiteLLM's first-class param). Every writer **reassigns `litellm_params` to a
+fresh map**, so any argument a *caller* omits is silently **deleted** from the route — the
+model still answers, just at the provider's default reasoning level. Nothing else in the stack
+notices.
+
+The check asserts **two layers**, because they fail independently:
+
+1. **The file** (`litellm/config.yaml`) — what LiteLLM will serve after its next restart.
+   Remedy: **`bash vz-ai-stack.sh model sync`**. Note this is *not* `install inference` —
+   Phase 01 self-gates on its own stamp and exits before it would ever re-register.
+2. **The running proxy** (`GET /model/info`, static route metadata — no inference, no
+   cold-start) — what it serves *right now*. LiteLLM reads config at **boot**, and Phase 01
+   deliberately does not restart a healthy serving container, so "file repaired, proxy stale"
+   is a real state that a file-only assertion would green. Remedy:
+   `bash bin/start-litellm.sh --recreate`.
+
+Historically only the **meridian** half was guarded, by check 41 — which is *runtime*-scoped
+(it skips every non-meridian model), **not** gated on Meridian being enabled; its effort clause
+runs regardless of daemon state. That one-sided coverage is how `openai-gpt`'s declared
+`effort: xhigh` stopped being served while `models.yml` still advertised it. The degraded state
+is **born at install time**: `install inference` rewrites those rows and strips effort, and
+`model sync` is never auto-run by install — so a fresh `install all` produces it and nothing
+restores it until an operator syncs. (The *tracked* `config.yaml` has never been wrong.)
+A declared `effort:` on a runtime that renders none (e.g. `ollama`) is an **advisory** — the
+declaration is inert, not broken.
 
 ---
 
@@ -910,15 +939,21 @@ Skips cleanly (passes) when Phase 41 isn't installed (opt-in — no `phase_41*.d
 
 ---
 
-## 77 · Embedding dim consistency (canonical 768)
+## 77 · Embedding dim + family consistency (canonical 768)
 
 | | |
 |---|---|
-| Asserts | for every dim-pinned embedding consumer, the LIVE store's vector dim equals the dim of the embedder assigned to it in `models.yml` (`.embedding_assignments.<svc>` → `.embeddings[m].dim`). Covers **docs** (the Qdrant `ai-stack-docs` collection `vectors.size` AND the deployed `ingestor/ingest.py` `EMBED_DIM` literal that populates it) and **honcho** (the pgvector column typmod on the base tables `documents` + `message_embeddings`, filtered `relkind='r'` so the HNSW index relations don't surface as phantom columns). |
-| Fails when | a **present** store's dim disagrees with its assigned embedder — docs: `ai-stack-docs` `vectors.size` ≠ assigned dim, or the deployed `ingest.py` `EMBED_DIM` ≠ assigned dim (the next populate would write wrong-dim vectors); honcho: a pgvector `embedding` column dim ≠ assigned dim. Under `EMBEDDING_DIM_DEEP=1` (or `DOCTOR_ALL=1`) it additionally fails when a live embedder route emits a vector whose length ≠ the store dim (a store at that dim would reject every insert). |
-| Auto-fix | none (reports the command): **docs** → flip `.embedding_assignments.docs` in `models.yml`, `install 06`, then recreate the collection with `AI_STACK_FORCE_RECREATE=1` ingest; **honcho** → set `EMBEDDING_VECTOR_DIMENSIONS` to the assigned dim + run honcho `scripts/configure_embeddings.py --yes` (wired via `install honcho_mcp`). |
+| Asserts | for every dim-pinned embedding consumer, the LIVE store's vector dim equals the dim of the embedder assigned to it in `models.yml` (`.embedding_assignments.<svc>` → `.embeddings[m].dim`). Covers **docs** (the Qdrant `ai-stack-docs` collection `vectors.size`, the deployed `ingestor/ingest.py` `EMBED_DIM` literal that populates it, the deployed `EMBED_MODEL` == the assigned route, **and the per-point embedder FAMILY STAMP** == the assigned embedder) and **honcho** (the pgvector column typmod on the base tables `documents` + `message_embeddings`, filtered `relkind='r'` so the HNSW index relations don't surface as phantom columns). |
+| Fails when | a **present** store's dim disagrees with its assigned embedder — docs: `ai-stack-docs` `vectors.size` ≠ assigned dim, or the deployed `ingest.py` `EMBED_DIM` ≠ assigned dim (the next populate would write wrong-dim vectors), or `EMBED_MODEL` ≠ the assigned route; honcho: a pgvector `embedding` column dim ≠ assigned dim. **Family:** any point in `ai-stack-docs` stamped with an embedder other than the assigned one (a same-dim family re-point whose re-index was skipped), or a partially-stamped collection (mixed geometry from a partial re-index). Under `EMBEDDING_DIM_DEEP=1` (or `DOCTOR_ALL=1`) it additionally fails when a live embedder route emits a vector whose length ≠ the store dim (a store at that dim would reject every insert). |
+| Auto-fix | none (reports the command): **docs (dim)** → flip `.embedding_assignments.docs` in `models.yml`, `install 06`, then recreate the collection with `AI_STACK_FORCE_RECREATE=1` ingest; **docs (family)** → `install 06` re-bakes code but never re-embeds — restore the corpus (`mv ingestor/processed/ai-stack-doc/* ingestor/inbox/ai-stack-doc/`), `AI_STACK_FORCE_RECREATE=1 .venv/bin/python ingest.py`, then `bash bin/start-docs_mcp.sh --recreate`; **honcho** → set `EMBEDDING_VECTOR_DIMENSIONS` to the assigned dim + run honcho `scripts/configure_embeddings.py --yes` (wired via `install honcho_mcp`). |
 
 A store that is absent/unreachable is **SKIP-CLEAN** (a distinct, benign state from present-but-wrong-dim = FAIL), so an unpopulated docs collection or a stopped honcho DB never red-bars the stack. The routine run is cheap — schema / registry / code only, **no model load**. Under `EMBEDDING_DIM_DEEP=1` (or `DOCTOR_ALL=1`) it also does a live 1-vector round-trip per consumer and asserts the emitted length == store dim — this catches a route that silently emits the wrong dim (e.g. a cloud route missing its `dimensions` param) that a schema-only check would miss; the round-trip touches **embedders only, never a chat model**, and is opt-in so routine doctor never cold-starts. openwebui / lumen self-manage their own index dim, mempalace is on-device 384, and ai-town is an isolated opt-in sim — all out of scope.
+
+**The family stamp (why dim alone was not enough).** `embed-nomic` and `embed-openai-small-768` are **both 768** but are different vector *spaces*. Re-pointing `docs` between them and running `install 06` — which re-bakes `EMBED_MODEL`, satisfying the code-drift guard — while **forgetting the re-index** left the store full of old-geometry vectors and every guard green: total, silent recall collapse. So `ingest.py` stamps the models.yml **registry key** of the embedder that produced each vector into that same point's payload (`embedder`), and this check counts, via the Qdrant `points/count` API, any point not carrying the assigned embedder. Because the stamp is written by the same call that computes the vector it cannot drift from what it describes, and because it lives inside the collection it dies with it — so a dropped/recreated store can never present a stale stamp. It is excluded from the embedded text (`excluded_embed_metadata_keys`), so it never pollutes the vector space it audits.
+
+Stamp semantics: an **entirely unstamped** collection is **SKIP-CLEAN** (it pre-dates the stamp — re-index to arm the guard); **any wrong-family point** FAILS; a **partially stamped** collection FAILS as mixed provenance. `ingest.py` independently refuses to append a different family onto a populated collection unless `AI_STACK_FORCE_RECREATE=1` — the doctor catches a forgotten re-index, the ingester prevents a mixed corpus.
+
+> **Scoped out, deliberately:** **honcho gets no family stamp.** It owns its embedding pipeline upstream, so stamping its writes means patching code that an upgrade overwrites. Its dim guard + its own boot validator cover the dim case; a same-dim family swap on honcho is caught only by following the re-index runbook in [TROUBLESHOOTING.md](TROUBLESHOOTING.md#embedding-dimensionality-canonical-768--cloudlocal-interchangeability). This is a known, accepted residual — not an oversight.
 
 ---
 

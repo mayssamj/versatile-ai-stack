@@ -118,6 +118,39 @@ the deployed `ingest.py` (`EMBED_DIM`/`EMBED_MODEL`), plus honcho's pgvector
 typmod. Opt-in `EMBEDDING_DIM_DEEP=1` adds a live emitted-vector-length
 round-trip.
 
+**The family stamp** closes the gap the warning above describes. Dim checks alone
+could not see a *same-dim family swap*: re-point `docs` to
+`embed-openai-small-768`, run `install 06` (which re-bakes `EMBED_MODEL`, so the
+code-drift guard is satisfied too) but forget the re-index, and every guard stayed
+green while the store held nomic vectors and queries embedded via OpenAI — silent
+total recall collapse. So `ingest.py` now stamps the **models.yml registry key of
+the embedder that produced each vector** into that same point's payload
+(`embedder`), and check 77 counts any point not carrying the assigned embedder:
+
+- **entirely unstamped** store (populated before the stamp existed) → skip-clean
+- **any wrong-family point** → FAIL, with the re-index command
+- **partially stamped** → FAIL (a partial re-index left two geometries in one collection)
+
+Provenance rides in the *same write* as the vector, so it cannot drift from what it
+describes and it dies with the collection. The stamp is excluded from the embedded
+text (`excluded_embed_metadata_keys`), so it never pollutes the space it audits.
+`ingest.py` independently **refuses** to append a different family onto a populated
+collection unless `AI_STACK_FORCE_RECREATE=1` — the doctor catches a forgotten
+re-index; the ingester prevents a mixed corpus.
+
+> **Scoped out (honest):** `honcho` gets **no** family stamp. It owns its embedding
+> pipeline upstream, so stamping its writes means patching code an upgrade
+> overwrites. Its dim guard + boot validator cover the dim case; a same-dim family
+> swap on honcho is still caught only by the re-index runbook below.
+
+**Nomic task prefixes.** `nomic-embed-text` is trained for **asymmetric** retrieval:
+corpus chunks embed as `search_document: <text>`, queries as `search_query: <text>`.
+`ingest.py` and `mcp_server.py` apply these in lockstep — and only when the assigned
+family is `embed-nomic`. They are **family-specific**: OpenAI's `text-embedding-3-*`
+have no prefix convention and would be *hurt* by one, so for `embed-openai-small-768`
+the prefixes are empty and the code path is an exact no-op. A family swap therefore
+changes prefixing automatically, with no separate switch to forget.
+
 Honcho's pgvector schema is re-pinned to the assigned dim by honcho's **own**
 `scripts/configure_embeddings.py` (its Alembic migration hardcodes `vector(1536)`,
 so this re-pin is what survives a volume reset). When migrating dims, set
@@ -251,7 +284,10 @@ the start command for each.
     `vz-ai-stack.sh model assign all openai-gpt-5.5-sub`. The metered twins use
     `runtime: openai` (`openai-gpt-5.5` / `openai-gpt-5.5-pro` / `openai-gpt-5.4`).
     `effort` (optional, → OpenAI `reasoning_effort` none|low|medium|high|xhigh;
-    `xhigh`=max) is set per entry. They **availability-gate to `default`**
+    `xhigh`=max) is set per entry — **doctor check 40 asserts it actually reaches the
+    rendered route**, because a caller that omits the arg silently *deletes* it (the
+    writers reassign `litellm_params` wholesale) and the model then answers at the
+    provider's default reasoning with no other symptom. They **availability-gate to `default`**
     (local) when the bridge is down (codex-bridge) or `OPENAI_API_KEY` is
     absent (openai) — a pending line, never a hard fail, and **never** the metered
     key as a silent fallback. Doctor check 55 reports bridge health (advisory-green

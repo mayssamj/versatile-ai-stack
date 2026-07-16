@@ -5,8 +5,9 @@
 # it in models.yml (.embedding_assignments -> .embeddings[m].dim). The CANONICAL TARGET is 768;
 # this check enforces store==assigned-dim (consistency), and once every text consumer is on a
 # 768 embedder the whole fleet is canonical. Consumers covered:
-#   - docs   : Qdrant `ai-stack-docs` vector size, the deployed ingest.py EMBED_DIM, AND the
-#              deployed ingest.py EMBED_MODEL == the assigned route (family-drift guard).
+#   - docs   : Qdrant `ai-stack-docs` vector size, the deployed ingest.py EMBED_DIM, the
+#              deployed ingest.py EMBED_MODEL == the assigned route (code-drift guard), AND
+#              the per-point embedder FAMILY STAMP == the assigned embedder (see below).
 #   - honcho : pgvector column typmod on the base tables documents + message_embeddings.
 # openwebui/lumen self-manage their index dim (lumen hash-keys its dir by embed_model);
 # mempalace is on-device/isolated 384; ai-town is an isolated opt-in sim — all out of scope.
@@ -23,14 +24,24 @@
 # route missing its `dimensions` param). The round-trip only touches EMBEDDERS (never a chat
 # model), and is opt-in so routine doctor never cold-starts.
 #
-# KNOWN RESIDUAL (tracked follow-up "3c", §24 strongest-objection): this compares DIMS + the
-# deployed route family, but does NOT stamp which embedder FAMILY actually populated a store, so
-# a same-dim family re-point (embed-nomic <-> embed-openai-small-768, both 768) followed by
-# `install 06` but NO re-index would pass green while vectors are in the old geometry. Mitigated
-# for now by the EMBED_MODEL==route guard (catches registry-vs-code drift) + the documented
-# re-index runbook; the store-family stamp is a planned hardening.
+# FAMILY STAMP (closes tracked follow-up "3c", the §24 strongest-objection). Dim equality does
+# NOT prove a store is queryable: embed-nomic and embed-openai-small-768 are BOTH 768 but are
+# different vector SPACES. Re-pointing docs between them + `install 06` (which re-bakes
+# EMBED_MODEL, satisfying the code-drift guard above) but FORGETTING the re-index left the store
+# full of old-geometry vectors while queries embedded in the new one — total recall collapse,
+# everything green. So ingest.py now stamps the models.yml registry key of the embedder that
+# produced each vector into that same point's payload (`embedder`, excluded from the embedded
+# text so it cannot pollute the space it audits), and this check counts, via the Qdrant count
+# API, any point NOT carrying the assigned embedder. Provenance rides in the same write as the
+# vector, so it cannot drift from what it describes and it dies with the collection.
+# Semantics: entirely-unstamped store (pre-dates the stamp) = SKIP-CLEAN; any wrong-family point
+# = FAIL; a partially-stamped store = FAIL (mixed geometry from a partial re-index).
+# RESIDUAL, honestly scoped: honcho gets NO family stamp — it owns its embedding pipeline
+# upstream, so stamping its writes means patching code that an upgrade overwrites. Its dim guard
+# + boot validator cover the dim case; a same-dim family swap on honcho is still only caught by
+# the documented re-index runbook (doc/TROUBLESHOOTING.md).
 CHECKS+=(embedding_dim)
-CHECK_TITLE[embedding_dim]="Embedding dim consistency: live store dim == assigned model dim (canonical target 768; skip-clean when a store is absent)"
+CHECK_TITLE[embedding_dim]="Embedding dim + family consistency: live store dim == assigned model dim AND the embedder that populated it == the assigned one (canonical target 768; skip-clean when a store is absent/unstamped)"
 
 _edc_models_yml() { echo "${AI_STACK:-$HOME/ai-stack}/installer/models.yml"; }
 
@@ -63,6 +74,27 @@ try:
     if isinstance(v, dict) and "size" in v: print(v["size"])
     elif isinstance(v, dict) and v:        print(next(iter(v.values())).get("size",""))
     else: print("")
+except Exception:
+    print("")
+' 2>/dev/null || true
+}
+
+# Exact ai-stack-docs point count under an optional Qdrant JSON filter (pass "" for all).
+# Echoes an integer, or "" when qdrant/the collection is absent/unreachable (-> SKIP, never FAIL:
+# a down store must not be reported as a family violation).
+_edc_qdrant_count() {
+  local filter="${1:-}" url payload body
+  url="${QDRANT_URL:-http://qdrant:6333}"
+  if [[ -z "$filter" ]]; then payload='{"exact":true}'; else payload="{\"exact\":true,\"filter\":${filter}}"; fi
+  body="$(curl -s --max-time 4 -X POST "$url/collections/ai-stack-docs/points/count" \
+          -H 'content-type: application/json' -d "$payload" 2>/dev/null || true)"
+  [[ -z "$body" ]] && { echo ""; return 0; }
+  printf '%s' "$body" | python3 -c '
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    r = d.get("result")
+    print(r["count"] if r and "count" in r else "")
 except Exception:
     print("")
 ' 2>/dev/null || true
@@ -152,6 +184,26 @@ embedding_dim_diagnose() {
     if [[ -n "$imodel" && -n "$docs_route" && "$imodel" != "$docs_route" ]]; then
       fails+=("  docs: deployed ingestor/ingest.py EMBED_MODEL=$imodel != assigned route=$docs_route — re-run 'vz-ai-stack.sh install 06' (registry↔deployed embedder-family drift)")
     fi
+    # ---- FAMILY STAMP ("3c"): which embedder ACTUALLY populated the store? ----
+    # The two guards above are satisfied by `install 06` alone; only this one needs the
+    # RE-INDEX to have actually happened. Counts are exact and filter-side (no vectors move).
+    local n_total n_bad n_unstamped
+    n_total="$(_edc_qdrant_count "" || true)"
+    if [[ "$n_total" =~ ^[0-9]+$ ]] && (( n_total > 0 )) && [[ -n "$docs_model" ]]; then
+      # not-assigned = wrong-family points PLUS unstamped points (a missing field can't match)
+      n_bad="$(_edc_qdrant_count "{\"must_not\":[{\"key\":\"embedder\",\"match\":{\"value\":\"${docs_model}\"}}]}" || true)"
+      n_unstamped="$(_edc_qdrant_count '{"must":[{"is_empty":{"key":"embedder"}}]}' || true)"
+      if [[ "$n_bad" =~ ^[0-9]+$ && "$n_unstamped" =~ ^[0-9]+$ ]]; then
+        local n_wrongfam=$(( n_bad - n_unstamped ))
+        if (( n_unstamped == n_total )); then
+          notes+=("  docs: ai-stack-docs holds $n_total points with NO embedder family stamp (populated before the stamp existed) — skip; re-index to stamp them and arm the family guard")
+        elif (( n_wrongfam > 0 )); then
+          fails+=("  docs: $n_wrongfam/$n_total points in ai-stack-docs were embedded by an embedder OTHER than the assigned '$docs_model' — same dim != same vector space, so every query silently retrieves noise. RE-INDEX (the one step 'install 06' does NOT do): cp -R ingestor/processed/* ingestor/inbox/ && cd ingestor && AI_STACK_FORCE_RECREATE=1 .venv/bin/python ingest.py && bash bin/start-docs_mcp.sh")
+        elif (( n_unstamped > 0 )); then
+          fails+=("  docs: ai-stack-docs is MIXED provenance — $n_unstamped/$n_total points carry no family stamp alongside stamped '$docs_model' points (a partial re-index left two geometries in one collection). Re-index the WHOLE corpus with AI_STACK_FORCE_RECREATE=1")
+        fi
+      fi
+    fi
   else
     notes+=("  docs: no resolvable assigned-model dim in models.yml — skip")
   fi
@@ -208,8 +260,11 @@ embedding_dim_diagnose() {
 }
 
 embedding_dim_fix() {
-  warn "Embedding dim disparity: a live store's vector dim != its assigned model's dim (models.yml)."
+  warn "Embedding dim/family disparity: a live store's vector dim — or the embedder that actually populated it — != its assigned model (models.yml)."
   warn "  docs   -> flip models.yml .embedding_assignments.docs, 'install 06', then recreate ai-stack-docs (AI_STACK_FORCE_RECREATE=1)."
+  warn "  docs (family) -> 'install 06' re-bakes the code but NEVER re-embeds. A same-dim family swap needs a full RE-INDEX:"
+  warn "                   cp -R ingestor/processed/* ingestor/inbox/ && cd ingestor && AI_STACK_FORCE_RECREATE=1 .venv/bin/python ingest.py"
+  warn "                   then 'bash bin/start-docs_mcp.sh' — docs_mcp caches its index handle and returns 0 hits until restarted."
   warn "  honcho -> set EMBEDDING_VECTOR_DIMENSIONS to the assigned dim + run honcho scripts/configure_embeddings.py --yes (wired via 'install honcho_mcp')."
   return 1
 }
