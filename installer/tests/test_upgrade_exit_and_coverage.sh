@@ -545,6 +545,21 @@ r="$(bash -c 'set -Eeuo pipefail
   svc_available_version ollama' _ "$VERS" 2>/dev/null)"
 [[ "$r" == "ROUTED-4.2" ]] && ok "svc_available_version type-dispatches brew-service → _av_brew" || bad "brew-service type dispatch broken: '$r'"
 
+echo "== v3.3: git oracle SHA-width parity (no phantom update-available) =="
+# git rev-parse --short auto-LENGTHENS in big repos (paperclip: 9 chars) while
+# _av_git cuts the remote SHA to 7 — the SAME commit must compare equal.
+r="$(bash -c 'set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  M="$(mktemp -d)"; mkdir -p "$M/c/.git"
+  svc_upgrade(){ [[ "$2" == dir ]] && echo "$M/c" || echo "-"; }
+  svc_path(){ echo "-"; }
+  git(){ case "$*" in *rev-parse*) echo 6ec059ab4;; *ls-remote*) echo "6ec059ab4deadbeef0000000000000000000000ff	HEAD";; esac; return 0; }
+  _vz_bounded(){ shift; "$@"; }
+  iv="$(_iv_git svcx)"; av="$(_av_git svcx)"
+  echo "$iv|$av|$(version_classify clone-only "$iv" "$av")"; rm -rf "$M"' _ "$VERS" 2>/dev/null)"
+[[ "$r" == "6ec059a|6ec059a|up-to-date" ]] && ok "9-char local vs 7-char remote SHA → equal → up-to-date ('$r')" || bad "SHA-width mismatch → phantom update: '$r'"
+
 echo "== v3.1/B-acepin (behavioral): the 4-leg ACE_PIN resolution chain =="
 _af="$(mktemp)"
 awk '/-z "\$\{ACE_PIN:-\}"/{f=1} f{print} /ACE_PIN="main"/{m=1} f&&m&&/^fi$/{exit}' "$ROOT/installer/phases/17_ace.sh" > "$_af"

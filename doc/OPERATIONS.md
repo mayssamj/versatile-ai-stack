@@ -546,7 +546,7 @@ How it decides — **no image is downloaded**:
 |------|---------------------|
 | `docker` | local image `RepoDigest` vs the registry **index digest** (`docker buildx imagetools inspect`). Both resolve to the manifest-list digest, so the compare is sound on multi-arch images. |
 | `compose`/`docker-compose` | every image from `docker compose config --images` is digest-checked; any newer → `update-available`; locally-built/uncheckable images → `rebuild`. |
-| `brew-service` (ollama) | `brew outdated` (version compare). |
+| `brew-service` (ollama) | the same shared 3-way brew oracle as `status --versions` (formula-arg `brew outdated --json`, bounded) — a probe timeout/refusal reads `unknown`, never a false `up-to-date`, so the two commands can't disagree. |
 | `npm-global` / `pip`(uv-venv) / `clone-only`(git) | **now checked** (2026-07-02) via `npm view` / PyPI JSON / `git ls-remote` (bounded — a blocked registry degrades to `unknown`, never hangs). These show real installed+available instead of `manual`. |
 | declared `upgrade:` methods — `uv-tool` (mempalace/halo) · `sandbox-pip` (hermes_fleet, read through the sandbox) · `uv-reqs` (docs_mcp — the 7 ingestor requirements, same-resolver dry-run so check and handler converge) · `brew` (openshell/blaxel, formula-aware) | **now checked** (2026-07-15/16). git-pull services with a `build:`/`restart:` also rebuild and PID-verify the daemon recycle on upgrade. |
 | deliberately **pinned** (`upgrade.pin`: openwork, metagpt, concordia, ace, lumen, aionui, pi) | shown as `pinned` with real installed versions where readable — **held on every upgrade path** (`upgrade all` cannot trample a pin); `upgrade <svc>` prints the exact bump recipe. |
@@ -557,8 +557,9 @@ Status legend: `update-available` · `up-to-date` · `pinned` (fixed tag or a
 declared `upgrade.pin` — held, never auto-swept) · `config` (configuration
 surface, versions with the repo/owning service) · `rebuild`/`build` (locally-built
 — run `upgrade` to pull+rebuild) · `manual` (real artifact, no version oracle yet)
-· `unknown` (registry/proxy unreachable, image never pulled, or an untrusted brew
-tap — fix: `brew trust <tap>`).
+· `unknown` (any probe failure on any plane — registry/proxy unreachable, a
+timed-out/refused brew probe, image never pulled, or an untrusted brew tap —
+fix: `brew trust <tap>`).
 
 **Honest results (2026-07-02).** `upgrade` never reports success it didn't verify:
 - Every run first prints an **installed → available** version report (skip with

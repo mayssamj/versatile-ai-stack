@@ -357,6 +357,11 @@ _iv_git() {
   [[ -d "$abs/.git" ]] || { echo "-"; return 0; }
   command -v git >/dev/null 2>&1 || { echo "-"; return 0; }
   out="$(git -C "$abs" rev-parse --short HEAD 2>/dev/null || true)"
+  # Truncate to EXACTLY 7 chars — the same width _av_git cuts the remote SHA to.
+  # `--short` auto-LENGTHENS in larger repos (paperclip yields 9), so the same
+  # commit read '6ec059ab4' vs '6ec059a' → a permanent phantom update-available
+  # (live-caught 2026-07-16 right after the first sweep converged).
+  [[ -n "$out" ]] && out="${out:0:7}"
   printf '%s' "${out:--}"
 }
 

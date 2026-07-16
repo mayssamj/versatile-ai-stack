@@ -6,6 +6,24 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ## 2026-07-16
 
+### Bug Fixes
+
+- upgrade git oracle: phantom update-available after convergence — git rev-parse --short auto-LENGTHENS in larger repos (paperclip returned a 9-char SHA) while the remote side truncates to 7, so the SAME commit compared unequal and the row nagged forever; _iv_git now cuts to exactly 7 (live-caught by the closing post-sweep --check)
+
+---
+
+
+## 2026-07-16
+
+### Bug Fixes
+
+- upgrade --check brew parity + paperclip recreate relay — the brew-service check arm (ollama) now consumes the SAME shared 3-way oracle as `status --versions` (formula-arg `brew outdated --json`, bounded): a brew probe timeout/refusal reads honest `unknown` instead of a false `up-to-date` (the old no-arg arm conflated 'genuinely current' with 'probe failed'), so the two commands can no longer disagree. And `start-paperclip.sh --recreate` now stops its OWN :3100 alias relay before restarting — the orphaned relay kept the port bound after the app died, making the fresh start refuse it as 'foreign' (caught live by the first swept recreate of the 2026-07-16 upgrade sweep) — and the port drain escalates TERM→KILL for TERM-resistant dev servers.
+
+---
+
+
+## 2026-07-16
+
 ### Features
 
 - upgrade coverage follow-ups — docs_mcp gains a `uv-reqs` upgrade method: `upgrade --check` / `--outdated` / `upgrade all` now genuinely version-check and bump the 7 ingestor requirements (docling, llama-index, llama-index-vector-stores-qdrant, llama-index-embeddings-openai-like, qdrant-client, mcp, openai) via a per-package-scoped resolve that never drags unrelated heavyweights (torch) along; the oracle is the same resolver dry-run so check and handler converge, and the :8765 daemon restarts ONLY when versions actually moved (PID-verified via the new `start-docs_mcp.sh --recreate` arm) — expect the first sweep to bump ~5 of the 7 and restart docs_mcp once. openshell + blaxel gain a formula-aware `brew` method: openshell always chains the phase-04 gateway re-assert after `brew upgrade openshell` (client/gateway version skew breaks sandbox execs), and blaxel one-time-trusts the blaxel-ai/blaxel tap because services.yml declares `upgrade.tap:` (recorded install-time consent — remove the key to withdraw), else skips visibly with the exact `brew trust` remedy — both formulas now show honest up-to-date/update-available in `upgrade --check` instead of perpetual 'unknown'. Phases 06 (documents) and 14 (unsloth) now honor AI_STACK_UPGRADE=1: a rerun genuinely re-asserts — 06 re-bakes embedder literals and recycles docs_mcp only when the generated files changed; 14 heals the daemon but REFUSES to run its 1-3 GB installer from a sweep (a genuine unsloth version bump stays a deliberate manual reinstall, now documented in its help). Test suite grows to 123 assertions (uv-reqs state machine, brew 3-way oracle, trust policy, chain merge, pin extensions).
