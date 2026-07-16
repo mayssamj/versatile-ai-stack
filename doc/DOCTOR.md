@@ -1,11 +1,11 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 78 checks and, when one fails, prints the
+`bash vz-ai-stack.sh doctor` runs all 80 checks and, when one fails, prints the
 failure detail plus remediation. This doc lists every check, what it asserts,
 when it fails, and what the fix does.
 
 **The auto-fix prompt is gated on CAPABILITY, not on a fix merely existing**
-(changed 2026-07-16). 75 of the 78 checks ship a `<name>_fix`, but most only
+(changed 2026-07-16). 77 of the 80 checks ship a `<name>_fix`, but most only
 PRINT guidance — the house convention. Doctor used to offer *"Auto-fix
 available. Apply? [Y/n]"* for any check with a fix function (`declare -F`), so
 the operator answered `y`, nothing ran, and doctor reported *"fix ran but the
@@ -16,7 +16,7 @@ check still fails"* (the 74/76 incident). A fix must now declare
 |---|---|---|
 | **CAPABLE** (`FIX_CAPABLE=1`) | 19 | Prompts *"Auto-fix available. Apply? [Y/n]"* — answering `y` really mutates, then re-verifies. Skipped under `NO_PROMPT=1`. |
 | **AUTOHEAL** (`AUTOHEAL=1`, implies capable) | 2 | Safe + idempotent → applied AUTOMATICALLY, no prompt (`05a` litellm_keystore, `73` hermes_workspace_pair). Skipped under `NO_PROMPT=1`. |
-| **ADVISORY** (unmarked — the DEFAULT) | 54 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
+| **ADVISORY** (unmarked — the DEFAULT) | 56 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
 
 The 21 capable checks (19 + the 2 autoheal) are the only ones that can change
 your system from a doctor run.
@@ -133,7 +133,9 @@ installer/doctor/checks/
 ├── 74_fleet_memory_mcp.sh                   (opt-in Phase 39; claude-cli + hermes-fleet memory MCP wiring)
 ├── 75_honcho_mcp.sh                         (default-on Phase 40; Honcho memory MCP shim wired + raw :8000 egress retired)
 ├── 76_falkordb_mcp.sh                       (opt-in Phase 41; FalkorDB graph memory MCP shim wired + raw :6379 denied)
-└── 77_embedding_dim_consistency.sh          (embedding dim consistency: live store dim == assigned-model dim; skip-clean when a store is absent; opt-in DEEP round-trip)
+├── 77_embedding_dim_consistency.sh          (embedding dim consistency: live store dim == assigned-model dim; skip-clean when a store is absent; opt-in DEEP round-trip)
+├── 78_verify_then_stamp_guard.sh            (static source-shape guard: phases 39/40/41 keep the verify-then-stamp shape; skip-clean when the phase files are absent)
+└── 79_fix_capable_integrity.sh              (mechanical FIX_CAPABLE marker integrity: no orphan markers, AUTOHEAL ⊆ FIX_CAPABLE, every unmarked _fix is print-only)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -973,6 +975,30 @@ A store that is absent/unreachable is **SKIP-CLEAN** (a distinct, benign state f
 Stamp semantics: an **entirely unstamped** collection is **SKIP-CLEAN** (it pre-dates the stamp — re-index to arm the guard); **any wrong-family point** FAILS; a **partially stamped** collection FAILS as mixed provenance. `ingest.py` independently refuses to append a different family onto a populated collection unless `AI_STACK_FORCE_RECREATE=1` — the doctor catches a forgotten re-index, the ingester prevents a mixed corpus.
 
 > **Scoped out, deliberately:** **honcho gets no family stamp.** It owns its embedding pipeline upstream, so stamping its writes means patching code that an upgrade overwrites. Its dim guard + its own boot validator cover the dim case; a same-dim family swap on honcho is caught only by following the re-index runbook in [TROUBLESHOOTING.md](TROUBLESHOOTING.md#embedding-dimensionality-canonical-768--cloudlocal-interchangeability). This is a known, accepted residual — not an oversight.
+
+---
+
+## 78 · Verify-then-stamp shape intact in phases 39/40/41 (no-sandbox-still-stamps drift guard)
+
+| | |
+|---|---|
+| Asserts | a STATIC source-shape guard (cf. check 62 `audit_drift`) — for each of phases `39_fleet_memory.sh` / `40_honcho_mcp.sh` / `41_falkordb_mcp.sh`, the verify-then-stamp SHAPE tokens are still present WITHOUT running the stack: (1) an `if sandbox_ready …` wiring-branch gate (only a Ready fleet is wired); (2) an `if _mem_hermes_<key>_wired …` POST-CONDITION gate (verify before stamp); (3) a `NOT stamping Phase` failure path followed by an `exit` before the skip-note (a wiring that did not land must NOT stamp); (4) a `not present or not Ready` genuine-skip else-branch — the opt-in RECORD that arms `04f_hermes_fleet.sh`'s `stamp_check 39/40/41` so a fleet built LATER still gets wired; (5) a TOP-LEVEL `stamp_mark "$PHASE"` fall-through that BOTH the verified AND the genuine-skip path reach; (6) ORDER — the skip-note precedes that stamp with no `exit` short-circuiting the skip path before it. Checks SHAPE, not byte-identity (the three phases legitimately differ). Pure file reads — no external calls, no cold-start. |
+| Fails when | a fleet-memory phase lost the stamp gate or the no-sandbox-still-stamps invariant: a missing shape token, an `exit` between the genuine-skip note and the fall-through stamp (a no-sandbox run would no longer stamp — opt-in-survives-rebuild broken), or a `NOT stamping Phase` failure branch with no `exit` before the skip note (a wiring that did not land would fall through and STILL stamp — the exact 2026-07-16 incident). |
+| Fix | print-only advice (NOT FIX_CAPABLE): restore the verify-then-stamp shape by referencing the sibling phase that still has it, then re-run `vz-ai-stack.sh test verify-then-stamp` (the companion runtime test that pins the contract). |
+
+Skips cleanly (returns 0) when none of phases 39/40/41 is present — a genuine skip, never a red-bar. Companion: `installer/smoke/verify-then-stamp.sh` pins the CONTRACT (real helpers + real stamp → right outcome); THIS check pins that the phases still IMPLEMENT it.
+
+---
+
+## 79 · FIX_CAPABLE marker integrity (mutating _fix must be marked; no orphans)
+
+| | |
+|---|---|
+| Asserts | the mechanical integrity of doctor's `FIX_CAPABLE` marker — enforcing at every `doctor` run the convention the 2026-07-16 council could otherwise only hand-census: (1) **no orphan markers** — every `FIX_CAPABLE[<name>]=1` maps to a registered check that actually defines `<name>_fix`; (2) **AUTOHEAL ⊆ FIX_CAPABLE** — every `AUTOHEAL[<name>]=1` also carries `FIX_CAPABLE[<name>]=1` (AUTOHEAL implies capable); (3) **no unmarked mutation** — every `_fix` that is NEITHER `FIX_CAPABLE` NOR `AUTOHEAL` must be print-only. The mutation test is a SOURCE GREP over `declare -f <name>_fix`: after blanking string literals and comments, every statement-position command word must be a known output/control builtin, and a write-redirect (`>`/`>>`) to a real file counts as mutation — anything else demands a marker. |
+| Fails when | a `FIX_CAPABLE`/`AUTOHEAL` marker is orphaned (no registered check or no `_fix`), an `AUTOHEAL` entry lacks its `FIX_CAPABLE`, or an UNMARKED `_fix` appears to mutate at statement position — because `doctor.sh` RUNS an unmarked `_fix` body in EVERY mode (including `NO_PROMPT=1`), an unmarked-but-mutating `_fix` silently breaks `doc/DOCTOR.md`'s report-only contract. |
+| Fix | print-only advice (NOT FIX_CAPABLE — this body must itself stay print-only, which the check verifies): if the `_fix` mutates, add `FIX_CAPABLE[<name>]=1` beside its `CHECKS+=(<name>)`; if it is advice-only, keep the body print-only; remove a stale orphan marker; give an `AUTOHEAL` entry its `FIX_CAPABLE`. |
+
+The mutation heuristic is designed for ZERO false positives on today's print-only bodies (advice text mentioning `rm`/`docker restart` is blanked as a string; read-only getters inside `$(…)` are never scanned as statement heads). Its accepted residual — a body that mutates only via a command hidden in `$(…)`/`if <cmd>`, or a `source`d file that mutates at source time — evades a static grep; the AGENT-ONBOARDING template note is the backstop for those. It catches the realistic, template-shaped regression the council reproduced: a plain mutating command at statement position with no marker.
 
 ---
 
