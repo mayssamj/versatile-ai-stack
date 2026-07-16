@@ -8,6 +8,15 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ### Bug Fixes
 
+- paperclip lifecycle: the plain start no longer refuses its OWN alias relay as a foreign :3100 owner (app-dead/relay-alive stranded the daemon down), and --recreate now also reaps the surviving upstream dev-watch tree (cwd-anchored to the clone; it holds no port, so the port drain could not see it) — both live-caught by the 2026-07-16 sweep and its follow-up upgrade
+
+---
+
+
+## 2026-07-16
+
+### Bug Fixes
+
 - upgrade git oracle: phantom update-available after convergence — git rev-parse --short auto-LENGTHENS in larger repos (paperclip returned a 9-char SHA) while the remote side truncates to 7, so the SAME commit compared unequal and the row nagged forever; _iv_git now cuts to exactly 7 (live-caught by the closing post-sweep --check)
 
 ---

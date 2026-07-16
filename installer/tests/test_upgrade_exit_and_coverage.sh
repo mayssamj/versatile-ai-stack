@@ -338,10 +338,18 @@ rm -f "$_ck"
 echo "== v2/static: remaining consensus mechanics wired =="
 haveE 'brew\|npm-global\|uv-venv\|uv-tool\|uv-reqs\|git-pull\|compose\)' && ok "uv-tool + uv-reqs in the reconcile STRATEGY list (A6 — no-op can't read 'upgraded')" || bad "uv-tool/uv-reqs missing from reconcile — a current tool would claim 'upgraded'"
 grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-paperclip.sh" && ok "start-paperclip.sh has the --recreate/restart arm" || bad "start-paperclip.sh missing the recreate arm"
-# The arm must ALSO stop the alias relay: it holds :3100 after the app dies and
-# the fresh-start port check would refuse (live failure, first swept recreate).
-grep -B40 -F 'pnpm dev'"'"'s node child can outlive' "$ROOT/bin/start-paperclip.sh" | grep -qF 'RELAY_PID_FILE' && ok "paperclip recreate stops its own alias relay first" || bad "recreate leaves the relay squatting :3100 (port check refuses)"
+# The recreate must stop the alias relay AND reap the surviving dev tree; the
+# PLAIN start path must not refuse its OWN relay as a foreign port owner
+# (all three live-caught 2026-07-16).
+# Anchored to the ARM (QA: a bare function-name grep stays green if the call
+# sites are deleted — pin the calls, not the definitions).
+grep -A20 -F -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-paperclip.sh" | grep -q '_stop_own_relay' \
+  && grep -A21 -F -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-paperclip.sh" | grep -q '_reap_dev_tree' \
+  && ok "paperclip recreate CALLS relay-stop + dev-tree reap (arm-anchored)" || bad "recreate arm lost its relay/dev-tree cleanup calls"
+grep -A6 -F '_stop_own_relay() {' "$ROOT/bin/start-paperclip.sh" | grep -A3 'kill -0' >/dev/null && grep -B2 -A2 -F 'grep -qF "paperclip-relay"' "$ROOT/bin/start-paperclip.sh" | grep -q 'ps -p' && ok "relay stop is identity-gated (PID-recycle safe)" || bad "relay stop kills by raw pidfile PID (recycled-PID foreign kill)"
+grep -qF 'own alias relay holds :$PORT' "$ROOT/bin/start-paperclip.sh" && ok "plain start recycles its OWN relay instead of refusing it as foreign" || bad "plain start still refuses its own relay (daemon strands down)"
 grep -A18 -F 'TERM first, then KILL' "$ROOT/bin/start-paperclip.sh" | grep -qF 'kill -9 "$_lpid"' && ok "paperclip drain escalates TERM→KILL" || bad "drain lacks KILL escalation (TERM-resistant dev servers outlast it)"
+grep -A8 -F '_reap_dev_tree() {' "$ROOT/bin/start-paperclip.sh" | grep -qF '"$PC_DIR"*' && ok "dev-tree reap is cwd-anchored to OUR clone (never a foreign node)" || bad "dev-tree reap lacks the cwd identity anchor"
 grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-claw3d.sh" && ok "start-claw3d.sh has the --recreate/restart arm" || bad "start-claw3d.sh missing the recreate arm"
 grep -qF 'if (( rc == 2 )); then' "$UPG" && ok "recreate_via_start_script: exit-2 → 'restart' fallback" || bad "no exit-2 fallback"
 grep -qF '${DOCKER_OK:-1}' "$VERS" && ok "_iv_sandbox_pip uses \${DOCKER_OK:-1} (set -u safe in status context)" || bad "bare DOCKER_OK in versions.sh — set -u crash under status --versions"

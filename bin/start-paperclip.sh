@@ -128,6 +128,51 @@ ensure_relay() {
 # recycle contract needs a REAL recycle: without this arm the script was a
 # healthy no-op exit 0 after a git-pull upgrade, so the daemon kept running
 # stale code while the summary said 'upgraded' (council R2a, 2026-07-15).
+# _stop_own_relay — stop OUR alias relay (via RELAY_PID_FILE, liveness-checked).
+# The relay outlives the app on every crash/kill; both the recreate arm and the
+# foreign-port refusal must treat it as OURS, never as a foreign owner
+# (refusing our own component stranded the daemon down twice on 2026-07-16).
+# ensure_relay re-establishes it after the app is up.
+_stop_own_relay() {
+  local rp
+  [[ -f "$RELAY_PID_FILE" ]] || return 0
+  rp="$(cat "$RELAY_PID_FILE" 2>/dev/null || echo "")"
+  if [[ "$rp" =~ ^[0-9]+$ ]] && kill -0 "$rp" 2>/dev/null; then
+    # IDENTITY before kill (PID-recycle safety, same standard as relay_running/
+    # pid_is_ours): a stale pidfile whose PID was recycled to a foreign process
+    # must fall through to the foreign-owner refusal, never be killed here.
+    if ps -p "$rp" -o args= 2>/dev/null | grep -qF "paperclip-relay"; then
+      kill "$rp" 2>/dev/null || true; sleep 1
+      if kill -0 "$rp" 2>/dev/null; then kill -9 "$rp" 2>/dev/null || true; fi
+    fi
+  fi
+  rm -f "$RELAY_PID_FILE"
+  return 0
+}
+
+# _reap_dev_tree — kill SURVIVING members of paperclip's dev process tree:
+# upstream's dev-runner ('paperclip-dev-watch') outlives a killed parent and
+# makes the next `pnpm dev` REFUSE to start ('already running'), and it does
+# NOT listen on :3100 so the port drain can't see it (live-caught twice,
+# 2026-07-16). Identity anchor: node/pnpm processes whose CWD is under OUR
+# clone — a foreign node can never match, though clone-cwd'd dev tooling
+# (an IDE's tsserver opened on the clone) is accepted recreate collateral.
+_reap_dev_tree() {
+  local _wp _wcwd _survivors
+  _survivors="$( { pgrep -x node; pgrep -f pnpm; } 2>/dev/null | sort -u || true )"
+  for _wp in $_survivors; do
+    _wcwd="$(lsof -a -d cwd -p "$_wp" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
+    if [[ -n "$_wcwd" && "$_wcwd" == "$PC_DIR"* ]]; then kill "$_wp" 2>/dev/null || true; fi
+  done
+  sleep 2
+  for _wp in $_survivors; do
+    kill -0 "$_wp" 2>/dev/null || continue
+    _wcwd="$(lsof -a -d cwd -p "$_wp" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
+    if [[ -n "$_wcwd" && "$_wcwd" == "$PC_DIR"* ]]; then kill -9 "$_wp" 2>/dev/null || true; fi
+  done
+  return 0
+}
+
 if [[ "${1:-}" == "--recreate" || "${1:-}" == "restart" ]]; then
   if [[ -f "$PID_FILE" ]]; then
     _rpid="$(cat "$PID_FILE" 2>/dev/null || echo "")"
@@ -140,18 +185,8 @@ if [[ "${1:-}" == "--recreate" || "${1:-}" == "restart" ]]; then
     fi
     rm -f "$PID_FILE"
   fi
-  # Stop OUR alias relay too (127.0.10.x:3100 forwarder): it keeps :3100 bound
-  # after the app dies, and the fresh-start port check counts it as a "foreign"
-  # owner — the exact live failure of the first swept recreate (2026-07-16).
-  # ensure_relay brings it back on the start path below.
-  if [[ -f "$RELAY_PID_FILE" ]]; then
-    _rlpid="$(cat "$RELAY_PID_FILE" 2>/dev/null || echo "")"
-    if [[ "$_rlpid" =~ ^[0-9]+$ ]] && kill -0 "$_rlpid" 2>/dev/null; then
-      kill "$_rlpid" 2>/dev/null || true; sleep 1
-      kill -0 "$_rlpid" 2>/dev/null && kill -9 "$_rlpid" 2>/dev/null || true
-    fi
-    rm -f "$RELAY_PID_FILE"
-  fi
+  _stop_own_relay
+  _reap_dev_tree
   # pnpm dev's node child can outlive its parent and keep :3100 bound — the
   # fresh start below would then refuse ("port owned by someone else"). Drain:
   # kill a lingering listener ONLY if its cwd is OUR clone (same anchor as
@@ -207,7 +242,18 @@ if [[ -f "$PID_FILE" ]]; then
   fi
 fi
 
-# --- Port owned by someone else? Refuse loudly.
+# --- Port owned by someone else? OUR relay is not "someone else": when the app
+# dies the relay survives and holds :3100 — stop it (identity via its pidfile)
+# and proceed; ensure_relay re-establishes it after the app is up. Refuse only
+# genuinely-foreign owners.
+if port_listening "$PORT"; then
+  _lp="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  _rlp="$(cat "$RELAY_PID_FILE" 2>/dev/null || echo "")"
+  if [[ -n "$_lp" && "$_lp" == "$_rlp" ]]; then
+    log "own alias relay holds :$PORT (app died under it) — recycling the relay"
+    _stop_own_relay; sleep 1
+  fi
+fi
 if port_listening "$PORT"; then
   err "Port :$PORT is bound by another process (not the previous paperclip)."
   err "Inspect: lsof -nP -iTCP:$PORT -sTCP:LISTEN"
