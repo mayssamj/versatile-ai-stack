@@ -42,9 +42,40 @@ pid_is_ours() {
   local pid="$1"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
-  ps -p "$pid" -o command= 2>/dev/null | grep -qF "mcp_server.py" || return 1
+  # Anchor on OUR absolute script path, not the generic filename — any other
+  # project's mcp_server.py must never match (paperclip cross-project-kill class).
+  ps -p "$pid" -o command= 2>/dev/null | grep -qF "$MCP_SCRIPT" || return 1
   return 0
 }
+
+# --- --recreate / restart: stop the pidfile-owned daemon FIRST, then fall
+# through to the normal idempotent start. Full drain (council spec): identity-
+# anchored SIGTERM → wait ≤10s → SIGKILL → wait ≤5s for :8765 to release —
+# without the port-release wait, the fresh start below would hit the foreign-
+# owner refusal while the old python is still unwinding (spurious FAILED flake).
+# Needed so the upgrade funnel's verified-recycle (PID must change) has a real
+# recycle to verify, and so a re-baked mcp_server.py actually LOADS. (2026-07-15)
+if [[ "${1:-}" == "--recreate" || "${1:-}" == "restart" ]]; then
+  if [[ -f "$PID_FILE" ]]; then
+    _rpid="$(cat "$PID_FILE" 2>/dev/null || echo "")"
+    if pid_is_ours "$_rpid"; then
+      log "recreate: stopping docs_mcp (pid $_rpid)"
+      kill "$_rpid" 2>/dev/null || true
+      _i=0
+      while (( _i < 10 )) && kill -0 "$_rpid" 2>/dev/null; do sleep 1; _i=$((_i+1)); done
+      if kill -0 "$_rpid" 2>/dev/null; then kill -9 "$_rpid" 2>/dev/null || true; sleep 1; fi
+    fi
+    rm -f "$PID_FILE"
+  fi
+  _i=0
+  while (( _i < 5 )) && port_listening "$PORT"; do
+    _lpid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+    if [[ "$_lpid" =~ ^[0-9]+$ ]] && ps -p "$_lpid" -o command= 2>/dev/null | grep -qF "$MCP_SCRIPT"; then
+      kill "$_lpid" 2>/dev/null || true
+    fi
+    sleep 1; _i=$((_i+1))
+  done
+fi
 
 if [[ -f "$PID_FILE" ]]; then
   pid="$(cat "$PID_FILE" 2>/dev/null || echo "")"

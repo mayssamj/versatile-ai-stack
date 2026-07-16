@@ -76,7 +76,10 @@ echo "== declared upgrade: blocks parse to a supported method =="
 # (hermes_fleet — oracle + delegate-to-up_openshell), none (config-only marker /
 # pin-only holds), and '-' (a metadata-only block: deerflow carries compose
 # check_env with NO method — the TYPE handler stays in charge by design).
-VALID=" npm-global uv-venv git-pull rebuild phase-rerun uv-tool sandbox-pip none - "
+# v3 (2026-07-16 follow-ups): uv-reqs (docs_mcp — requirements-scoped venv
+# oracle+handler) and brew (blaxel_cli/openshell — formula-aware, openshell
+# chains the phase-04 gateway re-assert).
+VALID=" npm-global uv-venv git-pull rebuild phase-rerun uv-tool sandbox-pip uv-reqs brew none - "
 mapfile -t withup < <(yq -r '.services | to_entries | .[] | select(.value.upgrade) | .key' "$SVC")
 for s in "${withup[@]}"; do
   m="$(yq -r ".services.\"$s\".upgrade.method // \"-\"" "$SVC")"
@@ -129,7 +132,7 @@ grep -q 'collect_targets targets hermes' "$UPG" \
 grep -q 'dispatch_upgrade "$svc" "$type" "$_method"' "$UPG" \
   && ok "upgrade_one routes through the method-aware dispatcher" \
   || bad "upgrade_one no longer calls dispatch_upgrade (explicit blocks may be ignored)"
-grep -qE 'npm-global\|uv-venv\|git-pull\|uv-tool\|sandbox-pip\|rebuild\|phase-rerun\|none\)' "$UPG" \
+grep -qE 'npm-global\|uv-venv\|git-pull\|uv-tool\|uv-reqs\|sandbox-pip\|brew\|rebuild\|phase-rerun\|none\)' "$UPG" \
   && ok "dispatcher's real-method arm covers phase-rerun (hermes_workspace stays overridden)" \
   || bad "dispatcher method list lost phase-rerun (hermes_workspace would hit up_compose)"
 

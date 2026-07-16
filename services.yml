@@ -241,6 +241,13 @@ services:
     desc: "Linux sandbox platform hosting the Hermes fleet and Pi sandboxes"
     sandbox: hermes-fleet-v1
     phase: "04"
+    upgrade:
+      # brew upgrade openshell, THEN the UNCONDITIONAL phase-04 gateway re-assert
+      # (chained by the handler): a client/gateway version skew breaks every
+      # sandbox exec, and the re-assert also preserves the pre-existing
+      # every-sweep config heal this service always had.
+      method: brew
+      formula: openshell
     network: openshell
     help:
       "what": A Linux sandbox platform (brew service + CLI) where each sandbox is a container with its own filesystem, a deny-by-default egress allowlist, and an L7 inference router, hosting the Hermes fleet (hermes-fleet-v1) and Pi (pi-v1).
@@ -546,6 +553,17 @@ services:
     port: 8765
     bind: 127.0.0.1
     phase: "06"
+    upgrade:
+      # Multi-package requirements oracle+handler (uv-reqs): SCOPED to the req
+      # names (--upgrade-package each — a bare -U would drag the whole closure,
+      # torch included, through a routine sweep); the oracle is the SAME resolve
+      # with --dry-run, so it converges with the handler by construction; the
+      # daemon restarts ONLY when requirement versions actually moved.
+      # docs_ingestor shares this venv — docs_mcp is the single upgrade owner.
+      method: uv-reqs
+      venv: ingestor/.venv
+      reqs: ingestor/requirements.txt
+      restart: docs_mcp
     alias: docs-mcp
     host_ip: 127.0.10.4
     host_port: 8765
@@ -926,6 +944,13 @@ services:
     type: cli-only
     desc: "Cloud-only CLI for deploying agents on Blaxel; no local service runs"
     phase: "12"
+    upgrade:
+      method: brew
+      formula: blaxel             # svc name != formula name
+      # Declared tap = recorded install-time consent (phase 12 installs FROM this
+      # tap): the brew handler may `brew trust` it once when Homebrew refuses an
+      # untrusted-tap upgrade, then retry. Remove this key to withdraw consent.
+      tap: blaxel-ai/blaxel
     network: none
     # ---------------------------------------------------------------------
     # Helicone — DEPRECATED. Mayssam migrated to Phoenix (Phase 01·H).
@@ -977,7 +1002,7 @@ services:
         - cat ~/.unsloth/studio/auth/.bootstrap_password
         - kill $(cat ~/ai-stack/installer/state/unsloth.pid)
         - 'stack doctor unsloth   # doctor check 23'
-      "config_notes": Unsloth deliberately binds 0.0.0.0:8898 (so both http://unsloth:8898 and http://localhost:8898 reach it) — the one exception to the stack's alias-only convention. The Studio UI is AGPL-3.0 (network copyleft) while the core lib is Apache-2.0, and it gates behind a bootstrap login (user `unsloth`, password in ~/.unsloth/studio/auth/.bootstrap_password).
+      "config_notes": Unsloth deliberately binds 0.0.0.0:8898 (so both http://unsloth:8898 and http://localhost:8898 reach it) — the one exception to the stack's alias-only convention. The Studio UI is AGPL-3.0 (network copyleft) while the core lib is Apache-2.0, and it gates behind a bootstrap login (user `unsloth`, password in ~/.unsloth/studio/auth/.bootstrap_password). Upgrade path — there is NO automated version bump for unsloth (the official installer manages its own env and only runs when the CLI is absent); 'upgrade all' heals the daemon but never changes the version. To genuinely upgrade, remove ~/.local/bin/unsloth and ~/.unsloth, then run 'vz-ai-stack.sh install 14' (1-3 GB download).
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed

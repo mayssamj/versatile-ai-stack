@@ -76,10 +76,16 @@ SH
 cat > "$STUB/brew" <<'SH'
 #!/usr/bin/env bash
 # installed: `brew list --versions <f>` -> "<f> 0.5.1"
-# available: `brew outdated --json=v2` -> t_brew is behind (0.5.1 -> 0.6.0)
+# available (v3 contract: _av_brew probes WITH the formula as an argument and
+# decides on the JSON, not the exit code — `brew outdated <f>` exits 1 when <f>
+# IS outdated): t_brew is behind (0.5.1 -> 0.6.0); t_brew_ok is current (empty
+# formulae + installed -> up-to-date). The old no-arg form stays for check_one's
+# brew-service arm.
 case "$*" in
   "list --versions "*) echo "${3} 0.5.1" ;;
   "outdated --json=v2") printf '{"formulae":[{"name":"t_brew","installed_versions":["0.5.1"],"current_version":"0.6.0"}],"casks":[]}\n' ;;
+  "outdated --json=v2 t_brew") printf '{"formulae":[{"name":"t_brew","installed_versions":["0.5.1"],"current_version":"0.6.0"}],"casks":[]}\n'; exit 1 ;;
+  "outdated --json=v2 "*) printf '{"formulae":[],"casks":[]}\n' ;;
   *) exit 0 ;;
 esac
 SH

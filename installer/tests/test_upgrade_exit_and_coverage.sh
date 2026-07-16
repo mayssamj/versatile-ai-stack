@@ -336,7 +336,7 @@ r="$(bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit; source "$1"
 rm -f "$_ck"
 
 echo "== v2/static: remaining consensus mechanics wired =="
-haveE 'brew\|npm-global\|uv-venv\|uv-tool\|git-pull\|compose\)' && ok "uv-tool in the reconcile STRATEGY list (A6 — no-op can't read 'upgraded')" || bad "uv-tool missing from reconcile — a current tool would claim 'upgraded'"
+haveE 'brew\|npm-global\|uv-venv\|uv-tool\|uv-reqs\|git-pull\|compose\)' && ok "uv-tool + uv-reqs in the reconcile STRATEGY list (A6 — no-op can't read 'upgraded')" || bad "uv-tool/uv-reqs missing from reconcile — a current tool would claim 'upgraded'"
 grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-paperclip.sh" && ok "start-paperclip.sh has the --recreate/restart arm" || bad "start-paperclip.sh missing the recreate arm"
 grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-claw3d.sh" && ok "start-claw3d.sh has the --recreate/restart arm" || bad "start-claw3d.sh missing the recreate arm"
 grep -qF 'if (( rc == 2 )); then' "$UPG" && ok "recreate_via_start_script: exit-2 → 'restart' fallback" || bad "no exit-2 fallback"
@@ -356,5 +356,209 @@ _bump_ct="$(yq -r '.services | to_entries | map(select(.value.upgrade.pin != nul
 grep -qF 'Bump: ${bump}' "$UPG" && ok "pin_hold_check prints the actual bump recipe" || bad "pin_hold_check does not print upgrade.bump"
 grep -qF 'npm_bin-missing' "$VERS" && grep -qF 'skipped (npm_bin missing)' "$UPG" && ok "declared-but-missing npm_bin fails CLOSED (oracle '-', handler skips)" || bad "npm_bin missing does not fail closed"
 grep -qE '\^\[A-Za-z_\]\[A-Za-z0-9_\]\*=' "$VERS" && ok "_compose_images shape-validates check_env entries (no env-argv command injection)" || bad "check_env entries reach env unvalidated"
+
+########################################################################
+# v3 — follow-ups round (2026-07-16): uv-reqs, brew method, phase gates,
+# ACE_PIN chain, docs_mcp recreate arm.
+########################################################################
+
+echo "== v3/B-uvreqs (behavioral): up_uv_reqs — scoped install, change-gated restart =="
+_uf="$(mktemp)"; sed -n '/^up_uv_reqs() {/,/^}/p' "$UPG" > "$_uf"
+_uvreqs_run(){ # INSTALL_RC FP_AFTER RESTART_OK → "rc|RESULT|calls"
+  bash -c '
+    set -Eeuo pipefail; shopt -s inherit_errexit; source "$1"
+    INSTALL_RC="$2"; FP_AFTER="$3"; RESTART_OK="$4"
+    M="$(mktemp -d)"; AI_STACK="$M"
+    svc_upgrade(){ [[ "$2" == restart ]] && echo daemonx || echo "-"; }
+    _uvreqs_paths(){ printf "%s|%s" "$M/py" "$M/reqs"; }
+    _uvreqs_names(){ printf "aaa\nbbb\n"; }
+    _iv_uvreqs(){ if [[ -f "$M/first" ]]; then echo "$FP_AFTER"; else echo "FP0"; : > "$M/first"; fi; }
+    _vz_bounded(){ shift; "$@"; }
+    uv(){ printf "install;" >> "$M/calls"; return "$INSTALL_RC"; }
+    restart_and_verify(){ printf "restart;" >> "$M/calls"; [[ "$RESTART_OK" == 1 ]]; }
+    note(){ :; }; warn(){ :; }; err(){ :; }; DRY=0; STRATEGY=""; RESULT=""
+    up_uv_reqs svcx; rc=$?
+    echo "$rc|$RESULT|$(cat "$M/calls" 2>/dev/null || true)"; rm -rf "$M"' _ "$_uf" "$1" "$2" "$3" 2>/dev/null
+}
+r="$(_uvreqs_run 1 FP0 1)";   [[ "$r" == "0|FAILED|install;" ]] && ok "install fails → FAILED, NO restart ('$r')" || bad "uvreqs install-fail wrong: '$r'"
+r="$(_uvreqs_run 0 FP0 1)";   [[ "$r" == "0|up-to-date|install;" ]] && ok "fingerprint unchanged → up-to-date, NO daemon bounce" || bad "uvreqs no-op wrong: '$r'"
+r="$(_uvreqs_run 0 FP1 0)";   [[ "$r" == "0|FAILED|install;restart;" ]] && ok "moved + restart unverified → FAILED" || bad "uvreqs restart-fail wrong: '$r'"
+r="$(_uvreqs_run 0 FP1 1)";   [[ "$r" == "0|upgraded|install;restart;" ]] && ok "moved + verified restart → upgraded" || bad "uvreqs happy path wrong: '$r'"
+rm -f "$_uf"
+
+echo "== v3/B-brewf (behavioral): up_brew_formula — trust policy + openshell chain merge =="
+_bf2="$(mktemp)"; sed -n '/^up_brew_formula() {/,/^}/p' "$UPG" > "$_bf2"
+_brewf_run(){ # TYPE TAP INSTALLED UPG_RC UNTRUSTED CHAIN_RESULT → "rc|RESULT|STRATEGY|calls"
+  bash -c '
+    set -Eeuo pipefail; shopt -s inherit_errexit; source "$1"
+    TYPE="$2"; TAP="$3"; INSTALLED="$4"; UPG_RC="$5"; UNTRUSTED="$6"; CHAIN_RESULT="$7"
+    M="$(mktemp -d)"
+    svc_type(){ echo "$TYPE"; }
+    _svc_brew_formula(){ echo formx; }
+    svc_upgrade(){ [[ "$2" == tap ]] && echo "$TAP" || echo "-"; }
+    brew(){ case "$1" in
+        list) [[ "$INSTALLED" == 1 ]] && echo "formx 1.0" || printf "" ;;
+        upgrade) printf "upgrade;" >> "$M/calls"
+                 if [[ "$UNTRUSTED" == 1 && ! -f "$M/trusted" ]]; then echo "Error: Refusing to load formula from untrusted tap"; return 1; fi
+                 return "$UPG_RC" ;;
+        trust) printf "trust;" >> "$M/calls"; : > "$M/trusted"; return 0 ;;
+      esac; return 0; }
+    up_openshell(){ printf "chain;" >> "$M/calls"; STRATEGY=openshell; RESULT="$CHAIN_RESULT"; }
+    note(){ :; }; warn(){ :; }; err(){ :; }; DRY=0; STRATEGY=""; RESULT=""
+    up_brew_formula svcx >/dev/null 2>&1; rc=$?   # handler tails brew output to stdout — silence it, keep only the verdict line
+    echo "$rc|$RESULT|$STRATEGY|$(cat "$M/calls" 2>/dev/null || true)"; rm -rf "$M"' _ "$_bf2" "$1" "$2" "$3" "$4" "$5" "$6" 2>/dev/null
+}
+r="$(_brewf_run cli-only - 0 0 0 -)";              [[ "$r" == "0|skipped (not installed)|brew|" ]] && ok "formula absent → skipped (not installed), zero brew mutation" || bad "brewf not-installed wrong: '$r'"
+r="$(_brewf_run cli-only - 1 0 0 -)";              [[ "$r" == "0|upgraded|brew|upgrade;" ]] && ok "plain CLI upgrade → upgraded, NO services restart" || bad "brewf happy wrong: '$r'"
+r="$(_brewf_run cli-only - 1 1 0 -)";              [[ "$r" == "0|FAILED|brew|upgrade;" ]] && ok "brew upgrade fails → FAILED" || bad "brewf fail wrong: '$r'"
+r="$(_brewf_run cli-only tapx/tap 1 0 1 -)";       [[ "$r" == "0|upgraded|brew|upgrade;trust;upgrade;" ]] && ok "untrusted + DECLARED tap → trust once + retry → upgraded" || bad "brewf trust-retry wrong: '$r'"
+r="$(_brewf_run cli-only - 1 0 1 -)";              [[ "$r" == 0\|skipped\ \(untrusted* ]] && ok "untrusted + NO declared tap → visible skip with remedy (never auto-trusts)" || bad "brewf no-consent wrong: '$r'"
+r="$(_brewf_run openshell - 1 0 0 re-asserted)";   [[ "$r" == "0|upgraded|brew|upgrade;chain;" ]] && ok "openshell: chain runs UNCONDITIONALLY, brew verdict restored (upgraded/brew)" || bad "brewf chain-merge wrong: '$r'"
+r="$(_brewf_run openshell - 1 0 0 FAILED)";        [[ "$r" == "0|FAILED|openshell|upgrade;chain;" ]] && ok "openshell: chain FAILED wins → FAILED" || bad "brewf chain-fail wrong: '$r'"
+rm -f "$_bf2"
+
+echo "== v3/B-brew-oracle (behavioral): _av_brew three-way semantics =="
+_avb(){ # OUT_MODE (refuse|outdated|current) → value
+  bash -c '
+    set -Eeuo pipefail
+    __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+    source "$1"
+    MODE="$2"
+    svc_upgrade(){ [[ "$2" == formula ]] && echo formx || echo "-"; }
+    _vz_bounded(){ shift; "$@"; }
+    brew(){ case "$1" in
+        outdated) case "$MODE" in
+            refuse)   return 1 ;;
+            outdated) echo "{\"formulae\":[{\"name\":\"formx\",\"installed_versions\":[\"1.0\"],\"current_version\":\"2.0\"}],\"casks\":[]}"; return 1 ;;
+            current)  echo "{\"formulae\":[],\"casks\":[]}"; return 0 ;;
+          esac ;;
+        list) [[ "$MODE" == current ]] && echo "formx 1.0" || printf "" ;;
+      esac; return 0; }
+    _av_brew svcx' _ "$VERS" "$1" 2>/dev/null
+}
+[[ "$(_avb refuse)" == "-" ]] && ok "refusal (untrusted tap/no output) → '-' (honest unknown)" || bad "_av_brew refusal wrong: '$(_avb refuse)'"
+[[ "$(_avb outdated)" == "2.0" ]] && ok "outdated (rc 1 + JSON) → current_version (decided on JSON, not rc)" || bad "_av_brew outdated wrong: '$(_avb outdated)'"
+[[ "$(_avb current)" == "1.0" ]] && ok "current + installed → installed version (classify → up-to-date, no perpetual 'unknown')" || bad "_av_brew current wrong: '$(_avb current)'"
+
+echo "== v3/B-uvreqs-oracle (behavioral): fingerprint pair — fail-closed + behind names =="
+r="$(bash -c '
+  set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  M="$(mktemp -d)"; printf "aaa>=1\nbbb>=1\n" > "$M/reqs"; mkdir -p "$M/v/bin"; : > "$M/v/bin/python"; chmod +x "$M/v/bin/python"
+  svc_upgrade(){ case "$2" in venv) echo "$M/v";; reqs) echo "$M/reqs";; *) echo "-";; esac; }
+  uv(){ case "$2" in
+      show) [[ "$4" == "--python" ]] || true; echo "Version: 1.0" ;;
+      install) echo " - aaa==1.0" >&2; echo " + aaa==1.5" >&2 ;;
+    esac; return 0; }
+  _vz_bounded(){ shift; "$@"; }
+  mkdir -p "$AI_STACK/installer/state" 2>/dev/null || true
+  iv="$(_iv_uvreqs svcx)"; av="$(_av_uvreqs svcx)"
+  echo "$iv|$av|$(cat "$(_uvreqs_behind_file)" 2>/dev/null || true)"; rm -rf "$M"' _ "$VERS" 2>/dev/null)"
+_iv_part="${r%%|*}"; _rest="${r#*|}"; _av_part="${_rest%%|*}"; _behind="${_rest#*|}"
+[[ "$_iv_part" == "2 reqs ("*")" ]] && ok "_iv_uvreqs → fingerprint '$_iv_part'" || bad "_iv_uvreqs format wrong: '$_iv_part'"
+[[ "$_av_part" == "2 reqs ("*")" && "$_av_part" != "$_iv_part" ]] && ok "_av_uvreqs → dry-run-resolved fingerprint differs when a req would move" || bad "_av_uvreqs wrong: '$_av_part' vs '$_iv_part'"
+[[ "$_behind" == "aaa" ]] && ok "UVREQS_BEHIND names the behind requirement ('$_behind')" || bad "UVREQS_BEHIND wrong: '$_behind'"
+r="$(bash -c '
+  set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  M="$(mktemp -d)"; printf "aaa>=1\n" > "$M/reqs"; mkdir -p "$M/v/bin"; : > "$M/v/bin/python"; chmod +x "$M/v/bin/python"
+  svc_upgrade(){ case "$2" in venv) echo "$M/v";; reqs) echo "$M/reqs";; *) echo "-";; esac; }
+  uv(){ case "$2" in show) printf "";; install) echo " + aaa==1.5" >&2;; esac; return 0; }
+  _vz_bounded(){ shift; "$@"; }
+  _av_uvreqs svcx; rm -rf "$M"' _ "$VERS" 2>/dev/null)"
+[[ "$r" == "-" ]] && ok "any per-name probe miss → '-' (fail-closed: a partial fingerprint is a lying fingerprint)" || bad "uvreqs fail-closed wrong: '$r'"
+
+echo "== v3.1 (impl-council fixes): fail-closed resolve rc + parse sentinel + routing =="
+# _av_uvreqs: resolver FAILURE (rc!=0 with stderr noise) must read '-' — never a
+# fingerprint built from installed fallbacks (that reads 'up-to-date' on a flake).
+r="$(bash -c '
+  set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  M="$(mktemp -d)"; printf "aaa>=1\n" > "$M/reqs"; mkdir -p "$M/v/bin"; : > "$M/v/bin/python"; chmod +x "$M/v/bin/python"
+  svc_upgrade(){ case "$2" in venv) echo "$M/v";; reqs) echo "$M/reqs";; *) echo "-";; esac; }
+  uv(){ case "$2" in show) echo "Version: 1.0";; install) echo "error: Failed to fetch metadata" >&2; return 2;; esac; return 0; }
+  _vz_bounded(){ shift; "$@"; }
+  _av_uvreqs svcx; rm -rf "$M"' _ "$VERS" 2>/dev/null)"
+[[ "$r" == "-" ]] && ok "_av_uvreqs: failed resolve (rc!=0 + stderr text) → '-' (fail-CLOSED, not a fake up-to-date)" || bad "_av_uvreqs fails OPEN on resolve failure: '$r'"
+# _av_brew: garbled (non-JSON) stdout must read '-' — not fall through to installed.
+r="$(bash -c '
+  set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  svc_upgrade(){ [[ "$2" == formula ]] && echo formx || echo "-"; }
+  _vz_bounded(){ shift; "$@"; }
+  brew(){ case "$1" in outdated) echo "Warning: partial garbage output"; return 0;; list) echo "formx 1.0";; esac; return 0; }
+  _av_brew svcx' _ "$VERS" 2>/dev/null)"
+[[ "$r" == "-" ]] && ok "_av_brew: unparseable stdout → '-' (parse sentinel; never confirmed-current)" || bad "_av_brew parse failure fell through to installed: '$r'"
+# The FIFTH touch point: _iv/_av_by_method must route uv-reqs and brew.
+grep -qF 'uv-reqs)     _iv_uvreqs "$svc" ;;' "$VERS" && grep -qF 'brew)        _iv_brew "$svc" ;;' "$VERS" && ok "_iv_by_method routes uv-reqs + brew" || bad "_iv_by_method routing arms missing"
+grep -qF 'uv-reqs)             _av_uvreqs "$svc" ;;' "$VERS" && grep -qF 'brew)                _av_brew "$svc" ;;' "$VERS" && ok "_av_by_method routes uv-reqs + brew" || bad "_av_by_method routing arms missing"
+# Routed end-to-end: svc_available_version(cli-only + method:brew + formula override)
+# must reach _av_brew with the OVERRIDE formula (through the real chain, no leaf stubs).
+r="$(bash -c '
+  set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  svc_type(){ echo cli-only; }
+  svc_upgrade(){ case "$2" in method) echo brew;; formula) echo formx;; *) echo "-";; esac; }
+  svc_upgrade_pin(){ echo "-"; }
+  _vz_bounded(){ shift; "$@"; }
+  brew(){ case "$*" in "outdated --json=v2 formx") echo "{\"formulae\":[{\"name\":\"formx\",\"installed_versions\":[\"1.0\"],\"current_version\":\"3.3\"}],\"casks\":[]}"; return 1;; esac; return 0; }
+  svc_available_version svcx' _ "$VERS" 2>/dev/null)"
+[[ "$r" == "3.3" ]] && ok "svc_available_version routes method:brew through the formula override end-to-end" || bad "routed brew oracle broken: '$r'"
+
+echo "== v3.1/B-acepin (behavioral): the 4-leg ACE_PIN resolution chain =="
+_af="$(mktemp)"
+awk '/-z "\$\{ACE_PIN:-\}"/{f=1} f{print} /ACE_PIN="main"/{m=1} f&&m&&/^fi$/{exit}' "$ROOT/installer/phases/17_ace.sh" > "$_af"
+grep -q 'get_env ACE_PIN' "$_af" && grep -q 'ACE_PIN="main"' "$_af" && ok "extracted the real ACE_PIN resolution block" || bad "could not extract ACE_PIN block"
+_ace_run(){ # ENVPIN DOTENVPIN YMLPIN → "resolved|warned"
+  bash -c 'set -uo pipefail; W=""
+    ENVPIN="$2"; DOTENVPIN="$3"; YMLPIN="$4"
+    [[ -n "$ENVPIN" ]] && ACE_PIN="$ENVPIN"
+    get_env(){ echo "$DOTENVPIN"; }
+    yq(){ echo "$YMLPIN"; }
+    command(){ return 0; }   # `command -v yq` passes
+    warn(){ W=warned; }
+    AI_STACK=/tmp
+    source "$1"
+    echo "$ACE_PIN|${W:-quiet}"' _ "$_af" "$1" "$2" "$3" 2>/dev/null
+}
+r="$(_ace_run envsha dotsha ymlsha)"; [[ "$r" == "envsha|quiet" ]] && ok "leg 1: shell env wins" || bad "ACE_PIN env leg wrong: '$r'"
+r="$(_ace_run '' dotsha ymlsha)";     [[ "$r" == "dotsha|quiet" ]] && ok "leg 2: .env wins over services.yml" || bad "ACE_PIN .env leg wrong: '$r'"
+r="$(_ace_run '' '' ymlsha)";         [[ "$r" == "ymlsha|quiet" ]] && ok "leg 3: services.yml vetted pin resolves (fresh-install supply-chain fix)" || bad "ACE_PIN yml leg wrong: '$r'"
+r="$(_ace_run '' '' '')";             [[ "$r" == "main|warned" ]] && ok "leg 4: nothing anywhere → 'main' + LOUD warn" || bad "ACE_PIN main fallback wrong: '$r'"
+rm -f "$_af"
+
+echo "== v3/B-pin: brew + uv-reqs join the version-mutating hold list =="
+_pf3="$(mktemp)"; sed -n '/^pin_hold_check() {/,/^}/p' "$UPG" > "$_pf3"
+_pin3(){ bash -c 'set -Eeuo pipefail; source "$1"
+  svc_upgrade(){ [[ "$2" == pin ]] && echo 1.0 || echo "-"; }; note(){ :; }; STRATEGY=""; RESULT=""
+  if pin_hold_check s "$2"; then echo held; else echo proceed; fi' _ "$_pf3" "$1" 2>/dev/null; }
+[[ "$(_pin3 brew)" == held ]] && ok "pin + brew → held" || bad "pin+brew not held"
+[[ "$(_pin3 uv-reqs)" == held ]] && ok "pin + uv-reqs → held" || bad "pin+uv-reqs not held"
+rm -f "$_pf3"
+
+echo "== v3/static: wiring + gates + companions =="
+haveE 'npm-global\|uv-venv\|git-pull\|uv-tool\|uv-reqs\|sandbox-pip\|brew\|rebuild\|phase-rerun\|none\)' && ok "dispatch whitelist includes uv-reqs + brew" || bad "dispatch whitelist missing new methods"
+haveE 'brew\|npm-global\|uv-venv\|uv-tool\|uv-reqs\|git-pull\|compose\)' && ok "reconcile STRATEGY list includes uv-reqs" || bad "uv-reqs missing from reconcile"
+grep -qF 'uv-reqs)     up_uv_reqs "$svc" ;;' "$UPG" && grep -qF 'brew)        up_brew_formula "$svc" ;;' "$UPG" && ok "up_by_method arms wired" || bad "up_by_method arms missing"
+grep -qF 'sys.argv[1]' "$VERS" && grep -cF 'sys.argv[1]' "$UPG" >/dev/null && ok "brew JSON python reads the name from argv (both call sites)" || bad "python interpolation hazard remains"
+grep -qE 'AI_STACK_UPGRADE.*!= "1".*precheck' "$ROOT/installer/phases/06_documents.sh" && ok "phase 06 gate honors AI_STACK_UPGRADE" || bad "phase 06 gate flag-blind"
+grep -qE 'AI_STACK_UPGRADE.*!= "1".*precheck' "$ROOT/installer/phases/14_unsloth_studio.sh" && ok "phase 14 gate honors AI_STACK_UPGRADE" || bad "phase 14 gate flag-blind"
+grep -qF 'an upgrade sweep never reinstalls (1-3 GB curl|sh)' "$ROOT/installer/phases/14_unsloth_studio.sh" && ok "phase 14 refuses the GB installer under the flag" || bad "phase 14 could curl|sh GBs from a sweep"
+grep -B7 -F -- '--recreate || warn "docs_mcp recycle failed' "$ROOT/installer/phases/06_documents.sh" | grep -qF 'AI_STACK_UPGRADE' && ok "phase 06 --recreate sits inside the AI_STACK_UPGRADE guard (install-path inert)" || bad "phase 06 --recreate not flag-guarded"
+grep -qF '_docs_fp_after" != "$_docs_fp_before' "$ROOT/installer/phases/06_documents.sh" && ok "phase 06 recycle is change-gated (no gratuitous bounce)" || bad "phase 06 recycle not change-gated"
+grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-docs_mcp.sh" && ok "start-docs_mcp.sh has the --recreate/restart arm" || bad "start-docs_mcp.sh missing recreate arm"
+grep -qF 'mcp_server.py' "$ROOT/bin/start-docs_mcp.sh" && grep -qF 'port_listening "$PORT"; do' "$ROOT/bin/start-docs_mcp.sh" && ok "docs_mcp drain is identity-anchored + waits for :8765 release" || bad "docs_mcp drain incomplete"
+grep -qF 'get_env ACE_PIN' "$ROOT/installer/phases/17_ace.sh" && grep -qF '.services.ace.upgrade.pin' "$ROOT/installer/phases/17_ace.sh" && ok "ACE_PIN resolves env → .env → services.yml pin (supply-chain fix)" || bad "ACE_PIN resolution chain incomplete"
+grep -qF 'brew trust blaxel-ai/blaxel' "$ROOT/installer/phases/12_blaxel.sh" && ok "phase 12 trusts the tap on fresh installs" || bad "phase 12 missing brew trust"
+grep -qF 'health/readiness' "$ROOT/installer/smoke/01.sh" && ok "smoke 01 probes litellm /health/readiness (never the model-pinging /health)" || bad "smoke 01 still hits bare /health"
+[[ "$(yq -r '.services.docs_mcp.upgrade.method' "$ROOT/services.yml" 2>/dev/null)" == "uv-reqs" ]] && ok "docs_mcp → uv-reqs block" || bad "docs_mcp block missing"
+[[ "$(yq -r '.services.blaxel_cli.upgrade.tap' "$ROOT/services.yml" 2>/dev/null)" == "blaxel-ai/blaxel" ]] && ok "blaxel_cli declares tap consent" || bad "blaxel tap key missing"
+[[ "$(yq -r '.services.openshell.upgrade.formula' "$ROOT/services.yml" 2>/dev/null)" == "openshell" ]] && ok "openshell → brew formula block" || bad "openshell block missing"
+grep -q 'AI_STACK_UPGRADE' "$ROOT/vz-ai-stack.sh" && bad "run_phase/install path sets AI_STACK_UPGRADE (must stay upgrade-only)" || ok "install path never sets AI_STACK_UPGRADE (gate edits provably inert on 'install')"
 
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

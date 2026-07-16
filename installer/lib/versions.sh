@@ -176,14 +176,16 @@ version_status() {
       else                                      echo up-to-date; fi
       ;;
     brew-service)
-      # brew outdated only lists OUTDATED formulae → svc_available_version returns
-      # "-" for a current formula. version_classify would then say no-oracle/unknown.
-      # Mirror check_one's brew logic so an installed-but-current formula (the steady
-      # state for ollama) reads 'up-to-date', matching `upgrade --check` exactly.
+      # v3: _av_brew is THREE-WAY (formula-arg probe): '-' = probe refused/
+      # unreachable → honest 'unknown'; equal to installed → 'up-to-date'
+      # (a current formula now echoes its installed version, not '-');
+      # different → 'update-available'. The old arm read ANY non-'-' avail as
+      # outdated, which under the new oracle would flag every current formula.
       local binst; binst="$(svc_installed_version "$svc")"
       [[ -z "$binst" || "$binst" == "-" ]] && { echo unknown; return 0; }   # not installed
       local bavail; bavail="$(svc_available_version "$svc")"
-      [[ -n "$bavail" && "$bavail" != "-" ]] && echo update-available || echo up-to-date
+      if [[ -z "$bavail" || "$bavail" == "-" ]]; then echo unknown; return 0; fi
+      [[ "$bavail" == "$binst" ]] && echo up-to-date || echo update-available
       ;;
     *)
       # Declared pin wins (even over method:none — 'pinned' is the more precise
@@ -282,9 +284,19 @@ print(dep.get("version", ""))
 ' "$pkg" 2>/dev/null || true
 }
 
+# _svc_brew_formula <svc> — the upgrade.formula override, else the svc name
+# (back-compat: ollama's brew-service path keys formula==name). blaxel_cli's
+# formula is 'blaxel'; openshell's matches but declares it explicitly.
+_svc_brew_formula() {
+  local f; f="$(svc_upgrade "$1" formula)"
+  if [[ -n "$f" && "$f" != "-" ]]; then printf '%s' "$f"; else printf '%s' "$1"; fi
+  return 0
+}
+
 _iv_brew() {
-  local svc="$1" out
-  out="$(brew list --versions "$svc" 2>/dev/null | awk '{print $2}' | head -1 || true)"
+  local svc="$1" formula out
+  formula="$(_svc_brew_formula "$svc")"
+  out="$(brew list --versions "$formula" 2>/dev/null | awk '{print $2}' | head -1 || true)"
   printf '%s' "${out:--}"
 }
 
@@ -379,6 +391,98 @@ _iv_sandbox_pip() {
   printf '%s' "${out:--}"
 }
 
+# --- uv-reqs: multi-package requirements-file oracle (docs_mcp) ---------------
+# Behind-names side channel: _av_uvreqs runs inside command substitution
+# (avail="$(svc_available_version …)") — a SUBSHELL — so a plain global can
+# never reach the caller. The display-only list of behind requirement names
+# ("docling mcp openai") is passed through a FILE instead. Never parsed for logic.
+_uvreqs_behind_file() { printf '%s' "$AI_STACK/installer/state/.uvreqs_behind"; return 0; }
+
+# _uvreqs_names <reqs-file-abs> — ordered base names (comments/extras/specifiers
+# stripped). ONE shared extractor so _iv/_av iterate identically — a fingerprint
+# built over a different name order would never converge.
+_uvreqs_names() {
+  local f="$1" line base
+  [[ -f "$f" ]] || return 0
+  while IFS= read -r line; do
+    line="${line%%#*}"; line="${line//[[:space:]]/}"
+    if [[ -n "$line" ]]; then
+      base="${line%%[*}"; base="${base%%[<>=!~]*}"
+      if [[ -n "$base" ]]; then printf '%s\n' "$base"; fi
+    fi
+  done < "$f"
+  return 0
+}
+
+# _uvreqs_paths <svc> — echo "py|reqs" (resolved + validated), or nothing.
+_uvreqs_paths() {
+  local svc="$1" venv reqs py rf
+  venv="$(svc_upgrade "$svc" venv)"; reqs="$(svc_upgrade "$svc" reqs)"
+  { [[ "$venv" == "-" || -z "$venv" ]] || [[ "$reqs" == "-" || -z "$reqs" ]]; } && return 0
+  py="$AI_STACK/$venv/bin/python"; [[ "$venv" == /* ]] && py="$venv/bin/python"
+  rf="$AI_STACK/$reqs"; [[ "$reqs" == /* ]] && rf="$reqs"
+  if [[ -x "$py" && -f "$rf" ]]; then printf '%s|%s' "$py" "$rf"; fi
+  return 0
+}
+
+# _iv_uvreqs <svc> — fingerprint over the INSTALLED versions of the req names:
+# "N reqs (cksum)". FAIL-CLOSED: any unreadable name → '-' (a partial
+# fingerprint is a lying fingerprint — council A-B1).
+_iv_uvreqs() {
+  local svc="$1" pp py rf n=0 vers="" name v
+  pp="$(_uvreqs_paths "$svc")"; [[ -z "$pp" ]] && { echo "-"; return 0; }
+  py="${pp%%|*}"; rf="${pp##*|}"
+  command -v uv >/dev/null 2>&1 || { echo "-"; return 0; }
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    v="$(uv pip show --python "$py" "$name" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
+    [[ -z "$v" ]] && { echo "-"; return 0; }
+    n=$((n+1)); vers+="${name}==${v};"
+  done < <(_uvreqs_names "$rf")
+  (( n == 0 )) && { echo "-"; return 0; }
+  printf '%s reqs (%s)' "$n" "$(printf '%s' "$vers" | cksum | awk '{print $1}')"
+}
+
+# _av_uvreqs <svc> — fingerprint over the versions THE HANDLER WOULD INSTALL:
+# the same scoped command as up_uv_reqs, with --dry-run. Council A-B1: a
+# PyPI-latest fingerprint can NEVER converge when the resolver holds a req below
+# latest (sibling caps are the ecosystem norm); the dry-run uses the SAME
+# resolver, so oracle == handler by construction. Scoped with --upgrade-package
+# per name — a bare -U drags the whole closure (torch, GB wheels; verified).
+# uv prints the '+/-' plan to STDERR (verified live) → capture 2>&1.
+# FAIL-CLOSED: any miss (venv, uv, resolve failure, unreadable name) → '-'.
+_av_uvreqs() {
+  local svc="$1" pp py rf n=0 vers="" name v newv out behind=""
+  rm -f "$(_uvreqs_behind_file)" 2>/dev/null || true
+  pp="$(_uvreqs_paths "$svc")"; [[ -z "$pp" ]] && { echo "-"; return 0; }
+  py="${pp%%|*}"; rf="${pp##*|}"
+  command -v uv >/dev/null 2>&1 || { echo "-"; return 0; }
+  local -a names=() upargs=()
+  while IFS= read -r name; do
+    if [[ -n "$name" ]]; then names+=("$name"); upargs+=(--upgrade-package "$name"); fi
+  done < <(_uvreqs_names "$rf")
+  (( ${#names[@]} == 0 )) && { echo "-"; return 0; }
+  # FAIL-CLOSED on the resolver's EXIT CODE, not just empty output (impl-council
+  # blocking): a failed resolve emits error text on stderr which 2>&1 folds into
+  # $out — non-empty, so an -z guard alone reads a network flake as 'up-to-date'.
+  # uv exits 0 both when current and when upgrades are planned; non-zero only on
+  # failure, and _vz_bounded is non-zero on timeout in all three arms.
+  # Probe budget: ONE bounded resolver hit (≤90s) + N local `uv pip show` reads —
+  # no per-package network probes.
+  local _dr_rc=0
+  out="$(_vz_bounded 90 uv pip install --python "$py" -r "$rf" "${upargs[@]}" --dry-run 2>&1)" || _dr_rc=$?
+  if (( _dr_rc != 0 )) || [[ -z "$out" ]]; then echo "-"; return 0; fi
+  for name in "${names[@]}"; do
+    v="$(uv pip show --python "$py" "$name" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
+    [[ -z "$v" ]] && { echo "-"; return 0; }
+    newv="$(printf '%s\n' "$out" | awk -v p="$name" '$1=="+" { split($2,a,"=="); if (a[1]==p) print a[2] }' | head -1 || true)"
+    if [[ -n "$newv" && "$newv" != "$v" ]]; then behind+="$name "; v="$newv"; fi
+    n=$((n+1)); vers+="${name}==${v};"
+  done
+  if [[ -n "$behind" ]]; then printf '%s' "${behind% }" > "$(_uvreqs_behind_file)" 2>/dev/null || true; fi
+  printf '%s reqs (%s)' "$n" "$(printf '%s' "$vers" | cksum | awk '{print $1}')"
+}
+
 # manual-typed services (cli-only/node-bg/python-bg/…) route on their declared
 # upgrade.method — the same dispatch up_by_method uses.
 _iv_by_method() {
@@ -389,6 +493,8 @@ _iv_by_method() {
     git-pull)    _iv_git "$svc" ;;
     uv-tool)     _iv_uvtool "$svc" ;;
     sandbox-pip) _iv_sandbox_pip "$svc" ;;
+    uv-reqs)     _iv_uvreqs "$svc" ;;
+    brew)        _iv_brew "$svc" ;;
     *)           echo "-" ;;
   esac
 }
@@ -417,14 +523,34 @@ _av_docker() {
   [[ -n "$dig" ]] && printf '@%s' "${dig:0:12}" || echo "-"
 }
 
+# _av_brew — THREE-WAY semantics with a FORMULA-ARG probe (council A-B2). The
+# old no-arg `brew outdated` listed ONLY outdated formulae, so a CURRENT
+# method:brew service read '-' → 'unknown' → the 'currency NOT confirmed'
+# warning forever. With the formula as an argument:
+#   refusal / no output (untrusted tap, not installed, network) → '-' (unknown)
+#   listed in outdated JSON                                     → current_version
+#   rc-any + valid JSON + absent + installed                    → installed (up-to-date)
+# NOTE: `brew outdated <f>` exits NON-ZERO when <f> IS outdated — decide on the
+# JSON, never on rc. Formula passed to python as ARGV (never interpolated —
+# the old '$svc'-in-source form was a quoting hazard).
 _av_brew() {
-  local svc="$1" cur
-  cur="$(_vz_bounded 10 brew outdated --json=v2 2>/dev/null | python3 -c "import sys,json
+  local svc="$1" formula out cur inst
+  formula="$(_svc_brew_formula "$svc")"
+  out="$(_vz_bounded 12 brew outdated --json=v2 "$formula" 2>/dev/null || true)"
+  [[ -z "$out" ]] && { echo "-"; return 0; }
+  # Parse failure must be DISTINGUISHABLE from 'valid JSON, formula not listed'
+  # (impl-council): garbled/truncated stdout would otherwise fall through to the
+  # installed fallback and read a probe miss as confirmed currency.
+  cur="$(printf '%s' "$out" | python3 -c "import sys,json
 try: d=json.load(sys.stdin)
-except Exception: print(''); raise SystemExit
-f=[x for x in d.get('formulae',[]) if x.get('name')=='$svc']
-print(f[0]['current_version'] if f else '')" 2>/dev/null || true)"
-  printf '%s' "${cur:--}"
+except Exception: print('__PARSE_ERR__'); raise SystemExit
+f=[x for x in d.get('formulae',[]) if x.get('name')==sys.argv[1]]
+print(f[0]['current_version'] if f else '')" "$formula" 2>/dev/null || true)"
+  if [[ "$cur" == *"__PARSE_ERR__"* ]]; then echo "-"; return 0; fi
+  if [[ -n "$cur" ]]; then printf '%s' "$cur"; return 0; fi
+  inst="$(brew list --versions "$formula" 2>/dev/null | awk '{print $2}' | head -1 || true)"
+  if [[ -n "$inst" ]]; then printf '%s' "$inst"; else echo "-"; fi
+  return 0
 }
 
 _av_npm() {
@@ -474,6 +600,8 @@ _av_by_method() {
     # uv-tool and sandbox-pip artifacts both live on PyPI (upgrade.pkg) — the
     # upstream probe is the same bounded PyPI JSON read.
     uv-tool|sandbox-pip) _av_pip "$svc" ;;
+    uv-reqs)             _av_uvreqs "$svc" ;;
+    brew)                _av_brew "$svc" ;;
     *)                   echo "-" ;;
   esac
 }

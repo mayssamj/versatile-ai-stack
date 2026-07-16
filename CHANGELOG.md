@@ -4,6 +4,19 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-16
+
+### Features
+
+- upgrade coverage follow-ups — docs_mcp gains a `uv-reqs` upgrade method: `upgrade --check` / `--outdated` / `upgrade all` now genuinely version-check and bump the 7 ingestor requirements (docling, llama-index, llama-index-vector-stores-qdrant, llama-index-embeddings-openai-like, qdrant-client, mcp, openai) via a per-package-scoped resolve that never drags unrelated heavyweights (torch) along; the oracle is the same resolver dry-run so check and handler converge, and the :8765 daemon restarts ONLY when versions actually moved (PID-verified via the new `start-docs_mcp.sh --recreate` arm) — expect the first sweep to bump ~5 of the 7 and restart docs_mcp once. openshell + blaxel gain a formula-aware `brew` method: openshell always chains the phase-04 gateway re-assert after `brew upgrade openshell` (client/gateway version skew breaks sandbox execs), and blaxel one-time-trusts the blaxel-ai/blaxel tap because services.yml declares `upgrade.tap:` (recorded install-time consent — remove the key to withdraw), else skips visibly with the exact `brew trust` remedy — both formulas now show honest up-to-date/update-available in `upgrade --check` instead of perpetual 'unknown'. Phases 06 (documents) and 14 (unsloth) now honor AI_STACK_UPGRADE=1: a rerun genuinely re-asserts — 06 re-bakes embedder literals and recycles docs_mcp only when the generated files changed; 14 heals the daemon but REFUSES to run its 1-3 GB installer from a sweep (a genuine unsloth version bump stays a deliberate manual reinstall, now documented in its help). Test suite grows to 123 assertions (uv-reqs state machine, brew 3-way oracle, trust policy, chain merge, pin extensions).
+
+### Bug Fixes
+
+- ACE_PIN supply-chain hole closed — the pin now resolves env → .env → services.yml `upgrade.pin` → main (with a loud warning): previously the env-only read meant the pin NEVER fired on a fresh install and the clone silently took upstream HEAD. Also installer/smoke/01.sh now probes LiteLLM `/health/readiness` instead of bare `/health` — bare `/health` actively pings every configured model, which loads local models (never-load directive) and bills metered routes; readiness is a static probe that still catches the Prisma-DB SPOF.
+
+---
+
+
 ## 2026-07-15 — feat(memory): pi fleet-memory MCP bridge (slice 2b)
 
 pi (OpenShell-sandboxed, ships NO MCP client) can now use the fleet memory shims via a TypeScript
