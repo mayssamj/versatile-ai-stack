@@ -140,16 +140,32 @@ if [[ "${1:-}" == "--recreate" || "${1:-}" == "restart" ]]; then
     fi
     rm -f "$PID_FILE"
   fi
+  # Stop OUR alias relay too (127.0.10.x:3100 forwarder): it keeps :3100 bound
+  # after the app dies, and the fresh-start port check counts it as a "foreign"
+  # owner — the exact live failure of the first swept recreate (2026-07-16).
+  # ensure_relay brings it back on the start path below.
+  if [[ -f "$RELAY_PID_FILE" ]]; then
+    _rlpid="$(cat "$RELAY_PID_FILE" 2>/dev/null || echo "")"
+    if [[ "$_rlpid" =~ ^[0-9]+$ ]] && kill -0 "$_rlpid" 2>/dev/null; then
+      kill "$_rlpid" 2>/dev/null || true; sleep 1
+      kill -0 "$_rlpid" 2>/dev/null && kill -9 "$_rlpid" 2>/dev/null || true
+    fi
+    rm -f "$RELAY_PID_FILE"
+  fi
   # pnpm dev's node child can outlive its parent and keep :3100 bound — the
   # fresh start below would then refuse ("port owned by someone else"). Drain:
   # kill a lingering listener ONLY if its cwd is OUR clone (same anchor as
   # pid_is_ours — never a foreign process that happens to own the port).
+  # TERM first, then KILL — a dev server that shrugs off SIGTERM (observed
+  # live) must not outlast the bounded drain window.
   _i=0
-  while (( _i < 5 )) && port_listening "$PORT"; do
+  while (( _i < 8 )) && port_listening "$PORT"; do
     _lpid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
     if [[ "$_lpid" =~ ^[0-9]+$ ]]; then
       _lcwd="$(lsof -a -d cwd -p "$_lpid" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
-      if [[ -n "$_lcwd" && "$_lcwd" == "$PC_DIR"* ]]; then kill "$_lpid" 2>/dev/null || true; fi
+      if [[ -n "$_lcwd" && "$_lcwd" == "$PC_DIR"* ]]; then
+        if (( _i < 4 )); then kill "$_lpid" 2>/dev/null || true; else kill -9 "$_lpid" 2>/dev/null || true; fi
+      fi
     fi
     sleep 1; _i=$((_i+1))
   done

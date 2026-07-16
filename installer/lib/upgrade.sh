@@ -264,29 +264,24 @@ check_one() {
       else                                      CHECK_STATUS="up-to-date"; fi
       ;;
     brew-service)
-      local out
-      # Bound `brew outdated` (it can hit the network to refresh) so the preflight,
-      # which now runs check_one on the plain upgrade path, honors the all-probes-
-      # bounded contract on a proxy-blocked host (council should-fix).
-      # Name passed as ARGV, never interpolated into the python source (twin of
-      # the _av_brew quoting-hazard fix — council).
-      out="$(_vz_bounded 12 brew outdated --json=v2 2>/dev/null \
-        | python3 -c "import sys,json
-d=json.load(sys.stdin)
-f=[x for x in d.get('formulae',[]) if x['name']==sys.argv[1]]
-print(f\"{f[0]['installed_versions'][0]}\t{f[0]['current_version']}\") if f else print('')" "$svc" 2>/dev/null || true)"
-      if [[ -n "$out" ]]; then
-        CHECK_CUR="$(printf '%s' "$out" | cut -f1)"
-        CHECK_AVAIL="$(printf '%s' "$out" | cut -f2)"
-        CHECK_STATUS="update-available"
+      # v3.1 parity fix: the SAME three-way oracle as `status --versions`
+      # (_iv_brew/_av_brew, formula-arg, bounded, decides on JSON not rc). The
+      # old arm probed the NO-ARG `brew outdated` where an EMPTY result was
+      # indistinguishable between 'genuinely current' and 'probe timed out /
+      # proxy-blocked' — it fell through to `brew list` and reported a false
+      # 'up-to-date' while status --versions honestly said 'unknown'. Now:
+      # probe-fail → unknown; equal → up-to-date; different → update-available.
+      local inst avail
+      inst="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
+      if [[ -z "$inst" || "$inst" == "-" ]]; then CHECK_STATUS="unknown"; return 0; fi
+      CHECK_CUR="$inst"
+      avail="$(svc_available_version "$svc" 2>/dev/null || echo -)"
+      if [[ -z "$avail" || "$avail" == "-" ]]; then
+        CHECK_STATUS="unknown"
+      elif [[ "$avail" == "$inst" ]]; then
+        CHECK_STATUS="up-to-date"
       else
-        # Not in `brew outdated`. Distinguish genuinely-current from
-        # not-installed/unreachable: if the formula isn't installed, `brew list`
-        # yields nothing → report 'unknown' rather than a false 'up-to-date'.
-        # `|| true`: brew list exits 1 for an uninstalled formula (would abort).
-        local cur; cur="$(brew list --versions "$svc" 2>/dev/null | awk '{print $2}' || true)"
-        if [[ -z "$cur" ]]; then CHECK_STATUS="unknown"
-        else CHECK_STATUS="up-to-date"; CHECK_CUR="$cur"; fi
+        CHECK_AVAIL="$avail"; CHECK_STATUS="update-available"
       fi
       ;;
     *)
@@ -1648,7 +1643,7 @@ upgrade_main() {
       note "  → in-sandbox surfaces upgrade for real via 'vz-ai-stack.sh upgrade hermes' (or 'upgrade all', which also covers the host globals meridian/claude-code); for the rest 'vz-ai-stack.sh help <svc>' names the manual path."
     fi
     if (( ${#unconfirmed[@]} )); then
-      warn "${#unconfirmed[@]} service(s) with currency NOT confirmed (registry/proxy unreachable or locally-built) — NOT upgraded by --outdated: ${unconfirmed[*]}. Re-check when the registry is reachable, or 'upgrade <svc>' to rebuild/pull explicitly."
+      warn "${#unconfirmed[@]} service(s) with currency NOT confirmed (registry/proxy/brew upstream unreachable, uninstalled, or locally-built) — NOT upgraded by --outdated: ${unconfirmed[*]}. Re-check when the upstream is reachable, or 'upgrade <svc>' to rebuild/pull explicitly."
     fi
     if (( ${#targets[@]} == 0 )); then
       ok "Nothing auto-checkable is outdated — docker/compose/brew currency is up to date."

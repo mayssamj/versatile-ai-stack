@@ -338,6 +338,10 @@ rm -f "$_ck"
 echo "== v2/static: remaining consensus mechanics wired =="
 haveE 'brew\|npm-global\|uv-venv\|uv-tool\|uv-reqs\|git-pull\|compose\)' && ok "uv-tool + uv-reqs in the reconcile STRATEGY list (A6 — no-op can't read 'upgraded')" || bad "uv-tool/uv-reqs missing from reconcile — a current tool would claim 'upgraded'"
 grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-paperclip.sh" && ok "start-paperclip.sh has the --recreate/restart arm" || bad "start-paperclip.sh missing the recreate arm"
+# The arm must ALSO stop the alias relay: it holds :3100 after the app dies and
+# the fresh-start port check would refuse (live failure, first swept recreate).
+grep -B40 -F 'pnpm dev'"'"'s node child can outlive' "$ROOT/bin/start-paperclip.sh" | grep -qF 'RELAY_PID_FILE' && ok "paperclip recreate stops its own alias relay first" || bad "recreate leaves the relay squatting :3100 (port check refuses)"
+grep -A18 -F 'TERM first, then KILL' "$ROOT/bin/start-paperclip.sh" | grep -qF 'kill -9 "$_lpid"' && ok "paperclip drain escalates TERM→KILL" || bad "drain lacks KILL escalation (TERM-resistant dev servers outlast it)"
 grep -qF -- '--recreate" || "${1:-}" == "restart"' "$ROOT/bin/start-claw3d.sh" && ok "start-claw3d.sh has the --recreate/restart arm" || bad "start-claw3d.sh missing the recreate arm"
 grep -qF 'if (( rc == 2 )); then' "$UPG" && ok "recreate_via_start_script: exit-2 → 'restart' fallback" || bad "no exit-2 fallback"
 grep -qF '${DOCKER_OK:-1}' "$VERS" && ok "_iv_sandbox_pip uses \${DOCKER_OK:-1} (set -u safe in status context)" || bad "bare DOCKER_OK in versions.sh — set -u crash under status --versions"
@@ -510,6 +514,37 @@ r="$(bash -c '
   svc_available_version svcx' _ "$VERS" 2>/dev/null)"
 [[ "$r" == "3.3" ]] && ok "svc_available_version routes method:brew through the formula override end-to-end" || bad "routed brew oracle broken: '$r'"
 
+echo "== v3.2 (parity fix): check_one brew-service == version_status (3-way, fail-CLOSED) =="
+_ck2="$(mktemp)"; sed -n '/^check_one() {/,/^}/p' "$UPG" > "$_ck2"
+_brewsvc(){ # <inst> <avail> → "CHECK_STATUS|CUR|AVAIL , version_status"
+  bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit
+    __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+    source "$1"; source "$2"
+    INST="$3"; AVAIL="$4"   # capture NOW — inside a stub body $3/$4 are the STUB'\''s args
+    svc_type(){ echo brew-service; }
+    svc_installed_version(){ echo "$INST"; }
+    svc_available_version(){ echo "$AVAIL"; }
+    svc_upgrade_pin(){ echo "-"; }; svc_config_only(){ return 1; }
+    warn(){ :; }; DOCKER_OK=1
+    check_one ollama
+    vs="$(version_status ollama)"
+    echo "$CHECK_STATUS|$CHECK_CUR|$CHECK_AVAIL,$vs"' _ "$_ck2" "$VERS" "$1" "$2" 2>/dev/null
+}
+r="$(_brewsvc 0.32.0 -)";      [[ "$r" == "unknown|0.32.0|-,unknown" ]] && ok "brew probe-fail → unknown in BOTH consumers (was a false up-to-date in --check)" || bad "brew probe-fail parity wrong: '$r'"
+r="$(_brewsvc 0.32.0 0.32.0)"; [[ "$r" == "up-to-date|0.32.0|-,up-to-date" ]] && ok "brew current → up-to-date in BOTH" || bad "brew current parity wrong: '$r'"
+r="$(_brewsvc 0.32.0 0.33.0)"; [[ "$r" == "update-available|0.32.0|0.33.0,update-available" ]] && ok "brew behind → update-available in BOTH" || bad "brew behind parity wrong: '$r'"
+r="$(_brewsvc - -)";           [[ "$r" == "unknown|-|-,unknown" ]] && ok "brew not-installed → unknown in BOTH" || bad "brew not-installed parity wrong: '$r'"
+rm -f "$_ck2"
+# Type-dispatch leg (adversarial SF): the REAL svc_available_version must route
+# brew-service through _av_brew (stubbed AFTER sourcing to pin the dispatch arm).
+r="$(bash -c 'set -Eeuo pipefail
+  __SVC_ACCESSORS_SOURCED=1; AI_STACK=/tmp; SERVICES_YML=/dev/null
+  source "$1"
+  svc_type(){ echo brew-service; }
+  _av_brew(){ echo ROUTED-4.2; }
+  svc_available_version ollama' _ "$VERS" 2>/dev/null)"
+[[ "$r" == "ROUTED-4.2" ]] && ok "svc_available_version type-dispatches brew-service → _av_brew" || bad "brew-service type dispatch broken: '$r'"
+
 echo "== v3.1/B-acepin (behavioral): the 4-leg ACE_PIN resolution chain =="
 _af="$(mktemp)"
 awk '/-z "\$\{ACE_PIN:-\}"/{f=1} f{print} /ACE_PIN="main"/{m=1} f&&m&&/^fi$/{exit}' "$ROOT/installer/phases/17_ace.sh" > "$_af"
@@ -545,7 +580,10 @@ echo "== v3/static: wiring + gates + companions =="
 haveE 'npm-global\|uv-venv\|git-pull\|uv-tool\|uv-reqs\|sandbox-pip\|brew\|rebuild\|phase-rerun\|none\)' && ok "dispatch whitelist includes uv-reqs + brew" || bad "dispatch whitelist missing new methods"
 haveE 'brew\|npm-global\|uv-venv\|uv-tool\|uv-reqs\|git-pull\|compose\)' && ok "reconcile STRATEGY list includes uv-reqs" || bad "uv-reqs missing from reconcile"
 grep -qF 'uv-reqs)     up_uv_reqs "$svc" ;;' "$UPG" && grep -qF 'brew)        up_brew_formula "$svc" ;;' "$UPG" && ok "up_by_method arms wired" || bad "up_by_method arms missing"
-grep -qF 'sys.argv[1]' "$VERS" && grep -cF 'sys.argv[1]' "$UPG" >/dev/null && ok "brew JSON python reads the name from argv (both call sites)" || bad "python interpolation hazard remains"
+# v3.1 parity fix: check_one's brew-service arm now consumes the SHARED oracle —
+# the argv-python lives ONLY in versions.sh; no brew-JSON python may remain in upgrade.sh.
+grep -qF 'sys.argv[1]' "$VERS" && ok "brew JSON python (argv-safe) lives in the shared oracle" || bad "versions.sh brew python missing/interpolated"
+grep -qF "brew outdated --json=v2" "$UPG" && bad "upgrade.sh still embeds its own brew-outdated probe (parity split)" || ok "check_one brew arm has no private brew probe (single shared oracle)"
 grep -qE 'AI_STACK_UPGRADE.*!= "1".*precheck' "$ROOT/installer/phases/06_documents.sh" && ok "phase 06 gate honors AI_STACK_UPGRADE" || bad "phase 06 gate flag-blind"
 grep -qE 'AI_STACK_UPGRADE.*!= "1".*precheck' "$ROOT/installer/phases/14_unsloth_studio.sh" && ok "phase 14 gate honors AI_STACK_UPGRADE" || bad "phase 14 gate flag-blind"
 grep -qF 'an upgrade sweep never reinstalls (1-3 GB curl|sh)' "$ROOT/installer/phases/14_unsloth_studio.sh" && ok "phase 14 refuses the GB installer under the flag" || bad "phase 14 could curl|sh GBs from a sweep"
