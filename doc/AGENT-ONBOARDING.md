@@ -55,7 +55,7 @@ Three things to burn in:
 | Thing | Snapshot | Get it live |
 |---|---|---|
 | Services | **53** in `services.yml` (~27 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
-| Doctor checks | **78** (dynamic — a new check file auto-bumps it) | `bash vz-ai-stack.sh doctor` |
+| Doctor checks | **80** (dynamic — a new check file auto-bumps it) | `bash vz-ai-stack.sh doctor` |
 | Phase files | **49** (00–41 + sub-phases; 29 core / 20 opt-in) | `bash vz-ai-stack.sh phases` |
 | Chat-model routes | **20** across **6 runtimes** | `bash vz-ai-stack.sh model list` |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash vz-ai-stack.sh status` |
@@ -161,7 +161,7 @@ One entry point (`bin/stack` is a thin wrapper). Put `bin/` on PATH:
 | Command | What it does |
 |---|---|
 | `status` | Declared-vs-actual + ownership table (your first read) |
-| `doctor [filter]` | 78 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
+| `doctor [filter]` | 80 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
 | `phases` | Every phase: id → name |
 | `verify` | Cheap (<10s) runtime probe of the alias chain (lo0/`/etc/hosts`/DNS/routing) |
 | `logs <svc> [-f]` | `docker logs` wrapper |
@@ -333,7 +333,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **78 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **80 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.
