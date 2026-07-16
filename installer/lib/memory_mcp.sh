@@ -27,21 +27,58 @@ _mem_resolve_openshell() {
   fi
 }
 
-# _mem_hermes_docs_wired <osh> — is the hermes fleet's doc-RAG wiring in place?
-# Returns 0 (nothing to do) when NO hermes-fleet-v1 sandbox is Ready OR when a Ready
-# sandbox already carries the `docs` MCP server; returns 1 (needs wiring) only when a
-# Ready fleet sandbox is present but NOT wired. Shared by Phase 39 precheck (mirrors the
-# doctor check-74 probe) so a re-run after the fleet appears actually re-wires it.
-_mem_hermes_docs_wired() {
-  local osh="$1"
+# _mem_hermes_profile_wired <osh> <key> <endpoint> — is an MCP server wired into the fleet's
+# hermes_manager profile?  Mirrors the doctor's OWN assertion EXACTLY (check 74 for docs,
+# check 76 for falkordb): the profile's config.yaml carries `<key>:` AND `<endpoint>`.
+# Keeping the installer's post-condition and the doctor's probe identical is the whole point
+# — a phase must not stamp .done in a state the doctor will red-bar.
+#
+# Returns 0 (nothing to assert) when NO hermes-fleet-v1 sandbox is Ready — same lenience as
+# checks 74/76, which only assert against a Ready fleet. Returns 1 (needs wiring) only when a
+# Ready fleet sandbox is present but NOT wired.
+#
+# <endpoint> is NOT a literal: it is port-templated from FALKORDB_MCP_PORT / HONCHO_MCP_PORT,
+# i.e. .env DATA. Interpolating it into the in-sandbox `bash -c` program therefore let a value
+# like '$PORT' (or a backtick) expand INSIDE the sandbox, where it evaluates to empty — and
+# `grep -q ""` matches ANY file, returning a FALSE "WIRED" for an UNWIRED fleet, silently
+# defeating the callers' verify-then-stamp gate. Pass <key>/<endpoint> as ARGV ($1/$2) instead,
+# exactly as doctor check 76 does, so "$HOME" still expands in the sandbox while the data does
+# not. (Correctness, not a trust boundary: .env is 0600 and same-owner as this script.)
+# NB: openshell's gRPC exec REJECTS newlines — keep the -c program on ONE line.
+_mem_hermes_profile_wired() {
+  local osh="$1" key="$2" endpoint="$3"
   [[ -n "$osh" ]] || return 0
-  "$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
+  # Ready-gate. NB: this awk has NO early `exit`, so it drains stdin and cannot trip the
+  # openshell EPIPE/pipefail race — see sandbox_present() in common.sh. Keep it that way.
+  "$osh" sandbox list 2>/dev/null </dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
     | awk 'NR>1 && $1=="hermes-fleet-v1" && $NF=="Ready"{ok=1} END{exit !ok}' || return 0
   local wired
   wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 </dev/null -- bash -c \
-    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "docs:" "$f" && grep -q "host.docker.internal:8765" "$f" && echo WIRED || echo MISSING' \
-    2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+    'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "$1:" "$f" && grep -q "$2" "$f" && echo WIRED || echo MISSING' \
+    _ "$key" "$endpoint" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
   [[ "$wired" == "WIRED" ]]
+}
+
+# _mem_hermes_docs_wired <osh> — hermes fleet doc-RAG wiring in place? (doctor check 74)
+# Shared by Phase 39's precheck AND its verify-then-stamp post-condition.
+_mem_hermes_docs_wired() { _mem_hermes_profile_wired "$1" docs "host.docker.internal:8765"; }
+
+# _mem_hermes_falkordb_wired <osh> [port] — hermes fleet graph-memory wiring in place?
+# (doctor check 76). Phase 41's verify-then-stamp post-condition.
+# Port is a PARAMETER (default 7083) because Phase 41's port is configurable via
+# FALKORDB_MCP_PORT — hardcoding it would hard-fail a custom-port install.
+_mem_hermes_falkordb_wired() {
+  _mem_hermes_profile_wired "$1" falkordb "host.docker.internal:${2:-7083}"
+}
+
+# _mem_hermes_honcho_wired <osh> [port] — hermes fleet honcho-memory wiring in place?
+# (doctor check 75). Phase 40's precheck AND its verify-then-stamp post-condition — the same
+# shape as its 39/41 siblings, which is the whole point: phase 40 had NO post-condition at all
+# (an unconditional stamp_mark after `configure_hermes_mcp_honcho ... || warn`), and making
+# honcho default-on ARMED that defect on every `install all --include-optionals`.
+# Port is a PARAMETER (default 7082) for the same reason as falkordb's.
+_mem_hermes_honcho_wired() {
+  _mem_hermes_profile_wired "$1" honcho "host.docker.internal:${2:-7082}"
 }
 
 # _mem_claude_register_stdio <name> <cmd> [args...]

@@ -27,6 +27,25 @@ declare -Ag CHECK_TITLE=()
 # applies automatically (no Y/n prompt). Used for self-healing the LiteLLM
 # key-store (05a). Still skipped under NO_PROMPT (report-only stays read-only).
 declare -Ag AUTOHEAL=()
+# Checks may set FIX_CAPABLE[<name>]=1 to declare that <name>_fix actually MUTATES
+# state (installs, restarts, rewrites config, queues a restart) — i.e. answering "y"
+# to the auto-fix prompt DOES something. Deliberately opt-in: 54 of the 75 _fix
+# bodies only PRINT guidance (the house convention), but the prompt used to gate on
+# the fix function's mere EXISTENCE (`declare -F`), so doctor offered "Auto-fix
+# available. Apply?" for them — the operator answered y, nothing ran, and doctor
+# reported "fix ran but the check still fails" (the 74/76 incident, 2026-07-16).
+# An UNMARKED check is treated as ADVISORY: doctor never OFFERS to apply its fix, so it
+# cannot over-promise a fix it can't perform. Read the contract precisely — the marker
+# gates the PROMPT, not execution:
+#   UNMARKED ⇒ the _fix body MUST be print-only. It is still RUN — in EVERY mode,
+#   INCLUDING NO_PROMPT=1 — so its guidance reaches the operator (see :113 below).
+#   The marker does NOT sandbox it: an unmarked body that MUTATES will mutate under
+#   NO_PROMPT, silently breaking doc/DOCTOR.md's "report-only" promise.
+# So this is a CONVENTION enforced by the check census (21 marked mutating / 54 verified
+# print-only, 2026-07-16), not by the runner. A new check with a mutating _fix must mark
+# FIX_CAPABLE — and the check template in doc/AGENT-ONBOARDING.md says so.
+# AUTOHEAL implies capable (its heal is a real, applied mutation).
+declare -Ag FIX_CAPABLE=()
 
 # Source every check file. Each must append to CHECKS + set CHECK_TITLE.
 # DOCTOR_CHECKS_DIR overrides the checks directory (defaults to the shipped one) —
@@ -99,7 +118,20 @@ for __check in "${CHECKS[@]}"; do
     # Re-run to show the user the actual failure detail (also subshell-isolated).
     ( "${__check}_diagnose" ) </dev/null 2>&1 | sed 's/^/      /' || true
     if declare -F "${__check}_fix" >/dev/null; then
-      if [[ "${NO_PROMPT:-0}" == "1" ]]; then
+      if [[ "${FIX_CAPABLE[$__check]:-0}" != "1" && "${AUTOHEAL[$__check]:-0}" != "1" ]]; then
+        # ADVICE-ONLY fix (the DEFAULT — an unmarked check lands here). Never OFFER to
+        # "apply" it: there is nothing to apply, and promising a fix we can't perform
+        # is what sent the operator in circles.
+        # ⚠ This branch RUNS the body anyway (stdin detached) so the guidance reaches the
+        # operator in EVERY mode, including NO_PROMPT / non-interactive, where a human most
+        # needs the steps. It is NOT a sandbox: an unmarked body that MUTATES would mutate
+        # right here, under NO_PROMPT, violating doc/DOCTOR.md's "report-only" contract.
+        # Being unmarked is therefore an ASSERTION by the check author that the body is
+        # print-only — mark FIX_CAPABLE on any _fix that mutates.
+        # Its rc is irrelevant here (these bodies `return 1` by convention).
+        note "    Manual step required:"
+        ( "${__check}_fix" </dev/null ) 2>&1 | sed 's/^/      /' || true
+      elif [[ "${NO_PROMPT:-0}" == "1" ]]; then
         note "    (auto-fix available; NO_PROMPT=1 so skipping)"
       elif [[ "${AUTOHEAL[$__check]:-0}" == "1" ]]; then
         # SAFE, idempotent self-heal (e.g. the LiteLLM key-store): apply

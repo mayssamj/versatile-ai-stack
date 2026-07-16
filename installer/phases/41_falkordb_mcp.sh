@@ -37,7 +37,12 @@ precheck() {
   if command -v claude >/dev/null 2>&1; then
     claude mcp list 2>/dev/null | grep -q '^falkordb[: ]' || return 1
   fi
-  return 0
+  # ALSO require hermes-fleet falkordb wiring IF a fleet sandbox is Ready. Without this the
+  # precheck was blind to the ONE thing doctor check 76 asserts, so with phase_41.done present
+  # `install falkordb_mcp` self-skipped FOREVER on an unwired fleet — doctor told the operator
+  # to run a command that could not possibly fix it. Mirrors Phase 39's precheck (39:62), which
+  # already got this right. (Returns ok when no fleet sandbox is Ready — nothing to wire yet.)
+  _mem_hermes_falkordb_wired "$(_mem_resolve_openshell)" "$PORT"
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
@@ -82,8 +87,7 @@ if bash "$AI_STACK/bin/start-falkordb_mcp.sh"; then :; else warn "falkordb-mcp h
 #    running sandbox gains :7083 immediately (mirrors Phase 27/40 backstop; ADDITIVE — nothing
 #    retired). pi stays denied (no falkordb egress for pi).
 OSH="$(_mem_resolve_openshell)"
-if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
-     | awk -v n="$SANDBOX" 'NR>1 && $1==n{f=1} END{exit !f}'; then
+if sandbox_present "$OSH" "$SANDBOX"; then
   if "$OSH" policy set "$SANDBOX" --policy "$FLEET_POLICY" --wait --timeout 60 </dev/null >/dev/null 2>&1; then
     ok "applied falkordb_mcp egress policy to live sandbox $SANDBOX (:7083 reachable)"
   else
@@ -91,11 +95,26 @@ if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m/
   fi
 fi
 
-# 7. wire the Hermes fleet to the shim (token-gated), if the sandbox is present ------
-if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | grep -q "$SANDBOX"; then
-  configure_hermes_mcp_falkordb "$OSH" "$SANDBOX" "$PORT" || warn "Hermes fleet FalkorDB wiring incomplete (non-fatal; re-run 'install falkordb_mcp')."
+# 7. wire the Hermes fleet to the shim (token-gated), if the sandbox is Ready --------
+# sandbox_ready (common.sh), NOT `sandbox list | grep -q` — see sandbox_present's comment for
+# the EPIPE race, and sandbox_ready's for why the WIRING branch needs Ready, not mere presence.
+if sandbox_ready "$OSH" "$SANDBOX"; then
+  configure_hermes_mcp_falkordb "$OSH" "$SANDBOX" "$PORT" \
+    || warn "Hermes fleet FalkorDB wiring returned non-zero — verifying the post-condition…"
+  # VERIFY-THEN-STAMP — see Phase 39 for the rationale. This probe IS doctor check 76's own
+  # assertion (_mem_hermes_falkordb_wired), so a stamp can never mean "the doctor will red-bar".
+  if _mem_hermes_falkordb_wired "$OSH" "$PORT"; then
+    ok "Hermes fleet FalkorDB wiring verified (hermes_manager → host.docker.internal:${PORT})."
+  else
+    err "Hermes fleet FalkorDB wiring did NOT land — hermes_manager profile is missing 'falkordb:' / 'host.docker.internal:${PORT}'. NOT stamping Phase 41."
+    err "  Inspect: openshell sandbox exec -n $SANDBOX -- cat ~/.hermes/profiles/hermes_manager/config.yaml"
+    err "  Then re-run: vz-ai-stack.sh install falkordb_mcp"
+    exit 1
+  fi
 else
-  note "Hermes fleet sandbox '$SANDBOX' not present — skipping fleet FalkorDB wiring."
+  # GENUINE no-sandbox/not-Ready skip → still stamp + exit 0 (below): the stamp is the OPT-IN
+  # RECORD that arms 04f_hermes_fleet.sh:667 (`stamp_check 41`) so a fleet built LATER gets wired.
+  note "Hermes fleet sandbox '$SANDBOX' not present or not Ready — skipping fleet FalkorDB wiring."
   note "  (It auto-wires on the next 'install 04f', gated on stamp_check 41.)"
 fi
 

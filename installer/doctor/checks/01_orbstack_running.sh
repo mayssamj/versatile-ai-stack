@@ -1,6 +1,7 @@
 # Selected Docker engine reachable.
 CHECKS+=(orbstack_running)
 CHECK_TITLE[orbstack_running]="Selected Docker engine reachable"
+FIX_CAPABLE[orbstack_running]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 orbstack_running_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"

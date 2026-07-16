@@ -387,7 +387,13 @@ any flagged claim directly before acting on it.
    CHECKS+=(svcname); CHECK_TITLE[svcname]="Svc reachable + healthy"
    svcname_diagnose(){ curl -sf http://svcname:PORT/health >/dev/null || { echo down; return 1; }; }
    svcname_fix(){ worktree_guard_soft "repair svcname" || return 1; bash "$AI_STACK/bin/start-svcname.sh"; }
-   AUTOHEAL[svcname]=1   # only if the fix is safe + idempotent
+   FIX_CAPABLE[svcname]=1 # REQUIRED if _fix MUTATES (installs/restarts/rewrites config/queues a
+                          # restart). ⚠ The marker gates the auto-fix PROMPT, not execution: an
+                          # UNMARKED _fix body is still RUN in EVERY mode — including NO_PROMPT=1,
+                          # which doc/DOCTOR.md promises is report-only — so an unmarked body MUST
+                          # be print-only (the house convention: `warn` the steps, `return 1`).
+   AUTOHEAL[svcname]=1    # only if the fix is safe + idempotent (implies FIX_CAPABLE; applied
+                          # with no prompt, still skipped under NO_PROMPT)
    ```
 5. **`installer/smoke/NN.sh`** — end-to-end probe (host alias **and** in-network Docker DNS):
    `verify_container_reachable_by_alias svcname svcname PORT /health`.
@@ -517,7 +523,7 @@ any flagged claim directly before acting on it.
 │   ├── doctor/checks/      # one file per failure mode (78)
 │   ├── smoke/              # per-phase E2E smoke
 │   ├── models.yml          # model↔agent binding
-│   └── state/              # .done stamps, restart queue, locks, logs
+│   └── state/              # .done stamps, restart queue, locks, logs (gitignored — see below)
 ├── doc/                    # all docs incl. doc/SOUL.md (25-rule constitution — read first), ARCHITECTURE, STACK-GUIDE, models.md, this file, …
 ├── fleet/ · agent-profiles/# the 9-role fleet (manager.md = canonical; profiles per platform)
 ├── litellm/                # config.yaml, trace_to_file.py, guardrails.py
@@ -526,6 +532,15 @@ any flagged claim directly before acting on it.
 ├── ingestor/{inbox,processed}   # drop docs here to ingest into the RAG
 └── <service clones>        # honcho/ deer-flow/ autofyn/ hermes-workspace/ metagpt/ … (cloned upstreams)
 ```
+
+**`installer/state/` — what an install leaves behind** (all gitignored; safe to read, don't hand-edit):
+
+| Artifact | What it is |
+|---|---|
+| `phase_NN*.done` | the **stamp** — "this phase completed". Its absence is what makes `install` re-run a phase; its presence is also the **opt-in record** other phases read (e.g. 04f wires the fleet for an optional that was opted into *before* the fleet existed). Delete a stamp to force a re-run. |
+| `install-<UTC-ts>.log` | full transcript of ONE `install` run (`install-20260716T101530Z.log`, created `0600`) — the whole run tee'd to disk, with a self-describing header (argv, run-id, start time, bash version). One per run; they accumulate. |
+| `install-latest.log` | symlink → the newest `install-<ts>.log`. **Read this first** when asked "what happened on the last install". |
+| `install-optionals-last.txt` | outcome of the last `install all --include-optionals`: `attempted:` / `failed:` phase lists + a pointer to that run's full log. **Overwritten every run** on purpose — it answers "what happened on the LAST run", so a stale leftover would misinform. This is the durable answer to "which optionals failed", since a `warn` scrolls off and dies with the run. |
 
 ---
 

@@ -107,10 +107,32 @@ note "  bin/mempalace-hooks status | uninstall --apply # inspect / roll back"
 # gated on `stamp_check 39` (stays opt-in but survives rebuilds).
 OSH_BIN="$(_mem_resolve_openshell)"   # brew-first (avoids the uv-tool-shadow relay outage)
 HERMES_SB="hermes-fleet-v1"
-if [[ -n "$OSH_BIN" ]] && "$OSH_BIN" sandbox list 2>/dev/null | grep -q "$HERMES_SB"; then
-  configure_hermes_mcp_docs "$OSH_BIN" "$HERMES_SB" "$DOCS_MCP_PORT" || warn "Hermes fleet doc-RAG wiring incomplete (non-fatal)."
+# sandbox_ready (common.sh), NOT `sandbox list | grep -q` — the grep -q form loses the EPIPE
+# race and reports "not present" for a fleet that IS present (see sandbox_present's comment);
+# and the WIRING branch needs Ready, not mere presence (see sandbox_ready's comment).
+if sandbox_ready "$OSH_BIN" "$HERMES_SB"; then
+  configure_hermes_mcp_docs "$OSH_BIN" "$HERMES_SB" "$DOCS_MCP_PORT" \
+    || warn "Hermes fleet doc-RAG wiring returned non-zero — verifying the post-condition…"
+  # VERIFY-THEN-STAMP. A wiring attempt WAS made, so the stamp must prove the wiring
+  # LANDED — not merely that this phase RAN. Previously BOTH the `|| warn` failure path and
+  # the skip branch fell through to stamp_mark, so `install all --include-optionals` could
+  # stamp 39 .done with the fleet unwired and only doctor check 74 (red) ever noticed.
+  # This probe IS check 74's own assertion (_mem_hermes_docs_wired), so we can never stamp
+  # a state the doctor red-bars.
+  if _mem_hermes_docs_wired "$OSH_BIN"; then
+    ok "Hermes fleet doc-RAG wiring verified (hermes_manager → host.docker.internal:${DOCS_MCP_PORT})."
+  else
+    err "Hermes fleet doc-RAG wiring did NOT land — hermes_manager profile is missing 'docs:' / 'host.docker.internal:${DOCS_MCP_PORT}'. NOT stamping Phase 39."
+    err "  Inspect: openshell sandbox exec -n $HERMES_SB -- cat ~/.hermes/profiles/hermes_manager/config.yaml"
+    err "  Then re-run: vz-ai-stack.sh install fleet_memory"
+    exit 1
+  fi
 else
-  note "Hermes fleet sandbox '$HERMES_SB' not present — skipping fleet doc-RAG wiring."
+  # GENUINE no-sandbox/not-Ready skip → still stamp + exit 0 (below). The stamp is the OPT-IN
+  # RECORD that arms 04f_hermes_fleet.sh:653 (`stamp_check 39`), so a fleet built LATER still
+  # gets wired. Withholding it here would silently destroy opt-in-survives-rebuild — the
+  # err+exit above is scoped STRICTLY to the branch that attempted wiring.
+  note "Hermes fleet sandbox '$HERMES_SB' not present or not Ready — skipping fleet doc-RAG wiring."
   note "  (Install the fleet, then re-run 'install fleet_memory'; or it auto-wires on the next 'install 04f'.)"
 fi
 

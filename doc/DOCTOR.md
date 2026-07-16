@@ -1,8 +1,25 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 78 checks and offers a per-check auto-fix
-when one fails. This doc lists every check, what it asserts, when it fails,
-and what the fix does.
+`bash vz-ai-stack.sh doctor` runs all 78 checks and, when one fails, prints the
+failure detail plus remediation. This doc lists every check, what it asserts,
+when it fails, and what the fix does.
+
+**The auto-fix prompt is gated on CAPABILITY, not on a fix merely existing**
+(changed 2026-07-16). 75 of the 78 checks ship a `<name>_fix`, but most only
+PRINT guidance — the house convention. Doctor used to offer *"Auto-fix
+available. Apply? [Y/n]"* for any check with a fix function (`declare -F`), so
+the operator answered `y`, nothing ran, and doctor reported *"fix ran but the
+check still fails"* (the 74/76 incident). A fix must now declare
+`FIX_CAPABLE[<name>]=1` to be offered. Three classes:
+
+| Class | Count | Behavior on failure |
+|---|---|---|
+| **CAPABLE** (`FIX_CAPABLE=1`) | 19 | Prompts *"Auto-fix available. Apply? [Y/n]"* — answering `y` really mutates, then re-verifies. Skipped under `NO_PROMPT=1`. |
+| **AUTOHEAL** (`AUTOHEAL=1`, implies capable) | 2 | Safe + idempotent → applied AUTOMATICALLY, no prompt (`05a` litellm_keystore, `73` hermes_workspace_pair). Skipped under `NO_PROMPT=1`. |
+| **ADVISORY** (unmarked — the DEFAULT) | 54 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
+
+The 21 capable checks (19 + the 2 autoheal) are the only ones that can change
+your system from a doctor run.
 
 Run filtered:
 
@@ -14,7 +31,9 @@ stack doctor unsloth            # only the Unsloth Studio check (23)
 stack doctor pi                 # only the Pi sandbox + virtual key checks (24-26)
 stack doctor lumen              # only the Lumen MCP check (27)
 stack doctor openshell          # both OpenShell checks: CPU-storm (39) + gateway liveness (54)
-NO_PROMPT=1 stack doctor        # report-only, skip all auto-fixes
+NO_PROMPT=1 stack doctor        # no mutation: skips every capable/autoheal fix.
+                                # Advisory guidance is still PRINTED (those bodies
+                                # only print), so it stays effectively report-only.
 OPENSHELL_DOCTOR_SLOW=1 stack doctor  # also run check 25's slow negative probes
 ```
 
@@ -112,7 +131,7 @@ installer/doctor/checks/
 ├── 72_no_glued_multibyte_var.sh             (no bare $var glued to a multibyte char in shell code (${var} required))
 ├── 73_hermes_workspace_pair.sh              (Phase 05; Hermes Workspace <-> agent netns pair intact + self-heal)
 ├── 74_fleet_memory_mcp.sh                   (opt-in Phase 39; claude-cli + hermes-fleet memory MCP wiring)
-├── 75_honcho_mcp.sh                         (opt-in Phase 40; Honcho memory MCP shim wired + raw :8000 egress retired)
+├── 75_honcho_mcp.sh                         (default-on Phase 40; Honcho memory MCP shim wired + raw :8000 egress retired)
 ├── 76_falkordb_mcp.sh                       (opt-in Phase 41; FalkorDB graph memory MCP shim wired + raw :6379 denied)
 └── 77_embedding_dim_consistency.sh          (embedding dim consistency: live store dim == assigned-model dim; skip-clean when a store is absent; opt-in DEEP round-trip)
 ```
@@ -915,15 +934,15 @@ Skips cleanly (passes) when Phase 39 isn't installed (opt-in); the claude-cli su
 
 ---
 
-## 75 · Honcho memory MCP — raw :8000 egress retired + shim wired (opt-in, Phase 40)
+## 75 · Honcho memory MCP — raw :8000 egress retired + shim wired (default-on, Phase 40)
 
 | | |
 |---|---|
-| Asserts | when Phase 40 (`HONCHO_MEMORY_OPT_IN=1 install honcho_mcp`) is installed: **(a) SECURITY DRIFT-GUARD** — the raw auth-off `honcho_memory` (:8000) egress is GONE from the `04_openshell.sh` generator AND both committed policies (`hermes-fleet-v1.yaml`, `pi-v1.yaml`), and the `honcho_mcp` (:7082) shim stanza is PRESENT in the fleet policy; **(b)** if the `claude` CLI is present, the host session has the `honcho` stdio MCP registered; **(c)** the http shim answers on `127.0.0.1:7082/healthz`; **(d)** if a `hermes-fleet-v1` sandbox is Ready, `hermes_manager` carries the honcho MCP wired to `host.docker.internal:7082`. |
+| Asserts | when Phase 40 (`install honcho_mcp`) is installed: **(a) SECURITY DRIFT-GUARD** — the raw auth-off `honcho_memory` (:8000) egress is GONE from the `04_openshell.sh` generator AND both committed policies (`hermes-fleet-v1.yaml`, `pi-v1.yaml`), and the `honcho_mcp` (:7082) shim stanza is PRESENT in the fleet policy; **(b)** if the `claude` CLI is present, the host session has the `honcho` stdio MCP registered; **(c)** the http shim answers on `127.0.0.1:7082/healthz`; **(d)** if a `hermes-fleet-v1` sandbox is Ready, `hermes_manager` carries the honcho MCP wired to `host.docker.internal:7082`. |
 | Fails when | the raw `honcho_memory` (:8000) egress **REAPPEARS** in the generator or a policy (a regression re-opens the auth-off hole to sandboxed agents), or the `honcho_mcp` shim stanza is missing from the fleet policy, or the claude-cli `honcho` MCP is unregistered, or the shim isn't answering on :7082, or the fleet profile isn't wired — after Phase 40 has stamped. |
-| Auto-fix | none (reports the command): `HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp`; if a policy regained `honcho_memory` (:8000), revert it (it MUST stay retired) + `install 04`. |
+| Auto-fix | **advisory** (print-only — no prompt; prints the command): `vz-ai-stack.sh install honcho_mcp`; if a policy regained `honcho_memory` (:8000), revert it (it MUST stay retired) + `install 04`. |
 
-Skips cleanly (passes) when Phase 40 isn't installed (opt-in — no `phase_40*.done` stamp), so it never red-bars a stack that didn't opt into honcho memory. The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but Honcho backend unreachable per `/healthz`" state is a NOTE, not a failure. The centerpiece is the always-on **security drift-guard**: the raw :8000 egress must stay retired so the token-gated shim remains the only in-sandbox path to Honcho.
+Skips cleanly (passes) when Phase 40 isn't installed — no `phase_40*.done` stamp, i.e. the stack declined honcho memory with `HONCHO_MEMORY_OPT_IN=0` or predates the phase — so it never red-bars a stack without honcho memory. (Phase 40 is default-on under `install all --include-optionals` as of 2026-07-16; its decline path deliberately stamps nothing, which is exactly what keeps this skip-clean honest.) The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but Honcho backend unreachable per `/healthz`" state is a NOTE, not a failure. The centerpiece is the always-on **security drift-guard**: the raw :8000 egress must stay retired so the token-gated shim remains the only in-sandbox path to Honcho.
 
 ---
 

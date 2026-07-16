@@ -20,6 +20,7 @@
 
 CHECKS+=(litellm_keystore)
 CHECK_TITLE[litellm_keystore]="LiteLLM key-store (Postgres) reachable + self-heal"
+FIX_CAPABLE[litellm_keystore]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 AUTOHEAL[litellm_keystore]=1
 
 # _keystore_pg_reachable — is Postgres listening on the host loopback :5432?

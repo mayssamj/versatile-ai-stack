@@ -3,6 +3,7 @@
 #  `docker restart` does NOT reload --env-file changes; full recreate is required.)
 CHECKS+=(litellm_env_loaded)
 CHECK_TITLE[litellm_env_loaded]="LiteLLM container has PHOENIX_COLLECTOR_HTTP_ENDPOINT non-empty"
+FIX_CAPABLE[litellm_env_loaded]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 litellm_env_loaded_diagnose() {
   if ! container_running litellm; then

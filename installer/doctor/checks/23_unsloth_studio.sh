@@ -6,6 +6,7 @@
 # port binding, and HTTP /api/health responsiveness.
 CHECKS+=(unsloth_studio)
 CHECK_TITLE[unsloth_studio]="Unsloth Studio CLI installed + daemon serving :8898"
+FIX_CAPABLE[unsloth_studio]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _unsloth_resolve_cli() {
   if command -v unsloth >/dev/null 2>&1; then command -v unsloth

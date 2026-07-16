@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# Phase 40 — Honcho memory MCP (OPT-IN + an EXPLICIT security opt-in on top).
+# Phase 40 — Honcho memory MCP (DEFAULT-ON under `install all --include-optionals`).
 #
 # Makes Honcho memory usable by claude-cli + the Hermes fleet via a host-side token-gated
 # MCP shim (honcho-mcp/, served on 127.0.0.1:7082), and ATOMICALLY retires the raw auth-off
 # Honcho REST egress (:8000) from the sandboxes so the shim is the only memory path.
 #
-# NOT in `install all`. And because it changes the SECURITY POSTURE, it is gated behind an
-# explicit env flag so even `install all --include-optionals` cannot flip it silently:
-#     HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp
-# The posture it establishes (operator decision, §24 council 2026-07-13): FULL-SHARED memory —
-# all consumers share one Honcho workspace, no per-agent isolation; the shim closes the raw
-# auth-off hole and requires HONCHO_MCP_TOKEN, but does not isolate peers.
+# NOT in core `install all`, but it DOES install by default under
+# `install all --include-optionals`, exactly like its sibling memory phases 39 (doc-RAG) and
+# 41 (falkordb) — see the DISCLOSURE + opt-OUT gate below for the 2026-07-16 operator decision
+# that flipped it, and decline with:
+#     HONCHO_MEMORY_OPT_IN=0 vz-ai-stack.sh install all --include-optionals
+# It CHANGES THE SECURITY POSTURE, so the gate DISCLOSES rather than withholds: the phase
+# prints every effect before acting. The posture it establishes (operator decision, §24 council
+# 2026-07-13): FULL-SHARED memory — all consumers share one Honcho workspace, no per-agent
+# isolation; the shim closes the raw auth-off hole and requires HONCHO_MCP_TOKEN, but does not
+# isolate peers (anything one peer remembers is recallable by every peer).
 #
 # Idempotent: token minted ONLY if absent (re-mint would break wired consumers); shim start
 # is _alive+_health-gated; `hermes config set` + `claude mcp add` (remove-then-add) re-assert
@@ -36,15 +40,26 @@ SANDBOX=hermes-fleet-v1
 FLEET_POLICY="$AI_STACK/openshell/policies/hermes-fleet-v1.yaml"
 PI_POLICY="$AI_STACK/openshell/policies/pi-v1.yaml"
 
-# --- EXPLICIT security opt-in gate (keeps blanket --include-optionals from flipping posture) ---
-if [[ "${HONCHO_MEMORY_OPT_IN:-0}" != "1" ]]; then
-  note "Phase 40 (honcho_mcp) is an EXPLICIT opt-in — it changes the security posture:"
-  note "  • retires the raw honcho:8000 sandbox egress (closes the auth-off REST hole)"
-  note "  • exposes a token-gated honcho-mcp shim on 127.0.0.1:$PORT for claude + the fleet"
-  note "  • FULL-SHARED memory: all consumers share one Honcho workspace (no per-agent isolation)"
-  note "Enable deliberately:  HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp"
+# --- security-posture DISCLOSURE + opt-OUT gate --------------------------------------
+# DEFAULT-ON (operator decision 2026-07-16). Honcho memory now wires on `install all
+# --include-optionals` exactly like its sibling memory phases 39 (doc-RAG) and 41 (falkordb).
+# It was previously gated behind HONCHO_MEMORY_OPT_IN=1 — a flag NOTHING in the repo ever set
+# — so a blanket run silently DECLINED and left honcho unwired while 39/41 wired themselves.
+# That inconsistency was invisible (phase 40 exits 0, and check 75 skip-cleans when unstamped),
+# so the operator reasonably believed all three memory services were enabled when only two were.
+# The posture change is now DISCLOSED rather than withheld; decline with HONCHO_MEMORY_OPT_IN=0.
+# NB: the decline path must NOT stamp — check 75 keys its skip-clean on phase_40*.done, so a
+# stamped decline would flip that check live and red-bar a stack that opted out.
+if [[ "${HONCHO_MEMORY_OPT_IN:-1}" != "1" ]]; then
+  note "Phase 40 (honcho_mcp) DECLINED via HONCHO_MEMORY_OPT_IN=0 — skipping (nothing stamped)."
+  note "  Re-enable with:  vz-ai-stack.sh install honcho_mcp     (default-on)"
   exit 0
 fi
+note "Phase 40 (honcho_mcp) — enabling honcho fleet memory. This CHANGES the security posture:"
+note "  • retires the raw honcho:8000 sandbox egress (closes the auth-off REST hole)"
+note "  • exposes a token-gated honcho-mcp shim on 127.0.0.1:$PORT for claude + the fleet"
+note "  • FULL-SHARED memory: all consumers share one Honcho workspace (no per-agent isolation)"
+note "  Decline with:  HONCHO_MEMORY_OPT_IN=0 vz-ai-stack.sh install all --include-optionals"
 
 precheck() {
   [[ -d "$SHIM_DIR/node_modules/@modelcontextprotocol/sdk" ]] || return 1
@@ -52,7 +67,11 @@ precheck() {
   if command -v claude >/dev/null 2>&1; then
     claude mcp list 2>/dev/null | grep -q '^honcho[: ]' || return 1
   fi
-  return 0
+  # ALSO require hermes-fleet honcho wiring IF a fleet sandbox is Ready. Without this the
+  # precheck was blind to the ONE thing doctor check 75 asserts, so with phase_40.done present
+  # `install honcho_mcp` self-skipped FOREVER on an unwired fleet. Mirrors 39:62 / 41:45.
+  # (Returns ok when no fleet sandbox is Ready — nothing to wire yet.)
+  _mem_hermes_honcho_wired "$(_mem_resolve_openshell)" "$PORT"
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
@@ -69,7 +88,7 @@ worktree_guard "install honcho_mcp"
 #    honcho (its precheck short-circuits). Fails only if honcho isn't installed at all.
 if ! honcho_ensure_embedding_env; then
   err "Honcho is not installed (no honcho/.env). Install it first:  vz-ai-stack.sh install 03"
-  err "then re-run:  HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp"
+  err "then re-run:  vz-ai-stack.sh install honcho_mcp"
   exit 1
 fi
 command -v node >/dev/null 2>&1 || { err "node not found on PATH. Run 'vz-ai-stack.sh deps'."; exit 1; }
@@ -110,7 +129,7 @@ OSH="$(_mem_resolve_openshell)"
 if [[ -n "$OSH" ]]; then
   _apply_policy() {  # <sandbox> <policy-file>
     local _sb="$1" _pf="$2"
-    "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk -v n="$_sb" 'NR>1 && $1==n{f=1} END{exit !f}' || return 0
+    sandbox_present "$OSH" "$_sb" || return 0
     if "$OSH" policy set "$_sb" --policy "$_pf" --wait --timeout 60 </dev/null >/dev/null 2>&1; then
       ok "applied retired-honcho-egress policy to live sandbox $_sb (raw :8000 now denied)"
     else
@@ -121,11 +140,26 @@ if [[ -n "$OSH" ]]; then
   _apply_policy "pi-v1" "$PI_POLICY"
 fi
 
-# 7. wire the Hermes fleet to the shim (token-gated), if the sandbox is present ------
-if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | grep -q "$SANDBOX"; then
-  configure_hermes_mcp_honcho "$OSH" "$SANDBOX" "$PORT" || warn "Hermes fleet honcho wiring incomplete (non-fatal; re-run 'install honcho_mcp')."
+# 7. wire the Hermes fleet to the shim (token-gated), if the sandbox is Ready --------
+# sandbox_ready (common.sh), NOT `sandbox list | grep -q` — see sandbox_present's comment for
+# the EPIPE race, and sandbox_ready's for why the WIRING branch needs Ready, not mere presence.
+if sandbox_ready "$OSH" "$SANDBOX"; then
+  configure_hermes_mcp_honcho "$OSH" "$SANDBOX" "$PORT" \
+    || warn "Hermes fleet honcho wiring returned non-zero — verifying the post-condition…"
+  # VERIFY-THEN-STAMP — see Phase 39 for the rationale. This probe IS doctor check 75's own
+  # assertion (_mem_hermes_honcho_wired), so a stamp can never mean "the doctor will red-bar".
+  if _mem_hermes_honcho_wired "$OSH" "$PORT"; then
+    ok "Hermes fleet honcho wiring verified (hermes_manager → host.docker.internal:${PORT})."
+  else
+    err "Hermes fleet honcho wiring did NOT land — hermes_manager profile is missing 'honcho:' / 'host.docker.internal:${PORT}'. NOT stamping Phase 40."
+    err "  Inspect: openshell sandbox exec -n $SANDBOX -- cat ~/.hermes/profiles/hermes_manager/config.yaml"
+    err "  Then re-run: vz-ai-stack.sh install honcho_mcp"
+    exit 1
+  fi
 else
-  note "Hermes fleet sandbox '$SANDBOX' not present — skipping fleet honcho wiring."
+  # GENUINE no-sandbox/not-Ready skip → still stamp + exit 0 (below): the stamp is the OPT-IN
+  # RECORD that arms 04f_hermes_fleet.sh:661 (`stamp_check 40`) so a fleet built LATER gets wired.
+  note "Hermes fleet sandbox '$SANDBOX' not present or not Ready — skipping fleet honcho wiring."
   note "  (It auto-wires on the next 'install 04f', gated on stamp_check 40.)"
 fi
 

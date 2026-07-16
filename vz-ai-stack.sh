@@ -512,6 +512,87 @@ install_all_optional_phase_order() {
   echo "${out% }"
 }
 
+# --- install run log ---------------------------------------------------------
+# Incident 2026-07-16: `install all --include-optionals` silently mis-wired the
+# hermes fleet, stamped the phases .done, and reported nothing. The `note` that
+# would have NAMED the wrong branch printed to a terminal and was lost — which is
+# the ONLY reason the trigger could never be more than a hypothesis. Every install
+# now tees its FULL stdout+stderr to installer/state/install-<UTC-ts>.log while the
+# operator still sees everything live and unbuffered.
+#
+# WHY process substitution and NOT `cmd_install | tee`: a pipeline would put this
+# INTERACTIVE command (Phase 00's key bootstrap, every confirm()) in a subshell and
+# hand the caller TEE's exit status instead of install's — and would re-introduce the
+# very pipefail/EPIPE class this branch exists to fix. `exec > >(tee -a)` touches
+# neither STDIN nor $?. VERIFIED under bash 5.3.9 on a real pty: a prompt read back
+# the typed answer, `-t 0` stayed TTY (so setup.sh's `[[ ! -t 0 ]]` gate is unmoved),
+# rc=7 survived, and the `exec` did not trip the ERR trap.
+#
+# NOTE: color is decided ONCE in common.sh at source time (`[[ -t 1 ]]`, long before
+# this runs), so redirecting stdout does NOT strip the operator's colors — the log
+# just carries the ANSI codes too. Nothing in the install path re-tests `-t 1`.
+INSTALL_LOG=""
+_INSTALL_TEE_PID=""
+
+install_log_start() {
+  INSTALL_LOG="$STATE_DIR/install-$(date -u +%Y%m%dT%H%M%SZ).log"
+  # Create it 0600 BEFORE anything writes: nothing masked-secret is printed into it today
+  # (setup.sh masks; common.sh suppresses xtrace) but an install log is a transcript of the
+  # whole run — defense-in-depth against a future line that echoes a key. Subshell so the
+  # umask does not leak into the phases.
+  ( umask 077; : >> "$INSTALL_LOG" )
+  # Header goes straight to the file (not the terminal) so the log is self-describing
+  # and joinable to this run's CHANGELOG.d entry.
+  {
+    printf '# vz-ai-stack.sh install %s\n' "${*:-all}"
+    printf '# run-id : %s\n' "$RUN_ID"
+    printf '# started: %s\n' "$(ts)"
+    printf '# bash   : %s\n' "$BASH_VERSION"
+  } >> "$INSTALL_LOG"
+  exec 8>&1 9>&2                          # save the operator's REAL stdout/stderr
+  exec > >(tee -a "$INSTALL_LOG") 2>&1
+  _INSTALL_TEE_PID=$!                     # bash 4.4+: $! is the procsub's pid (we gate on bash 5)
+  # Drain from the very first moment there is something to drain: preflight and
+  # lock_acquire both `exit` BEFORE lock_acquire installs its own trap, and an
+  # undrained exit can lose the tail (see install_log_drain). Superseded by
+  # install_on_exit once the lock is held.
+  trap 'install_log_drain' EXIT
+  ln -sfn "$(basename "$INSTALL_LOG")" "$STATE_DIR/install-latest.log" 2>/dev/null || true
+  note "Logging this run to $INSTALL_LOG  (latest: installer/state/install-latest.log)"
+}
+
+# install_log_drain — hand the terminal back and let tee finish. NOT optional:
+# bash exits WITHOUT waiting for a process substitution, so a session teardown at
+# exit kills tee mid-flush. VERIFIED: without this the log came back 0 BYTES and the
+# terminal lost every line after the redirect. Restoring fds 8/9 drops our end of the
+# pipe, which is what gives tee its EOF.
+#
+# The wait is WATCHDOG-BOUNDED because a bare `wait` HANGS FOREVER if any phase left
+# a daemon holding the inherited pipe (VERIFIED: a backgrounded child inside a phase
+# deadlocked the drain until it was killed). A hung install at the finish line would
+# be a worse bug than the one being fixed — after the grace period we stop waiting and
+# let tee be reaped by init.
+install_log_drain() {
+  [[ -n "$_INSTALL_TEE_PID" ]] || return 0
+  local pid="$_INSTALL_TEE_PID" wd
+  _INSTALL_TEE_PID=""                     # idempotent — never drain twice
+  exec 1>&8 2>&9 8>&- 9>&-
+  ( sleep 5; kill -TERM "$pid" 2>/dev/null ) & wd=$!
+  wait "$pid" 2>/dev/null || true
+  kill "$wd" 2>/dev/null || true
+  wait "$wd" 2>/dev/null || true
+}
+
+# install_on_exit — EXIT-trap safety net, trapped AFTER lock_acquire so it supersedes
+# the lock's own EXIT trap; we redo that cleanup by CALLING lock_release (common.sh's
+# single source of truth), exactly as upgrade_on_exit does. INT/TERM keep the lock trap.
+install_on_exit() {
+  local _rc=$?
+  install_log_drain
+  lock_release
+  return "$_rc"
+}
+
 cmd_install() {
   local dry=0 opt=0 target="" a
   for a in "$@"; do
@@ -546,8 +627,11 @@ cmd_install() {
   # removing it later breaks the running stack. --dry-run above is exempt (no-op).
   worktree_guard install
 
+  # Start logging BEFORE preflight so a host-dep bootstrap failure is on disk too.
+  install_log_start "$@"
   preflight
   lock_acquire
+  trap 'install_on_exit' EXIT   # supersede the lock's EXIT trap (it re-releases the lock)
 
   # FIRST STEP of ANY install (`install all` OR `install <phase>`): make `.env`
   # install-ready, then — first-run, interactively — offer to populate optional
@@ -615,11 +699,25 @@ cmd_install() {
       for optp in "${optphases[@]}"; do
         run_phase "$optp" || { warn "opt-in phase $optp did not complete — continuing (retry alone: bash $0 install $optp)"; optfail+=("$optp"); }
       done
+      # Persist the outcome. `warn` alone scrolls off a terminal and dies with the run,
+      # so "which optionals failed" was unrecoverable afterwards (incident follow-up).
+      # OVERWRITTEN each run on purpose: this file answers "what happened on the LAST
+      # --include-optionals run" — a leftover from an earlier run would misinform.
+      local optstate="$STATE_DIR/install-optionals-last.txt"
+      {
+        printf '# last `install all --include-optionals` — run %s (%s)\n' "$RUN_ID" "$(ts)"
+        printf '# full log: %s\n' "${INSTALL_LOG:-<none>}"
+        printf 'attempted: %s\n' "${optphases[*]:-}"
+        printf 'failed:    %s\n' "${optfail[*]:-}"
+      } > "$optstate"
       if (( ${#optfail[@]} )); then
         warn "opt-in phases that did NOT complete: ${optfail[*]} (the core install is unaffected; install each directly once its host deps are ready)"
+        record "install --include-optionals: opt-in phases that did NOT complete: ${optfail[*]}"
       else
         ok "all ${#optphases[@]} opt-in phase(s) installed"
+        record "install --include-optionals: all ${#optphases[@]} opt-in phase(s) installed"
       fi
+      note "Opt-in outcome recorded: $optstate"
     fi
     # Interactive remediation: adopt foreign containers, recreate honcho on the
     # new network if drifted, prompt for Phoenix API key, drain restart queue,
@@ -1318,6 +1416,10 @@ summary_end_of_install() {
   fi
   note "Status:  bash vz-ai-stack.sh status"
   note "Doctor:  bash vz-ai-stack.sh doctor"
+  # Name the log while the operator is still looking — an unfindable log is no log.
+  if [[ -n "${INSTALL_LOG:-}" ]]; then
+    note "Log:     $INSTALL_LOG"
+  fi
   declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
   print_inference_hint
 }

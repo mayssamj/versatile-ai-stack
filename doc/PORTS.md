@@ -243,7 +243,8 @@ Detail:
   entrypoint instead. The interactive browser graph is a separate
   foreground serve: `vz-ai-stack.sh understand-dashboard` (Vite, ephemeral
   port). Not a container / not on the `ai-stack` bridge.
-- **honcho-mcp (`:7082`)** — Phase 40 (opt-in) `honcho_mcp`. A host-loopback
+- **honcho-mcp (`:7082`)** — Phase 40 (default-on under `install all --include-optionals`;
+  decline with `HONCHO_MEMORY_OPT_IN=0`) `honcho_mcp`. A host-loopback
   node daemon (`bin/start-honcho_mcp.sh`) that wraps Honcho's REST API as MCP
   memory tools (`honcho_remember`/`recall`/`ask`/`search`); the Hermes fleet
   dials it at `host.docker.internal:7082` (token-gated by `HONCHO_MCP_TOKEN`,
@@ -426,7 +427,7 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 ### `openshell` (CLI + sandbox runtime)
 
 - **Listens**: no host port. Sandboxes (`hermes-fleet-v1`, `pi-v1`) are reached via `openshell sandbox exec ...`.
-- **Sandbox-internal**: `inference.local:443` (L7 proxy to LiteLLM); the sandbox is allowed to reach `docs-mcp:8765` and a small egress allowlist. The raw `honcho:8000` egress was **RETIRED** (Phase 40, opt-in) — the fleet now reaches Honcho only via the host-side `honcho-mcp` shim (`host.docker.internal:7082`, token-gated). It does NOT join the `ai-stack` Docker network (design D4).
+- **Sandbox-internal**: `inference.local:443` (L7 proxy to LiteLLM); the sandbox is allowed to reach `docs-mcp:8765` and a small egress allowlist. The raw `honcho:8000` egress was **RETIRED** (Phase 40, default-on under `--include-optionals`) — the fleet now reaches Honcho only via the host-side `honcho-mcp` shim (`host.docker.internal:7082`, token-gated). It does NOT join the `ai-stack` Docker network (design D4).
 - **Source**: `services.yml` (`openshell`), `installer/phases/04_openshell.sh`
 
 ### `hermes_fleet` (hermes-profiles inside sandbox)
@@ -535,7 +536,7 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 - **Healthcheck**: `curl -s http://127.0.0.1:7081/healthz`
 - **Source**: `services.yml` (`understand`), `bin/start-understand.sh`, `installer/phases/30_understand.sh`
 
-### `honcho_mcp` / `honcho-mcp` (node-bg) — Phase 40 (opt-in)
+### `honcho_mcp` / `honcho-mcp` (node-bg) — Phase 40 (default-on under `--include-optionals`)
 
 - **Listens**: `127.0.0.1:7082` — the `honcho-mcp` HTTP daemon (`bin/start-honcho_mcp.sh`), a thin MCP shim over Honcho's REST API. The Hermes fleet containers dial it at `host.docker.internal:7082` (token-gated by `HONCHO_MCP_TOKEN`). Host Claude Code / Pi use the **stdio** entrypoint (`honcho-mcp/bin.mjs --stdio`, no port). NOT aliased (reached from containers via host-gateway, same pattern as understand-mcp/lmstudio). Not on the ai-stack bridge.
 - **Callers**: host Claude Code (stdio, registered via `claude mcp add`) + the Hermes fleet profiles (http, `host.docker.internal:7082`). Pi honcho is **deferred** (Pi ships no MCP client).
@@ -655,7 +656,7 @@ These ports are declared in `services.yml` / `aliases.tsv` but only listen when 
 | 25808 | `aionui`           | Opt-in Phase 28; loopback launchd daemon.                                                          |
 | 8787  | `openwork`         | Opt-in Phase 29; loopback launchd daemon (first start downloads OpenCode sidecars).                |
 | 7081  | `understand-mcp`   | Opt-in Phase 30; loopback daemon dialed by the fleet via host-gateway.                             |
-| 7082  | `honcho-mcp`       | Opt-in Phase 40; loopback daemon dialed by the fleet via host-gateway (token-gated).               |
+| 7082  | `honcho-mcp`       | Phase 40, default-on under `--include-optionals`; loopback daemon dialed by the fleet via host-gateway (token-gated). |
 | 7083  | `falkordb-mcp`     | Opt-in Phase 41; loopback daemon dialed by the fleet via host-gateway (token-gated).               |
 | 5274  | `chatdev`          | Opt-in Phase 35; host `5274` → container `5173`.                                                    |
 | 5273  | `aitown`           | Opt-in Phase 36; host `5273` → container `5173`.                                                    |

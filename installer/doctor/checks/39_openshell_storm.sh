@@ -7,6 +7,7 @@
 # launchd watchdog (bin/openshell-watchdog.sh) is loaded. Read-only; no recreate.
 CHECKS+=(openshell_storm)
 CHECK_TITLE[openshell_storm]="OpenShell sandboxes not in a token-expiry CPU storm (Phase 04 watchdog)"
+FIX_CAPABLE[openshell_storm]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 _oss_docker() {
   for p in /opt/homebrew/bin/docker "$HOME/.orbstack/bin/docker" /usr/local/bin/docker; do

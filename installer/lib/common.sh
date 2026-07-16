@@ -114,6 +114,59 @@ stamp_mark()  { touch "$STATE_DIR/phase_${1}.done"; }
 stamp_clear() { rm -f "$STATE_DIR/phase_${1}.done"; }
 stamp_check() { [[ -f "$STATE_DIR/phase_${1}.done" ]]; }
 
+# --- openshell sandbox presence (EPIPE-safe) --------------------------------
+# sandbox_present <osh> <name> — true when `openshell sandbox list` reports a sandbox
+# whose NAME column (column 1) equals <name>, in any Phase. False when <osh> is empty,
+# when the gateway/CLI errors, or when the name is absent. Lives in common.sh because
+# it is the only lib every sandbox-touching phase already sources (04, 30, 39, 40, 41).
+#
+# WHY awk, AND NOT `"$osh" sandbox list | grep -q "$name"` — DO NOT "simplify" it back:
+#   `grep -q` exits the instant it matches. On a MIDDLE row that closes the pipe while
+#   the Rust `openshell` binary still has rows to print. Rust sets SIGPIPE to SIG_IGN, so
+#   instead of dying quietly it PANICS ("failed printing to stdout: Broken pipe (os error
+#   32)") and exits 101. Under `set -o pipefail` that 101 becomes the PIPELINE's status,
+#   so `if ... | grep -q "$name"; then` evaluates FALSE even though grep MATCHED — and the
+#   `2>/dev/null` hides the panic. Observed PIPESTATUS=[101 0] (openshell=101, grep=0).
+#   Reproduced 8/10 under /bin/bash on 2026-07-16: a clean-slate `install all
+#   --include-optionals` silently skipped the hermes-fleet docs (:8765) + falkordb (:7083)
+#   MCP wiring, stamped both phases .done, and left doctor checks 74/76 red-barred.
+#   NB: it does NOT reproduce under zsh — verify any change to this helper with /bin/bash.
+#
+#   awk is immune because it DRAINS stdin to EOF before deciding, so the writer never sees
+#   EPIPE. Corollary: never add `exit` to this awk program (nor pipe this into `head`,
+#   `grep -q`, or `awk ... {exit}`) — any early reader exit reintroduces the exact race.
+#
+# Regression test: installer/smoke/sandbox-present.sh
+sandbox_present() {
+  local osh="$1" name="$2"
+  [[ -n "$osh" && -n "$name" ]] || return 1   # empty name would match a trailing blank row ($1=="")
+  # `openshell sandbox list` emits a header row + ANSI color codes; strip and skip them.
+  "$osh" sandbox list 2>/dev/null </dev/null \
+    | sed $'s/\x1b\\[[0-9;]*m//g' \
+    | awk -v n="$name" 'NR>1 && $1==n {f=1} END{exit !f}'
+}
+
+# sandbox_ready <osh> <name> — stricter sibling of sandbox_present: true only when the
+# sandbox is listed AND its Phase (last column) is exactly "Ready". Same awk form, same
+# EPIPE-immunity rules — every caveat in sandbox_present's comment applies verbatim.
+#
+# WHY a separate helper, and why the WIRING branches gate on THIS one:
+#   sandbox_present is a presence test, so it is TRUE for a fleet that is still Creating /
+#   Terminating. In that window `sandbox exec` fails, which makes wiring impossible — but the
+#   verify-then-stamp probes (_mem_hermes_*_wired) are deliberately LENIENT about a non-Ready
+#   fleet (they `return 0` = "nothing to assert"), so a phase that ENTERED its wiring branch
+#   would see the wiring "verified" VACUOUSLY, print a FALSE ok, and stamp .done unwired.
+#   Gating the wiring branch on Ready sends a non-Ready fleet down the GENUINE-SKIP branch
+#   (stamp + exit 0), which is correct: nothing was attempted, and 04f re-wires later.
+#   Mirrors doctor checks 74/75/76, which likewise only assert against a Ready fleet.
+sandbox_ready() {
+  local osh="$1" name="$2"
+  [[ -n "$osh" && -n "$name" ]] || return 1
+  "$osh" sandbox list 2>/dev/null </dev/null \
+    | sed $'s/\x1b\\[[0-9;]*m//g' \
+    | awk -v n="$name" 'NR>1 && $1==n && $NF=="Ready" {f=1} END{exit !f}'
+}
+
 # --- restart queue (Reviewer Adversarial #12) -------------------------------
 queue_restart() {
   local svc="$1"

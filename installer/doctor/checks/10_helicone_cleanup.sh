@@ -1,6 +1,7 @@
 # Helicone artifacts present (deprecated; user moved to Phoenix).
 CHECKS+=(helicone_cleanup)
 CHECK_TITLE[helicone_cleanup]="No leftover Helicone artifacts (deprecated)"
+FIX_CAPABLE[helicone_cleanup]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 helicone_cleanup_diagnose() {
   local issues=()

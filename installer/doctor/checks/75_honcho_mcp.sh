@@ -1,5 +1,6 @@
-# Honcho memory MCP (opt-in Phase 40). GRACEFUL: skip-clean when not installed — never
-# red-bar a stack that didn't opt into honcho memory.
+# Honcho memory MCP (Phase 40 — DEFAULT-ON under `install all --include-optionals` since
+# 2026-07-16; opt OUT with HONCHO_MEMORY_OPT_IN=0). GRACEFUL: skip-clean when not installed —
+# never red-bar a stack that declined honcho memory, or one installed before it went default-on.
 #
 # When installed, the SECURITY-CRITICAL part is a DRIFT-GUARD: the raw auth-off Honcho REST
 # egress (honcho_memory / :8000) must stay RETIRED from BOTH sandbox policies AND the
@@ -7,7 +8,7 @@
 # and the honcho_mcp (:7082) shim stanza must be present for the fleet. It also verifies the
 # claude-cli stdio registration, the shim's health, and per-profile fleet wiring.
 CHECKS+=(honcho_mcp)
-CHECK_TITLE[honcho_mcp]="Honcho memory MCP (opt-in): raw :8000 egress retired + shim wired (skip-clean when absent)"
+CHECK_TITLE[honcho_mcp]="Honcho memory MCP (default-on): raw :8000 egress retired + shim wired (skip-clean when declined)"
 
 _honcho_mcp_resolve_openshell() {
   if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell
@@ -17,9 +18,10 @@ _honcho_mcp_resolve_openshell() {
 }
 
 honcho_mcp_diagnose() {
-  # (0) Not installed → skip-clean (opt-in Phase 40).
+  # (0) Not installed → skip-clean (Phase 40 declined via HONCHO_MEMORY_OPT_IN=0, or the stack
+  # predates the 2026-07-16 default-on flip).
   if ! compgen -G "$AI_STACK/installer/state/phase_40*.done" >/dev/null 2>&1; then
-    echo "(honcho memory not installed — opt-in Phase 40: HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp; skip)"
+    echo "(honcho memory not installed — Phase 40 is default-on under 'install all --include-optionals'; this stack declined it (HONCHO_MEMORY_OPT_IN=0) or predates it. Wire it: vz-ai-stack.sh install honcho_mcp; skip)"
     return 0
   fi
 
@@ -40,7 +42,7 @@ honcho_mcp_diagnose() {
 
   # (2) claude-cli registration (if the claude CLI is present).
   if command -v claude >/dev/null 2>&1; then
-    claude mcp list 2>/dev/null | grep -q '^honcho[: ]' || fails+=("  claude-cli MCP 'honcho' not registered — run: HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp")
+    claude mcp list 2>/dev/null | grep -q '^honcho[: ]' || fails+=("  claude-cli MCP 'honcho' not registered — run: vz-ai-stack.sh install honcho_mcp")
   fi
 
   # (3) shim health (the fleet's http daemon). /healthz also reports honcho reachability.
@@ -53,13 +55,19 @@ honcho_mcp_diagnose() {
   fi
 
   # (4) fleet wiring — only when a hermes-fleet-v1 sandbox is Ready.
+  # The endpoint is checked against $port (from HONCHO_MCP_PORT, resolved at :48), NOT a
+  # hardcoded 7082: this probe used to hardcode it while (3) above honoured the env var, so a
+  # custom-port install red-barred here forever no matter how correctly the fleet was wired.
+  # $port is passed as an ARGV parameter (not interpolated into the script body) so "$HOME"
+  # still expands INSIDE the sandbox. NB: openshell's gRPC exec rejects newlines — keep the
+  # -c program on ONE line.
   local osh; osh="$(_honcho_mcp_resolve_openshell)"
   if [[ -n "$osh" ]] && "$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
        | awk 'NR>1 && $1=="hermes-fleet-v1" && $NF=="Ready"{ok=1} END{exit !ok}'; then
     local wired
     wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 </dev/null -- bash -c \
-      'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "honcho:" "$f" && grep -q "host.docker.internal:7082" "$f" && echo WIRED || echo MISSING' \
-      2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
+      'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "honcho:" "$f" && grep -q "host.docker.internal:$1" "$f" && echo WIRED || echo MISSING' \
+      _ "$port" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
     [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to honcho MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install honcho_mcp")
   fi
 
@@ -91,7 +99,7 @@ honcho_mcp_diagnose() {
 
 honcho_mcp_fix() {
   warn "Honcho memory MCP not fully wired, or a SECURITY regression (raw :8000 egress back) was found."
-  warn "Install / re-assert:  HONCHO_MEMORY_OPT_IN=1 vz-ai-stack.sh install honcho_mcp"
+  warn "Install / re-assert:  vz-ai-stack.sh install honcho_mcp"
   warn "If honcho_memory (:8000) reappeared in a policy, revert it (it MUST stay retired) + 'install 04'."
   return 1
 }

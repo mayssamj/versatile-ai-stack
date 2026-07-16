@@ -1,6 +1,7 @@
 # PHOENIX_COLLECTOR_HTTP_ENDPOINT non-empty in .env (the most-hit landmine).
 CHECKS+=(phoenix_endpoint_set)
 CHECK_TITLE[phoenix_endpoint_set]="PHOENIX_COLLECTOR_HTTP_ENDPOINT set in .env"
+FIX_CAPABLE[phoenix_endpoint_set]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 phoenix_endpoint_set_diagnose() {
   local v; v="$(get_env PHOENIX_COLLECTOR_HTTP_ENDPOINT "")"

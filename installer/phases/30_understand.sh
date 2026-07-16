@@ -150,7 +150,8 @@ if bash "$AI_STACK/bin/start-understand.sh"; then :; else warn "understand-mcp h
 
 OSH="$(command -v openshell || true)"
 SB="hermes-fleet-v1"
-if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | grep -q "$SB"; then
+# sandbox_present (common.sh), NOT `sandbox list | grep -q` — see sandbox_present's comment.
+if sandbox_present "$OSH" "$SB"; then
   configure_hermes_mcp_understand "$OSH" "$SB" "$MCP_PORT" || warn "Hermes fleet wiring incomplete (non-fatal)."
 else
   note "Hermes fleet sandbox '$SB' not present — skipping fleet wiring (install the fleet, then re-run 'install understand')."

@@ -132,6 +132,9 @@ have browser UIs — see [TUTORIAL.md](TUTORIAL.md) Act V.
 ```
 installer/state/          # stamp files (phase_<NN>.done), restart queue, lock dir, watchdog log
 installer/state/openshell-watchdog.log   # what the CPU-storm watchdog did + when
+installer/state/install-<UTC-ts>.log     # FULL stdout+stderr of one `install` run (install-20260716T094738Z.log)
+installer/state/install-latest.log       # symlink → the most recent install log (start here)
+installer/state/install-optionals-last.txt  # which optional phases the last `--include-optionals` run attempted
 traces/litellm.jsonl      # one line per chat call (ts, model, messages, latency, cost)
 CHANGELOG.d/<run-id>.md    # per-run logs  →  assemble with `stack history`
 data/                     # {phoenix,falkor,qdrant,honcho,openwebui} persistent volumes

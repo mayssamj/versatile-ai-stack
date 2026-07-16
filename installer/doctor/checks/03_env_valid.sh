@@ -1,6 +1,7 @@
 # .env exists, mode 0600, parses cleanly, no CRLF.
 CHECKS+=(env_valid)
 CHECK_TITLE[env_valid]=".env file exists, 0600, parses cleanly"
+FIX_CAPABLE[env_valid]=1   # <name>_fix MUTATES state (see doctor.sh FIX_CAPABLE)
 
 env_valid_diagnose() {
   [[ -f "$AI_STACK/.env" ]] || { echo ".env missing"; return 1; }
