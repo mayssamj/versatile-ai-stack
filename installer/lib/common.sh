@@ -185,6 +185,38 @@ litellm_scoped_curl() {
   return $_rc
 }
 
+# --- pi_render_models_json: render Pi's ~/.pi/agent/models.json catalog --------
+# Usage: printf '%s\n' "$model_ids" | pi_render_models_json <out_file> <base_url>
+#
+# Pi's `openai` provider (registered by pi/inference-local.ts) ships NO models[], so its
+# catalog stays Pi's 42 built-in OpenAI IDs and `pi --model <litellm route>` fails a
+# CLIENT-SIDE lookup ("Model not found") before any request. Pi reads ~/.pi/agent/models.json
+# to learn a provider's models; this renders it from a newline-separated id list on stdin.
+# Minimal {id,name} is sufficient — Pi fills sane context/token defaults (verified). The
+# provider name (`openai`) + baseUrl MUST match inference-local.ts. `apiKey` is the literal
+# "$PI_LITELLM_KEY" placeholder: bin/pi injects that env into the sandbox (HOME=/sandbox) and
+# Pi expands it when reading the catalog — load-bearing, NOT dead config (a catalog with the
+# key unexpanded drops the provider entirely; §24 QA verified the expansion). Factored here so
+# the phase and installer/tests/test_pi_models_catalog_gen.sh exercise the SAME renderer.
+pi_render_models_json() {
+  local out="$1" base="$2"
+  PI_RMJ_BASE="$base" python3 -c '
+import json, os, sys
+# strip() each id, not just filter on it: a whitespace-padded id (malformed input) would
+# otherwise be written verbatim as a broken catalog route. yq output is already clean; this
+# is defensive.
+ids = [x.strip() for x in sys.stdin.read().splitlines() if x.strip()]
+doc = {"providers": {"openai": {
+    "baseUrl": os.environ["PI_RMJ_BASE"],
+    "api": "openai-completions",
+    "apiKey": "$PI_LITELLM_KEY",
+    "models": [{"id": i, "name": i} for i in ids],
+}}}
+with open(sys.argv[1], "w") as f:
+    f.write(json.dumps(doc, indent=2) + "\n")
+' "$out"
+}
+
 # --- _doctor_assert_key_allowlist: shared agent-sim allow-list drift check ----
 # Usage: _doctor_assert_key_allowlist <scoped_key> <KEY_ENV_NAME> <yq_assignment_key> \
 #                                     <model_descr> <phase_num>

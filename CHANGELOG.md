@@ -4,6 +4,14 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-17
+
+### Bug Fixes
+
+- Pi was broken on its shipped default model out of the box — `pi/inference-local.ts` registers the `openai` provider with **no `models[]`**, so Pi's catalog stayed its 42 built-in OpenAI IDs and `pi --model claude-opus-sub-max` failed a **client-side** "Model not found" before any HTTP request (the model, key, and route were all fine — Pi just never learned the id existed). Phase 15 now GENERATES `/sandbox/.pi/agent/models.json` (Pi's documented catalog path — `bin/pi` runs with `HOME=/sandbox`) so every LiteLLM route resolves. Source of truth = the **models.yml fleet superset** (`(["local","local-heavy"] + (.models | keys)) | unique`, the exact expression `04h_agent_fleet.sh::widen_keys` uses), NOT the live pi-key allowlist: phase 15 runs **before** 04h widens that key, so at generate-time the key is still the narrow 2-model mint — a catalog built from it would omit the shipped default and break a genuinely fresh install (it only *looked* fixed on a box whose `.env` carried a prior 04h-widened key — a persisted-side-effect trap the §24 architect caught). The superset is timing-independent and a strict superset of anything the key will ever allow, so any `model assign pi X` target is already resolvable with no re-install; the runtime key stays the real enforcement boundary (LiteLLM 403s a not-yet-widened cloud model — a truthful signal — vs the client-side dead-end). Rendered by a new shared `common.sh::pi_render_models_json` (minimal `{id,name}`; Pi fills sane 128K/16.4K defaults; the `"$PI_LITELLM_KEY"` literal is load-bearing — `bin/pi` injects that env and Pi expands it reading the catalog). Phase-15 precheck now asserts the bound model is **present** in the catalog (resolvability), not just that the file exists — a truncated upload re-fires the phase. Regression test `installer/tests/test_pi_models_catalog_gen.sh` (hermetic — no sandbox, no network, no model load) pins the renderer + discriminates the bug (a narrow-source catalog missing the default fails it); it caught a real whitespace-stripping gap in the renderer during development. §24 council (adversarial + architect + qa) REJECTED the first cut (wrong source of truth) → remedies applied → adversarial re-review PASS. Proven E2E earlier: `bin/pi` on `claude-opus-sub-max` round-tripped `200 OK` through LiteLLM (`acompletion(model=openai/claude-opus-4-8) 200 OK`). **Known follow-up (filed, not done):** `model assign pi X` + `model sync` does not refresh `PI_DEFAULT_MODEL` in `.env` (written only by phase 15), so a reassignment's *default* is stale until the next `install 15` — the catalog already covers every assignable model, so an explicit `pi --model X` works regardless.
+
+---
+
 ## 2026-07-16
 
 ### Features
