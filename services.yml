@@ -166,7 +166,7 @@ services:
         protocol: http
     help:
       "what": Graph database speaking Cypher over the Redis RESP protocol (same wire format as Redis, so redis-cli works) with a node+edge+property data model, plus a browser UI on the falkordb-ui alias.
-      "why": 'Reach for it with graph-shaped data: who-knows-who, dependency trees, code relationships, anything where you want path queries. Use the falkordb-ui browser at http://falkordb-ui:3000 to visualize graphs and run Cypher in a web editor. Note: not yet wired into any agent -- reserved for future graph-memory work.'
+      "why": 'Reach for it with graph-shaped data: who-knows-who, dependency trees, code relationships, anything where you want path queries. Use the falkordb-ui browser at http://falkordb-ui:3000 to visualize graphs and run Cypher in a web editor. Note: agents reach it through the token-gated falkordb-mcp shim (phase 41, remember_fact/recall_related/graph_query) -- raw :6379 stays for humans and the UI.'
       "usage":
         - redis-cli -h falkordb -p 6379 PING && redis-cli -h falkordb -p 6379 GRAPH.QUERY mygraph "CREATE (a:Person {name:'Alice'}), (b:Person {name:'Bob'}), (c:Person {name:'Carol'}), (a)-[:KNOWS]->(b), (b)-[:KNOWS]->(c)" && redis-cli -h falkordb -p 6379 GRAPH.QUERY mygraph "MATCH (a:Person {name:'Alice'})-[:KNOWS*1..2]->(p) RETURN p.name"
         - redis-cli -h falkordb -p 6379 PING

@@ -277,10 +277,10 @@ URL forms below are now uniform across **vantage points**:
 | Anthropic    | `claude-sonnet`, `claude-opus` model entries                          | `ANTHROPIC_API_KEY`                 |
 | OpenAI       | `openai-gpt-*`, `embed-openai-small`, `embed-openai-large`            | `OPENAI_API_KEY`                    |
 | OpenRouter   | All `openrouter-*` entries (10+ models)                               | `OPENROUTER_API_KEY`                |
-| Google       | `google-gemini-3.1-pro`                                               | `GOOGLE_API_KEY`                    |
+| Google       | `google-gemini-pro` / `google-gemini-flash`                           | `GOOGLE_API_KEY`                    |
 | Blaxel cloud | `bl` / `blaxel` CLI (deploys + execution; cloud-only, no local proxy) | `BLAXEL_API_KEY`, `BLAXEL_WORKSPACE` |
 
-Provider rate-limit specifics are _not_ documented here — they vary per account tier and change frequently. LiteLLM's `fallbacks:` chain (in `litellm/config.yaml`) is the practical answer: when Anthropic 429s, requests for `claude-opus` re-route through `openrouter-claude-opus-4.7` → `openrouter-claude-opus-4.7-fast` → `openai-gpt-5.5-pro`.
+Provider rate-limit specifics are _not_ documented here — they vary per account tier and change frequently. The `fallbacks:` block in `litellm/config.yaml` is intentionally EMPTY (operator decision: no silent cross-provider reroute) — a provider 429/outage surfaces as a visible LiteLLM 503 rather than silently switching models; pick a different route explicitly if a provider is down.
 
 ---
 

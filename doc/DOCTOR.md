@@ -24,7 +24,7 @@ your system from a doctor run.
 Run filtered:
 
 ```bash
-stack doctor                    # all 68
+stack doctor                    # all 80
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)

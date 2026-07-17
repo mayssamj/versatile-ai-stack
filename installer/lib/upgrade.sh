@@ -83,7 +83,7 @@ vz-ai-stack.sh upgrade hermes                      GROUP: upgrade EVERY hermes s
 vz-ai-stack.sh upgrade --check [service|all|hermes] READ-ONLY: show which have an update available
 vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY services VERIFIED behind: docker/
                                                    compose/brew currency + every service with a
-                                                   declared upgrade: oracle (npm/pip/uv-tool/git/
+                                                   declared upgrade: oracle (npm/pip/uv-tool/uv-reqs/brew/git/
                                                    sandbox-pip) — pins are never swept
 vz-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
                                                    (--all has NO effect with --outdated)
@@ -92,7 +92,7 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
   brew→brew upgrade, openshell→in-sandbox update + phase re-assert. Every other
   service is EXHAUSTIVE now: a declared `upgrade:` block version-bumps it directly
-  (npm-global / uv-venv / uv-tool / git-pull [+build+verified restart] /
+  (npm-global / uv-venv / uv-tool / uv-reqs / git-pull [+build+verified restart] / brew /
   sandbox-pip / rebuild), else its install phase is re-run (AI_STACK_UPGRADE=1)
   to re-assert/upgrade — nothing is a silent no-op. A declared `upgrade.pin`
   HOLDS a service at that version on every path (sweep, all, named target) —
@@ -101,7 +101,7 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   `upgrade <meridian|claude-code>` upgrades one host global.
 
   --check is non-mutating: docker/compose by registry manifest DIGEST, ollama by
-  `brew outdated`, and npm/pip(uv-venv/uv-tool)/git-clone/sandbox-pip services by
+  `brew outdated`, and npm/pip(uv-venv/uv-tool/uv-reqs)/git-clone/sandbox-pip/brew services by
   npm/PyPI/git ls-remote/docker-exec (bounded — a blocked registry degrades to
   'unknown', never hangs; on a fully proxy-blocked host a full scan can take a
   few quiet minutes of probe timeouts — not a hang). 'config' = nothing
@@ -200,7 +200,7 @@ _arm_upgrade_traps() {
 # logic. up_docker/up_compose/check_one call them from there unchanged.
 
 # check_one <svc> — sets CHECK_STATUS / CHECK_CUR / CHECK_AVAIL.
-# CHECK_STATUS ∈ update-available | up-to-date | pinned | rebuild | manual | unknown | config
+# CHECK_STATUS ∈ update-available | up-to-date | pinned | build | rebuild | manual | unknown | config
 #   pinned = deliberately held (fixed docker tag, or a declared upgrade.pin) — never swept
 #   config = configuration surface, nothing independently versioned (versions with the
 #            stack repo or its owning service)

@@ -114,7 +114,7 @@ bash vz-ai-stack.sh install all
 # `install all --include-optionals --dry-run` first:
 #   bash vz-ai-stack.sh install all --include-optionals   # alias: --with-optionals
 
-# Step 6 — verify everything is healthy. Expect 66/66.
+# Step 6 — verify everything is healthy. Expect ~77/80 (opt-in checks pass-as-skip).
 bash vz-ai-stack.sh doctor
 ```
 
