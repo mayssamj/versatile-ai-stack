@@ -71,9 +71,19 @@ precheck() {
   # just assert the LiteLLM provider is wired (was "Model: local-heavy",
   # which broke after local-heavy stopped being the gateway default).
   "$osh" inference get 2>/dev/null | grep -q "Provider: litellm" || return 1
-  # Extension files in place inside the sandbox (both slice extensions).
+  # Extension files + generated model catalog in place inside the sandbox. Without
+  # models.json Pi cannot resolve `--model <litellm route>` (client-side lookup fails
+  # before any request), so a missing catalog must mark the phase not-done and re-run.
+  # Assert RESOLVABILITY, not mere existence: the catalog must actually contain pi's bound
+  # model (assignment, else .default) — a truncated/partial upload that dropped it would
+  # otherwise pass a bare `test -f` while Pi still fails "Model not found". The catalog is
+  # sourced from the models.yml superset, which always includes this id, so a correct
+  # generate always passes; only a damaged file re-fires the phase (never a perpetual loop).
+  local _pi_want
+  _pi_want="$(yq -r '.assignments.pi // .default // "local"' "$AI_STACK/installer/models.yml" 2>/dev/null || echo local)"
+  [[ -n "$_pi_want" && "$_pi_want" != "null" ]] || _pi_want="local"
   "$osh" sandbox exec -n "$SANDBOX" --no-tty -- \
-    /bin/sh -c 'test -f /sandbox/.pi/extensions/inference-local.ts && test -f /sandbox/.pi/extensions/pi-memory-tools.ts' 2>/dev/null \
+    /bin/sh -c "test -f /sandbox/.pi/extensions/inference-local.ts && test -f /sandbox/.pi/extensions/pi-memory-tools.ts && test -f /sandbox/.pi/agent/models.json && grep -q '\"$_pi_want\"' /sandbox/.pi/agent/models.json" 2>/dev/null \
     || return 1
   return 0
 }
@@ -275,6 +285,50 @@ ok "extension at /sandbox/.pi/extensions/inference-local.ts"
 "$OSH" sandbox upload "$SANDBOX" "$PI_MEM_EXT_SRC" /sandbox/.pi/extensions/ 2>&1 | tail -3 \
   || { err "memory extension upload failed"; exit 1; }
 ok "extension at /sandbox/.pi/extensions/pi-memory-tools.ts"
+
+# --- Pi model catalog (models.json) — GENERATED, so `pi --model <route>` resolves --------
+# inference-local.ts registers the `openai` provider (endpoint+key) but populates NO
+# models[], so Pi's catalog stays its 42 built-in OpenAI IDs and `pi --model
+# claude-opus-sub-max` fails a CLIENT-SIDE lookup ("Model not found") before any request.
+# Pi reads ~/.pi/agent/models.json to learn a provider's models; we GENERATE it (never a
+# hand-maintained static file — the reasoning_effort-drop lesson: don't copy data that has a
+# source of truth). Rendered by pi_render_models_json (common.sh); source is picked below.
+# Non-fatal: on failure Pi keeps its built-ins and only the litellm routes are unresolvable.
+log "Generating Pi model catalog (models.json) from the models.yml fleet superset..."
+PI_CATALOG_DIR="$(mktemp -d)"
+# Source = the models.yml FLEET SUPERSET — the EXACT set Phase 04h widens the pi key to:
+# (["local","local-heavy"] + every declared model) | unique. This must NOT be sourced from
+# the live key's /key/info allowlist: THIS PHASE (15) RUNS BEFORE 04h (order is
+# "… 14 15 16 … 20 04h 26"), so at generate-time the key is still the NARROW 2-model mint
+# (PI_SUPERSET_JSON above) — a catalog built from it would OMIT the shipped default and Pi
+# would fail "Model not found" on a genuinely fresh install (it only *looked* fixed on a box
+# whose .env carried a prior 04h-widened key). The models.yml superset is timing-independent,
+# a strict superset of anything the key will ever allow (so any future `model assign pi X`
+# target is already resolvable — no re-install needed for the CATALOG), and static (no
+# provider-health flap, unlike /v1/models). The runtime key stays the real enforcement
+# boundary: LiteLLM 403s a not-yet-widened cloud model server-side — a truthful, actionable
+# signal — versus the client-side "Model not found" dead-end this fixes. (Caveat: `model
+# assign pi X` still does NOT refresh PI_DEFAULT_MODEL in .env until the next `install 15` —
+# a separate, filed follow-up; the catalog side is fully covered here.)
+_pi_allow="$(yq -r '(["local","local-heavy"] + (.models | keys)) | unique | .[]' "$MODELS_YML" 2>/dev/null || true)"
+# Fallback: only if models.yml is unreadable — register at least the resolved default so Pi runs.
+[[ -z "$_pi_allow" ]] && _pi_allow="$PI_DEFAULT"
+# Basename MUST be models.json — `sandbox upload` preserves it into the target dir.
+# Rendered by the shared pi_render_models_json (common.sh) — same code the regression test drives.
+# GUARD the render too (not just the upload): keep the block genuinely non-fatal as the header
+# claims — a render failure must NOT abort phase 15 with a raw traceback; Pi keeps its built-ins.
+if printf '%s\n' "$_pi_allow" | pi_render_models_json "$PI_CATALOG_DIR/models.json" "http://host.docker.internal:4000/v1"; then
+  "$OSH" sandbox exec -n "$SANDBOX" --no-tty -- \
+    /bin/sh -c 'mkdir -p /sandbox/.pi/agent' 2>&1 | tail -3 || true
+  if "$OSH" sandbox upload "$SANDBOX" "$PI_CATALOG_DIR/models.json" /sandbox/.pi/agent/ 2>&1 | tail -3; then
+    ok "Pi model catalog at /sandbox/.pi/agent/models.json ($(printf '%s\n' "$_pi_allow" | grep -c .) models — the fleet superset)"
+  else
+    warn "Pi model catalog upload failed — 'pi --model <litellm route>' may report 'Model not found'"
+  fi
+else
+  warn "Pi model catalog render failed — Pi keeps its built-in models; litellm routes unresolvable until the next 'install 15'"
+fi
+rm -rf "$PI_CATALOG_DIR"
 
 # --- Honcho peer for Pi (best-effort; non-fatal) --------------------------
 # Pi writes to its own peer namespace so its memory is namespace-isolated
