@@ -143,6 +143,13 @@ services:
     ports: [6379, 3010] # 3010 on host → 3000 in container (DEPRECATED: see alias falkordb-ui)
     bind: 127.0.0.1
     phase: "02"
+    upgrade:
+      # METADATA-ONLY (no method — up_docker stays the handler; dispatch-neutral
+      # under the method-aware whitelist). Rollback insurance before a recreate
+      # onto a NEW image: redis-cli SAVE flushes the in-RAM graph tail to the
+      # persistent volume, then data/falkor is snapshotted (single rolling slot).
+      presave: redis
+      datadir: data/falkor
     open_url: http://falkordb-ui:3000
     alias: falkordb
     host_ip: 127.0.10.7
@@ -180,6 +187,12 @@ services:
     bind: 127.0.0.1
     health: http://qdrant:6333/collections
     phase: "02"
+    upgrade:
+      # METADATA-ONLY (no method — up_docker stays the handler). Snapshot
+      # data/qdrant before a recreate onto a NEW image: qdrant migrates storage
+      # FORWARD irreversibly on major bumps — the snapshot is the BEST-EFFORT
+      # rollback (live copy, no quiesce: ~crash-consistent, not guaranteed).
+      datadir: data/qdrant
     open_url: http://qdrant:6333/dashboard
     alias: qdrant
     host_ip: 127.0.10.5

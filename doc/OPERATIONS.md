@@ -574,6 +574,17 @@ fix: `brew trust <tap>`).
 - The green "everything up to date" is **suppressed** when any row is `unknown`/`rebuild`
   (it used to over-claim currency for services it never actually checked).
 
+**Memory-store safety.** The stateful memory stores keep their content across
+upgrades: honcho's Postgres (agent memory + LiteLLM keys) lives in a named
+volume, falkordb/qdrant persist via bind mounts under `data/`. Additionally,
+before recreating falkordb/qdrant onto a genuinely NEW image, `upgrade` flushes
+redis-family in-RAM state (`SAVE`) and takes a rolling snapshot
+(`data/<x>.pre-upgrade`, capped by `AI_STACK_SNAPSHOT_MAX_MB`, default 4096) so
+an irreversible storage migration can be rolled back — swap the dir back and
+pull the old digest (printed during the run). Wipes only come from the
+explicitly destructive verbs (`reset --confirm`, `compose down -v`), never from
+`upgrade`.
+
 **See versions anytime (read-only):** `stack status --versions` prints a focused
 installed-vs-available table for the whole stack (`--local` = installed only, no network).
 

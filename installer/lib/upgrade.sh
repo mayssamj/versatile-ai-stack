@@ -557,6 +557,63 @@ reverify() {
 # Each handler sets RESULT (a string) and STRATEGY (for reverify dispatch), or
 # records its own row + returns when there is nothing to reverify (manual/skip).
 
+# _stateful_preupgrade_guard <svc> — ROLLBACK INSURANCE for stateful docker
+# stores, run only when a recreate onto a genuinely NEW image is imminent
+# (that is when an irreversible storage migration can happen — audit F5).
+# Data-driven markers (metadata-only upgrade: keys — dispatch-neutral under the
+# method-aware dispatch): `upgrade.presave: redis` → bounded `redis-cli SAVE`
+# so the in-RAM tail is flushed to the persistent volume before the stop;
+# `upgrade.datadir: data/<x>` → ATOMIC rolling snapshot (<dir>.pre-upgrade,
+# single slot — the previous snapshot is replaced, never unbounded disk growth)
+# capped at AI_STACK_SNAPSHOT_MAX_MB (default 4096) so a grown store can't
+# wedge a sweep with a multi-GB copy. INSURANCE, NOT A GATE: any failure warns
+# LOUDLY and the upgrade proceeds (identical to pre-guard behavior — the volume
+# itself still persists; only the rollback convenience is missing).
+# Restore recipe: stop the service, swap <dir>.pre-upgrade back over <dir>,
+# start with the OLD image (the digest-moved note prints its pull command).
+_stateful_preupgrade_guard() {
+  local svc="$1" datadir presave abs snap sz max
+  datadir="$(svc_upgrade "$svc" datadir)"
+  presave="$(svc_upgrade "$svc" presave)"
+  if [[ "$datadir" == "-" && "$presave" == "-" ]]; then return 0; fi
+  if [[ "$presave" == "redis" ]]; then
+    note "$svc: pre-upgrade SAVE (flush in-RAM state to the persistent volume)"
+    if ! _vz_bounded 30 docker exec "$svc" redis-cli SAVE >/dev/null 2>&1; then
+      warn "$svc: pre-upgrade SAVE failed — proceeding; the last on-disk snapshot may lag by up to one save interval"
+    fi
+  fi
+  if [[ "$datadir" != "-" && -n "$datadir" ]]; then
+    datadir="${datadir%/}"   # a trailing-slash typo would nest the snapshot INSIDE the live dir
+    abs="$AI_STACK/$datadir"; [[ "$datadir" == /* ]] && abs="$datadir"
+    if [[ -d "$abs" ]]; then
+      max="${AI_STACK_SNAPSHOT_MAX_MB:-4096}"
+      sz="$(du -sm "$abs" 2>/dev/null | awk '{print $1}' || echo 0)"
+      if (( sz > max )); then
+        warn "$svc: ${datadir} is ${sz}MB (> ${max}MB snapshot cap) — NOT auto-snapshotted; back it up manually if you may need a rollback (cap: AI_STACK_SNAPSHOT_MAX_MB)"
+      else
+        snap="${abs}.pre-upgrade"
+        rm -rf "${snap}.tmp" 2>/dev/null || true
+        if cp -a "$abs" "${snap}.tmp" 2>/dev/null; then
+          rm -rf "$snap" 2>/dev/null || true
+          # The success note is GATED on the finalize mv (review: an unconditional
+          # note after the old snapshot was already destroyed is a false
+          # 'you're covered' — the exact unverified-success class this repo bans).
+          if mv "${snap}.tmp" "$snap" 2>/dev/null; then
+            note "$svc: snapshotted ${datadir} → ${datadir}.pre-upgrade (${sz}MB, single rolling slot; best-effort LIVE copy — with no presave it is ~crash-consistent, not guaranteed. Restore = stop, swap the dir back, pull the OLD digest printed above)"
+          else
+            rm -rf "${snap}.tmp" 2>/dev/null || true
+            warn "$svc: snapshot finalize (mv) FAILED — proceeding WITHOUT rollback insurance (no snapshot at ${datadir}.pre-upgrade)"
+          fi
+        else
+          rm -rf "${snap}.tmp" 2>/dev/null || true
+          warn "$svc: snapshot of ${datadir} FAILED — upgrade proceeds WITHOUT rollback insurance"
+        fi
+      fi
+    fi
+  fi
+  return 0
+}
+
 up_docker() {
   local svc="$1"
   local image cur new
@@ -634,6 +691,7 @@ up_docker() {
   fi
 
   note "$svc: digest moved (old=$cur) — rollback with: docker pull ${image}@${cur}"
+  _stateful_preupgrade_guard "$svc"
   if recreate_via_start_script "$svc"; then
     RESULT="upgraded"
   else

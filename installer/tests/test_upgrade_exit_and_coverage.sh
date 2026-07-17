@@ -622,4 +622,36 @@ grep -qF 'health/readiness' "$ROOT/installer/smoke/01.sh" && ok "smoke 01 probes
 [[ "$(yq -r '.services.openshell.upgrade.formula' "$ROOT/services.yml" 2>/dev/null)" == "openshell" ]] && ok "openshell → brew formula block" || bad "openshell block missing"
 grep -q 'AI_STACK_UPGRADE' "$ROOT/vz-ai-stack.sh" && bad "run_phase/install path sets AI_STACK_UPGRADE (must stay upgrade-only)" || ok "install path never sets AI_STACK_UPGRADE (gate edits provably inert on 'install')"
 
+echo "== v3.4 (stateful guard): presave + rolling snapshot before new-image recreate =="
+_gf2="$(mktemp)"; sed -n '/^_stateful_preupgrade_guard() {/,/^}/p' "$UPG" > "$_gf2"
+_guard_run(){ # DATADIR PRESAVE SAVE_RC CP_RC SZ MV_RC → "rc|calls|snap-exists"
+  bash -c '
+    set -Eeuo pipefail; shopt -s inherit_errexit; source "$1"
+    DATADIR="$2"; PRESAVE="$3"; SAVE_RC="$4"; CP_RC="$5"; SZ="$6"; MV_RC="$7"
+    M="$(mktemp -d)"; AI_STACK="$M"
+    if [[ -n "$DATADIR" && "$DATADIR" != "-" ]]; then mkdir -p "$M/$DATADIR"; fi
+    svc_upgrade(){ case "$2" in datadir) echo "$DATADIR";; presave) echo "$PRESAVE";; *) echo "-";; esac; }
+    note(){ printf "note;" >> "$M/calls"; }; warn(){ printf "warn;" >> "$M/calls"; }
+    _vz_bounded(){ shift; "$@"; }
+    docker(){ printf "save;" >> "$M/calls"; return "$SAVE_RC"; }
+    du(){ echo "$SZ ."; }
+    # cp stub REALLY creates the tmp dir (so the finalize mv is genuinely
+    # exercised — a no-tmp stub let a swallowed mv pass unnoticed, QA finding);
+    # mv stub controls the finalize outcome.
+    cp(){ printf "cp;" >> "$M/calls"; if [[ "$CP_RC" == 0 ]]; then command mkdir -p "${3:-}"; fi; return "$CP_RC"; }
+    mv(){ printf "mv;" >> "$M/calls"; if [[ "$MV_RC" == 0 ]]; then command mv "${1:-}" "${2:-}" 2>/dev/null || true; fi; return "$MV_RC"; }
+    _stateful_preupgrade_guard svcx; rc=$?
+    s=no; [[ -d "$M/$DATADIR.pre-upgrade" ]] && s=yes
+    echo "$rc|$(cat "$M/calls" 2>/dev/null || true)|$s"; rm -rf "$M"' _ "$_gf2" "$1" "$2" "$3" "$4" "$5" "$6" 2>/dev/null
+}
+r="$(_guard_run - - 0 0 10 0)";            [[ "$r" == "0||no" ]] && ok "no markers → pure no-op" || bad "guard no-op wrong: '$r'"
+r="$(_guard_run data/x redis 0 0 10 0)";   [[ "$r" == "0|note;save;cp;mv;note;|yes" ]] && ok "presave+snapshot: SAVE → cp → mv → note; snapshot EXISTS" || bad "guard happy path wrong: '$r'"
+r="$(_guard_run data/x redis 1 0 10 0)";   [[ "$r" == "0|note;save;warn;cp;mv;note;|yes" ]] && ok "SAVE failure → warn + snapshot still taken + PROCEED (insurance, not a gate)" || bad "guard save-fail wrong: '$r'"
+r="$(_guard_run data/x - 0 1 10 0)";       [[ "$r" == "0|cp;warn;|no" ]] && ok "snapshot cp failure → loud warn + proceed, rc 0" || bad "guard cp-fail wrong: '$r'"
+r="$(_guard_run data/x - 0 0 10 1)";       [[ "$r" == "0|cp;mv;warn;|no" ]] && ok "finalize mv failure → WARN not a false 'snapshotted' note (honesty gate)" || bad "guard mv-fail wrong: '$r'"
+r="$(_guard_run data/x - 0 0 9999 0)";     [[ "$r" == "0|warn;|no" ]] && ok "size cap exceeded → warn, NO copy (sweep can't wedge on a multi-GB store)" || bad "guard size-cap wrong: '$r'"
+grep -B3 -F '_stateful_preupgrade_guard "$svc"' "$UPG" | grep -qF 'digest moved' && ok "guard runs ONLY after a real digest move, before the recreate" || bad "guard call site not gated on a genuine new image"
+[[ "$(yq -r '.services.falkordb.upgrade.presave' "$ROOT/services.yml" 2>/dev/null)" == "redis" && "$(yq -r '.services.qdrant.upgrade.datadir' "$ROOT/services.yml" 2>/dev/null)" == "data/qdrant" ]] && ok "falkordb/qdrant declare the stateful markers (metadata-only, no method)" || bad "stateful markers missing in services.yml"
+rm -f "$_gf2"
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"; (( FAIL == 0 ))

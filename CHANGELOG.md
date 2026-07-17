@@ -4,6 +4,15 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-17
+
+### Features
+
+- upgrade stateful-store rollback insurance (memory-safety, audit F5): before recreating falkordb/qdrant onto a genuinely NEW image, the docker handler now flushes redis-family in-RAM state (upgrade.presave: redis → bounded SAVE) and takes an atomic rolling snapshot of the declared data dir (<dir>.pre-upgrade, single slot, AI_STACK_SNAPSHOT_MAX_MB cap 4096) — so an irreversible storage migration can be rolled back by swapping the dir back and pulling the old digest (printed in the run). Insurance, not a gate: failures warn loudly and the upgrade proceeds; metadata-only services.yml markers, dispatch-neutral. Memory-content safety of every store verified live first (honcho pgdata volume, falkordb SAVE-on-SIGTERM probe survived a restart, qdrant bind mount, mempalace config-guarded init)
+
+---
+
+
 ## 2026-07-16
 
 ### Tests & Hardening
