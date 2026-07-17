@@ -368,25 +368,25 @@ litellm_settings:
   # keep getting Opus (just via OpenRouter) when Anthropic's API
   # is down, instead of silently swapping to GPT.
   fallbacks:
-    # INTENTIONALLY EMPTY — there are NO active cloud->local fallback entries (verified
-    # 2026-06-30: `yq '.litellm_settings.fallbacks'` => null). A Meridian/codex/cloud failure —
-    # INCLUDING a corporate Zscaler TLS-interception block — returns a VISIBLE LiteLLM 503; it
-    # NEVER fails over to a local model. DELIBERATE: on the M4/24GB box a reactive local-model
-    # load would risk an OOM/swap-thrash (the hard no-local directive), and a Zscaler TLS hiccup
-    # must NOT silently degrade the whole platform onto a weak 8B local model. DO NOT add a
-    # cloud->local fallback here. There is NO cloud->local failover: a Meridian /
-    # codex-bridge / Sakana / cloud failure returns a VISIBLE LiteLLM 503 rather
-    # than silently degrading onto the local model (deliberate — see the note above).
-      # Cross-model cloud chains (commented, for reference). The openrouter-* /
-      # openai-gpt* targets need provider API keys, so those hops dangle until a
-      # key is set. local / local-heavy / claude-opus-4.7 are no longer in the
-      # model_list (removed in the version-less rename), so no fallback for them.
-      #- claude-opus-4.7: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
-      #- claude-sonnet-4.6: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
-      #- openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus-4.7"]
-      #- openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet-4.6"]
-      # Phase 01·H adds the arize_phoenix callback to the list above:
-      # callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
+  # INTENTIONALLY EMPTY — there are NO active cloud->local fallback entries (verified
+  # 2026-06-30: `yq '.litellm_settings.fallbacks'` => null). A Meridian/codex/cloud failure —
+  # INCLUDING a corporate Zscaler TLS-interception block — returns a VISIBLE LiteLLM 503; it
+  # NEVER fails over to a local model. DELIBERATE: on the M4/24GB box a reactive local-model
+  # load would risk an OOM/swap-thrash (the hard no-local directive), and a Zscaler TLS hiccup
+  # must NOT silently degrade the whole platform onto a weak 8B local model. DO NOT add a
+  # cloud->local fallback here. There is NO cloud->local failover: a Meridian /
+  # codex-bridge / Sakana / cloud failure returns a VISIBLE LiteLLM 503 rather
+  # than silently degrading onto the local model (deliberate — see the note above).
+  # Cross-model cloud chains (commented, for reference). The openrouter-* /
+  # openai-gpt* targets need provider API keys, so those hops dangle until a
+  # key is set. local / local-heavy / claude-opus-4.7 are no longer in the
+  # model_list (removed in the version-less rename), so no fallback for them.
+  #- claude-opus-4.7: ["openrouter-claude-opus-4.7", "openrouter-claude-opus-4.7-fast", "openai-gpt-5.5-pro"]
+  #- claude-sonnet-4.6: ["openrouter-claude-sonnet-4.6", "openai-gpt-5.5"]
+  #- openai-gpt-5.5-pro: ["openrouter-gpt-5.5-pro", "claude-opus-4.7"]
+  #- openai-gpt-5.5: ["openrouter-gpt-5.5", "claude-sonnet-4.6"]
+  # Phase 01·H adds the arize_phoenix callback to the list above:
+  # callbacks: ["trace_to_file.handler", "guardrails.handler", "arize_phoenix"]
 # Guardrails — populated by Phase 01·G. Leave empty here.
 guardrails: []
 general_settings:

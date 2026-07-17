@@ -26,7 +26,7 @@ for a in "$@"; do
   case "$a" in -m|--model|-h|--help) inject_model=0 ;; esac
 done
 if (( inject_model )); then
-  exec "$HALO_BIN" --model "${HALO_MODEL:-local}" "$@"
+  exec "$HALO_BIN" --model "${HALO_MODEL:-claude-opus-sub-xhigh}" "$@"
 else
   exec "$HALO_BIN" "$@"
 fi
