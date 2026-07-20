@@ -103,9 +103,13 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   --check is non-mutating: docker/compose by registry manifest DIGEST, ollama by
   `brew outdated`, and npm/pip(uv-venv/uv-tool/uv-reqs)/git-clone/sandbox-pip/brew services by
   npm/PyPI/git ls-remote/docker-exec (bounded — a blocked registry degrades to
-  'unknown', never hangs; on a fully proxy-blocked host a full scan can take a
-  few quiet minutes of probe timeouts — not a hang). 'config' = nothing
-  independently versioned; 'manual' = real artifact, no oracle yet.
+  'unknown', never hangs). A probe CIRCUIT-BREAKER watches each upstream
+  transport (registry/pypi/npm/brew/git): after 3 consecutive probe timeouts
+  (AI_STACK_BREAKER_TRIPS; 0 disables) it skips that transport's remaining
+  checks (rows read 'unknown', disclosed) so a blocked proxy collapses the
+  scan to seconds instead of minutes. 'config' = nothing
+  independently versioned (owner-backed rows show the owning service's measured
+  version); 'manual' = real artifact, no oracle yet.
 
   Every upgrade run first prints an installed→available version report (skip with
   --no-check), and the summary's VERSION column shows what actually moved — a no-op
@@ -304,12 +308,15 @@ check_one() {
           # pins (ace declares the full 40-char SHA, the git oracle reads the short
           # one); dotted versions compare EXACTLY — '0.8.20 vs pin 0.8.2' is real
           # drift, not a prefix match (impl-council false-negative fix).
-          local _pin_drift=0
+          # A 'staged:<v>' value (sandbox-npm's host-file fallback — a DECLARATION,
+          # not a measurement) is compared stripped and the warn names its source.
+          local _pin_drift=0 _cmp="${inst#staged:}" _src="installed"
+          [[ "$inst" == staged:* ]] && _src="host-staged"
           if [[ "$vpin" =~ ^[0-9a-f]{7,40}$ ]]; then
-            if [[ "$inst" != "$vpin"* && "$vpin" != "$inst"* ]]; then _pin_drift=1; fi
-          elif [[ "$inst" != "$vpin" ]]; then _pin_drift=1; fi
+            if [[ "$_cmp" != "$vpin"* && "$vpin" != "$_cmp"* ]]; then _pin_drift=1; fi
+          elif [[ "$_cmp" != "$vpin" ]]; then _pin_drift=1; fi
           if (( _pin_drift )); then
-            warn "$svc: installed ($inst) != declared pin ($vpin) — pin drift; align services.yml upgrade.pin with the phase's pin variable"
+            warn "$svc: $_src ($inst) != declared pin ($vpin) — pin drift; align services.yml upgrade.pin with the phase's pin variable"
           fi
         else
           # No oracle can measure it: show the DECLARED value, visibly marked as a
@@ -320,7 +327,21 @@ check_one() {
         if [[ -n "$avail" && "$avail" != "-" ]]; then CHECK_AVAIL="$avail"; fi
         return 0
       fi
-      if svc_config_only "$svc"; then CHECK_STATUS="config"; return 0; fi
+      if svc_config_only "$svc"; then
+        CHECK_STATUS="config"
+        # Owner-version display (council): a config surface whose runtime is
+        # OWNED by another service (hermes_telegram/slack → hermes_fleet) shows
+        # the owner's measured version in CURRENT — the legend explains it, the
+        # status stays 'config' (never actionable). Local bounded read; '-'
+        # when the owner's sandbox is down. Deliberate JSON delta: current
+        # flips '-'→<version> for these rows.
+        local _own; _own="$(svc_upgrade "$svc" owner)"
+        if [[ -n "$_own" && "$_own" != "-" && "$_own" != "$svc" ]] && [[ "$(svc_type "$_own")" != "unknown" ]]; then
+          local _ov; _ov="$(svc_installed_version "$_own" 2>/dev/null || echo -)"
+          if [[ -n "$_ov" && "$_ov" != "-" ]]; then CHECK_CUR="$_ov"; fi
+        fi
+        return 0
+      fi
       inst="$(svc_installed_version "$svc" 2>/dev/null || echo -)"
       if [[ -z "$inst" || "$inst" == "-" ]]; then CHECK_STATUS="manual"; return 0; fi
       CHECK_CUR="$inst"
@@ -352,6 +373,18 @@ outdated_bucket() {
     config)           echo config ;;
     *)                echo ignore ;;
   esac
+  return 0
+}
+
+# _breaker_disclose — after a scan loop: print the circuit-breaker disclosure
+# ONCE (if any transport opened) and drop this process's state file so the
+# same-process mutate phase never sees an OPEN circuit (council A9).
+_breaker_disclose() {
+  local _ot; _ot="$(_vz_breaker_opened_list)"
+  if [[ -n "$_ot" ]]; then
+    warn "probe circuit-breaker OPEN (${AI_STACK_BREAKER_TRIPS:-3} consecutive upstream-probe timeouts, no intervening success) on: ${_ot} — remaining probes on those transports were SKIPPED (rows read 'unknown', disclosed in the unconfirmed bucket). The network/proxy looks blocked there; re-run when it recovers. AI_STACK_BREAKER_TRIPS=0 disables."
+  fi
+  rm -f "$(_vz_breaker_file)" 2>/dev/null || true
   return 0
 }
 
@@ -1624,12 +1657,14 @@ upgrade_main() {
   if (( CHECK )); then
     local -a list=(); collect_targets list "${target:-all}"
     local svc
+    _vz_breaker_reset
     for svc in "${list[@]}"; do
       [[ "$(svc_type "$svc")" == "unknown" ]] && { err "Unknown service: $svc"; exit 2; }
       check_one "$svc"
       CHECK_ROWS+=("$svc"$'\t'"$(svc_type "$svc")"$'\t'"$CHECK_CUR"$'\t'"$CHECK_AVAIL"$'\t'"$CHECK_STATUS")
     done
     print_check_report
+    _breaker_disclose
     return 0
   fi
 
@@ -1653,6 +1688,7 @@ upgrade_main() {
     local -a list=(); collect_targets list "${target:-all}"
     local svc; local -a skipped_manual=() unconfirmed=() pinned_held=() config_svcs=()
     hdr "Scanning for available updates…"
+    _vz_breaker_reset
     for svc in "${list[@]}"; do
       # Per-service: only the uv-reqs oracle writes the behind-names file —
       # never leak a stale list into another row's note.
@@ -1703,6 +1739,7 @@ upgrade_main() {
     if (( ${#unconfirmed[@]} )); then
       warn "${#unconfirmed[@]} service(s) with currency NOT confirmed (registry/proxy/brew upstream unreachable, uninstalled, or locally-built) — NOT upgraded by --outdated: ${unconfirmed[*]}. Re-check when the upstream is reachable, or 'upgrade <svc>' to rebuild/pull explicitly."
     fi
+    _breaker_disclose
     if (( ${#targets[@]} == 0 )); then
       ok "Nothing auto-checkable is outdated — docker/compose/brew currency is up to date."
       return 0
@@ -1744,12 +1781,14 @@ upgrade_main() {
     note "Checking installed vs available versions before upgrading… (bounded; pass --no-check to skip)"
     CHECK_ROWS=()
     local psvc
+    _vz_breaker_reset
     for psvc in "${targets[@]}"; do
       [[ "$(svc_type "$psvc")" == "unknown" ]] && continue
       check_one "$psvc"
       CHECK_ROWS+=("$psvc"$'\t'"$(svc_type "$psvc")"$'\t'"$CHECK_CUR"$'\t'"$CHECK_AVAIL"$'\t'"$CHECK_STATUS")
     done
     PREFLIGHT=1; print_check_report; PREFLIGHT=0
+    _breaker_disclose
     CHECK_ROWS=()
   fi
 

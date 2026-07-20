@@ -330,6 +330,7 @@ r="$(bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit; source "$1"
 r="$(bash -c 'set -Eeuo pipefail; shopt -s inherit_errexit; source "$1"
   svc_type(){ echo node-bg; }
   svc_upgrade_pin(){ echo "-"; }; svc_config_only(){ return 0; }
+  svc_upgrade(){ echo "-"; }   # v5: the config branch reads upgrade.owner
   warn(){ :; }; DOCKER_OK=1
   check_one svcx; echo "$CHECK_STATUS"' _ "$_ck" 2>/dev/null)"
 [[ "$r" == "config" ]] && ok "check_one: config-only → status config" || bad "check_one config wrong: '$r'"

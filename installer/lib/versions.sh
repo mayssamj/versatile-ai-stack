@@ -74,10 +74,107 @@ image_is_local_built() {
 img_local_digest() {
   docker_local_digest "$1" | sed 's/.*@//' || true
 }
+# ======================= probe circuit-breaker (scan-only) ====================
+# After AI_STACK_BREAKER_TRIPS consecutive slow-empty upstream probes on ONE
+# transport, further probes on THAT transport short-circuit to empty ('unknown'
+# classification → the disclosed unconfirmed bucket, never swept) so a blocked
+# proxy/network can't make a scan crawl through ~5-7 min of quiet timeouts.
+# DESIGN CONSTRAINTS (council-adjudicated):
+#   - rc-based timeout detection is impossible here (every probe pipeline
+#     swallows rc via `|| true`/pipes; curl --max-time fires before the alarm)
+#     → ELAPSED+EMPTY heuristic: empty result after ≥ AI_STACK_BREAKER_SLOW_S
+#     wall-seconds = a trip; ANY non-empty result resets that transport.
+#   - every probe runs inside $() (subshell) → state lives in a FILE. The name
+#     carries $$ (stable across command substitution) PLUS a per-process nonce,
+#     so a crashed run's leftover can NEVER pre-open a new process (default-
+#     closed BY CONSTRUCTION — no reliance on entry-point resets).
+#   - versions.sh is common.sh-independent (hermetic suites): path derives from
+#     AI_STACK, never $STATE_DIR; ALL I/O is guarded; an absent/unwritable state
+#     dir leaves the breaker INERT (today's behavior).
+#   - SCAN-ONLY: gates svc_available_version + img_remote_digest. Local reads
+#     (_iv_*, docker-socket sandbox probes) and every mutate handler/reverify
+#     stay ungated — an upgrade the operator asked for must try the network.
+# Knobs: AI_STACK_BREAKER_TRIPS (default 3; 0 disables), AI_STACK_BREAKER_SLOW_S
+# (default 8 — the probes themselves are bounded at 10-12s).
+__VZ_BREAKER_NONCE=$RANDOM
+_vz_breaker_file() { printf '%s' "$AI_STACK/installer/state/.probe_breaker.$$.${__VZ_BREAKER_NONCE}"; return 0; }
+
+# _vz_now — injectable clock (tests stub it file-backed; SECONDS ticks for real
+# use and is inherited read-consistently at the wrapper level).
+_vz_now() { printf '%s' "$SECONDS"; return 0; }
+
+# _vz_breaker_reset — scan-entry hygiene: drop this process's state and sweep
+# day-old leftovers from crashed runs. Safe with an absent dir.
+_vz_breaker_reset() {
+  rm -f "$(_vz_breaker_file)" 2>/dev/null || true
+  find "$AI_STACK/installer/state" -maxdepth 1 -name '.probe_breaker.*' -mtime +0 -delete 2>/dev/null || true
+  return 0
+}
+
+# _vz_breaker_open <transport> — is THIS transport's circuit open?
+_vz_breaker_open() {
+  local t="$1" f; f="$(_vz_breaker_file)"
+  [[ -f "$f" ]] || return 1
+  grep -q "^OPEN $t\$" "$f" 2>/dev/null
+}
+
+# _vz_breaker_opened_list — the transports currently open (for the disclosure).
+_vz_breaker_opened_list() {
+  local f; f="$(_vz_breaker_file)"
+  [[ -f "$f" ]] || return 0
+  sed -n 's/^OPEN //p' "$f" 2>/dev/null | tr '\n' ' ' | sed 's/ $//' 2>/dev/null || true
+  return 0
+}
+
+# _vz_breaker_record <transport> <elapsed-secs> <result> — classify one probe
+# outcome. Non-empty result → reset the transport's consecutive counter.
+# Empty + slow (≥ SLOW_S) → count a trip; at TRIPS, mark the transport OPEN.
+# Fast-empty (ordinary miss: 404/refusal/not-installed) is NOT a trip.
+_vz_breaker_record() {
+  local t="$1" el="$2" res="$3" f trips slow n
+  # SHAPE-validate the operator knobs BEFORE arithmetic: a word value (e.g.
+  # AI_STACK_BREAKER_TRIPS=off, a plausible typo for the documented =0) is
+  # looked up as a VARIABLE NAME by bash arithmetic — a FATAL set -u abort that
+  # would kill the whole scan at the first docker row (impl-council, proven).
+  trips="${AI_STACK_BREAKER_TRIPS:-3}"; [[ "$trips" =~ ^[0-9]+$ ]] || trips=3
+  (( trips > 0 )) || return 0
+  slow="${AI_STACK_BREAKER_SLOW_S:-8}"; [[ "$slow" =~ ^[0-9]+$ ]] || slow=8
+  f="$(_vz_breaker_file)"
+  if [[ -n "$res" && "$res" != "-" ]]; then
+    if [[ -f "$f" ]] && grep -q "^T $t " "$f" 2>/dev/null; then
+      # Semicolon, NOT && — grep -v exits 1 when it filters the file to empty
+      # (the sole-counter case), which would skip the mv and leave the counter
+      # standing, defeating the reset (caught by the suite).
+      { grep -v "^T $t " "$f" 2>/dev/null > "$f.tmp"; mv "$f.tmp" "$f"; } 2>/dev/null || true
+    fi
+    return 0
+  fi
+  (( el >= slow )) || return 0
+  # || true: pipefail makes a missing-file grep rc-2 the PIPELINE rc even though
+  # head succeeds — an unguarded assignment aborts the first-ever trip under
+  # set -Eeuo (caught by the suite's trace).
+  n="$(grep "^T $t " "$f" 2>/dev/null | awk '{print $3}' | head -1 || true)"
+  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+  n=$((n+1))
+  { grep -v "^T $t " "$f" 2>/dev/null > "$f.tmp"; echo "T $t $n" >> "$f.tmp"
+    if (( n >= trips )); then grep -q "^OPEN $t\$" "$f.tmp" 2>/dev/null || echo "OPEN $t" >> "$f.tmp"; fi
+    mv "$f.tmp" "$f"; } 2>/dev/null || true
+  return 0
+}
+
 # Remote index/manifest digest from the registry (manifest only). Bounded so a
-# Zscaler-blocked / hung registry can't stall the caller.
+# Zscaler-blocked / hung registry can't stall the caller; breaker-gated on the
+# 'registry' transport (open circuit → empty → 'unknown', identical to today's
+# blocked-registry outcome, always disclosed via the unconfirmed bucket).
 img_remote_digest() {
-  _vz_bounded 10 docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true
+  if _vz_breaker_open registry; then return 0; fi
+  local _t0 _t1 _out
+  _t0="$(_vz_now)"
+  _out="$(_vz_bounded 10 docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+  _t1="$(_vz_now)"
+  _vz_breaker_record registry "$(( _t1 - _t0 ))" "$_out"
+  printf '%s' "$_out"
+  return 0
 }
 # check_image <image> -> pinned | build | up-to-date | update-available | unknown
 check_image() {
@@ -87,6 +184,11 @@ check_image() {
   r="$(img_remote_digest "$image")"
   l="$(img_local_digest "$image")"
   if [[ -z "$r" ]]; then
+    # OPEN breaker → honest 'unknown' BEFORE the l-empty→build heuristic
+    # (council A3: a never-pulled registry image must not read 'build' — a
+    # bucket the --outdated disclosures ignore — just because the circuit
+    # opened; 'unknown' lands in the disclosed unconfirmed bucket).
+    if _vz_breaker_open registry; then echo unknown; return 0; fi
     [[ -z "$l" ]] && { echo build; return 0; }
     echo unknown; return 0
   fi
@@ -385,15 +487,66 @@ _iv_uvtool() {
 # 'unknown', never a hang. SELF-CONTAINED docker gate: ${DOCKER_OK:-1}, because
 # status --versions sources this file without upgrade.sh's DOCKER_OK probe and a
 # bare $DOCKER_OK would be a set -u unbound abort (check-72 crash family).
+# _vz_running_container <name-prefix> — the FIRST running container whose name
+# is ANCHORED to '<prefix>-…'. docker's --filter name= is an unanchored regex
+# (name=openshell-pi-v1 would also match openshell-pi-v10-…) — post-filter in
+# bash so a sibling sandbox can never be exec'd by mistake (council A7).
+_vz_running_container() {
+  local pref="$1" n
+  while IFS= read -r n; do
+    if [[ "$n" == "${pref}-"* || "$n" == "$pref" ]]; then printf '%s' "$n"; return 0; fi
+  done < <(_vz_bounded 10 docker ps --filter "name=$pref" --filter "status=running" --format '{{.Names}}' 2>/dev/null || true)
+  return 0
+}
+
 _iv_sandbox_pip() {
   local svc="$1" pkg pref c out
   pkg="$(svc_upgrade "$svc" pkg)"; pref="$(svc_upgrade "$svc" container)"
   { [[ "$pkg" == "-" || -z "$pkg" ]] || [[ "$pref" == "-" || -z "$pref" ]]; } && { echo "-"; return 0; }
   if (( ${DOCKER_OK:-1} == 0 )) || ! command -v docker >/dev/null 2>&1; then echo "-"; return 0; fi
-  c="$(_vz_bounded 10 docker ps --filter "name=$pref" --filter "status=running" --format '{{.Names}}' 2>/dev/null | head -1 || true)"
+  c="$(_vz_running_container "$pref")"
   [[ -z "$c" ]] && { echo "-"; return 0; }
   out="$(_vz_bounded 10 docker exec "$c" /sandbox/.venv/bin/pip show "$pkg" 2>/dev/null | awk -F': ' '/^Version:/{print $2}' | head -1 || true)"
   printf '%s' "${out:--}"
+}
+
+# _iv_sandbox_npm <svc> — installed version of an npm package INSIDE an
+# openshell sandbox (pi). Sources, in honesty order (council A2):
+#   1. LIVE: docker exec into the RUNNING `upgrade.container` sandbox, cat the
+#      package's package.json — the only source that yields a BARE version.
+#   2. STAGED fallback (sandbox Exited OR docker down): the host
+#      `upgrade.version_file` dependency pin, rendered as 'staged:<v>' — a
+#      DECLARATION, visibly distinct from a measurement (a bumped file with a
+#      stale bootstrap tarball can disagree with the sandbox).
+# Parsing is host-side python3 with the scoped pkg name ('@scope/name') passed
+# as ARGV — never interpolated into yq/jq/sed (house quoting law). LOCAL only.
+_iv_sandbox_npm() {
+  local svc="$1" pkg pref vfile c out
+  pkg="$(svc_upgrade "$svc" pkg)"; pref="$(svc_upgrade "$svc" container)"
+  vfile="$(svc_upgrade "$svc" version_file)"
+  [[ "$pkg" == "-" || -z "$pkg" ]] && { echo "-"; return 0; }
+  if (( ${DOCKER_OK:-1} != 0 )) && command -v docker >/dev/null 2>&1 && [[ "$pref" != "-" && -n "$pref" ]]; then
+    c="$(_vz_running_container "$pref")"
+    if [[ -n "$c" ]]; then
+      out="$(_vz_bounded 10 docker exec "$c" cat "/sandbox/node_modules/${pkg}/package.json" 2>/dev/null \
+        | python3 -c "import sys,json
+try: print(json.load(sys.stdin).get('version',''))
+except Exception: print('')" 2>/dev/null || true)"
+      if [[ -n "$out" ]]; then printf '%s' "$out"; return 0; fi
+    fi
+  fi
+  # Staged fallback — reachable even when docker itself is down (council A7).
+  if [[ "$vfile" != "-" && -n "$vfile" ]]; then
+    local abs="$AI_STACK/$vfile"; [[ "$vfile" == /* ]] && abs="$vfile"
+    if [[ -f "$abs" ]]; then
+      out="$(python3 -c "import sys,json
+try: print(json.load(open(sys.argv[1])).get('dependencies',{}).get(sys.argv[2],''))
+except Exception: print('')" "$abs" "$pkg" 2>/dev/null || true)"
+      if [[ -n "$out" ]]; then printf 'staged:%s' "$out"; return 0; fi
+    fi
+  fi
+  echo "-"
+  return 0
 }
 
 # --- uv-reqs: multi-package requirements-file oracle (docs_mcp) ---------------
@@ -500,7 +653,15 @@ _iv_by_method() {
     sandbox-pip) _iv_sandbox_pip "$svc" ;;
     uv-reqs)     _iv_uvreqs "$svc" ;;
     brew)        _iv_brew "$svc" ;;
-    *)           echo "-" ;;
+    *)
+      # ORACLE axis (method-less blocks only — council A5: a SET-but-unknown
+      # method keeps '-', mirroring dispatch_upgrade's conservatism; the oracle
+      # can never override a real method).
+      if [[ -z "$m" || "$m" == "-" || "$m" == "none" ]]; then
+        local _o; _o="$(svc_upgrade "$svc" oracle)"
+        if [[ "$_o" == "sandbox-npm" ]]; then _iv_sandbox_npm "$svc"; return 0; fi
+      fi
+      echo "-" ;;
   esac
 }
 
@@ -607,21 +768,63 @@ _av_by_method() {
     uv-tool|sandbox-pip) _av_pip "$svc" ;;
     uv-reqs)             _av_uvreqs "$svc" ;;
     brew)                _av_brew "$svc" ;;
-    *)                   echo "-" ;;
+    *)
+      # ORACLE axis (see _iv_by_method): sandbox-npm's upstream is npm.
+      if [[ -z "$m" || "$m" == "-" || "$m" == "none" ]]; then
+        local _o; _o="$(svc_upgrade "$svc" oracle)"
+        if [[ "$_o" == "sandbox-npm" ]]; then _av_npm "$svc"; return 0; fi
+      fi
+      echo "-" ;;
   esac
 }
 
-# svc_available_version <svc> — OPT-IN, BOUNDED upstream latest, or "-".
-svc_available_version() {
-  local svc="$1" type; type="$(svc_type "$svc")"
+# _av_transport <svc> <type> — which upstream TRANSPORT the availability probe
+# for this service hits (breaker bookkeeping); '' = no network probe.
+_av_transport() {
+  local svc="$1" type="$2" m o
   case "$type" in
+    docker)       echo registry; return 0 ;;
+    brew-service) echo brew; return 0 ;;
+    npm-global)   echo npm; return 0 ;;
+    pip-package)  echo pypi; return 0 ;;
+    clone-only)   echo git; return 0 ;;
+  esac
+  m="$(svc_upgrade "$svc" method)"
+  case "$m" in
+    npm-global)                       echo npm; return 0 ;;
+    uv-venv|uv-tool|sandbox-pip|uv-reqs) echo pypi; return 0 ;;
+    git-pull)                         echo git; return 0 ;;
+    brew)                             echo brew; return 0 ;;
+  esac
+  if [[ -z "$m" || "$m" == "-" || "$m" == "none" ]]; then
+    o="$(svc_upgrade "$svc" oracle)"
+    if [[ "$o" == "sandbox-npm" ]]; then echo npm; return 0; fi
+  fi
+  echo ""
+  return 0
+}
+
+# svc_available_version <svc> — OPT-IN, BOUNDED upstream latest, or "-".
+# Breaker-gated per transport: an OPEN circuit short-circuits to '-' (classify
+# 'unknown' → the disclosed unconfirmed bucket) without touching the network.
+svc_available_version() {
+  local svc="$1" type t out _t0 _t1
+  type="$(svc_type "$svc")"
+  t="$(_av_transport "$svc" "$type")"
+  if [[ -n "$t" ]] && _vz_breaker_open "$t"; then echo "-"; return 0; fi
+  _t0="$(_vz_now)"
+  out="$(case "$type" in
     docker)                  _av_docker "$svc" ;;
     brew-service)            _av_brew "$svc" ;;
     npm-global)              _av_npm "$svc" ;;
     pip-package)             _av_pip "$svc" ;;
     clone-only)              _av_git "$svc" ;;
     *)                       _av_by_method "$svc" ;;
-  esac
+  esac)"
+  _t1="$(_vz_now)"
+  if [[ -n "$t" ]]; then _vz_breaker_record "$t" "$(( _t1 - _t0 ))" "$out"; fi
+  printf '%s' "${out:--}"
+  return 0
 }
 
 # ============================ Layer C: classify ============================

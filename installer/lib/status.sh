@@ -279,6 +279,7 @@ print_versions_view() {
   printf "$fmt" NAME TYPE INSTALLED AVAILABLE STATUS
   printf "$fmt" "--------------------------" "---------------" "------------------------" "----------------------" "------"
   local grp name type inst avail status
+  _vz_breaker_reset
   for grp in "${GROUP_ORDER[@]}"; do
     local -a vmembers=()
     for name in "${ALL_NAMES[@]}"; do [[ "$(svc_group "$name")" == "$grp" ]] && vmembers+=("$name"); done
@@ -287,6 +288,15 @@ print_versions_view() {
     for name in "${vmembers[@]}"; do
       type="$(svc_type "$name")"
       inst="$(svc_installed_version "$name" 2>/dev/null || echo -)"
+      # Owner-version display (council): a config surface whose runtime is
+      # OWNED by another service (hermes_telegram/slack → hermes_fleet) shows
+      # the owner's measured version. LOCAL bounded read — also serves --local.
+      if [[ "$inst" == "-" ]]; then
+        local _vs_own; _vs_own="$(svc_upgrade "$name" owner 2>/dev/null || echo -)"
+        if [[ -n "$_vs_own" && "$_vs_own" != "-" && "$_vs_own" != "$name" ]]; then
+          inst="$(svc_installed_version "$_vs_own" 2>/dev/null || echo -)"
+        fi
+      fi
       if (( LOCAL_ONLY )); then
         avail="-"; status="(local)"
       else
@@ -332,7 +342,14 @@ print_versions_view() {
     done
   done
   printf '\n'
-  note "STATUS: up-to-date · update-available · pinned (fixed tag or declared upgrade.pin — held, never auto-swept) · config (configuration surface — versions with the stack repo or its owning service) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'vz-ai-stack.sh upgrade <svc>'."
+  # Circuit-breaker disclosure (mirrors upgrade.sh's _breaker_disclose — this
+  # file doesn't source upgrade.sh) + per-run state cleanup.
+  local _vs_ot; _vs_ot="$(_vz_breaker_opened_list 2>/dev/null || true)"
+  if [[ -n "$_vs_ot" ]]; then
+    warn "probe circuit-breaker OPEN (${AI_STACK_BREAKER_TRIPS:-3} consecutive upstream-probe timeouts, no intervening success) on: ${_vs_ot} — remaining probes on those transports were SKIPPED (rows read 'unknown'). The network/proxy looks blocked there; re-run when it recovers. AI_STACK_BREAKER_TRIPS=0 disables."
+  fi
+  rm -f "$(_vz_breaker_file)" 2>/dev/null || true
+  note "STATUS: up-to-date · update-available · pinned (fixed tag or declared upgrade.pin — held, never auto-swept) · config (configuration surface — versions with the stack repo or its owning service; owner-backed rows show the owner's measured version) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'vz-ai-stack.sh upgrade <svc>'."
 }
 
 # `--legend` alone: print the legend and exit BEFORE print_header and before any

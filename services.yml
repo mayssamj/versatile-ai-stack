@@ -307,6 +307,12 @@ services:
     group: hermes
     desc: "Hermes gateway inside the sandbox bridging the fleet to a Telegram bot"
     phase: "20"
+    upgrade:
+      # METADATA-ONLY (no method — the sandbox-daemon type handler and the
+      # config classification stay untouched). owner: names the service whose
+      # measured version this surface RUNS — the row displays it (council:
+      # a real method here would select-but-never-bump: dishonest loop).
+      owner: hermes_fleet
     sandbox: hermes-fleet-v1
     network: openshell
     # The gateway runs INSIDE hermes-fleet-v1 (`hermes gateway run`), self-persists
@@ -338,6 +344,12 @@ services:
     group: hermes
     desc: "Hermes Slack role router inside the sandbox (Socket Mode, virtual roles + mission threads)"
     phase: "38"
+    upgrade:
+      # METADATA-ONLY (no method — the sandbox-daemon type handler and the
+      # config classification stay untouched). owner: names the service whose
+      # measured version this surface RUNS — the row displays it (council:
+      # a real method here would select-but-never-bump: dishonest loop).
+      owner: hermes_fleet
     sandbox: hermes-fleet-v1
     network: openshell
     # Slack uses SOCKET MODE — an OUTBOUND WebSocket to slack.com (Phase 04
@@ -1032,6 +1044,14 @@ services:
       # The pin is enforced in the GENERATED pi/package.json (phase 15).
       pin: "0.77.0"
       bump: "rm -f pi/pi-bootstrap.tar.gz pi/package-lock.json && vz-ai-stack.sh install 15"
+      # ORACLE-only fields (no method — dispatch untouched; council): live
+      # in-sandbox read when pi-v1 runs; else the HOST-STAGED pi/package.json
+      # pin rendered as 'staged:<v>' (a declaration, not a measurement).
+      oracle: sandbox-npm
+      pkg: "@earendil-works/pi-coding-agent"
+      container: openshell-pi-v1
+      version_file: pi/package.json
+      target: "@earendil-works/pi-coding-agent"
     network: openshell
     # No host alias; TUI is launched via `bin/pi` (openshell sandbox exec).
     # Pi calls http://host.docker.internal:4000 (LiteLLM) with PI_LITELLM_KEY.
