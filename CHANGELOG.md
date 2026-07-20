@@ -6,6 +6,10 @@ Auto-appended by `vz-ai-stack.sh`. Newest entries at the top.
 
 ## 2026-07-20
 
+### Fixes
+
+- upgrade honest-failure polish (live-caught on the first real `--outdated` sweep): (1) `upgrade`'s designed non-zero exit (`FAILED (unhealthy: upgraded)`, audit F1) tripped the top-level ERR trap → spurious `✗ ERR line 1/927` noise after the honest summary; `upgrade` now dispatches via `diag_exit` (exit code preserved for cron, trap silenced) like doctor/status. (2) litellm false-FAILED a healthy upgrade: its uvicorn+Prisma cold start after a real image move outlives reverify's 5×4s readiness grace (readiness returned 200 shortly after the run); new per-service `upgrade.grace_s` (shape-validated ≤4 digits — an int64-overflow value would wrap bash arithmetic to zero probes; widens-only; applies ONLY to services the run actually mutated, so a pre-existing outage never stalls a routine sweep for the widened window) — litellm declares 120s.
+
 ### Features
 
 - sandbox version oracles + probe circuit-breaker: pi's `pinned` row now shows a MEASURED version — a live in-sandbox read while the `pi-v1` sandbox runs, else the host-staged `pi/package.json` pin rendered as `staged:<v>` (visibly a declaration, not a measurement), with pin-drift warnings naming their comparand (in-sandbox vs host-staged); hermes_telegram/hermes_slack `config` rows display the owning hermes_fleet's measured in-sandbox version in CURRENT/INSTALLED (status stays `config`, never actionable; `-` when the fleet sandbox is down — deliberate JSON delta: `upgrade --check --json` `current` flips `-` → the owner version for these two rows); NEW scan-only per-transport probe circuit-breaker (registry/pypi/npm/brew/git) — after 3 consecutive upstream-probe timeouts (`AI_STACK_BREAKER_TRIPS`, kill-switch `0` disables; `AI_STACK_BREAKER_SLOW_S=8`) the transport's remaining probes are skipped, rows read `unknown` (disclosed in the unconfirmed bucket + a breaker warning naming the transport), collapsing a proxy-blocked host's scan from ~5-7 min to seconds; never gates reverify, mutate handlers, or local reads

@@ -64,6 +64,14 @@ services:
     # Prisma-DB SPOF (PG down → 503s), which a bare liveness ping would miss. Correct signal
     # for "did the upgrade leave litellm actually serviceable" (reverify/status).
     health: http://127.0.0.1:4000/health/readiness
+    # Metadata-only for dispatch_upgrade (method-whitelist keyed; no method here). NOTE
+    # this block also flips svc_has_upgrade true — traced harmless: the pin gate keys on
+    # upgrade.pin, absent here. grace_s: reverify waits up to this long for readiness,
+    # ONLY on a run that actually moved the image (cold start is a restart phenomenon;
+    # untouched-service probes keep the 5×4s default) — uvicorn+Prisma cold start
+    # outlives that default and false-FAILed a healthy upgrade. Max 4 digits.
+    upgrade:
+      grace_s: "120"
     depends_on: [ollama]
     phase: "01"
     alias: litellm

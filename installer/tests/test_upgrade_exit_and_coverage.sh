@@ -46,6 +46,39 @@ echo "== F1: reverify has a bounded readiness grace (no false-FAIL on cold start
 grep -qE 'tries=[0-9]+ gap=[0-9]+' "$UPG" && ok "reverify defines a bounded retry (tries/gap)" || bad "reverify has no bounded retry — a cold-starting litellm would false-FAIL"
 grep -qF 'curl -fsS --max-time 10 "$h" >/dev/null 2>&1 && { echo ok; return 0; }' "$UPG" && ok "reverify returns 'ok' on first success (retries only while failing)" || bad "reverify does not short-circuit on first success"
 
+echo "== grace_s: per-service readiness window (behavioral, REAL extracted reverify) =="
+# 2026-07-20: litellm's uvicorn+Prisma cold start after a real image move outlives the
+# 5x4s default -> false 'FAILED (unhealthy: upgraded)' on a healthy upgrade. services.yml
+# upgrade.grace_s WIDENS (never narrows) the window; word values must not set-u crash.
+RTMP="$(mktemp -d)"
+awk '/^reverify\(\)/,/^}$/' "$UPG" > "$RTMP/rev.sh"
+_rev_attempts(){ # $1 = svc_upgrade grace_s reply, $2 = RESULT passed as reverify $3 -> probe count
+  local g="$1" res="${2:-upgraded}"
+  (
+    source "$RTMP/rev.sh"
+    svc_health(){ echo "http://127.0.0.1:1/nope"; }
+    svc_upgrade(){ echo "$g"; }
+    curl(){ echo p >> "$RTMP/cnt"; return 1; }
+    sleep(){ :; }
+    : > "$RTMP/cnt"
+    reverify litellm docker "$res" >/dev/null
+    grep -c p "$RTMP/cnt" || true
+  )
+}
+[[ "$(_rev_attempts 120)" == "30" ]] && ok "grace_s=120 on a MUTATED service -> 30 probe attempts (ceil(120/4))" || bad "grace_s=120 did not widen the window: got $(_rev_attempts 120) attempts"
+[[ "$(_rev_attempts 120 up-to-date)" == "5" ]] && ok "grace_s does NOT widen for an UNTOUCHED service (informational probe stays 5 tries)" || bad "untouched-service probe got the widened window: $(_rev_attempts 120 up-to-date)"
+[[ "$(_rev_attempts off)" == "5" ]] && ok "garbage grace_s ('off') keeps the 5-try default, NO set-u crash" || bad "garbage grace_s crashed or misbehaved: got $(_rev_attempts off)"
+[[ "$(_rev_attempts -)" == "5" ]]   && ok "absent grace_s ('-') keeps the default" || bad "absent grace_s misbehaved: got $(_rev_attempts -)"
+[[ "$(_rev_attempts 8)" == "5" ]]   && ok "grace_s below the default NEVER narrows (8s -> still 5 tries)" || bad "small grace_s narrowed the window: got $(_rev_attempts 8)"
+[[ "$(_rev_attempts 9223372036854775807)" == "5" ]] && ok "int64-overflow grace_s rejected ({1,4} bound) - no negative-wrap zero-probe false warn" || bad "overflow grace_s wrapped arithmetic: got $(_rev_attempts 9223372036854775807) attempts"
+rm -rf "$RTMP"
+grep -qF 'rev="$(reverify "$svc" "$STRATEGY" "$RESULT")"' "$UPG" && ok "reverify call site passes RESULT (mutation-scoped grace)" || bad "reverify call site does not pass RESULT - grace scoping dead"
+[[ "$(yq -r '.services.litellm.upgrade.grace_s' "$ROOT/services.yml")" =~ ^[0-9]+$ ]] && ok "litellm declares a numeric upgrade.grace_s" || bad "litellm upgrade.grace_s missing or non-numeric"
+[[ "$(yq -r '.services.litellm.upgrade.method // "-"' "$ROOT/services.yml")" == "-" ]] && ok "litellm upgrade block stays metadata-only (no method - dispatch untouched)" || bad "litellm gained an upgrade.method - dispatch behavior changed"
+
+echo "== honest exit-1 must not trip the top-level ERR trap (spurious '✗ ERR' noise) =="
+grep -qE 'upgrade\)[[:space:]]+diag_exit cmd_upgrade "\$@"' "$ROOT/vz-ai-stack.sh" && ok "upgrade dispatched via diag_exit (F1 exit-1 is a RESULT, not a script fault)" || bad "upgrade dispatch not routed through diag_exit - honest failures print spurious ERR-trap noise"
+
 echo "== F1 (behavioral): drive the REAL decision line extracted from upgrade.sh =="
 # QA finding: a hand-copied decide() mirror can never fail. Extract the ACTUAL if…fi that
 # gates the downgrade and eval it with controlled rev/RESULT, so a regression on the real

@@ -543,7 +543,7 @@ restart_and_verify() {
 # Echoes "ok", "warn" (probe RAN and failed), or "n/a" (no probe for this strategy);
 # never aborts the run. "n/a" must NOT read as a failure — it means "nothing to probe".
 reverify() {
-  local svc="$1" strategy="$2" h; local -i attempt
+  local svc="$1" strategy="$2" mutated="${3:-}" h; local -i attempt
   # F1 promotes this from an advisory column to the EXIT-CODE oracle (a 'warn' now
   # fails the run). A service that was just pulled+recreated can legitimately need a
   # moment to become healthy — litellm alone documents a 60s+ uvicorn/Prisma cold
@@ -557,6 +557,21 @@ reverify() {
   #   - Bounded, never unbounded: ~5 attempts × 4s (typical cold-start ~16s; the
   #     pathological all-timeout case is capped by curl --max-time, still finite).
   local -i tries=5 gap=4
+  # services.yml upgrade.grace_s WIDENS the window per service (never narrows) for
+  # services whose image-move cold start outlives the 5×4s default — litellm's
+  # uvicorn+Prisma start is 60s+ and false-FAILED a healthy upgrade on a real digest
+  # move (2026-07-20, readiness 200 shortly after the run). Scoped to runs that
+  # ACTUALLY mutated the service (cold start is a restart phenomenon): informational
+  # probes of untouched services keep the snappy default, so a pre-existing outage
+  # never stalls a routine sweep for the widened window (§24 adversarial). Bounded
+  # {1,4} digits, ≤9999s: a bare ^[0-9]+$ lets an int64-overflow value wrap bash
+  # arithmetic NEGATIVE → zero probes → instant false warn (§24, proven); word
+  # values keep the default (the (( )) set-u crash family).
+  local _grace; _grace="$(svc_upgrade "$svc" grace_s)"
+  if [[ "$mutated" == "upgraded" || "$mutated" == "done (unverified)" ]] \
+     && [[ "$_grace" =~ ^[0-9]{1,4}$ ]] && (( _grace > tries * gap )); then
+    tries=$(( (_grace + gap - 1) / gap ))
+  fi
   h="$(svc_health "$svc")"
   if [[ "$h" != "-" && -n "$h" ]]; then
     for (( attempt=1; attempt<=tries; attempt++ )); do
@@ -1592,7 +1607,7 @@ upgrade_one() {
       # pinned* is belt-and-braces: the pin gate early-returns before this block,
       # but if a future edit reorders that, a held row must never probe (A2).
       FAILED*|skipped*|manual|planned|pinned*) rev="-" ;;
-      *) rev="$(reverify "$svc" "$STRATEGY")"
+      *) rev="$(reverify "$svc" "$STRATEGY" "$RESULT")"
          # Fail the run ONLY when THIS run actually CHANGED the artifact and the post-change
          # probe RAN and FAILED ('warn') — "the mutation we just did left the service unhealthy"
          # (SOUL §4/§18 end-to-end DoD; the exit gate reads RESULT, field 3). Two RESULT values

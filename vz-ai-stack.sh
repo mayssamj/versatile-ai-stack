@@ -1462,7 +1462,11 @@ main() {
     gc)                cmd_gc ;;
     cleanup)           cmd_cleanup "$@" ;;
     migrate-v2)        cmd_migrate_v2 ;;
-    upgrade)           cmd_upgrade "$@" ;;
+    # upgrade is MUTATING but its non-zero exit is a designed RESULT, not a script fault
+    # (audit F1: an upgraded-but-unhealthy service exits 1 so cron sees the failure). A bare
+    # dispatch let that legit exit trip the top-level ERR trap → spurious '✗ ERR line N'
+    # noise AFTER the honest failure summary. diag_exit preserves the code, silences the trap.
+    upgrade)           diag_exit cmd_upgrade "$@" ;;
     tutorial-serve)    cmd_tutorial_serve "$@" ;;
     models-serve)      cmd_models_serve "$@" ;;
     fleet-studio)      cmd_fleet_studio "$@" ;;
