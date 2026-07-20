@@ -6,6 +6,11 @@
 # UNMARKED (advice-only, print-only-by-assertion) fix body must run in EVERY mode so the guidance
 # reaches the operator. Prompted paths require the FIX_CAPABLE marker. NO network.
 set -uo pipefail
+# declare -A needs bash 4+. Under macOS's stock bash 3.2 the suite would abort mid-run at the
+# assoc-array lines yet EXIT 0 (a set -u expansion abort skips the final `(( FAIL == 0 ))` gate,
+# and the RESULT line never prints) — a vacuous pass of exactly the class this suite guards
+# against. Fail LOUDLY instead. (vz-ai-stack.sh re-execs under brew bash 5; standalone runs don't.)
+(( BASH_VERSINFO[0] >= 4 )) || { echo "FAIL: this suite needs bash >= 4 (got $BASH_VERSION)"; exit 2; }
 DOC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../doctor/doctor.sh"
 PASS=0; FAIL=0; ok(){ PASS=$((PASS+1)); echo "  ok   $1"; }; bad(){ FAIL=$((FAIL+1)); echo "  FAIL $1"; }
 
@@ -57,7 +62,8 @@ BLOCK="$(awk '/^    if declare -F "/{f=1} f{print} f&&/^    fi$/{exit}' "$DOC")"
 # run the fix, then re-diagnose). Extract that helper too so the block is self-contained.
 eval "$(awk '/^_doctor_apply_and_verify\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$DOC")"
 if [[ -z "$BLOCK" ]]; then bad "could not extract the fix-dispatch block from doctor.sh"; else
-  SENT="$(mktemp -u)"; DERR="$(mktemp)"; declare -A AUTOHEAL FIX_CAPABLE; __check=fake; fixed=0
+  SENT="$(mktemp -u)"; DERR="$(mktemp)"; trap 'rm -f "${SENT:-}" "${DERR:-}"' EXIT
+  declare -A AUTOHEAL FIX_CAPABLE; __check=fake; fixed=0
   fake_fix(){ : > "$SENT"; }       # the "fix" — records that it actually RAN
   fake_diagnose(){ return 0; }     # the re-diagnose verification (helper re-runs it)
   confirm(){ return 0; }           # would say yes if reached; the non-TTY guard must prevent that
@@ -75,6 +81,13 @@ if [[ -z "$BLOCK" ]]; then bad "could not extract the fix-dispatch block from do
   quiet && [[ ! -e "$SENT" ]] && ok "REAL block: NO_PROMPT=1 -> skipped"                                    || bad "REAL block: NO_PROMPT ran a fix"
   FIX_CAPABLE=();         AUTOHEAL=();         NO_PROMPT=0; drive </dev/null
   quiet && [[ -e "$SENT" ]]   && ok "REAL block: unmarked (advice-only) body runs headless (guidance always shown)" || bad "REAL block: advice-only body did not run"
+  FIX_CAPABLE=();         AUTOHEAL=();         NO_PROMPT=1; drive </dev/null
+  quiet && [[ -e "$SENT" ]]   && ok "REAL block: unmarked body runs under NO_PROMPT=1 too (EVERY-mode contract, pinned by real code)" || bad "REAL block: advice-only body blocked under NO_PROMPT"
+  FIX_CAPABLE=();         AUTOHEAL=([fake]=1); NO_PROMPT=1; drive </dev/null
+  quiet && [[ ! -e "$SENT" ]] && ok "REAL block: NO_PROMPT=1 beats AUTOHEAL (report-only run stays side-effect-free, pinned by real code)" || bad "REAL block: AUTOHEAL ran despite NO_PROMPT=1"
+  # NOT driven here: the interactive confirm->apply branch — it needs a real pty (script/expect),
+  # and the safety property that matters (headless never reaches confirm) IS driven above. That
+  # positive path is covered by the decide() mirror + the structural ordering check only.
   rm -f "$SENT" "$DERR"
 fi
 
