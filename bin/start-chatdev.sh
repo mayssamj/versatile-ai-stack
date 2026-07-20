@@ -89,7 +89,8 @@ case "$ARG1" in
     ok "chatdev: stopped both containers (data + image preserved; 'start chatdev' brings them back)"
     exit 0 ;;
   uninstall)
-    docker rm -f "$NAME" "$BE_NAME" >/dev/null 2>&1 || true
+    # `-v` reaps the frontend's anonymous node_modules mask-guard volume with it.
+    docker rm -fv "$NAME" "$BE_NAME" >/dev/null 2>&1 || true
     ok "chatdev: removed both containers (image $IMAGE + chatdev/repo kept)"
     note "Full teardown: docker rmi $IMAGE ; rm -rf $CD_DIR ; rm -f $AI_STACK/installer/state/phase_${PHASE}.done"
     exit 0 ;;
@@ -131,7 +132,9 @@ _cd_reconcile() {
   if container_exists "$name"; then
     if [[ "$recreate_flag" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]]; then
       backup_before_recreate "$name"   # no-op for chatdev's stateless containers, kept for parity
-      docker rm -f "$name" >/dev/null
+      # `-v` reaps the old anonymous node_modules mask-guard (regenerated from the
+      # freshly rebuilt image on the next run) — without it every recreate leaked ~68MB.
+      docker rm -fv "$name" >/dev/null
       clear_ready_marker "$name"        # new container must re-earn ready (mirror recreate_guard)
       record "recreated container $name"
       return 0
@@ -181,6 +184,11 @@ _run_frontend() {
   # ai-stack /etc/hosts managed block → 127.0.10.18, and the backend is published on
   # 127.0.10.18:6400 — same socket, but consistent with open_url/health/CORS which all
   # use http://chatdev:PORT (§24 council 2026-06-23, live-verified /etc/hosts→lo0).
+  # The bare `-v /app/frontend/node_modules` below is ANONYMOUS BY DESIGN (b5e4d88):
+  # a mask-guard so the $CD_REPO bind can't shadow the image-built linux node_modules.
+  # NEVER name it — a named volume populates from the image only on FIRST mount and
+  # would freeze stale deps across image rebuilds. The recreate/uninstall
+  # `docker rm -fv` above reaps the old one each cycle (§24 2026-07-20).
   docker run -d \
     --name "$NAME" \
     --label "ai-stack.managed=true" \

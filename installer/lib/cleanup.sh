@@ -21,6 +21,9 @@
 #   cleanup --yes                delete them
 #   cleanup --node|--venv|--caches   scope to one or more categories (combinable)
 #   cleanup --docker             ALSO prune dangling docker images + build cache
+#                                + dangling ANONYMOUS volumes (itemized; each is
+#                                tar-backed-up before removal — volumes are the
+#                                one thing here `install` cannot rebuild)
 #   cleanup --all                repo categories + docker
 #   cleanup --yes --node         delete only node_modules
 set -uo pipefail   # NOT -e: control flow below tolerates non-zero (find/grep/du)
@@ -29,6 +32,12 @@ set -uo pipefail   # NOT -e: control flow below tolerates non-zero (find/grep/du
 SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$SELF_ROOT/installer/lib/common.sh"
 ROOT="${AI_STACK:-$SELF_ROOT}"
+# docker.sh provides docker_anon_orphans (shared anon-volume verb, §24 2026-07-20)
+# and the selected-engine DOCKER_HOST hook. It hard-requires AI_STACK — default it
+# to this checkout so a standalone `bash installer/lib/cleanup.sh` doesn't die at
+# docker.sh's guard.
+export AI_STACK="${AI_STACK:-$SELF_ROOT}"
+[[ -f "$SELF_ROOT/installer/lib/docker.sh" ]] && source "$SELF_ROOT/installer/lib/docker.sh"
 
 # --- arg parse ---------------------------------------------------------------
 DO_DELETE=0 WANT_NODE=0 WANT_VENV=0 WANT_CACHES=0 WANT_DOCKER=0 ANY_CAT=0
@@ -179,20 +188,60 @@ if (( ${#IN_USE[@]} > 0 )); then
 fi
 
 # --- docker (opt-in) ---------------------------------------------------------
+# _cleanup_anon_volumes <dry|delete> — dangling ANONYMOUS volumes (engine label
+# com.docker.volume.anonymous). Unlike images/build cache (re-pull/rebuild), a
+# removed volume is NON-RECOVERABLE — so both modes ITEMIZE the set (size, age),
+# and delete tar-backs-up each one first via docker_anon_orphans (fail-closed;
+# AI_STACK_FORCE_WIPE=1 overrides). HOST-WIDE: dangling anon volumes from OTHER
+# projects on this engine are listed too — review the list before --yes.
+_cleanup_anon_volumes() {
+  local mode="$1" v created size n=0 _names=()
+  declare -F docker_anon_orphans >/dev/null 2>&1 || { warn "docker.sh not sourced — skipping volume scan."; return 0; }
+  # One `docker system df -v` for sizes (docker volume ls has no size column);
+  # keep only the volumes-table rows: VOLUME-NAME LINKS SIZE. du/human() do NOT
+  # transfer here — a volume has no host path this script can stat.
+  local _sizes
+  _sizes="$(docker system df -v 2>/dev/null | awk '/^VOLUME NAME/{f=1;next} f&&NF==0{f=0} f&&NF>=3{print $1" "$NF}')"
+  # Process substitution (NOT a pipe) so the counter/array live in this shell.
+  while IFS= read -r v; do
+    [[ -n "$v" ]] || continue
+    _names+=("$v"); n=$((n+1))
+    created="$(docker volume inspect "$v" --format '{{.CreatedAt}}' 2>/dev/null | cut -c1-10)"
+    size="$(awk -v vol="$v" '$1==vol{print $2}' <<<"$_sizes")"
+    printf '    %7s  %s… (created %s)\n' "${size:-n/a}" "${v:0:16}" "${created:-?}"
+  done < <(docker_anon_orphans list)
+  if (( n == 0 )); then
+    log "docker volumes: no dangling anonymous volumes."
+    return 0
+  fi
+  if [[ "$mode" == "delete" ]]; then
+    local vbak
+    vbak="$ROOT/data/volume-backups/cleanup-$(date +%Y%m%d-%H%M%S)"
+    log "Removing the $n volume(s) itemized above (tar backup → ${vbak#"$ROOT"/}/)..."
+    docker_anon_orphans remove "$vbak" "${_names[@]}" \
+      || warn "some volume(s) were KEPT (backup failed) — see warnings above"
+  else
+    log "docker volumes (dry-run): $n dangling anonymous volume(s) above would be tar-backed-up + removed (run with --yes)."
+  fi
+  return 0
+}
+
 if (( WANT_DOCKER )); then
   printf '\n'
   if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
     warn "Docker not reachable — skipping the docker prune."
   elif (( DO_DELETE )); then
-    warn "docker prune is HOST-WIDE: build cache is shared across ALL projects on this machine, not just ai-stack."
+    warn "docker prune is HOST-WIDE: build cache AND dangling anonymous volumes are shared across ALL projects on this machine, not just ai-stack."
     log "Pruning dangling images + build cache (never named/in-use images)..."
     docker image prune -f   2>/dev/null | tail -1 | sed 's/^/    image:  /' || true
     docker builder prune -f 2>/dev/null | tail -1 | sed 's/^/    build:  /' || true
     ok "docker dangling layers pruned."
+    _cleanup_anon_volumes delete
   else
     local_dangling=$(docker image ls -f dangling=true -q 2>/dev/null | wc -l | tr -d ' ')
-    warn "--docker prune is HOST-WIDE: build cache is shared across all projects on this machine."
+    warn "--docker prune is HOST-WIDE: build cache + dangling anon volumes are shared across all projects on this machine."
     log "docker (dry-run): ${local_dangling:-0} dangling image(s) + reclaimable build cache would be pruned (run with --yes)."
+    _cleanup_anon_volumes dry
   fi
 fi
 

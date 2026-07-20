@@ -176,7 +176,14 @@ recreate_guard() {
   if container_exists "$name"; then
     if [[ "$recreate_flag" == "--recreate" || "${FORCE_RECREATE:-0}" == "1" ]]; then
       backup_before_recreate "$name"
-      docker rm -f "$name" >/dev/null
+      # `-v` reaps the container's ANONYMOUS volumes with it (image VOLUME scratch /
+      # single-path mask-guards); named volumes and host binds are never touched by -v.
+      # This guard is the highest-traffic recreate path, so without -v every recreate
+      # leaked one anon volume per VOLUME-declaring image (§24 2026-07-20 audit: ~1.5GB).
+      # ⚠ LATENT TRAP: backup_before_recreate covers phoenix/falkor/qdrant only. A future
+      # service that keeps REAL STATE in an anonymous volume (none does today — audited)
+      # must add itself there BEFORE recreating through this guard, or -v wipes it.
+      docker rm -fv "$name" >/dev/null
       clear_ready_marker "$name"   # new container must re-earn ready via its smoke test
       record "recreated container $name"
       return 0
@@ -235,6 +242,62 @@ backup_before_recreate() {
     *)
       # Stateless services (litellm, openwebui) — nothing to back up.
       :
+      ;;
+  esac
+}
+
+# --- anonymous-volume hygiene (§24 council 2026-07-20) -----------------------
+# Anonymous volumes (engine label com.docker.volume.anonymous) are minted by
+# single-path `-v /path` mask-guards (chatdev/ai-town node_modules), image VOLUME
+# directives, and the OpenShell supervisor's sandbox homes (the gateway strips
+# --label, so those are invisible to every label-filtered teardown). The 2026-07-20
+# persistence audit found NO service keeps contracted state in one — but a dangling
+# volume is NON-RECOVERABLE once removed, so `remove` tar-backs-up each volume
+# first, fail-CLOSED (mirror of reset.sh's H8 named-volume discipline).
+#
+#   docker_anon_orphans list
+#       print every dangling anonymous volume name, one per line (read-only).
+#   docker_anon_orphans remove <backup-dir> <name>...
+#       back up + remove EXACTLY the named volumes. Callers pass an explicit,
+#       already-disclosed set — this verb never enumerates-and-removes on its
+#       own, so a caller bug cannot turn it into a blind engine-wide sweep.
+#       Backup failure SKIPS that volume unless AI_STACK_FORCE_WIPE=1.
+#       Returns 1 if any volume was kept/failed, else 0.
+docker_anon_orphans() {
+  local mode="${1:-list}"; shift || true
+  case "$mode" in
+    list)
+      docker volume ls -q --filter dangling=true --filter label=com.docker.volume.anonymous 2>/dev/null
+      return 0
+      ;;
+    remove)
+      local vbak="${1:?docker_anon_orphans remove: backup dir required}"; shift
+      local v _kept=0
+      for v in "$@"; do
+        [[ -n "$v" ]] || continue
+        mkdir -p "$vbak" 2>/dev/null || true
+        if docker run --rm -v "$v":/data:ro -v "$vbak":/out alpine \
+             tar czf "/out/${v}.tgz" -C /data . >/dev/null 2>&1 && [[ -s "$vbak/${v}.tgz" ]]; then
+          :
+        elif [[ "${AI_STACK_FORCE_WIPE:-0}" == "1" ]]; then
+          warn "anon volume ${v:0:12}… backup FAILED but AI_STACK_FORCE_WIPE=1 — removing anyway"
+        else
+          warn "KEEPING anon volume ${v:0:12}…: backup failed (AI_STACK_FORCE_WIPE=1 to remove anyway)"
+          _kept=$((_kept+1)); continue
+        fi
+        if docker volume rm "$v" >/dev/null 2>&1; then
+          ok "removed anon volume ${v:0:12}… (tar in $(basename "$vbak")/)"
+        else
+          warn "could not remove anon volume ${v:0:12}…"
+          _kept=$((_kept+1))
+        fi
+      done
+      if (( _kept > 0 )); then return 1; fi
+      return 0
+      ;;
+    *)
+      warn "docker_anon_orphans: unknown mode '$mode' (list|remove)"
+      return 2
       ;;
   esac
 }

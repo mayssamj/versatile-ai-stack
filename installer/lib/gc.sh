@@ -37,7 +37,9 @@ echo "Found partial container orphans (started but never came up / never marked 
 printf '  - %s\n' "${PARTIALS[@]}"
 if confirm "Remove all of them?" N; then
   for c in "${PARTIALS[@]}"; do
-    docker rm -f "$c" >/dev/null && { rm -f "$STATE_DIR/ready/$c" 2>/dev/null || true; ok "removed $c"; }
+    # `-v`: a partial (never-came-up) container's anonymous volumes are scratch by
+    # definition — reap them with it (named volumes/binds untouched by -v).
+    docker rm -fv "$c" >/dev/null && { rm -f "$STATE_DIR/ready/$c" 2>/dev/null || true; ok "removed $c"; }
   done
 else
   log "Aborted; partial containers preserved."

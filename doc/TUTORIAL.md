@@ -1747,7 +1747,7 @@ vz-ai-stack.sh cleanup --yes      # actually delete (safe: git-ignored regenerab
 **reset tiers (destructive — read the blast radius).** `installer/lib/reset.sh` is tiered:
 
 - **`soft`** — clears phase stamps + `CHANGELOG.d/*`. Keeps `.env`, `data/`, all containers, Ollama models, `/etc/hosts`, the network. (For "re-run the installer from scratch but keep my data.")
-- **`hard`** — soft, plus removes OpenShell sandboxes, the honcho/deerflow/autofyn compose projects (containers + named volumes), every `ai-stack.managed=true` container, and the ai-stack network; **backs up `data/` → `data.bak-<ts>/`**. Keeps `.env`, Ollama models, images, the `/etc/hosts` block.
+- **`hard`** — soft, plus removes OpenShell sandboxes, the honcho/deerflow/autofyn/hermes-workspace/aitown compose projects (containers + named volumes, each named volume tar-backed-up first), every `ai-stack.managed=true` container, any anonymous volumes orphaned **by this reset** (tar-backed-up first; pre-existing orphans are left for `cleanup --docker`), and the ai-stack network; **backs up `data/` → `data.bak-<ts>/`**. Keeps `.env`, Ollama models, images, the `/etc/hosts` block. (Note: `data/aitown` is backed up with `data/` but not wiped — the AI-Town world survives a hard reset by design.)
 - **`nuke`** — hard, plus backs up and removes `.env`, removes the `/etc/hosts` block, and deletes **all** pulled Ollama models (multi-GB re-download next time). You must type `nuke ai-stack` literally — `--yes` will not bypass it.
 
 ```bash

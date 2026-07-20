@@ -1,11 +1,11 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 82 checks and, when one fails, prints the
+`bash vz-ai-stack.sh doctor` runs all 83 checks and, when one fails, prints the
 failure detail plus remediation. This doc lists every check, what it asserts,
 when it fails, and what the fix does.
 
 **The auto-fix prompt is gated on CAPABILITY, not on a fix merely existing**
-(changed 2026-07-16). 79 of the 82 checks ship a `<name>_fix`, but most only
+(changed 2026-07-16). 80 of the 83 checks ship a `<name>_fix`, but most only
 PRINT guidance — the house convention. Doctor used to offer *"Auto-fix
 available. Apply? [Y/n]"* for any check with a fix function (`declare -F`), so
 the operator answered `y`, nothing ran, and doctor reported *"fix ran but the
@@ -16,7 +16,7 @@ check still fails"* (the 74/76 incident). A fix must now declare
 |---|---|---|
 | **CAPABLE** (`FIX_CAPABLE=1`) | 19 | Prompts *"Auto-fix available. Apply? [Y/n]"* — answering `y` really mutates, then re-verifies. Skipped under `NO_PROMPT=1`. |
 | **AUTOHEAL** (`AUTOHEAL=1`, implies capable) | 2 | Safe + idempotent → applied AUTOMATICALLY, no prompt (`05a` litellm_keystore, `73` hermes_workspace_pair). Skipped under `NO_PROMPT=1`. |
-| **ADVISORY** (unmarked — the DEFAULT) | 56 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
+| **ADVISORY** (unmarked — the DEFAULT) | 57 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
 
 The 21 capable checks (19 + the 2 autoheal) are the only ones that can change
 your system from a doctor run.
@@ -24,7 +24,7 @@ your system from a doctor run.
 Run filtered:
 
 ```bash
-stack doctor                    # all 80
+stack doctor                    # all 83
 stack doctor phoenix            # only checks whose name contains "phoenix"
 stack doctor network            # only the network/alias checks (14–22)
 stack doctor unsloth            # only the Unsloth Studio check (23)
@@ -137,7 +137,8 @@ installer/doctor/checks/
 ├── 78_verify_then_stamp_guard.sh            (static source-shape guard: phases 39/40/41 keep the verify-then-stamp shape; skip-clean when the phase files are absent)
 ├── 79_fix_capable_integrity.sh              (mechanical FIX_CAPABLE marker integrity: no orphan markers, AUTOHEAL ⊆ FIX_CAPABLE, every unmarked _fix is print-only)
 ├── 80_halo_drift.sh                          (bin/halo default model in sync with its 11_halo_autoreason.sh generator — install can't dirty git with a stale wrapper)
-└── 81_litellm_config_canonical.sh            (litellm/config.yaml committed in yq-canonical form — a model render can't dirty git with a comment/whitespace reindent)
+├── 81_litellm_config_canonical.sh            (litellm/config.yaml committed in yq-canonical form — a model render can't dirty git with a comment/whitespace reindent)
+└── 82_anon_volume_orphans.sh                 (dangling anonymous docker volume census ≤5 — leaked mask-guards/sandbox homes; advisory, points at cleanup --docker)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -1025,6 +1026,18 @@ Skips cleanly (returns 0) when `11_halo_autoreason.sh` or `bin/halo` is absent �
 | Fix | print-only advice (NOT FIX_CAPABLE): re-canonicalize with `yq -i '.' litellm/config.yaml` and commit it. |
 
 Skips cleanly (returns 0) when `litellm/config.yaml` is absent (install 01 seeds it) or `yq` is not on PATH (run `vz-ai-stack.sh deps`) — a genuine skip, never a red-bar. Guards the same "tracked generated artifact re-dirties on install" class as check 80.
+
+---
+
+## 82 · dangling anonymous docker volumes (census)
+
+| | |
+|---|---|
+| Asserts | at most 5 DANGLING ANONYMOUS docker volumes exist on the selected engine (`docker volume ls --filter dangling=true --filter label=com.docker.volume.anonymous`). Anonymous volumes are minted by single-path `-v /path` mask-guards (chatdev / ai-town `node_modules`), image `VOLUME` directives, and the OpenShell supervisor's sandbox homes (the gateway strips `--label`, so those carry no ai-stack label). Since the §24 2026-07-20 hygiene round every ai-stack `docker rm` sink passes `-v` and `reset hard/nuke` diff-sweeps its own orphans — so a growing census here means a NEW leak, or another project's debris on this shared engine. Read-only; no external calls. |
+| Fails when | more than 5 dangling anonymous volumes have accumulated (the pre-fix steady state was 20 ≈ 1.5 GB). |
+| Fix | print-only advice (NOT FIX_CAPABLE — removal is NON-recoverable and stays operator-gated): review the itemized, HOST-WIDE list with `vz-ai-stack.sh cleanup --docker` (dry-run: size + age per volume), then reclaim with `cleanup --docker --yes` (each volume is tar-backed-up to `data/volume-backups/cleanup-<ts>/` first, fail-closed). |
+
+Skips cleanly (returns 0) when the docker engine is not reachable — a stopped engine must never red-bar an advisory hygiene census (same idiom as check 63).
 
 ---
 

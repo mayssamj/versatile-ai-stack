@@ -47,6 +47,13 @@ layer, so destroying the container destroyed the data.
   `docker commit` and **the delete is refused (exit 2) if the snapshot can't be taken**. Wired into
   all four delete sites: `openshell.sh` storm branch, `openshell-watchdog.sh`, `reset.sh`,
   `fleet.sh cmd_fleet_destroy`. Bypass only via the explicit `AI_STACK_FORCE_WIPE=1`.
+  ⚠️ **Checkpoint scope** (§24 2026-07-20): `docker commit` captures the container's WRITABLE
+  LAYER only — `/sandbox` (kanban/state.db/memories/sessions) IS captured and is what
+  `openshell-state-restore.sh` round-trips. Contents of any MOUNTED VOLUME (e.g. the supervisor's
+  label-less anonymous home volume, when it mints one) are NOT in the checkpoint and have no
+  restore path today. Audited 2026-07-20: those homes held only frozen provisioning scaffolding
+  (re-rendered by the installer), so nothing durable is lost — but do not move real state into a
+  sandbox mount without first building a restore consumer for it (roadmap, below).
 - ✅ **Guardrails on dangerous commands** — `reset` aborts the wipe on a failed/unverified backup;
   `doctor --fix` hard-pins `AI_STACK_WATCHDOG_RECREATE=0` (can't inherit an ambient destructive
   env); Tier-3 gateway restart refuses when another sandbox is healthy; stopped sandboxes are

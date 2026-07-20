@@ -343,7 +343,9 @@ openshell_sandbox_ensure() {
 
   # ===== CONTRACT: install/ensure is IDEMPOTENT + NON-DESTRUCTIVE. =====
   # A sandbox that EXISTS is NEVER deleted+recreated automatically — recreation destroys the
-  # running agents (even though /sandbox is volume-safe). We REVIVE the same container; if it
+  # running agents; /sandbox lives in the container's WRITABLE LAYER (no volume — it survives
+  # stop/start of the SAME container, and delete only via a checkpoint image). We REVIVE the
+  # same container; if it
   # can't be revived we FAIL EXPLICITLY and LEAVE IT AS-IS for diagnosis. Destructive recreate
   # is opt-in ONLY (OPENSHELL_FORCE_RECREATE=1). Create happens ONLY when no container exists.
 

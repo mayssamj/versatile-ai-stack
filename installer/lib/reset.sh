@@ -23,6 +23,12 @@ source "$AI_STACK/installer/lib/prompt.sh"
 if [[ -f "$AI_STACK/installer/lib/network.sh" ]]; then
   source "$AI_STACK/installer/lib/network.sh"
 fi
+# docker.sh provides docker_anon_orphans (shared anonymous-volume verb, §24
+# 2026-07-20) and — via its source-time engine hook — points docker at the
+# SELECTED engine, so the teardown hits the same engine the stack runs on.
+if [[ -f "$AI_STACK/installer/lib/docker.sh" ]]; then
+  source "$AI_STACK/installer/lib/docker.sh"
+fi
 
 TIER="${1:-soft}"
 
@@ -40,9 +46,11 @@ EOF
 hard reset — blast radius:
   WILL clear:  installer/state/*.done, *.alert, CHANGELOG.d/*
   WILL remove: OpenShell sandboxes (hermes-fleet-v1, pi-v1, ...)
-  WILL remove: compose projects honcho/deerflow/autofyn/hermes-workspace
+  WILL remove: compose projects honcho/deerflow/autofyn/hermes-workspace/aitown
                (their containers + named volumes incl. honcho_redis-data)
   WILL remove: all containers labeled ai-stack.managed=true
+  WILL remove: anonymous volumes orphaned BY THIS RESET (tar-backed-up first;
+               pre-existing orphans untouched — reclaim those via 'cleanup --docker')
   WILL remove: ai-stack docker network
   WILL backup: data/ → data.bak-<ts>/  (then start fresh)
   WILL keep:   .env, ollama + models, docker images, /etc/hosts ai-stack block
@@ -54,6 +62,7 @@ NUKE reset — blast radius:
   WILL clear:  installer/state/*.done, *.alert, CHANGELOG.d/*
   WILL remove: OpenShell sandboxes + compose projects (containers + volumes)
   WILL remove: all containers labeled ai-stack.managed=true
+  WILL remove: anonymous volumes orphaned BY THIS RESET (tar-backed-up first)
   WILL remove: ai-stack docker network
   WILL backup: data/ → data.bak-<ts>/ AND .env → .env.bak-<ts>
   WILL remove: .env
@@ -73,14 +82,18 @@ print_blast_radius
 # Tear down every ai-stack docker-compose project — containers + project-scoped
 # networks + named volumes — by LABEL. Robust without needing each compose file
 # (deploy.sh-style projects run compose from their own subdir with their own -f).
-# Covers honcho (incl. its redis-data volume), deerflow, autofyn, hermes-workspace.
+# Covers honcho (incl. its redis-data volume), deerflow, autofyn, hermes-workspace,
+# aitown (its world data is a host bind under data/aitown — survives this teardown).
 teardown_compose_projects() {
   local proj ids
-  for proj in honcho hermes-workspace autofyn deer-flow; do
+  for proj in honcho hermes-workspace autofyn deer-flow aitown; do
     ids="$(docker ps -aq --filter "label=com.docker.compose.project=$proj" 2>/dev/null || true)"
     if [[ -n "$ids" ]]; then
       # shellcheck disable=SC2086  # intentional word-split of the id list
-      docker rm -f $ids >/dev/null 2>&1 && ok "removed compose project '$proj' containers" || true
+      # `-v` reaps each container's ANONYMOUS volumes (e.g. ai-town's node_modules
+      # mask-guard); the project's NAMED volumes are untouched by -v and handled
+      # below with the H8 backup-then-rm discipline.
+      docker rm -fv $ids >/dev/null 2>&1 && ok "removed compose project '$proj' containers" || true
     fi
     # Loop in the CURRENT shell via process substitution (NOT a pipe) so a per-volume
     # skip is never lost in a subshell; use `warn` (not `err`) so a skip can't abort the reset.
@@ -272,11 +285,40 @@ _remove_managed_containers() {
   local c _rm_failed=()
   while IFS= read -r c; do
     [[ -z "$c" ]] && continue
-    docker rm -f "$c" >/dev/null 2>&1 && ok "removed $c" || _rm_failed+=("$c")
+    # `-v` reaps the container's ANONYMOUS volumes (image VOLUME scratch, mask-guards);
+    # named volumes/binds are never touched by -v (§24 2026-07-20 anon-volume audit).
+    docker rm -fv "$c" >/dev/null 2>&1 && ok "removed $c" || _rm_failed+=("$c")
   done < <(docker ps -a --filter "label=ai-stack.managed=true" --format '{{.Names}}')
   if (( ${#_rm_failed[@]} > 0 )); then
     warn "Could not remove ${#_rm_failed[@]} container(s): ${_rm_failed[*]} — remove manually: docker rm -f ${_rm_failed[*]}"
   fi
+}
+
+# _sweep_run_orphaned_anon_volumes — DIFF-SCOPED anonymous-volume sweep (§24
+# council 2026-07-20). Removes ONLY the anonymous volumes THIS reset orphaned:
+# dangling now but NOT in the entry snapshot ($_ANON_BEFORE, captured before any
+# teardown). The gateway-side sandbox deletes cannot take `docker rm -v` (the
+# supervisor owns those containers), so their label-less home volumes land here.
+# Pre-existing orphans — possibly ANOTHER project's on this shared engine — are
+# NEVER touched by reset; `cleanup --docker` is the explicit, itemized path for
+# those. Each removal is tar-backed-up first, fail-CLOSED (docker_anon_orphans).
+_sweep_run_orphaned_anon_volumes() {
+  declare -F docker_anon_orphans >/dev/null 2>&1 || { warn "docker.sh not sourced — skipping anon-volume sweep"; return 0; }
+  local v _new=()
+  # Process substitution (NOT a pipe): the per-item skip must run in this shell.
+  while IFS= read -r v; do
+    [[ -n "$v" ]] || continue
+    case " ${_ANON_BEFORE:-} " in *" $v "*) continue ;; esac   # predates this reset — leave it
+    _new+=("$v")
+  done < <(docker_anon_orphans list)
+  if (( ${#_new[@]} == 0 )); then
+    ok "no anonymous volumes orphaned by this reset"
+    return 0
+  fi
+  log "Removing ${#_new[@]} anonymous volume(s) orphaned by this reset (tar backup first)..."
+  docker_anon_orphans remove "$AI_STACK/data/volume-backups/${RESET_TS:-manual}" "${_new[@]}" \
+    || warn "some orphaned anon volume(s) were kept (backup failed) — see warnings above"
+  return 0
 }
 
 case "$TIER" in
@@ -301,6 +343,11 @@ case "$TIER" in
   hard)
     if ! confirm "Proceed with hard reset?" N; then exit 0; fi
     RESET_TS="$(date +%Y%m%d-%H%M%S)"; ts="$RESET_TS"
+    # Snapshot the dangling-anon set BEFORE any teardown: the post-teardown sweep
+    # removes only what this run orphans (diff vs this snapshot), never pre-existing
+    # or foreign orphans. Space-joined for the substring membership test.
+    _ANON_BEFORE=""
+    declare -F docker_anon_orphans >/dev/null 2>&1 && _ANON_BEFORE="$(docker_anon_orphans list | tr '\n' ' ')"
     log "Backing up data/ → data.bak-${ts}/ (H8: aborts the wipe if this fails)"
     # H7 — snapshot the gateway identity plane FIRST (DB + signing key) so a kid rotation
     # or torn DB stays recoverable (best-effort; non-fatal if the tool isn't present yet).
@@ -320,11 +367,14 @@ case "$TIER" in
     teardown_openshell_sandboxes
     # (2) All ai-stack compose projects by label — containers + their named
     #     volumes (incl. honcho_redis-data) + project networks.
-    log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace)..."
+    log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace, aitown)..."
     teardown_compose_projects
     # (3) Single-container managed services (litellm, phoenix, qdrant, ...).
     log "Stopping + removing managed ai-stack containers..."
     _remove_managed_containers
+    # (3b) Anonymous volumes the teardown above orphaned (diff vs the entry
+    #      snapshot — gateway-owned sandbox containers can't take rm -v).
+    _sweep_run_orphaned_anon_volumes
     # (4) Host-side daemons (docs_mcp, paperclip, unsloth, claw3d, claw3d-bridge)
     #     — NOT containers, so nothing above stops them; they'd keep their ports
     #     and break the next install. Free the ports + clear stale pidfiles.
@@ -366,6 +416,8 @@ case "$TIER" in
       exit 1
     fi
     RESET_TS="$(date +%Y%m%d-%H%M%S)"; ts="$RESET_TS"
+    _ANON_BEFORE=""
+    declare -F docker_anon_orphans >/dev/null 2>&1 && _ANON_BEFORE="$(docker_anon_orphans list | tr '\n' ' ')"
     log "NUKE: backing up data/ + .env + gateway identity (H8: abort if a backup fails)"
     [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
     if cp -R "$AI_STACK/data" "$AI_STACK/data.bak-${ts}" 2>/dev/null && [[ -d "$AI_STACK/data.bak-${ts}" ]]; then
@@ -387,10 +439,11 @@ case "$TIER" in
     fi
     log "Deleting OpenShell sandboxes..."
     teardown_openshell_sandboxes
-    log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace)..."
+    log "Tearing down compose projects (honcho, deerflow, autofyn, hermes-workspace, aitown)..."
     teardown_compose_projects
     log "Stopping + removing managed ai-stack containers..."
     _remove_managed_containers
+    _sweep_run_orphaned_anon_volumes
     # Sourcegraph data (~/.sourcegraph-local) lives OUTSIDE the repo data/ tree, so
     # the data/ backup above never covers it. The managed-label sweep removed the
     # container but not this dir. NUKE = remove everything → back it up (fail-closed,
