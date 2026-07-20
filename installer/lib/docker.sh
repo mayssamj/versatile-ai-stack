@@ -267,11 +267,21 @@ docker_anon_orphans() {
   local mode="${1:-list}"; shift || true
   case "$mode" in
     list)
-      docker volume ls -q --filter dangling=true --filter label=com.docker.volume.anonymous 2>/dev/null
-      return 0
+      # rc PROPAGATES (no 2>/dev/null, no forced return 0): reset's entry snapshot
+      # must distinguish "no orphans" from "engine unreachable" — a fail-OPEN list
+      # would let a mid-run engine hiccup misclassify pre-existing orphans as
+      # run-orphaned (§24 adversarial, blocking). The awk shape-guard keeps only
+      # engine-minted 64-hex anonymous names, so a user-created NAMED volume that
+      # merely carries the label is never treated as debris.
+      docker volume ls -q --filter dangling=true --filter label=com.docker.volume.anonymous \
+        | awk '$0 ~ /^[0-9a-f]{64}$/'
       ;;
     remove)
-      local vbak="${1:?docker_anon_orphans remove: backup dir required}"; shift
+      # No ${1:?}: that expansion KILLS the sourcing shell mid-teardown on a caller
+      # mistake — warn + return 2 keeps the contract without the shell-killing class.
+      local vbak="${1:-}"
+      if [[ -z "$vbak" ]]; then warn "docker_anon_orphans remove: backup dir required"; return 2; fi
+      shift
       local v _kept=0
       for v in "$@"; do
         [[ -n "$v" ]] || continue

@@ -130,7 +130,9 @@ fi
 
 # Step 6 — stop the foreign container.
 log "Stopping & removing foreign container..."
-docker rm -f "$SVC" >/dev/null
+# `-v`: a FOREIGN container's run flags are unknown — any anonymous volumes it
+# holds would orphan here (the docker-cp backup above already captured its data).
+docker rm -fv "$SVC" >/dev/null
 clear_ready_marker "$SVC"   # the managed replacement re-earns ready via the smoke test below
 record_block "adoption: $SVC" \
   "user-confirmed adoption" \

@@ -266,6 +266,9 @@ ai-stack-installer — usage:
     vz-ai-stack.sh history                  assemble CHANGELOG.d/* into one view
     vz-ai-stack.sh gc                       list/clean partial container orphans
     vz-ai-stack.sh cleanup [--yes]          reclaim disk: remove REGENERABLE artifacts
+                                            (--docker adds dangling layers + itemized
+                                            dangling anonymous volumes, tar-backed-up
+                                            before removal under --yes)
                                         (node_modules, .venv, build caches). DRY-RUN by
                                         default — previews sizes; --yes deletes. Scope with
                                         --node/--venv/--caches; --docker also prunes dangling
@@ -921,7 +924,7 @@ cmd_doctor()  { "$BASH" "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { worktree_guard adopt; "$BASH" "$AI_STACK/installer/lib/adopt.sh" "$1"; }
 cmd_logs()    { run_foreground_server docker logs "$1" "${2:-}"; }   # `logs <ctr> -f` blocks; Ctrl-C/SIGTERM is a clean stop
 cmd_gc()      { worktree_guard gc; "$BASH" "$AI_STACK/installer/lib/gc.sh"; }
-cmd_cleanup() { "$BASH" "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default
+cmd_cleanup() { "$BASH" "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default; --docker also itemizes dangling anon VOLUMES (non-regenerable → tar-backed-up before --yes removal)
 cmd_history() { "$BASH" "$AI_STACK/installer/lib/history.sh"; }
 # Runs in a separate process so it owns its own lock (and trap) — see upgrade.sh.
 cmd_upgrade() { worktree_guard upgrade; "$BASH" "$AI_STACK/installer/lib/upgrade.sh" "$@"; }  # docker pull + --recreate — never from a worktree

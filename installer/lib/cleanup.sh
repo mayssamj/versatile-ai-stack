@@ -32,10 +32,11 @@ set -uo pipefail   # NOT -e: control flow below tolerates non-zero (find/grep/du
 SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$SELF_ROOT/installer/lib/common.sh"
 ROOT="${AI_STACK:-$SELF_ROOT}"
-# docker.sh provides docker_anon_orphans (shared anon-volume verb, §24 2026-07-20)
-# and the selected-engine DOCKER_HOST hook. It hard-requires AI_STACK — default it
-# to this checkout so a standalone `bash installer/lib/cleanup.sh` doesn't die at
-# docker.sh's guard.
+# docker.sh provides docker_anon_orphans (shared anon-volume verb, §24 2026-07-20).
+# Engine note: docker.sh's source-time DOCKER_HOST hook needs env.sh (not sourced
+# here) — via the vz-ai-stack.sh dispatch the selected engine is inherited from
+# that environment; a standalone run uses the ambient socket. AI_STACK is already
+# set on the dispatch path; the default below covers direct invocation.
 export AI_STACK="${AI_STACK:-$SELF_ROOT}"
 [[ -f "$SELF_ROOT/installer/lib/docker.sh" ]] && source "$SELF_ROOT/installer/lib/docker.sh"
 

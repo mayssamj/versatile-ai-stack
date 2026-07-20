@@ -26,7 +26,7 @@
 # Usage: start-aitown.sh [install|run|up|uninstall|stop|status|restart] [--nuke] [--recreate]
 #   (no arg) / install / up   bring the stack up (build if needed) + caps + health-gate
 #   run                       alias of install (the `start aitown` entrypoint)
-#   stop                      `docker compose down` (PRESERVES the world; idempotent)
+#   stop                      `docker compose stop` (containers kept; PRESERVES the world)
 #   uninstall [--nuke]        down (no -v). --nuke = down -v + rm data (backup-first)
 #   status                    compose ps + caps + live frontend health probe
 #   restart                   down, then up
@@ -100,7 +100,10 @@ _do_up() {
     _apply_caps
     return 0
   fi
-  [[ "${1:-}" == "--recreate" ]] && { log "aitown: --recreate → compose down (data preserved on the bind mount) then up"; _compose down || true; }
+  # down -v on recreate: reaps the frontend's anonymous node_modules mask-guard
+  # (compose.yml single-path volume) instead of stranding it; the world is SAFE —
+  # it lives on the host bind (services.yml: survives even down -v by design).
+  [[ "${1:-}" == "--recreate" ]] && { log "aitown: --recreate → compose down -v (world preserved on the bind mount) then up"; _compose down -v || true; }
 
   log "aitown: docker compose up -d --build (FIRST build is HEAVY: Ubuntu+Node18+npm, several minutes)…"
   _compose up -d --build 2>&1 | tail -15 || { err "compose up failed — check 'docker compose -p $AT_PROJECT logs'"; exit 1; }
@@ -161,8 +164,10 @@ _do_uninstall() {
     note "aitown world removed. Re-install: 'vz-ai-stack.sh install 36' (regenerates the admin key + re-pushes the schema). Backup kept above."
     ok "aitown nuked (down -v + data removed; backup retained)"
   else
-    _compose down 2>&1 | tail -8 || true
-    ok "aitown stopped (compose down — the world at $AT_DATA/convex is PRESERVED)"
+    # uninstall (no --nuke): down -v reaps the anon node_modules mask-guard too;
+    # the world is on the host bind and survives -v (services.yml contract).
+    _compose down -v 2>&1 | tail -8 || true
+    ok "aitown uninstalled (compose down -v — the world at $AT_DATA/convex is PRESERVED)"
   fi
 }
 
@@ -173,15 +178,18 @@ case "${1:-install}" in
     exit 0 ;;
   stop)
     _present || { ok "aitown not installed; nothing to stop."; exit 0; }
-    _compose down 2>&1 | tail -8 || true
-    ok "aitown stopped (compose down — world preserved)"; exit 0 ;;
+    # compose STOP (not down): containers are kept, so the anon node_modules
+    # mask-guard never dangles — matches the docker-typed services' `docker stop`
+    # idiom (§24 2026-07-20; down-on-stop stranded ~1 volume per cycle).
+    _compose stop 2>&1 | tail -8 || true
+    ok "aitown stopped (compose stop — containers kept, world preserved; 'start aitown' resumes)"; exit 0 ;;
   uninstall)
     shift || true
     _do_uninstall "${1:-}"
     exit 0 ;;
   restart)
     _present || { err "aitown not installed"; exit 1; }
-    _compose down || true
+    _compose stop || true   # stop-not-down: keeps containers + their anon mask-guard
     _do_up
     exit 0 ;;
   status)

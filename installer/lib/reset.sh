@@ -24,8 +24,10 @@ if [[ -f "$AI_STACK/installer/lib/network.sh" ]]; then
   source "$AI_STACK/installer/lib/network.sh"
 fi
 # docker.sh provides docker_anon_orphans (shared anonymous-volume verb, §24
-# 2026-07-20) and — via its source-time engine hook — points docker at the
-# SELECTED engine, so the teardown hits the same engine the stack runs on.
+# 2026-07-20). Engine selection note: docker.sh's source-time DOCKER_HOST hook
+# needs env.sh (not sourced here) — when run via the vz-ai-stack.sh dispatch the
+# selected engine is inherited from that environment; a STANDALONE
+# `bash installer/lib/reset.sh` uses the ambient docker socket.
 if [[ -f "$AI_STACK/installer/lib/docker.sh" ]]; then
   source "$AI_STACK/installer/lib/docker.sh"
 fi
@@ -304,6 +306,15 @@ _remove_managed_containers() {
 # those. Each removal is tar-backed-up first, fail-CLOSED (docker_anon_orphans).
 _sweep_run_orphaned_anon_volumes() {
   declare -F docker_anon_orphans >/dev/null 2>&1 || { warn "docker.sh not sourced — skipping anon-volume sweep"; return 0; }
+  # FAIL-CLOSED on the snapshot (§24 adversarial, blocking): if the entry snapshot
+  # could not be VERIFIABLY taken (engine hiccup at reset start), an empty snapshot
+  # is indistinguishable from "no pre-existing orphans" and this sweep would
+  # misclassify every pre-existing/foreign orphan as run-orphaned. Skip instead —
+  # `cleanup --docker` is the explicit path for pre-existing debris.
+  if [[ "${_ANON_SNAPSHOT_OK:-0}" != "1" ]]; then
+    warn "anon-volume sweep SKIPPED: entry snapshot unverified (engine unreachable at reset start) — use 'cleanup --docker' to reclaim orphans explicitly"
+    return 0
+  fi
   local v _new=()
   # Process substitution (NOT a pipe): the per-item skip must run in this shell.
   while IFS= read -r v; do
@@ -345,9 +356,17 @@ case "$TIER" in
     RESET_TS="$(date +%Y%m%d-%H%M%S)"; ts="$RESET_TS"
     # Snapshot the dangling-anon set BEFORE any teardown: the post-teardown sweep
     # removes only what this run orphans (diff vs this snapshot), never pre-existing
-    # or foreign orphans. Space-joined for the substring membership test.
-    _ANON_BEFORE=""
-    declare -F docker_anon_orphans >/dev/null 2>&1 && _ANON_BEFORE="$(docker_anon_orphans list | tr '\n' ' ')"
+    # or foreign orphans. FAIL-CLOSED: _ANON_SNAPSHOT_OK=1 only when the list
+    # command itself succeeded — an engine hiccup here must disarm the sweep, not
+    # arm it against every pre-existing orphan. (if-assignment = errexit-exempt.)
+    _ANON_BEFORE=""; _ANON_SNAPSHOT_OK=0
+    if declare -F docker_anon_orphans >/dev/null 2>&1; then
+      if _ANON_BEFORE="$(docker_anon_orphans list 2>/dev/null | tr '\n' ' ')"; then
+        _ANON_SNAPSHOT_OK=1
+      else
+        _ANON_BEFORE=""
+      fi
+    fi
     log "Backing up data/ → data.bak-${ts}/ (H8: aborts the wipe if this fails)"
     # H7 — snapshot the gateway identity plane FIRST (DB + signing key) so a kid rotation
     # or torn DB stays recoverable (best-effort; non-fatal if the tool isn't present yet).
@@ -416,8 +435,14 @@ case "$TIER" in
       exit 1
     fi
     RESET_TS="$(date +%Y%m%d-%H%M%S)"; ts="$RESET_TS"
-    _ANON_BEFORE=""
-    declare -F docker_anon_orphans >/dev/null 2>&1 && _ANON_BEFORE="$(docker_anon_orphans list | tr '\n' ' ')"
+    _ANON_BEFORE=""; _ANON_SNAPSHOT_OK=0
+    if declare -F docker_anon_orphans >/dev/null 2>&1; then
+      if _ANON_BEFORE="$(docker_anon_orphans list 2>/dev/null | tr '\n' ' ')"; then
+        _ANON_SNAPSHOT_OK=1
+      else
+        _ANON_BEFORE=""
+      fi
+    fi
     log "NUKE: backing up data/ + .env + gateway identity (H8: abort if a backup fails)"
     [[ -x "$AI_STACK/bin/openshell-identity-backup.sh" ]] && bash "$AI_STACK/bin/openshell-identity-backup.sh" backup >/dev/null 2>&1 || true
     if cp -R "$AI_STACK/data" "$AI_STACK/data.bak-${ts}" 2>/dev/null && [[ -d "$AI_STACK/data.bak-${ts}" ]]; then

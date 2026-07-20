@@ -16,7 +16,7 @@ check still fails"* (the 74/76 incident). A fix must now declare
 |---|---|---|
 | **CAPABLE** (`FIX_CAPABLE=1`) | 19 | Prompts *"Auto-fix available. Apply? [Y/n]"* — answering `y` really mutates, then re-verifies. Skipped under `NO_PROMPT=1`. |
 | **AUTOHEAL** (`AUTOHEAL=1`, implies capable) | 2 | Safe + idempotent → applied AUTOMATICALLY, no prompt (`05a` litellm_keystore, `73` hermes_workspace_pair). Skipped under `NO_PROMPT=1`. |
-| **ADVISORY** (unmarked — the DEFAULT) | 57 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
+| **ADVISORY** (unmarked — the DEFAULT) | 59 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
 
 The 21 capable checks (19 + the 2 autoheal) are the only ones that can change
 your system from a doctor run.
