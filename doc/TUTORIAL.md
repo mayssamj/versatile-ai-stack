@@ -49,7 +49,7 @@ diff, a blocked attack.
 ---
 ## Act I — Arrival
 
-This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 51 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
+This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hosted AI platform — all 53 services running behind one local endpoint, with zero bytes leaving the building. By the end of Act I you'll understand the mental model, have the host prepared, the stack installed, and a green doctor proving it.
 
 > The 7-act journey below is narrative — it teaches the platform as a story. If instead you want a quick, self-contained hands-on for *one specific service*, every service has a ~2-minute entry in the **[Service Playground appendix](SERVICE-PLAYGROUND.md)** (`doc/SERVICE-PLAYGROUND.md`): what it is, how to health-check it, one thing to try, and its caveats. For the fleet specifically (Act IV), there's a full day-to-day hands-on in **[doc/HERMES-HANDSON.md](HERMES-HANDSON.md)**.
 
@@ -65,7 +65,7 @@ This is where you go from a clean Apple-Silicon Mac to a fully healthy, self-hos
 
 1. The one thing to internalize: every AI request funnels through **LiteLLM at `http://litellm:4000/v1`**. Point any app, agent, or `curl` at that one endpoint and you get model routing, scoped keys, and call-by-call tracing for free.
 2. Everything is **local-first**: models, memory, traces, and documents all stay on your machine. It works fully offline; cloud is opt-in only when you hand it your own keys.
-3. The ~51 services sort into layers:
+3. The ~53 services sort into layers:
    - **Inference plane** — LiteLLM (the hub), Ollama (local models), Phoenix (tracing).
    - **Storage + memory** — Honcho (conversation memory + Postgres), Qdrant (vectors), FalkorDB (graph).
    - **Agents + fleets** — the Hermes fleet, Pi, OpenShell sandbox, DeerFlow, ACE, RLM, HALO.

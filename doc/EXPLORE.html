@@ -826,12 +826,12 @@ function applyFilter() {
    Build static chrome (subtitle, starters, tabs, stack chips)
    ============================================================================ */
 function buildChrome() {
-  // 51 = services.yml canonical key count. Card count exceeds it because the
+  // 53 = services.yml canonical key count. Card count exceeds it because the
   // Hermes fleet expands to its 9 profiles (the 9-role eng team) and
   // FalkorDB/Phoenix each list an extra endpoint (UI, OTLP). Keep "51" in sync
   // if services.yml changes.
   document.getElementById("subtitle").textContent =
-    "All 51 installed services · " + SERVICES.length + " cards across " + TIERS.length + " tiers";
+    "All 53 installed services · " + SERVICES.length + " cards across " + TIERS.length + " tiers";
 
   // starter chips
   const sc = document.getElementById("starterChips");
