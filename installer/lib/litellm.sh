@@ -12,10 +12,15 @@ LITELLM_CONFIG="$AI_STACK/litellm/config.yaml"
 
 # litellm_has_callback MODULE
 # Returns 0 if MODULE is in litellm_settings.callbacks list of config.yaml.
+# Capture-then-grep, NEVER `yq | grep -q`: yq line-flushes its output, so
+# grep -q's early exit at a mid-list match SIGPIPEs yq (rc 141) and pipefail
+# poisons the pipeline — a CORRECT config read as "callback missing" ~40% of
+# runs (bit doctor check 06 on a green fresh install, 2026-07-21; same class
+# the fleet.sh membership tests already guard against).
 litellm_has_callback() {
-  local mod="$1"
-  yq -r '.litellm_settings.callbacks[]?' "$LITELLM_CONFIG" 2>/dev/null \
-    | grep -qxF "$mod"
+  local mod="$1" cbs
+  cbs="$(yq -r '.litellm_settings.callbacks[]?' "$LITELLM_CONFIG" 2>/dev/null)" || return 1
+  grep -qxF "$mod" <<<"$cbs"
 }
 
 # litellm_ensure_callback MODULE [FILE_RELATIVE_TO_LITELLM_DIR]
@@ -59,9 +64,12 @@ litellm_wait_ready() {
     err "LITELLM_MASTER_KEY is empty — run 'vz-ai-stack.sh install 00' (or 'setup') to generate it before starting LiteLLM"
     return 2
   fi
+  # Capture-then-grep: curl streams the (large) /v1/models body, so a direct
+  # `| grep -q` can SIGPIPE it under pipefail (same class as litellm_has_callback).
+  local resp
   while (( i < timeout )); do
-    if litellm_master_curl -s --max-time 3 ${LITELLM_BASE_URL:-http://litellm:4000}/v1/models 2>/dev/null \
-        | grep -q '"data"'; then
+    resp="$(litellm_master_curl -s --max-time 3 ${LITELLM_BASE_URL:-http://litellm:4000}/v1/models 2>/dev/null)" || resp=""
+    if grep -q '"data"' <<<"$resp"; then
       return 0
     fi
     sleep 1
@@ -91,9 +99,11 @@ litellm_smoke_ok() {
   # take the trailing :PORT, require it to be numeric, and skip 4000 (already listed).
   local hp; hp="$(docker port litellm 4000 2>/dev/null | head -1 | sed -E 's#.*:([0-9]+)$#\1#')"
   [[ "$hp" =~ ^[0-9]+$ && "$hp" != "4000" ]] && urls+=("http://127.0.0.1:${hp}")
+  # Capture-then-grep (pipefail-EPIPE class; see litellm_has_callback).
+  local resp
   for url in "${urls[@]}"; do
-    if curl -s --max-time 5 "${url}/v1/models" -H "Authorization: Bearer $key" 2>/dev/null \
-         | grep -q '"data"'; then
+    resp="$(curl -s --max-time 5 "${url}/v1/models" -H "Authorization: Bearer $key" 2>/dev/null)" || resp=""
+    if grep -q '"data"' <<<"$resp"; then
       return 0
     fi
   done
@@ -152,9 +162,13 @@ litellm_diagnose() (
 
 # Assert a callback was loaded by inspecting docker logs.
 litellm_assert_callback_loaded() {
-  local mod="$1" since="${2:-1m}"
-  if docker logs --since "$since" litellm 2>&1 \
-       | grep -qiE "${mod}|$(echo "$mod" | tr '.' '_')|arize_phoenix"; then
+  local mod="$1" since="${2:-1m}" n
+  # grep -c consumes ALL input (no early exit → no SIGPIPE on the streaming
+  # `docker logs`), unlike -q which raced under pipefail.
+  n="$(docker logs --since "$since" litellm 2>&1 \
+       | grep -ciE "${mod}|$(echo "$mod" | tr '.' '_')|arize_phoenix")" || n=0
+  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+  if (( n > 0 )); then
     return 0
   fi
   warn "callback '$mod' not seen in recent litellm logs (may still be working — verify smoke test)"

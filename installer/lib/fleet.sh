@@ -410,10 +410,14 @@ resolve_profile_model() {
   rt="$(yq -r ".models.\"$declared\".runtime" "$MODELS_YML" 2>/dev/null)"
   case "$rt" in
     lmstudio)
-      if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null \
-         && litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null \
-            | grep -qF "\"$declared\""; then
-        echo "$declared"; return
+      # Capture-then-grep on the streaming /v1/models body (pipefail-EPIPE class;
+      # this file's own header rule — the curl pipe predated it).
+      local _mresp=""
+      if _lms_up && grep -qF "model_name: ${declared}" "$LITELLM_CFG" 2>/dev/null; then
+        _mresp="$(litellm_scoped_curl "$HERMES_KEY" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)" || _mresp=""
+        if grep -qF "\"$declared\"" <<<"$_mresp"; then
+          echo "$declared"; return
+        fi
       fi ;;
     meridian)
       # Claude subscription: gate on the Meridian daemon (:3456) being up + registered;

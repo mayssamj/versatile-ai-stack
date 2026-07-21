@@ -44,8 +44,9 @@ resolve_openshell() {
 OSH="$(resolve_openshell)"
 [[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first." >&2; exit 1; }
 
+# Match folded into awk END, no early exit (`| grep -q` = pipefail-EPIPE class).
 if ! "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
-     | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}' | grep -q Ready; then
+     | awk 'NR>1 && $1=="pi-v1" && !seen{seen=1; ok=($NF ~ /Ready/)} END{exit ok?0:1}'; then
   echo "pi-v1 sandbox not Ready — run 'bash vz-ai-stack.sh install 15' first." >&2; exit 1
 fi
 

@@ -839,6 +839,38 @@ for name in "${SANDBOXES[@]}"; do
       _gateway_relaunch "$cid" "$name" && acted=1
     fi
   fi
+
+  # W2b: Slack role-router liveness (Phase 38) — same knob + gates as W2: it is the
+  # same class of in-sandbox channel process, and before this the ONLY relaunch path
+  # was a human running bin/start-hermes-slack.sh (engine restart 2026-07-21 left the
+  # router dark ~17h while the gateway self-healed via W2). Relaunch ONLY on a STALE
+  # pid file: pid file PRESENT + process DEAD = crash/reboot took it (relaunch via the
+  # phase-38 in-sandbox launcher, which persists in /sandbox and re-sources its env,
+  # kills stragglers, and self-verifies). Pid file ABSENT = never configured OR
+  # deliberately stopped (stop_role_router rm's it) — NEVER override operator intent.
+  # rc map: 0=alive, 1=stale (relaunch), 3=not-configured/stopped (silent), 124=unknown (skip).
+  if [[ "$W2_SUPERVISE" == "1" && "$storming" == "0" && "$name" == "hermes-fleet-v1" ]]; then
+    sr_rc=0
+    _wd_bounded 12 "$DOCKER" exec "$cid" sh -c '
+      [ -s /sandbox/.hermes-slack-role-router.pid ] || exit 3
+      [ -f /sandbox/fleet-boot/hermes_slack_role_router_start.sh ] || exit 3
+      kill -0 "$(cat /sandbox/.hermes-slack-role-router.pid)" 2>/dev/null && exit 0
+      exit 1' || sr_rc=$?
+    if (( sr_rc == 1 )); then
+      log "  W2b: $name slack role router STALE (pid file present, process dead) — relaunching via phase-38 launcher"
+      # Launcher needs HOME=/sandbox (it sources $HOME/.hermes/.env) and takes ~5-9s
+      # (straggler kill-wait + 4s self-verify); bounded well above that. docker exec,
+      # NOT the openshell relay (same rationale as W2: the relay hangs under thrash).
+      if _wd_bounded 30 "$DOCKER" exec "$cid" sh -c "export HOME=/sandbox; cd /sandbox; bash /sandbox/fleet-boot/hermes_slack_role_router_start.sh" >>"$LOG" 2>&1; then
+        log "  W2b: slack role router relaunched in $name"; acted=1
+      else
+        log "  W2b: slack role router relaunch FAILED/timed out in $name — re-checked next cycle"
+        notify "hermes slack role router relaunch FAILED in $name — run: bash $AI_STACK/bin/start-hermes-slack.sh"
+      fi
+    elif (( sr_rc == 124 )); then
+      log "  W2b: $name slack router liveness check TIMED OUT — skipping this cycle"
+    fi
+  fi
 done
 
 # W1: crash-loop breaker — break any NON-sandbox MANAGED container stuck restarting (bad

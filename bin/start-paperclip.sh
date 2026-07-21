@@ -48,6 +48,15 @@ http_ok() {
 [[ -f "$PC_DIR/package.json" ]]  || { err "paperclip package.json missing — clone may be incomplete."; exit 1; }
 command -v pnpm >/dev/null       || { err "pnpm not on PATH — run phase 00 first."; exit 1; }
 
+# Self-heal a gutted/missing dependency tree BEFORE launching: `pnpm dev`
+# hard-crashes on a missing tsx (the dev entrypoint) — exactly the state an
+# interrupted install or a `cleanup` leaves behind (live 2026-07-21: node_modules
+# present, tsx gone → "tsx not found" crash-loop under a healthy-looking relay).
+if [[ ! -e "$PC_DIR/server/node_modules/.bin/tsx" ]]; then
+  log "tsx (dev entrypoint) unresolvable — running pnpm install (repairs a gutted/missing node_modules)..."
+  (cd "$PC_DIR" && pnpm install 2>&1 | tail -5) || warn "pnpm install exited non-zero — start may fail"
+fi
+
 # --- Process identity check (kill -0 isn't enough; PIDs recycle after reboot)
 pid_is_ours() {
   local pid="$1"
@@ -100,6 +109,10 @@ ensure_relay() {
   install -m 600 /dev/null "$RELAY_LOG_FILE"
   log "Starting alias relay $RELAY_BIND:$PORT → 127.0.0.1:$PORT..."
   # `paperclip-relay` tag in argv[1] so the PID-recycle ps-match works.
+  # Own process group (`set -m` subshell) — same group-SIGTERM immunity as the
+  # app daemon below; the pidfile write stays INSIDE the subshell so $! resolves.
+  (
+  set -m
   nohup node -e '
     const net = require("net");
     const [, , listenHost, listenPort, targetHost, targetPort] = process.argv;
@@ -114,6 +127,7 @@ ensure_relay() {
   ' paperclip-relay "$RELAY_BIND" "$PORT" 127.0.0.1 "$PORT" \
       >> "$RELAY_LOG_FILE" 2>&1 &
   echo $! > "$RELAY_PID_FILE"
+  ) </dev/null
   sleep 1
   if relay_running; then
     ok "alias relay up: http://paperclip:$PORT/ → http://127.0.0.1:$PORT/"
@@ -274,6 +288,12 @@ install -m 600 /dev/null "$LOG_FILE"
 log "Starting paperclip via 'pnpm dev' on 127.0.0.1:$PORT (loopback, auth-bypass mode)..."
 (
   cd "$PC_DIR"
+  # `set -m` gives the daemon its OWN process group (verified on macOS bash 5):
+  # a SIGTERM aimed at the installer's process group (harness task kill, Ctrl-C
+  # on `install all`) must not reap the daemon it just started — that group-kill
+  # took paperclip down live on 2026-07-20, leaving the surviving relay holding
+  # :3100 over a dead app (doctor "HTTP 000").
+  set -m
   # No env flags = paperclip default (loopback). Just run pnpm dev.
   nohup pnpm dev >> "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"

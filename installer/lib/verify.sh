@@ -98,8 +98,9 @@ verify_alias_routable() {
   local ip="${1:?usage: verify_alias_routable <ip>}"
   local port nc_pid rc=0
 
-  # Sanity: is the IP even bound to lo0?
-  if ! ifconfig lo0 2>/dev/null | awk '/inet / {print $2}' | grep -qxF "$ip"; then
+  # Sanity: is the IP even bound to lo0? Exact-match folded into awk END —
+  # `| grep -q` after awk SIGPIPEs under pipefail (EPIPE class, 2026-07-21).
+  if ! ifconfig lo0 2>/dev/null | awk -v ip="$ip" '/inet / && $2==ip{f=1} END{exit f?0:1}'; then
     printf 'verify_alias_routable: %s is not bound to lo0\n' "$ip" >&2
     printf '  fix: sudo bash %s/vz-ai-stack.sh prepare-sudo\n' "$AI_STACK" >&2
     return 1

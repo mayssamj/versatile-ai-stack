@@ -23,8 +23,15 @@ precheck() {
   local pid; pid="$(cat "$PID_FILE" 2>/dev/null || echo "")"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
-  # PID-recycle guard: confirm the live PID is actually our paperclip.
-  ps -p "$pid" -o args= 2>/dev/null | grep -qF "$PC_DIR" || return 1
+  # PID-recycle guard: confirm the live PID is actually our paperclip. The
+  # `pnpm dev` parent's argv is just "node .../pnpm dev" (NO clone path in it),
+  # so argv alone false-negatives on a HEALTHY daemon — fall back to the
+  # process CWD anchor, same identity standard as start-paperclip's pid_is_ours
+  # (verified live 2026-07-21: argv leg 0/1, cwd leg matches exactly).
+  if ! ps -p "$pid" -o args= 2>/dev/null | grep -qF "$PC_DIR"; then
+    local cwd; cwd="$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+    [[ -n "$cwd" && "$cwd" == "$PC_DIR"* ]] || return 1
+  fi
   port_listening 3100 || return 1
   # Use /api/health (paperclip's documented health endpoint); accept any
   # non-000 response as "alive" — startup may transiently return non-200.
@@ -58,8 +65,14 @@ if [[ ! -d "$PC_DIR/.git" ]]; then
   fi
 fi
 
-if command -v pnpm >/dev/null && [[ ! -d "$PC_DIR/node_modules" ]]; then
-  log "pnpm install in $PC_DIR (first run; subsequent re-runs skip this)..."
+# Integrity gate, NOT dir-existence: an interrupted install or `cleanup` can
+# leave node_modules PRESENT but gutted (tsx — the dev entrypoint — missing),
+# and a bare `[[ -d node_modules ]]` gate then skips the repair forever while
+# `pnpm dev` crash-loops on "tsx not found" (doctor red on a fresh install,
+# 2026-07-21). Anchor on the entrypoint binary pnpm must link; pnpm install is
+# idempotent-fast (~2s) when the tree is already complete.
+if command -v pnpm >/dev/null && [[ ! -e "$PC_DIR/server/node_modules/.bin/tsx" ]]; then
+  log "pnpm install in $PC_DIR (node_modules missing or incomplete — tsx unresolvable)..."
   (cd "$PC_DIR" && pnpm install 2>&1 | tail -10) || warn "pnpm install exited non-zero"
 fi
 
@@ -72,8 +85,20 @@ else
   warn "$AI_STACK/bin/start-paperclip.sh missing — paperclip not auto-started"
 fi
 
+# Verify-then-stamp: stamping with the daemon DOWN froze exactly this failure on
+# 2026-07-20 (crashed `pnpm dev` + stamped phase = install "complete" + doctor
+# red with no re-run path). Not healthy → NO stamp (phase stays re-runnable);
+# soft exit 0 so `install all` continues past a broken upstream paperclip (it is
+# a best-effort personal agent, not core infra). The clone-fail stub path above
+# keeps its deliberate stamp (upstream-unreachable is a terminal, documented state).
+if ! precheck 2>/dev/null; then
+  warn "paperclip daemon NOT healthy after start — NOT stamping Phase 08."
+  warn "  Inspect:  tail -30 $STATE_DIR/paperclip.log"
+  warn "  Heal:     bash $AI_STACK/bin/start-paperclip.sh   (self-repairs deps), then re-run 'install 08'"
+  exit 0
+fi
 stamp_mark "$PHASE"
-record "phase 08 complete: paperclip cloned + deps installed + daemon $(precheck 2>/dev/null && echo up || echo not-up)"
+record "phase 08 complete: paperclip cloned + deps installed + daemon up"
 ok "Phase 08 — Paperclip — complete"
 note "UI + API:  http://paperclip:3100  (or http://localhost:3100)"
 note "Stop:      kill \$(cat $PID_FILE)"

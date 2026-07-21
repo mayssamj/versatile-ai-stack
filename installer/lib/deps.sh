@@ -231,7 +231,10 @@ ensure_ollama() {
     dep_have ollama || { err "ollama still not on PATH after install."; return 1; }
   fi
   # Start the service first so brew writes the launchd plist we then patch.
-  if ! brew services list 2>/dev/null | awk '$1=="ollama"{print $2}' | grep -q started; then
+  # awk judges in END (consumes ALL input) — a trailing `| grep -q` SIGPIPEs
+  # brew under pipefail → flaky "not started" → a spurious `brew services start`
+  # (which can wipe the OLLAMA_HOST patch). Pipefail-EPIPE class, 2026-07-21.
+  if ! brew services list 2>/dev/null | awk '$1=="ollama"{s=$2} END{exit (s=="started")?0:1}'; then
     log "Starting Ollama brew service..."
     brew services start ollama 2>&1 | tail -2 || warn "brew services start ollama returned non-zero"
   fi

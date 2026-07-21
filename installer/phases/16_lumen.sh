@@ -72,8 +72,9 @@ precheck() {
   local v
   v="$("$LUMEN_BIN" version 2>/dev/null | head -1 | tr -d '[:space:]')"
   [[ "$v" == "$LUMEN_VERSION" ]] || return 1
-  # Embedding model pulled in Ollama.
-  if ! ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qE "^${LUMEN_EMBED_MODEL}(:|$)"; then
+  # Embedding model pulled in Ollama. Exact-match folded into awk END (consumes
+  # all input) — `| grep -q` after awk SIGPIPEs ollama under pipefail (EPIPE class).
+  if ! ollama list 2>/dev/null | awk -v m="$LUMEN_EMBED_MODEL" 'NR>1 && ($1==m || index($1, m ":")==1){f=1} END{exit f?0:1}'; then
     return 1
   fi
   # bin/lumen wrapper present + executable.
@@ -97,7 +98,7 @@ if ! command -v ollama >/dev/null; then
   err "ollama not on PATH — run Phase 01 first."
   exit 1
 fi
-if ! ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qE "^${LUMEN_EMBED_MODEL}(:|$)"; then
+if ! ollama list 2>/dev/null | awk -v m="$LUMEN_EMBED_MODEL" 'NR>1 && ($1==m || index($1, m ":")==1){f=1} END{exit f?0:1}'; then
   log "Pulling embedding model ${LUMEN_EMBED_MODEL} via Ollama (~150MB)..."
   if ! ollama pull "$LUMEN_EMBED_MODEL"; then
     err "ollama pull ${LUMEN_EMBED_MODEL} failed"

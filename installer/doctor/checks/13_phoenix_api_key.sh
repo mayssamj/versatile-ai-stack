@@ -27,7 +27,12 @@ phoenix_api_key_diagnose() {
   fi
   # If PHOENIX_API_KEY exists in .env but litellm logs still show 401s in the last 5 min:
   if container_running litellm; then
-    if docker logs --since 5m litellm 2>&1 | grep -q "Failed to export batch code: 401"; then
+    # grep -c consumes all of the streaming `docker logs` (a -q races under
+    # pipefail — EPIPE class → a REAL 401 could read as "none").
+    local n401
+    n401="$(docker logs --since 5m litellm 2>&1 | grep -cF "Failed to export batch code: 401")" || n401=0
+    [[ "$n401" =~ ^[0-9]+$ ]] || n401=0
+    if (( n401 > 0 )); then
       echo "PHOENIX_API_KEY in .env but litellm STILL getting 401 — env var not reaching container."
       echo "Fix: bash bin/start-litellm.sh --recreate"
       return 1

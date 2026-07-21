@@ -35,7 +35,9 @@ REQUIRED_MODELS=(
 
 precheck() {
   command -v ollama >/dev/null || return 1
-  brew services list 2>/dev/null | awk '$1=="ollama" {print $2}' | grep -q started || return 1
+  # awk judges in END (consumes all input) — `| grep -q` after awk SIGPIPEs brew
+  # under pipefail → flaky precheck FALSE → spurious phase re-run. EPIPE class.
+  brew services list 2>/dev/null | awk '$1=="ollama"{s=$2} END{exit (s=="started")?0:1}' || return 1
   wait_http http://127.0.0.1:11434/api/tags 5 || return 1
   local installed; installed="$(ollama list 2>/dev/null | awk 'NR>1{print $1}')"
   for m in "${REQUIRED_MODELS[@]}"; do

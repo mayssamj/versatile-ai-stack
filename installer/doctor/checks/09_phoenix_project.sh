@@ -52,8 +52,14 @@ print(int((datetime.datetime.now(tz=datetime.timezone.utc) - dt).total_seconds()
 PY
       )"
       : "${uptime_sec:=0}"
-      if (( uptime_sec > 120 )) \
-        && docker logs litellm 2>&1 | grep -qiE 'chat/completions|completion_tokens'; then
+      # grep -c consumes all of the streaming `docker logs` (a -q races under
+      # pipefail — EPIPE class).
+      local nchat=0
+      if (( uptime_sec > 120 )); then
+        nchat="$(docker logs litellm 2>&1 | grep -ciE 'chat/completions|completion_tokens')" || nchat=0
+        [[ "$nchat" =~ ^[0-9]+$ ]] || nchat=0
+      fi
+      if (( nchat > 0 )); then
         seen_chat=1
       fi
     fi

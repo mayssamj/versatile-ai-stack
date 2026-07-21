@@ -171,7 +171,9 @@ render_row() {
       fi
       ;;
     brew-service)
-      if brew services list 2>/dev/null | awk -v n="$name" '$1==n {print $2}' | grep -q started; then
+      # awk judges in END — `| grep -q` after awk SIGPIPEs brew under pipefail
+      # (flaky "stopped" for a running service). Pipefail-EPIPE class.
+      if brew services list 2>/dev/null | awk -v n="$name" '$1==n{s=$2} END{exit (s=="started")?0:1}'; then
         actual=running
       fi
       ;;

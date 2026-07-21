@@ -59,7 +59,12 @@ _alias_probe_one() {
       else
         url="http://$alias:$host_port$path"
       fi
-      code="$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "$url" 2>/dev/null || echo "000")"
+      # curl -w '%{http_code}' ALREADY prints 000 on a connect failure AND exits
+      # non-zero — an `|| echo 000` INSIDE the substitution concatenates to
+      # "000000" (misleading output; same bug class fixed in bin/start-paperclip
+      # http_ok + doctor check 40). Fallback in a separate assignment instead.
+      code="$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "$url" 2>/dev/null)" || code="000"
+      [[ "$code" =~ ^[0-9]{3}$ ]] || code="000"
       # 2xx / 3xx / even 4xx (which means we reached an HTTP server) all count;
       # 000/5xx/connection refused does not.
       case "$code" in

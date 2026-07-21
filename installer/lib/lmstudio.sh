@@ -103,9 +103,12 @@ lms_served_first() { lms_served_ids | head -1; }
 
 # lms_is_served <served> — is exactly this served id currently served?
 lms_is_served() {
-  local want="$1"
+  local want="$1" _ids
   [[ -n "$want" ]] || return 1
-  lms_served_ids | grep -qxF "$want"
+  # Capture-then-grep (pipefail-EPIPE class: grep -q's early exit SIGPIPEs the
+  # streaming producer → rc 141 poisons the pipeline → flaky "not served").
+  _ids="$(lms_served_ids)" || return 1
+  grep -qxF "$want" <<<"$_ids"
 }
 
 # lms_register_model <model_name> <served> <runtime> [effort] [api_base] [key_env] [rpm] [tpm]

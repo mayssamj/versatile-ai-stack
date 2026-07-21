@@ -60,7 +60,13 @@ PY
       # success line proves nothing. Only hard-fail on an EXPLICIT OTLP error
       # line (export failure / refused connection / auth reject). Quiet success
       # is the common case on a fresh stack and must stay green.
-      if docker logs litellm 2>&1 | grep -qiE 'failed to export batch|otlp.*(connection refused|failed)|export batch code: (401|403)'; then
+      # grep -c consumes ALL of the streaming `docker logs` output — a -q here
+      # raced under pipefail (docker logs SIGPIPE rc 141 wins the pipeline), so a
+      # REAL OTLP error could read as "no error" (false GREEN). Count, then judge.
+      local otlp_errs
+      otlp_errs="$(docker logs litellm 2>&1 | grep -ciE 'failed to export batch|otlp.*(connection refused|failed)|export batch code: (401|403)')" || otlp_errs=0
+      [[ "$otlp_errs" =~ ^[0-9]+$ ]] || otlp_errs=0
+      if (( otlp_errs > 0 )); then
         echo "litellm logs show an OTLP export error — Phoenix endpoint unreachable or rejecting (see check 04/13)"
         return 1
       fi

@@ -61,11 +61,13 @@ precheck() {
   if [[ "${LMS_LOAD_LFM2:-0}" == "1" ]]; then
     grep -q "model_name: ${LITELLM_SLUG}\b" "$CONFIG" 2>/dev/null || return 1
   fi
-  local _yml="$AI_STACK/installer/models.yml" _s
+  local _yml="$AI_STACK/installer/models.yml" _s _vals
   if [[ -f "$_yml" ]] && command -v yq >/dev/null 2>&1; then
     while IFS= read -r _s; do
       [[ -z "$_s" ]] && continue
-      yq -r '.assignments | to_entries | .[].value' "$_yml" 2>/dev/null | grep -qxF "$_s" || continue
+      # Capture-then-grep: `yq | grep -q` SIGPIPEs under pipefail (EPIPE class).
+      _vals="$(yq -r '.assignments | to_entries | .[].value' "$_yml" 2>/dev/null)" || _vals=""
+      grep -qxF "$_s" <<<"$_vals" || continue
       grep -q "model_name: ${_s}\b" "$CONFIG" 2>/dev/null || return 1
     done < <(yq -r '.models | to_entries | .[] | select(.value.runtime=="lmstudio") | .key' "$_yml" 2>/dev/null)
   fi

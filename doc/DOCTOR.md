@@ -1,11 +1,11 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 83 checks and, when one fails, prints the
+`bash vz-ai-stack.sh doctor` runs all 84 checks and, when one fails, prints the
 failure detail plus remediation. This doc lists every check, what it asserts,
 when it fails, and what the fix does.
 
 **The auto-fix prompt is gated on CAPABILITY, not on a fix merely existing**
-(changed 2026-07-16). 80 of the 83 checks ship a `<name>_fix`, but most only
+(changed 2026-07-16). 81 of the 84 checks ship a `<name>_fix`, but most only
 PRINT guidance — the house convention. Doctor used to offer *"Auto-fix
 available. Apply? [Y/n]"* for any check with a fix function (`declare -F`), so
 the operator answered `y`, nothing ran, and doctor reported *"fix ran but the
@@ -16,7 +16,7 @@ check still fails"* (the 74/76 incident). A fix must now declare
 |---|---|---|
 | **CAPABLE** (`FIX_CAPABLE=1`) | 19 | Prompts *"Auto-fix available. Apply? [Y/n]"* — answering `y` really mutates, then re-verifies. Skipped under `NO_PROMPT=1`. |
 | **AUTOHEAL** (`AUTOHEAL=1`, implies capable) | 2 | Safe + idempotent → applied AUTOMATICALLY, no prompt (`05a` litellm_keystore, `73` hermes_workspace_pair). Skipped under `NO_PROMPT=1`. |
-| **ADVISORY** (unmarked — the DEFAULT) | 59 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
+| **ADVISORY** (unmarked — the DEFAULT) | 60 | No prompt. Prints `Manual step required:` + the guidance. An unmarked check fails SAFE, so a new check can never over-promise a fix it cannot perform. |
 
 The 21 capable checks (19 + the 2 autoheal) are the only ones that can change
 your system from a doctor run.
@@ -138,7 +138,8 @@ installer/doctor/checks/
 ├── 79_fix_capable_integrity.sh              (mechanical FIX_CAPABLE marker integrity: no orphan markers, AUTOHEAL ⊆ FIX_CAPABLE, every unmarked _fix is print-only)
 ├── 80_halo_drift.sh                          (bin/halo default model in sync with its 11_halo_autoreason.sh generator — install can't dirty git with a stale wrapper)
 ├── 81_litellm_config_canonical.sh            (litellm/config.yaml committed in yq-canonical form — a model render can't dirty git with a comment/whitespace reindent)
-└── 82_anon_volume_orphans.sh                 (dangling anonymous docker volume census ≤5 — leaked mask-guards/sandbox homes; advisory, points at cleanup --docker)
+├── 82_anon_volume_orphans.sh                 (dangling anonymous docker volume census ≤5 — leaked mask-guards/sandbox homes; advisory, points at cleanup --docker)
+└── 83_pipefail_grep_epipe_guard.sh           (no racy `producer | grep -q` pipelines under pipefail — yq/docker-logs/awk-mid-pipe EPIPE class; advisory static guard)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See
@@ -1038,6 +1039,16 @@ Skips cleanly (returns 0) when `litellm/config.yaml` is absent (install 01 seeds
 | Fix | print-only advice (NOT FIX_CAPABLE — removal is NON-recoverable and stays operator-gated): review the itemized, HOST-WIDE list with `vz-ai-stack.sh cleanup --docker` (dry-run: size + age per volume), then reclaim with `cleanup --docker --yes` (each volume is tar-backed-up to `data/volume-backups/cleanup-<ts>/` first, fail-closed). |
 
 Skips cleanly (returns 0) when the docker engine is not reachable — a stopped engine must never red-bar an advisory hygiene census (same idiom as check 63).
+
+---
+
+## 83 · no racy `producer | grep -q` pipelines (pipefail-EPIPE guard)
+
+| | |
+|---|---|
+| Asserts | no single-line `yq … \| grep -q`, `docker logs … \| grep -q`, or `\| awk … \| grep -q` pipeline exists in `installer/lib`, `installer/phases`, `installer/doctor/checks`, or `bin`. Under `set -o pipefail`, `grep -q` exits at its first match; a producer still writing (yq and `docker logs` line-flush; awk mid-pipe streams) takes SIGPIPE (rc 141) and the TRUE condition reads FALSE — a coin-flip. Bit live twice: openshell phase wiring (the checks-78/80 era `sandbox list \| grep -q` bug) and check 06 red on a GREEN fresh install (`litellm_has_callback`, reproduced ~40%, 2026-07-21). Buffered single-write producers (`docker ps` tabwriter tables, printf builtins, a trailing `curl -w` code) cannot EPIPE and are not flagged; inner `sh -c`/`bash -c` strings (no pipefail) and comment lines are excluded. Single-line heuristic — the offline suite (`test_install_doctor_determinism.sh`) pins the converted multi-line sites. Read-only. |
+| Fails when | a new racy pipeline of one of the three guarded producer classes lands in the scanned trees. |
+| Fix | print-only advice (NOT FIX_CAPABLE — conversion is per-site judgment, never a blind sed): capture-then-grep on a variable (the `fleet.sh` idiom), fold the match into `awk END` with no early exit, or count with `grep -c` and judge the number. |
 
 ---
 

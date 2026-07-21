@@ -36,8 +36,10 @@ resolve_openshell() {
 OSH="$(resolve_openshell)"
 [[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first." >&2; exit 1; }
 
-# pi-v1 sandbox must be Ready.
-if ! "$OSH" sandbox list 2>/dev/null | awk 'NR>1 && $1=="pi-v1" {print $NF; exit}' | grep -q Ready; then
+# pi-v1 sandbox must be Ready. Matching folded into awk END with NO early exit:
+# `awk {..; exit} | grep -q` SIGPIPEs `sandbox list` under pipefail → flaky
+# "not Ready" on a Ready sandbox (the check-78/80 EPIPE class).
+if ! "$OSH" sandbox list 2>/dev/null | awk 'NR>1 && $1=="pi-v1" && !seen{seen=1; ok=($NF ~ /Ready/)} END{exit ok?0:1}'; then
   echo "pi-v1 sandbox not Ready — run 'bash vz-ai-stack.sh install 15' first." >&2
   exit 1
 fi
