@@ -851,10 +851,19 @@ for name in "${SANDBOXES[@]}"; do
   # rc map: 0=alive, 1=stale (relaunch), 3=not-configured/stopped (silent), 124=unknown (skip).
   if [[ "$W2_SUPERVISE" == "1" && "$storming" == "0" && "$name" == "hermes-fleet-v1" ]]; then
     sr_rc=0
+    # "Alive" needs IDENTITY, not just kill -0 (§24 council, both reviewers):
+    # /sandbox persists across container/engine restarts while the PID namespace
+    # resets, so the stale pidfile's number can be RECYCLED to an unrelated
+    # process — kill -0 alone would then mask a dead router forever (the exact
+    # ~17h-dark incident W2b exists to fix). Confirm via /proc/<pid>/cmdline
+    # (grep on a FILE — no pipe, no pipefail exposure; the launcher records the
+    # real python pid, verified against health.json by start-hermes-slack.sh).
     _wd_bounded 12 "$DOCKER" exec "$cid" sh -c '
       [ -s /sandbox/.hermes-slack-role-router.pid ] || exit 3
       [ -f /sandbox/fleet-boot/hermes_slack_role_router_start.sh ] || exit 3
-      kill -0 "$(cat /sandbox/.hermes-slack-role-router.pid)" 2>/dev/null && exit 0
+      pid="$(cat /sandbox/.hermes-slack-role-router.pid)"
+      kill -0 "$pid" 2>/dev/null || exit 1
+      grep -q hermes_slack_role_router "/proc/$pid/cmdline" 2>/dev/null && exit 0
       exit 1' || sr_rc=$?
     if (( sr_rc == 1 )); then
       log "  W2b: $name slack role router STALE (pid file present, process dead) — relaunching via phase-38 launcher"

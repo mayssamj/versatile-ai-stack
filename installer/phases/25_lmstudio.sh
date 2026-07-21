@@ -156,7 +156,10 @@ if [[ -f "$MODELS_YML" ]]; then
     _ttl="$(yq -r ".models.\"$_slug\".ttl // 1800" "$MODELS_YML" 2>/dev/null)"
     [[ -z "$_served" || "$_served" == "null" ]] && continue
     # Skip unless an agent is actually assigned this slug.
-    if ! yq -r '.assignments | to_entries | .[].value' "$MODELS_YML" 2>/dev/null | grep -qxF "$_slug"; then
+    # Capture-then-grep (pipefail-EPIPE class; §24 council caught this site AFTER
+    # the first sweep — the guard regex was blind to piped yq filters).
+    _avals="$(yq -r '.assignments | to_entries | .[].value' "$MODELS_YML" 2>/dev/null)" || _avals=""
+    if ! grep -qxF "$_slug" <<<"$_avals"; then
       continue
     fi
     _lms_assigned=1

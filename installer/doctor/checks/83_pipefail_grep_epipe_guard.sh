@@ -23,8 +23,12 @@ CHECK_TITLE[pipefail_grep_epipe_guard]="repo: no racy 'producer | grep -q' pipel
 pipefail_grep_epipe_guard_diagnose() {
   local bad
   # Producer classes guarded: yq …|grep -q · docker logs …|grep -q · |awk …|grep -q.
+  # `.*` (NOT `[^|]*`) between producer and the final `| grep -q`: yq filters
+  # routinely contain pipes (`yq '.a | .b'`) and any intermediate stage keeps the
+  # race alive — a `[^|]*` class stopped at the filter's first pipe and let a
+  # live racy site through (§24 council, 25_lmstudio.sh:159).
   # Excludes: this check itself, comment lines, inner sh -c / bash -c shells.
-  bad="$(grep -rnE 'yq [^|]*\|[[:space:]]*grep -[A-Za-z]*q|docker logs [^|]*\|[[:space:]]*grep -[A-Za-z]*q|\| *awk [^|]*\| *grep -[A-Za-z]*q' \
+  bad="$(grep -rnE 'yq .*\|[[:space:]]*grep -[A-Za-z]*q|docker logs .*\|[[:space:]]*grep -[A-Za-z]*q|\| *awk .*\| *grep -[A-Za-z]*q' \
            "$AI_STACK/installer/lib" "$AI_STACK/installer/phases" "$AI_STACK/installer/doctor/checks" "$AI_STACK/bin" 2>/dev/null \
          | grep -vF '83_pipefail_grep_epipe_guard' \
          | grep -vE ':[0-9]+:[[:space:]]*#' \

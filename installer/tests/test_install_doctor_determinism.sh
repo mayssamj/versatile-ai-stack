@@ -45,7 +45,9 @@ for f in "$DEPS" "$ST" "$P01"; do
 done
 [[ "$(grep -c 'END{exit f?0:1}' "$P16")" -ge 2 ]] \
   && t_ok "16_lumen: both ollama-list matches folded into awk END" || t_bad "16_lumen regressed"
-grep -q '_vals="\$(yq -r' "$P25" && t_ok "25_lmstudio: yq capture-then-grep" || t_bad "25_lmstudio regressed"
+grep -q '_vals="\$(yq -r' "$P25" && grep -q '_avals="\$(yq -r' "$P25" \
+  && t_ok "25_lmstudio: BOTH yq membership tests capture-then-grep (precheck + main body)" \
+  || t_bad "25_lmstudio regressed (council caught the main-body site once already)"
 grep -q '_ids="\$(lms_served_ids)"' "$LMS" && t_ok "lms_is_served captures" || t_bad "lms_is_served regressed"
 grep -q '_mresp="\$(litellm_scoped_curl' "$FL" && t_ok "fleet.sh /v1/models capture" || t_bad "fleet.sh regressed"
 grep -q 'END{exit f?0:1}' "$VF" && t_ok "verify.sh lo0 match folded into awk END" || t_bad "verify.sh regressed"
@@ -71,6 +73,8 @@ echo "== static: watchdog W2b slack-router supervision =="
 grep -q 'W2b' "$WD" && t_ok "W2b block present" || t_bad "W2b block missing"
 grep -q 'hermes-slack-role-router.pid ] || exit 3' "$WD" \
   && t_ok "W2b stale-pid sentinel: absent pid file = operator intent (no relaunch)" || t_bad "W2b operator-intent guard drifted"
+grep -q 'hermes_slack_role_router "/proc/\$pid/cmdline"' "$WD" \
+  && t_ok "W2b alive-check confirms process IDENTITY (recycled-PID mask guard)" || t_bad "W2b identity leg missing (bare kill -0)"
 grep -q 'fleet-boot/hermes_slack_role_router_start.sh" >>"\$LOG"' "$WD" \
   && t_ok "W2b relaunches via the persisted phase-38 launcher" || t_bad "W2b launcher relaunch drifted"
 grep -qE 'W2b.*HOME=/sandbox|export HOME=/sandbox; cd /sandbox; bash /sandbox/fleet-boot' "$WD" \
@@ -96,6 +100,11 @@ AI_STACK="$TMP" pipefail_grep_epipe_guard_diagnose >/dev/null 2>&1 \
 echo 'yq -r .x f.yml | grep -q foo' > "$TMP/installer/lib/a.sh"
 AI_STACK="$TMP" pipefail_grep_epipe_guard_diagnose >/dev/null 2>&1 \
   && t_bad "yq|grep -q violation NOT flagged" || t_ok "yq|grep -q violation flagged"
+# PIPED yq filter (council blind spot: `[^|]*` stopped at the filter's own pipe
+# and let 25_lmstudio.sh:159 through — the guard must see multi-stage filters).
+echo 'yq -r ".a | to_entries | .[].value" f.yml 2>/dev/null | grep -qxF "$x" || continue' > "$TMP/installer/lib/a.sh"
+AI_STACK="$TMP" pipefail_grep_epipe_guard_diagnose >/dev/null 2>&1 \
+  && t_bad "PIPED-filter yq violation NOT flagged (guard blind spot back)" || t_ok "piped-filter yq violation flagged"
 echo '# yq -r .x f.yml | grep -q foo (comment)' > "$TMP/installer/lib/a.sh"
 AI_STACK="$TMP" pipefail_grep_epipe_guard_diagnose >/dev/null 2>&1 \
   && t_ok "comment line NOT flagged" || t_bad "comment line false-positive"
