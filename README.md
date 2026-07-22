@@ -219,6 +219,11 @@ bash vz-ai-stack.sh doctor
 > Tip: a cheap `bash vz-ai-stack.sh verify` (< 10 sec) probes the alias chain end-to-end
 > and is worth running *before* the full install.
 
+> Red checks — or an install that stopped partway? Both print a pointer to
+> [TROUBLESHOOTING-PROMPT.md](doc/TROUBLESHOOTING-PROMPT.md): a paste-ready prompt you hand to
+> your own coding agent (Claude Code, Cursor, Codex, …) to diagnose and repair the install for
+> you, under hard limits on what it may touch on your machine.
+
 ### Open the UIs
 
 Once installed, reach services by their friendly alias (set up by `prepare-sudo` —
@@ -543,9 +548,13 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   foreign-container adoption, OpenShell sandbox).
 - **Day-to-day** — read [OPERATIONS.md](doc/OPERATIONS.md). Daily commands, how to
   enable/disable services, common recipes.
-- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 68
+- **Something's broken** — read [DOCTOR.md](doc/DOCTOR.md) for what each of the 84
   doctor checks means and how to fix, then [TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md)
   for less common issues (incl. the OpenShell CPU-storm watchdog and the OrbStack CPU cap).
+  Rather hand it to a coding agent? [TROUBLESHOOTING-PROMPT.md](doc/TROUBLESHOOTING-PROMPT.md) is a
+  paste-ready prompt that gives your agent the operating rules, the ground-truth commands, and the
+  hard limits it must not cross on your machine — repairing *your* install, not taking over
+  development (that's [AGENT-ONBOARDING.md](doc/AGENT-ONBOARDING.md), below).
 
 ### Modify or extend
 

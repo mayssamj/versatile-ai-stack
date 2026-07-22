@@ -184,7 +184,14 @@ Expect 5–20 minutes on first run depending on what's already cached:
 - ~30 sec each: honcho, hermes-workspace, deer-flow git clones.
 
 If anything fails mid-install, the script prints exactly which phase failed and
-how to resume (`bash vz-ai-stack.sh install <phase>`).
+how to resume (`bash vz-ai-stack.sh install <phase>`). A failed run also points you
+at the full transcript (`installer/state/install-latest.log`) and at
+[TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md); a successful one stays silent.
+Read the transcript, then check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the
+symptom — and if you'd rather hand it off than debug it, paste
+TROUBLESHOOTING-PROMPT.md as the first message to your own coding agent (Claude Code,
+Cursor, Codex, …) and describe what failed. (That's the *repair* prompt; the one for
+taking over development of the project is [ONBOARDING-PROMPT.md](ONBOARDING-PROMPT.md).)
 
 The installer is **non-interactive** by default for everything except prompts
 where it genuinely needs your input (e.g., a confirmation before recreating an

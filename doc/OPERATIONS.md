@@ -1,6 +1,11 @@
 # Operations
 
 Daily commands and common recipes. For initial install, see [INSTALL.md](INSTALL.md).
+When something's broken, see [DOCTOR.md](DOCTOR.md) then [TROUBLESHOOTING.md](TROUBLESHOOTING.md) —
+and if you'd rather hand it to a coding agent than debug it yourself,
+[TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) is a paste-ready prompt that briefs it
+on this stack and on what it must never touch on your machine. (A red `doctor` and a failed
+`install` both print that pointer too.)
 
 ---
 

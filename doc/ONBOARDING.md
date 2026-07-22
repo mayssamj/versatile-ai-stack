@@ -213,4 +213,8 @@ Full write-ups: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 - **What each tool is** → [COMPONENTS.md](COMPONENTS.md) (index) / [STACK-GUIDE.md](STACK-GUIDE.md) (tour).
 - **Day-to-day commands** → [OPERATIONS.md](OPERATIONS.md).
 - **Which model each agent uses** → [models.md](models.md) (`vz-ai-stack.sh model` binding).
-- **Something's broken** → [DOCTOR.md](DOCTOR.md) then [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+- **Something's broken** → [DOCTOR.md](DOCTOR.md) then [TROUBLESHOOTING.md](TROUBLESHOOTING.md) —
+  and if you'd rather hand it to a coding agent than debug it yourself,
+  [TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) is a paste-ready prompt that
+  briefs it on this stack and on what it must never touch on your machine. (Taking over
+  the project's development instead? That's [ONBOARDING-PROMPT.md](ONBOARDING-PROMPT.md).)

@@ -2263,6 +2263,8 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 
 **Then TROUBLESHOOTING.md.** Less common issues (OrbStack `*:80` wildcard, host-gateway DNS, foreign container adoption, etc.).
 
+**Or hand it to a coding agent.** [TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) is a paste-ready prompt: copy the body below the `---` as the first message to Claude Code / Cursor / Codex / Aider running in `~/ai-stack`, then describe what broke. It gives the agent this ladder, the ground-truth commands, and the hard limits it must not cross on your machine (never a bare `vz-ai-stack.sh`, no `.env` rewrites, no secrets in the transcript, no model pulls). A red `doctor` and a failed `install` both print the pointer. Not to be confused with [ONBOARDING-PROMPT.md](ONBOARDING-PROMPT.md), which onboards an agent as the project's maintainer.
+
 **Common scenarios mapped to checks/services:**
 
 | Symptom | First check | Then |

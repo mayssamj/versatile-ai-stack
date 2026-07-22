@@ -3,6 +3,12 @@
 For the doctor's 84 checks, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
+Rather hand it to a coding agent than read on? Paste
+[TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) as its first message, then describe
+your problem — it carries the hard limits, the ground-truth commands and the triage table.
+(Handing an agent the *project*, as its maintainer, is a different document:
+[ONBOARDING-PROMPT.md](ONBOARDING-PROMPT.md).)
+
 ---
 
 ## "Phoenix dashboard says 'Waiting for traces to arrive…'"
@@ -893,3 +899,7 @@ stack test 05
 If something in steps 1–7 reveals a new recurring failure, add it as a doctor
 check (see [DOCTOR.md](DOCTOR.md)) so the next person doesn't have to debug
 it from scratch.
+
+If they reveal nothing, hand it over: paste
+[TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) to a coding agent and tell
+it what you've already ruled out.

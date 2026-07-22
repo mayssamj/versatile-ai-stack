@@ -1760,7 +1760,7 @@ vz-ai-stack.sh reset --confirm hard --yes     # backs up data/, tears down conta
 
 **Lesson.** The operational loop is: **`status`** (what's declared vs running) → **`doctor`** (what's broken, auto-fix where possible) → **`upgrade --check`** then **`upgrade --outdated`** (stay current without surprises) → **`history`** when you need to remember *why*. Destructive verbs are tiered and always print their blast radius first; the watchdog handles the one failure mode that would otherwise burn CPU while you're away.
 
-**Go deeper.** `doc/DOCTOR.md` documents every check (asserts / fails-when / auto-fix); `doc/OPERATIONS.md` is the day-2 runbook; `doc/TROUBLESHOOTING.md` maps symptoms to fixes. `upgrade` runs as its own process and owns the install lock, so it never deadlocks and never loads a model (it touches artifacts only — images, binaries, venvs, clones).
+**Go deeper.** `doc/DOCTOR.md` documents every check (asserts / fails-when / auto-fix); `doc/OPERATIONS.md` is the day-2 runbook; `doc/TROUBLESHOOTING.md` maps symptoms to fixes — and if you'd rather hand the problem to a coding agent, `doc/TROUBLESHOOTING-PROMPT.md` is a paste-ready prompt that gives it the ground-truth commands and the hard limits it must not cross on your machine (a red `doctor` and a failed install both point you there). `upgrade` runs as its own process and owns the install lock, so it never deadlocks and never loads a model (it touches artifacts only — images, binaries, venvs, clones).
 
 ---
 
@@ -1827,6 +1827,7 @@ vz-ai-stack.sh install concordia      # 37 — generative agent-based modeling (
 | The day-2 runbook (every verb, in depth) | `doc/OPERATIONS.md` |
 | Every doctor check explained | `doc/DOCTOR.md` |
 | Symptom → fix | `doc/TROUBLESHOOTING.md` |
+| Hand the broken thing to a coding agent (paste-ready prompt) | `doc/TROUBLESHOOTING-PROMPT.md` |
 | Which model runs where, and why | `doc/models.md` |
 | An interactive map of all services | `doc/EXPLORE.html` |
 | Run Claude Code itself on any model your LiteLLM serves (kimi, gpt, glm, …) | `doc/CLAUDE-CODE-MODELS.md` |

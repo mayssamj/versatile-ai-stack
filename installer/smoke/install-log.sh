@@ -69,6 +69,7 @@ grep -q 'tee -a "\$INSTALL_LOG"'  "$LOGFNS" || fail "0: extracted install_log_st
 grep -q 'exec 1>&8 2>&9 8>&- 9>&-' "$LOGFNS" || fail "0: extracted install_log_drain missing the fd-restore (tee's EOF) — extraction is vacuous"
 grep -q 'kill -TERM "\$pid"'      "$LOGFNS" || fail "0: extracted install_log_drain missing the watchdog kill — extraction is vacuous"
 grep -q 'return "\$_rc"'          "$LOGFNS" || fail "0: extracted install_on_exit missing the rc-preserving return — extraction is vacuous"
+grep -q 'print_repair_hint'       "$LOGFNS" || fail "0: extracted install_on_exit missing the print_repair_hint call — extraction is vacuous (or the hint was deleted)"
 grep -q 'printf .failed:'         "$OPTBLOCK" || fail "0: extracted optfail block missing the 'failed:' line — extraction is vacuous"
 ok "0: extracted the shipped tee/drain/on_exit + optfail mechanism from $(basename "$VZ_SRC") (non-vacuous)"
 
@@ -185,6 +186,31 @@ rc7b=$?
 set -e
 [[ "$rc7b" == "7" ]] || fail "4b: install_on_exit did not preserve the exit status (got $rc7b, expected 7)"
 ok "4b: install_on_exit preserves the body's exit status (7) too"
+
+# 4c. The repair-hint contract, both directions. A FAILED install must name the agent prompt
+#     (it is the only in-terminal pointer a stuck first-time user gets), and a SUCCESSFUL one
+#     must stay silent — a hint that nags on every green install trains people to ignore it.
+#     Asserted on stderr, which is where print_repair_hint writes. 4b deliberately discards
+#     output, so without this the hint could be deleted and every assertion would still pass.
+SD2c="$TMP/state2c"
+set +e
+MODE=onexit BODY_RC=7 STATE_DIR="$SD2c" /opt/homebrew/bin/bash "$FAKE" >/dev/null 2>"$TMP/hint_fail.err"
+set -e
+grep -q 'TROUBLESHOOTING-PROMPT.md' "$TMP/hint_fail.err" \
+  || fail "4c: a failed install printed no repair hint — stderr was: $(tr '\n' ' ' < "$TMP/hint_fail.err")"
+grep -q "^  ${AI_STACK}/doc/TROUBLESHOOTING-PROMPT.md" "$TMP/hint_fail.err" \
+  || fail "4c: the repair hint is not an ABSOLUTE path — it must resolve from any cwd (bin/stack is PATH-able)"
+grep -q 'install-latest.log\|install-.*\.log' "$TMP/hint_fail.err" \
+  || fail "4c: the install repair hint does not name the run transcript"
+ok "4c: a failed install prints the repair hint, with an absolute path + the transcript"
+
+SD2d="$TMP/state2d"
+set +e
+MODE=onexit BODY_RC=0 STATE_DIR="$SD2d" /opt/homebrew/bin/bash "$FAKE" >/dev/null 2>"$TMP/hint_ok.err"
+set -e
+grep -q 'TROUBLESHOOTING-PROMPT.md' "$TMP/hint_ok.err" \
+  && fail "4d: a SUCCESSFUL install printed the repair hint (should stay silent): $(tr '\n' ' ' < "$TMP/hint_ok.err")"
+ok "4d: a successful install stays silent (no nag)"
 
 # ---------------------------------------------------------------------------------------
 # Case B — pty run (script -q /dev/null): the operator's real-time terminal view + TTY.
