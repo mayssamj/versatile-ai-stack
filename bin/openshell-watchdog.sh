@@ -884,7 +884,11 @@ for name in "${SANDBOXES[@]}"; do
       # Launcher needs HOME=/sandbox (it sources $HOME/.hermes/.env) and takes ~5-9s
       # (straggler kill-wait + 4s self-verify); bounded well above that. docker exec,
       # NOT the openshell relay (same rationale as W2: the relay hangs under thrash).
-      if _wd_bounded 30 "$DOCKER" exec "$cid" sh -c "export HOME=/sandbox; cd /sandbox; bash /sandbox/fleet-boot/hermes_slack_role_router_start.sh" >>"$LOG" 2>&1; then
+      # --user sandbox is the CONTRACT (live 2026-07-22): a root-run router poisons
+      # /sandbox artifacts root-owned AND relay sessions (uid 998) get EPERM from
+      # `kill -0` on it → doctor check 67 reads a healthy router as "not running".
+      # The liveness probe above stays root on purpose — root sees existence truth.
+      if _wd_bounded 30 "$DOCKER" exec --user sandbox "$cid" sh -c "export HOME=/sandbox; cd /sandbox; bash /sandbox/fleet-boot/hermes_slack_role_router_start.sh" >>"$LOG" 2>&1; then
         log "  W2b: slack role router relaunched in $name"; acted=1
       else
         log "  W2b: slack role router relaunch FAILED/timed out in $name — re-checked next cycle"

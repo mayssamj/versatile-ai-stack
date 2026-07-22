@@ -85,6 +85,9 @@ RL="$HERE/../lib/hermes_slack_role_router_start.sh"
 grep -q 'py=/sandbox/.venv/bin/python3' "$RL" && grep -qE 'setsid "\$py" "\$router"' "$RL" \
   && t_ok "router launcher uses the ABSOLUTE venv python (bare python3 = uv system python in non-login shells)" \
   || t_bad "router launcher regressed to bare python3 — dies 'deps missing' under watchdog relaunch"
+grep -qE 'exec --user sandbox "\$cid" sh -c "export HOME=/sandbox; cd /sandbox; bash /sandbox/fleet-boot' "$WD" \
+  && t_ok "W2b relaunch runs AS the sandbox user (root-run router = EPERM for relay probes + root-owned artifacts)" \
+  || t_bad "W2b relaunch lost --user sandbox — next relaunch poisons ownership and reds check 67"
 grep -q 'HERMES_SLACK_BOT_TOKEN=' "$WD" && grep -q 'HERMES_SLACK_APP_TOKEN=' "$WD" \
   && grep -qE '&& phases="\$phases 38"' "$WD" \
   && t_ok "storm heal re-runs phase 38 when BOTH Slack tokens configured (recreate loses router deps)" \
