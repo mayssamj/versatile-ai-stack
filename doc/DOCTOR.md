@@ -688,7 +688,7 @@ for the Meridian setup.
 |---|---|
 | Asserts | The watchdog (`bin/openshell-watchdog.sh`) has not left a pending alert at `installer/state/openshell-watchdog.alert`. The watchdog writes this marker when it detects an expired-token storm (default = **warn-only**, sandbox NOT deleted) or when an opt-in auto-recreate failed. |
 | Fails when | A storm alert is present (a sandbox hit the expired-token storm and the watchdog halted the burn but left the sandbox for you to recreate when ready), or an opt-in `AI_STACK_WATCHDOG_RECREATE=1` recreate failed. |
-| Auto-fix | None auto-applied — recreation discards in-sandbox state, so it stays a deliberate human action. Heal the flagged sandbox(es) (`vz-ai-stack.sh install 04 04f 15 20 04h`), then `rm installer/state/openshell-watchdog.alert` (or it clears on a verified auto-recreate). |
+| Auto-fix | None auto-applied — recreation discards in-sandbox state, so it stays a deliberate human action. Heal the flagged sandbox(es) (`vz-ai-stack.sh install 04 04f 15 20 38 04h`), then `rm installer/state/openshell-watchdog.alert` (or it clears on a verified auto-recreate). |
 
 This check is the loud, visible backstop ensuring a watchdog event can never be
 silent again.

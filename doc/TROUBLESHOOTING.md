@@ -214,7 +214,7 @@ loses nothing — it won't false-fire on a busy sandbox). **By default** it then
 container to stop the CPU burn, writes an alert to
 `installer/state/openshell-watchdog.alert` (surfaced by doctor check 43), and posts a
 desktop notification — it leaves the sandbox for **you** to recreate (`vz-ai-stack.sh
-install 04 04f 15 20 04h`), since recreation discards in-sandbox state. With
+install 04 04f 15 20 38 04h`), since recreation discards in-sandbox state. With
 `AI_STACK_WATCHDOG_RECREATE=1` it instead verifies the rebuild can run, then deletes +
 recreates (throttled ≤ 1 recreate per thing per 30 min) and fails loud if the rebuild
 doesn't come back Ready. It logs to `installer/state/openshell-watchdog.log` and skips

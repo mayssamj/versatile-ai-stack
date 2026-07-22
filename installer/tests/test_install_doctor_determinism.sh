@@ -81,9 +81,10 @@ grep -qE 'W2b.*HOME=/sandbox|export HOME=/sandbox; cd /sandbox; bash /sandbox/fl
   && t_ok "W2b launcher runs with HOME=/sandbox (env contract)" || t_bad "W2b env contract drifted"
 grep -q 'hermes slack role router relaunch FAILED' "$WD" \
   && t_ok "W2b failure is operator-visible (notify)" || t_bad "W2b silent-failure path"
-grep -qE 'HERMES_SLACK_BOT_TOKEN=\.. "\$AI_STACK/\.env" 2>/dev/null && phases="\$phases 38"' "$WD" \
-  && t_ok "storm heal re-runs phase 38 when Slack configured (recreate loses router deps)" \
-  || t_bad "storm heal missing the gated 38 — slack goes dark on every recreate"
+grep -q 'HERMES_SLACK_BOT_TOKEN=' "$WD" && grep -q 'HERMES_SLACK_APP_TOKEN=' "$WD" \
+  && grep -qE '&& phases="\$phases 38"' "$WD" \
+  && t_ok "storm heal re-runs phase 38 when BOTH Slack tokens configured (recreate loses router deps)" \
+  || t_bad "storm heal missing the dual-token-gated 38 — slack goes dark on every recreate"
 
 echo "== static: check 83 registered, advisory, print-only fix =="
 grep -q 'CHECKS+=(pipefail_grep_epipe_guard)' "$C83" && t_ok "check 83 registered" || t_bad "check 83 not registered"

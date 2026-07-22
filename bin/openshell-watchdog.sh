@@ -677,7 +677,11 @@ handle_storm() {  # handle_storm <name> <cid>
       # after every recreate until a manual `install 38` (live 2026-07-21: W2b
       # relaunch-looped on "Slack dependencies are missing"). Phase 38 re-runs
       # deps + config + router through the same funnel that heals it by hand.
-      grep -q '^HERMES_SLACK_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null && phases="$phases 38" ;;
+      # BOTH tokens gate it (38 hard-requires both; §24 council): a half-configured
+      # Slack must not turn a good recreate into a spurious FAILED failmark.
+      grep -q '^HERMES_SLACK_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null \
+        && grep -q '^HERMES_SLACK_APP_TOKEN=.' "$AI_STACK/.env" 2>/dev/null \
+        && phases="$phases 38" ;;
     pi-v1) phases="15" ;;
     *)     phases="" ;;
   esac

@@ -412,7 +412,7 @@ installs a launchd watchdog (`com.ai-stack.openshell-watchdog`, every 600 s) tha
 detects the storm. By **default it is warn-only and data-safe**: it halts the
 container to stop the CPU burn and writes an alert (surfaced by `doctor` check 43)
 — it does **not** delete/recreate the sandbox, because recreation discards in-sandbox
-state. You recreate when ready (`vz-ai-stack.sh install 04 04f 15 20 04h`), then clear
+state. You recreate when ready (`vz-ai-stack.sh install 04 04f 15 20 38 04h`), then clear
 the alert (`rm installer/state/openshell-watchdog.alert`). Opt into automatic
 delete+recreate (capability-checked, Ready-verified, fails loud) with
 `AI_STACK_WATCHDOG_RECREATE=1`.
