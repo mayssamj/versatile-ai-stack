@@ -668,7 +668,16 @@ handle_storm() {  # handle_storm <name> <cid>
   case "$name" in
     hermes-fleet-v1)
       phases="04 04f"
-      grep -q '^HERMES_TELEGRAM_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null && phases="$phases 20" ;;
+      grep -q '^HERMES_TELEGRAM_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null && phases="$phases 20"
+      # Slack (38) mirrors the Telegram gate above: a storm RECREATE rebuilds the
+      # sandbox from the BASE image, discarding the router's python deps (they
+      # live outside /sandbox, so neither the checkpoint state-restore nor W2b's
+      # relaunch can bring them back — the in-sandbox lazy pip install fails
+      # under the egress policy). Without 38 here the Slack channel stayed dark
+      # after every recreate until a manual `install 38` (live 2026-07-21: W2b
+      # relaunch-looped on "Slack dependencies are missing"). Phase 38 re-runs
+      # deps + config + router through the same funnel that heals it by hand.
+      grep -q '^HERMES_SLACK_BOT_TOKEN=.' "$AI_STACK/.env" 2>/dev/null && phases="$phases 38" ;;
     pi-v1) phases="15" ;;
     *)     phases="" ;;
   esac
