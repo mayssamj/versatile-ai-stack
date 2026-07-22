@@ -590,7 +590,7 @@ as authoritative** (verify there, don't trust this summary):
 | Model binding | [`models.md`](models.md) · `MODELS.html` (`models-serve`) |
 | Topology / ports | [`DEPENDENCIES.md`](DEPENDENCIES.md) · [`PORTS.md`](PORTS.md) · [`DIAGRAMS.md`](DIAGRAMS.md) |
 | Day-to-day ops | [`OPERATIONS.md`](OPERATIONS.md) |
-| Something broke | [`DOCTOR.md`](DOCTOR.md) → [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) |
+| Something broke | [`DOCTOR.md`](DOCTOR.md) → [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) → [`TROUBLESHOOTING-PROMPT.md`](TROUBLESHOOTING-PROMPT.md) (the paste-ready fix-it prompt a *user* hands their own coding agent — not your onboarding, but yours to keep true) |
 | Continue an in-flight session | [`HANDOFF.md`](HANDOFF.md) |
 | Licensing | [`ATTRIBUTION.md`](ATTRIBUTION.md) |
 | Hands-on tutorial | [`TUTORIAL.md`](TUTORIAL.md) (`tutorial-serve`) · [`SERVICE-PLAYGROUND.md`](SERVICE-PLAYGROUND.md) · [`HERMES-HANDSON.md`](HERMES-HANDSON.md) |

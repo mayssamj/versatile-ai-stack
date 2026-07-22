@@ -180,4 +180,16 @@ printf '\nDoctor done: %d checks, %d passed, %d fixed, %d remaining failed, %d s
 declare -F print_inference_hint >/dev/null 2>&1 || source "$AI_STACK/installer/lib/lmstudio.sh"
 print_inference_hint
 
+# Point a stuck user at the agent repair prompt — but ONLY when something is actually
+# red. Nothing in the installer used to name a recovery doc, so a failing user's next
+# move was a web search. This is the moment of frustration; make the pointer reachable
+# here rather than hoping they browse doc/. Green runs stay quiet (no nag).
+#
+# UNFILTERED runs only. `doctor <check>` is a targeted probe, not the "I'm stuck"
+# moment — and `cmd_verify` shells out to this script FOUR times with single-check
+# filters, on precisely the broken-host state it exists to detect, so an ungated hint
+# printed four copies of itself and buried verify's own verdict.
+if [[ -z "$FILTER" ]] && (( failed - fixed > 0 )); then
+  print_repair_hint
+fi
 (( failed - fixed > 0 )) && exit 1 || exit 0

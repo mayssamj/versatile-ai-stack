@@ -1063,6 +1063,13 @@ Skips cleanly (returns 0) when the docker engine is not reachable — a stopped 
 | 2 | Bad usage (unknown filter, malformed args). |
 | 3 | Could not acquire the install lock (`LOCK_FORCE=1` to break). |
 
+Every run ends with a summary line — `Doctor done: N checks, N passed, N fixed, N
+remaining failed, N skipped.` When the remaining-failed count is non-zero, doctor then
+prints a pointer to [TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) — a
+paste-ready prompt that hands the red check to a coding agent — and to
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md), before exiting 1. A fully green run prints
+nothing extra: the pointer shows up at the moment of frustration, never as a nag.
+
 ---
 
 ## When the doctor isn't enough

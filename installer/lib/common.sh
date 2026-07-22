@@ -26,6 +26,30 @@ warn() { printf '%s %s\n'   "${C_YELLOW}⚠${C_RESET}"    "$*" >&2; }
 err()  { printf '%s %s\n'   "${C_RED}✗${C_RESET}"       "$*" >&2; }
 note() { printf '%s %s\n'   "${C_BLUE}·${C_RESET}"      "$*"; }
 
+# print_repair_hint [EXTRA_LINE…] — the ONE canonical "you're stuck, hand it to an
+# agent" pointer, shared by the two moments that print it: a doctor run with red
+# checks, and a failed install. Factored here (the print_inference_hint convention)
+# because two copy-pasted bodies drifted in wording AND stream within one change —
+# and because renaming the doc must not mean grepping for prose.
+#
+# ABSOLUTE paths on purpose: `bin/stack` is a PATH-able alias and the documented
+# invocation is `bash ~/ai-stack/vz-ai-stack.sh`, so a repo-relative path is exactly
+# wrong from any other cwd — at the one moment the message assumes the reader is
+# already frustrated. An absolute path also pastes straight into the agent it names.
+#
+# stderr, deliberately: this is a failure advisory, and it keeps `doctor > file`
+# and `install | tee` output clean. Callers gate on their own "is this really the
+# stuck moment?" condition (unfiltered run / not a user interrupt) — this function
+# does no gating of its own.
+print_repair_hint() {
+  printf '\nStuck? Hand it to a coding agent:\n' >&2
+  printf '  %s/doc/TROUBLESHOOTING-PROMPT.md — paste it as the agent'\''s FIRST message, then describe the problem.\n' "$AI_STACK" >&2
+  printf '  Known failure modes with exact recovery steps: %s/doc/TROUBLESHOOTING.md\n' "$AI_STACK" >&2
+  local extra
+  for extra in "$@"; do printf '  %s\n' "$extra" >&2; done
+  return 0
+}
+
 # Header for a phase or subcommand boundary.
 hdr() {
   printf '\n%s%s%s\n' "${C_BOLD}" "$*" "${C_RESET}"

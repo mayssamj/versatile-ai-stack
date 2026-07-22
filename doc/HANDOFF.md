@@ -45,4 +45,6 @@
 *Doc roles, so a new agent never wonders which to read: **ONBOARDING.md** = end-user ("installed it,
 now use it"); **AGENT-ONBOARDING.md** = the developer/owner deep map (start here to take over);
 **ONBOARDING-PROMPT.md** = the paste-into-a-fresh-agent bootstrap prompt; **this file** = the
-perishable latest-state pointer; **TROUBLESHOOTING.md** = recovery; **CHANGELOG.md** = history.*
+perishable latest-state pointer; **TROUBLESHOOTING.md** = recovery;
+**TROUBLESHOOTING-PROMPT.md** = the paste-to-your-own-agent fix-it prompt for a *user* repairing
+their own install (repair, not the owner bootstrap above); **CHANGELOG.md** = history.*

@@ -593,6 +593,23 @@ install_on_exit() {
   local _rc=$?
   install_log_drain
   lock_release
+  # A failed install is the other high-frustration moment (the user is least oriented
+  # here — they don't yet know what a phase, a stamp, or the state dir is). Point at the
+  # agent repair prompt from the one place every *run_phase* failure converges, rather
+  # than patching all three callsites. NOTE the scope: this trap is installed after
+  # worktree_guard / install_log_start / preflight / lock_acquire, so failures in THOSE
+  # (a sudo/permissions refusal, a host-dep bootstrap, a held lock) exit before it and
+  # print no hint. Success stays quiet.
+  #
+  # Not on a user interrupt: Ctrl-C is a deliberate abort — `install all
+  # --include-optionals` literally advertises "Ctrl-C now to abort" — and this repo
+  # already treats signal-stops as clean (see run_foreground_server's 130/143 mapping).
+  # Sniffing _rc for 130 does NOT work: the `install all` loop rewrites a dead phase to
+  # `exit 1`, so the signal is invisible by the time we get here. Hence the sentinel set
+  # by the INT/TERM trap below.
+  if (( _rc != 0 )) && [[ "${_INSTALL_INTERRUPTED:-0}" != 1 ]]; then
+    print_repair_hint "Full transcript of this run: ${INSTALL_LOG:-$AI_STACK/installer/state/install-latest.log}"
+  fi
   return "$_rc"
 }
 
@@ -635,6 +652,10 @@ cmd_install() {
   preflight
   lock_acquire
   trap 'install_on_exit' EXIT   # supersede the lock's EXIT trap (it re-releases the lock)
+  # INT/TERM keep the lock trap's behaviour (common.sh traps EXIT INT TERM), plus a
+  # sentinel so install_on_exit can tell a deliberate Ctrl-C from a real failure and
+  # stay quiet. Must be re-declared here: this replaces common.sh's INT/TERM handler.
+  trap '_INSTALL_INTERRUPTED=1; lock_release' INT TERM
 
   # FIRST STEP of ANY install (`install all` OR `install <phase>`): make `.env`
   # install-ready, then — first-run, interactively — offer to populate optional
@@ -922,7 +943,11 @@ cmd_help() {
 # ERR trap (see diag_exit for the mechanism). Kept plain + composable — no in-body `exit`.
 cmd_doctor()  { "$BASH" "$AI_STACK/installer/doctor/doctor.sh" "${1:-}"; }
 cmd_adopt()   { worktree_guard adopt; "$BASH" "$AI_STACK/installer/lib/adopt.sh" "$1"; }
-cmd_logs()    { run_foreground_server docker logs "$1" "${2:-}"; }   # `logs <ctr> -f` blocks; Ctrl-C/SIGTERM is a clean stop
+# `logs <ctr> [-f|--tail N …]` — forwards ALL extra args. The old form passed a quoted
+# "${2:-}", so the bare one-argument `logs <ctr>` always handed docker an empty second
+# argument and died with `docker: 'docker logs' requires 1 argument` — the documented
+# form never worked. `-f` blocks; Ctrl-C/SIGTERM is a clean stop (run_foreground_server).
+cmd_logs()    { local _c="${1:?usage: logs <container> [docker-logs-flags…]}"; shift; run_foreground_server docker logs "$_c" "$@"; }
 cmd_gc()      { worktree_guard gc; "$BASH" "$AI_STACK/installer/lib/gc.sh"; }
 cmd_cleanup() { "$BASH" "$AI_STACK/installer/lib/cleanup.sh" "$@"; }   # reclaim disk: regenerable artifacts (node_modules/.venv/caches), dry-run by default; --docker also itemizes dangling anon VOLUMES (non-regenerable → tar-backed-up before --yes removal)
 cmd_history() { "$BASH" "$AI_STACK/installer/lib/history.sh"; }
