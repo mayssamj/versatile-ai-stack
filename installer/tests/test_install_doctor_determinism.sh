@@ -81,6 +81,10 @@ grep -qE 'W2b.*HOME=/sandbox|export HOME=/sandbox; cd /sandbox; bash /sandbox/fl
   && t_ok "W2b launcher runs with HOME=/sandbox (env contract)" || t_bad "W2b env contract drifted"
 grep -q 'hermes slack role router relaunch FAILED' "$WD" \
   && t_ok "W2b failure is operator-visible (notify)" || t_bad "W2b silent-failure path"
+RL="$HERE/../lib/hermes_slack_role_router_start.sh"
+grep -q 'py=/sandbox/.venv/bin/python3' "$RL" && grep -qE 'setsid "\$py" "\$router"' "$RL" \
+  && t_ok "router launcher uses the ABSOLUTE venv python (bare python3 = uv system python in non-login shells)" \
+  || t_bad "router launcher regressed to bare python3 — dies 'deps missing' under watchdog relaunch"
 grep -q 'HERMES_SLACK_BOT_TOKEN=' "$WD" && grep -q 'HERMES_SLACK_APP_TOKEN=' "$WD" \
   && grep -qE '&& phases="\$phases 38"' "$WD" \
   && t_ok "storm heal re-runs phase 38 when BOTH Slack tokens configured (recreate loses router deps)" \

@@ -23,7 +23,16 @@ set -a
 set +a
 export HERMES_CONFIG_PATH="${HERMES_CONFIG_PATH:-$HOME/.hermes/config.yaml}"
 
-nohup setsid python3 "$router" > "$log_file" 2>&1 &
+# Absolute venv python (the W2 gateway idiom — /sandbox/.venv/bin/hermes): bare
+# `python3` resolves to the uv-managed system python in any NON-login shell
+# (watchdog W2b's docker exec, a post-restart relaunch), where /sandbox/.venv's
+# site-packages (slack_bolt) are invisible — the router then dies in seconds
+# behind a MISLEADING "Slack dependencies are missing" (live 2026-07-22: deps
+# were present + importable via the venv python the whole time; only openshell
+# relay sessions source the profile that puts .venv/bin first on PATH).
+py=/sandbox/.venv/bin/python3
+[ -x "$py" ] || py=python3
+nohup setsid "$py" "$router" > "$log_file" 2>&1 &
 echo "$!" > "$pid_file"
 sleep 4
 kill -0 "$(cat "$pid_file")"
