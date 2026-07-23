@@ -13,7 +13,7 @@ source "$AI_STACK/installer/lib/env.sh"
 hdr "Smoke 32 — MetaGPT (real wrapper + scoped key -> LiteLLM)"
 
 VENV="$AI_STACK/metagpt/.venv"
-[[ -x "$VENV/bin/metagpt" ]] || { err "metagpt venv missing — run: vz-ai-stack.sh install 32"; exit 1; }
+[[ -x "$VENV/bin/metagpt" ]] || { err "metagpt venv missing — run: mayssam-ai-stack.sh install 32"; exit 1; }
 "$VENV/bin/python" -c "import metagpt" >/dev/null 2>&1 && ok "import metagpt OK" \
   || { err "import metagpt failed in the venv"; exit 1; }
 [[ -x "$AI_STACK/bin/metagpt" ]] || { err "bin/metagpt wrapper missing"; exit 1; }

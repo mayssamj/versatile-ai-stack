@@ -5,7 +5,7 @@
 # Value space of AI_STACK_DOCKER_ENGINE (.env): orbstack | docker-desktop | colima | podman
 # All `docker -H … info` probes are timeout-bounded so a wedged daemon never hangs us.
 
-# AI_STACK is normally exported by vz-ai-stack.sh (the sourcing parent). When this
+# AI_STACK is normally exported by mayssam-ai-stack.sh (the sourcing parent). When this
 # file is RUN DIRECTLY as the docker-engine CLI it self-resolves AI_STACK from its
 # own path (../../) — matching fleet.sh shape — so the CLI works standalone too.
 if [[ -z "${AI_STACK:-}" ]]; then
@@ -13,7 +13,7 @@ if [[ -z "${AI_STACK:-}" ]]; then
     || { echo "docker-engine.sh: AI_STACK unset and unresolvable" >&2; exit 2; }
 fi
 
-# Idempotent: a second source (e.g. vz-ai-stack.sh sources us, then docker.sh re-sources) is a no-op.
+# Idempotent: a second source (e.g. mayssam-ai-stack.sh sources us, then docker.sh re-sources) is a no-op.
 # Guard the early-return on SOURCED context: on a DIRECT run a `return` is illegal
 # ("return: can only return from a function or sourced script"), so only short-circuit
 # when actually sourced (BASH_SOURCE[0] != $0) AND already loaded.
@@ -415,7 +415,7 @@ engine_apply_context() {
     || docker context update "$ctx" --docker "host=$sock" >/dev/null 2>&1 || true
   if docker context use "$ctx" >/dev/null 2>&1; then
     local undo; undo="$(get_env AI_STACK_DOCKER_CONTEXT_PRIOR default)" || undo="default"   # inherit_errexit-safe
-    ok "docker context → $ctx (undo: docker context use $undo, or: vz-ai-stack.sh docker-engine context keep)"
+    ok "docker context → $ctx (undo: docker context use $undo, or: mayssam-ai-stack.sh docker-engine context keep)"
   else
     warn "could not switch global docker context to $ctx (DOCKER_HOST still pins the stack correctly)"
   fi
@@ -442,10 +442,10 @@ engine_restore_context() {
 _engine_usage() {
   cat >&2 <<'EOF'
 docker-engine — intentional Docker engine selection (orbstack|docker-desktop|colima|podman)
-  vz-ai-stack.sh docker-engine status            show selected engine, resolved socket, CLI/gateway consistency
-  vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
-  vz-ai-stack.sh docker-engine set <id>          set the engine to <id> explicitly (ensure + pin)
-  vz-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
+  mayssam-ai-stack.sh docker-engine status            show selected engine, resolved socket, CLI/gateway consistency
+  mayssam-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
+  mayssam-ai-stack.sh docker-engine set <id>          set the engine to <id> explicitly (ensure + pin)
+  mayssam-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
                                                  switch = auto-point global context at ai-stack-<engine> (default)
                                                  keep   = never touch it (restores the prior context now)
 EOF
@@ -454,14 +454,14 @@ EOF
 _engine_status() {
   local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
   if [[ -z "$sel" ]]; then
-    warn "no engine selected (AI_STACK_DOCKER_ENGINE unset). Run: vz-ai-stack.sh docker-engine select"
+    warn "no engine selected (AI_STACK_DOCKER_ENGINE unset). Run: mayssam-ai-stack.sh docker-engine select"
     return 1
   fi
   _engine_valid "$sel" || { err "AI_STACK_DOCKER_ENGINE='$sel' is invalid (want: $ENGINE_IDS)"; return 1; }
   local sock; sock="$(engine_socket "$sel" 2>/dev/null || echo '?')"
   note "engine:      $sel ($(engine_display "$sel"))"
   note "DOCKER_HOST: $sock"
-  engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: vz-ai-stack.sh docker-engine select)"
+  engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: mayssam-ai-stack.sh docker-engine select)"
   local gw; gw="$(grep -E '^DOCKER_HOST=' "${ENGINE_GATEWAY_ENV_FILE:-$HOME/.config/openshell/gateway.env}" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
   [[ "$gw" == "$sock" ]] && ok "gateway.env: == selected" || warn "gateway.env: $gw (!= $sock)"
   local pref; pref="$(get_env AI_STACK_DOCKER_CONTEXT switch)" || pref="switch"   # inherit_errexit-safe
@@ -470,7 +470,7 @@ _engine_status() {
 }
 
 # Only run the CLI dispatch when executed directly (bash docker-engine.sh ...),
-# NOT when sourced by vz-ai-stack.sh.
+# NOT when sourced by mayssam-ai-stack.sh.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   # Run-directly path: this file is normally SOURCED after common.sh+env.sh (which
   # define note/warn/ok/err and get_env). When invoked as a standalone CLI we must

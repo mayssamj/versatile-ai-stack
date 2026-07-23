@@ -5,7 +5,7 @@ STOP and ask the orchestrator — do not invent schema. Companion to the approve
 (`2026-06-07-service-run-cohesion.md`) + plan (`...-PLAN.md`).
 
 ## File ownership (STRICT — no two agents touch the same file)
-- **WS-A** → `vz-ai-stack.sh` ONLY.
+- **WS-A** → `mayssam-ai-stack.sh` ONLY.
 - **WS-B** → `bin/start-lmstudio.sh` (NEW) · `installer/phases/25_lmstudio.sh` · `installer/lib/lmstudio.sh`.
 - **WS-C** → `bin/start-claw3d.sh` · `bin/start-claw3d-bridge.sh` · `installer/phases/19_claw3d.sh`.
 - **WS-D** → `services.yml` ONLY.
@@ -58,10 +58,10 @@ For `start <svc>` / `run <svc>` / `enable <svc>`:
 
 `run` is a PURE alias of `start`. `enable`=start, `disable`=stop (already wired).
 
-## Helpers WS-A adds (all live in vz-ai-stack.sh)
+## Helpers WS-A adds (all live in mayssam-ai-stack.sh)
 - **`_report_started <svc>`**: read services.yml. If `open_url` set → print `URL: <open_url>`. elif
   `alias`+`host_port` → `Endpoint: http://<alias>:<host_port>`. elif `host_port` →
-  `Endpoint: http://localhost:<host_port>`. Always print `Stop: vz-ai-stack.sh stop <svc>`.
+  `Endpoint: http://localhost:<host_port>`. Always print `Stop: mayssam-ai-stack.sh stop <svc>`.
 - **`_browser_open <svc> <url>`**: best-effort, GATED — open only when ALL hold: `open_url` non-empty
   AND this was a FRESH start (not an idempotent "already running") AND interactive TTY (`[[ -t 1 ]]`)
   AND not `NO_BROWSER`/`CI` env set AND not `--no-open` AND (`open` on macOS | `xdg-open` on Linux
@@ -72,7 +72,7 @@ For `start <svc>` / `run <svc>` / `enable <svc>`:
   if the prereq path exists → return 0. Else: interactive TTY (and not `NO_PROMPT`/`CI`) → prompt
   `"<svc> isn't set up yet — set it up now? (~2 min) [y/N] "`; on `y` → run the install phase
   (`cmd_install <phase>`; claw3d=19, lmstudio=25) then continue; on `n`/timeout/EOF → print
-  `"<svc> isn't set up — run: vz-ai-stack.sh install <svc>"` and exit non-zero. Non-interactive/CI/
+  `"<svc> isn't set up — run: mayssam-ai-stack.sh install <svc>"` and exit non-zero. Non-interactive/CI/
   NO_PROMPT → do NOT auto-install; print that same exact-command line and exit non-zero.
 - Idempotency: "already running" from a start script (rc==0 but it printed "already running") should
   still print _report_started but should NOT browser-open. Detect fresh-vs-idempotent by capturing the
@@ -107,13 +107,13 @@ truth) — remove the duplicated separate bridge-then-UI launch (currently lines
 ### WS-B lmstudio
 NEW `bin/start-lmstudio.sh`: guard chain → `[[ "$(uname)" == Darwin ]]` else clear refusal naming the
 right path (NOT "no start script"); `/Applications/LM Studio.app` present else refusal +
-`vz-ai-stack.sh install lmstudio`; `lms` CLI bootstrapped (reuse `installer/lib/lmstudio.sh` helpers —
+`mayssam-ai-stack.sh install lmstudio`; `lms` CLI bootstrapped (reuse `installer/lib/lmstudio.sh` helpers —
 source it); idempotent (`lms_server_up` ⇒ `ok "already running"` exit 0); else
 `lms server start -p 1234 --bind 0.0.0.0`; wait until `lms_server_up`; print the CPU-idle-spin warning
 + "no model auto-loads; assign one + `model sync`". Phase 25: strip `LMS_AUTOSTART`-as-RUN-path — the
-"server down" note (lines ~113-127) now points to `vz-ai-stack.sh start lmstudio`. `LMS_AUTOSTART` may
+"server down" note (lines ~113-127) now points to `mayssam-ai-stack.sh start lmstudio`. `LMS_AUTOSTART` may
 remain ONLY as an install-time convenience, not the documented run path. `installer/lib/lmstudio.sh`
-line ~292 hint text → point to `vz-ai-stack.sh start lmstudio`.
+line ~292 hint text → point to `mayssam-ai-stack.sh start lmstudio`.
 
 ## Verification each agent runs before reporting DONE
 `bash -n <each touched .sh>`. WS-D: `yq -e '.services' services.yml >/dev/null` parses clean + spot

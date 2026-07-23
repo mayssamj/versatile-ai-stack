@@ -31,10 +31,10 @@ _FLEET_EVENTS_LOADED=1
 if [[ -z "${AI_STACK:-}" ]]; then
   _fe_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # installer/lib → ../.. = repo root
-  if [[ -f "$_fe_dir/../../vz-ai-stack.sh" ]]; then
+  if [[ -f "$_fe_dir/../../mayssam-ai-stack.sh" ]]; then
     AI_STACK="$(cd "$_fe_dir/../.." && pwd)"
   # bin/ → .. = repo root
-  elif [[ -f "$_fe_dir/../vz-ai-stack.sh" ]]; then
+  elif [[ -f "$_fe_dir/../mayssam-ai-stack.sh" ]]; then
     AI_STACK="$(cd "$_fe_dir/.." && pwd)"
   fi
   unset _fe_dir

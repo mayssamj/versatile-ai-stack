@@ -14,7 +14,7 @@
 #      Linux, never on macOS)
 #   3. Daemonizes the studio via bin/start-unsloth.sh (idempotent)
 #
-# Standalone install: `bash vz-ai-stack.sh install 14`
+# Standalone install: `bash mayssam-ai-stack.sh install 14`
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -66,7 +66,7 @@ if [[ -z "$UNSLOTH_BIN" ]]; then
     # A stamped host whose CLI vanished (PATH break, ~/.local/bin wipe) must NOT
     # get the 1-3 GB installer from an unattended sweep (council A-SF): heal
     # refuses loudly; the summary row reads FAILED, which is the honest state.
-    err "unsloth CLI missing — an upgrade sweep never reinstalls (1-3 GB curl|sh); run: vz-ai-stack.sh install 14"
+    err "unsloth CLI missing — an upgrade sweep never reinstalls (1-3 GB curl|sh); run: mayssam-ai-stack.sh install 14"
     exit 1
   fi
   log "Installing Unsloth Studio via the official curl|sh installer..."

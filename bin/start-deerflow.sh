@@ -37,7 +37,7 @@ source "$AI_STACK/installer/lib/env.sh"
 
 DF_DIR="$AI_STACK/deer-flow"
 [[ -d "$DF_DIR" && -f "$DF_DIR/scripts/deploy.sh" ]] || {
-  err "DeerFlow not installed at $DF_DIR — run 'bash vz-ai-stack.sh install 10' first."
+  err "DeerFlow not installed at $DF_DIR — run 'bash mayssam-ai-stack.sh install 10' first."
   exit 1
 }
 
@@ -68,7 +68,7 @@ DF_BIND_IP=127.0.10.17
 if [[ "$ACTION" != "down" && -f "$DF_COMPOSE" ]]; then
   if ! ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+' | grep -qxF "$DF_BIND_IP"; then
     err "lo0 alias $DF_BIND_IP (deerflow) is missing — nginx binds it loopback-only and won't start without it."
-    err "Run once:  sudo $AI_STACK/vz-ai-stack.sh prepare-sudo"
+    err "Run once:  sudo $AI_STACK/mayssam-ai-stack.sh prepare-sudo"
     exit 1
   fi
   if DF_IP="$DF_BIND_IP" python3 - "$DF_COMPOSE" <<'PYEOF'

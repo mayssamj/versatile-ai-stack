@@ -176,13 +176,13 @@ embedding_dim_diagnose() {
     # deployed ingest.py must agree with the assigned dim (else next populate writes wrong-dim vectors)
     local idim; idim="$(_edc_ingest_dim || true)"
     if [[ -n "$idim" && "$idim" != "$docs_dim" ]]; then
-      fails+=("  docs: deployed ingestor/ingest.py EMBED_DIM=$idim != assigned dim=$docs_dim — re-run 'vz-ai-stack.sh install 06' to re-bake ingest.py/mcp_server.py")
+      fails+=("  docs: deployed ingestor/ingest.py EMBED_DIM=$idim != assigned dim=$docs_dim — re-run 'mayssam-ai-stack.sh install 06' to re-bake ingest.py/mcp_server.py")
     fi
     # deployed ingest.py EMBED_MODEL must equal the assigned route (family-drift: registry re-pointed
     # to a same-dim different-family embedder but 'install 06' not re-run).
     local imodel; imodel="$(_edc_ingest_model || true)"
     if [[ -n "$imodel" && -n "$docs_route" && "$imodel" != "$docs_route" ]]; then
-      fails+=("  docs: deployed ingestor/ingest.py EMBED_MODEL=$imodel != assigned route=$docs_route — re-run 'vz-ai-stack.sh install 06' (registry↔deployed embedder-family drift)")
+      fails+=("  docs: deployed ingestor/ingest.py EMBED_MODEL=$imodel != assigned route=$docs_route — re-run 'mayssam-ai-stack.sh install 06' (registry↔deployed embedder-family drift)")
     fi
     # ---- FAMILY STAMP ("3c"): which embedder ACTUALLY populated the store? ----
     # The two guards above are satisfied by `install 06` alone; only this one needs the

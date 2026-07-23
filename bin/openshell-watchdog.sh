@@ -19,7 +19,7 @@
 #   2. On detection (DEFAULT = WARN-ONLY, data-safe): log + desktop-notify + write
 #      a RED marker (surfaced by doctor check 43). It does NOT delete the sandbox —
 #      deletion is destructive (loses in-sandbox runtime state), so recreation is a
-#      deliberate human action: `vz-ai-stack.sh install <phases>`.
+#      deliberate human action: `mayssam-ai-stack.sh install <phases>`.
 #   3. GENERIC net: any MANAGED container pegged >CPU_WARN over two samples gets
 #      logged as a runaway (surfaced for `doctor`).
 #
@@ -54,7 +54,7 @@ AI_STACK="${AI_STACK:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 STATE="$AI_STACK/installer/state"
 LOG="$STATE/openshell-watchdog.log"
 LOCK="$STATE/openshell-watchdog.lock"
-INSTALL_LOCK="$STATE/.lock"               # vz-ai-stack.sh's lock dir
+INSTALL_LOCK="$STATE/.lock"               # mayssam-ai-stack.sh's lock dir
 THROTTLE_FILE="$STATE/openshell-watchdog.last"
 THROTTLE_SECS="${AI_STACK_WATCHDOG_THROTTLE:-1800}"   # don't recreate the same thing more than once / 30min
 CPU_WARN="${AI_STACK_WATCHDOG_CPU_WARN:-85}"          # generic runaway threshold (%)
@@ -242,7 +242,7 @@ _gateway_config_heal() {  # <cid> <name> -> rc 0 ONLY if it RESTORED a gutted co
   # RESTORE only a TRUE gut; leave a complete-but-local config OR a large restructure alone.
   _config_gutted "$live" || return 1
   if [[ ! -s "$GW_CONFIG_SNAP" ]] || ! _config_promotable "$(cat "$GW_CONFIG_SNAP" 2>/dev/null || true)"; then
-    log "W5: $name gateway config is GUTTED (no model/provider) and no healthy (cloud) snapshot — heal: vz-ai-stack.sh install 04f"
+    log "W5: $name gateway config is GUTTED (no model/provider) and no healthy (cloud) snapshot — heal: mayssam-ai-stack.sh install 04f"
     notify "$name gateway config gutted — no snapshot to restore (run install 04f)"
     return 1
   fi
@@ -341,7 +341,7 @@ _w4_revive_exited() {
     notify "$name was down — auto-revived ✓"; acted=1
   else
     log "  W4: docker start $name FAILED (rc/timeout) — marking for the operator"
-    _failmark_set "$name" "$name was EXITED and auto-revive (docker start) FAILED at $(date '+%F %T') — manual: vz-ai-stack.sh install"
+    _failmark_set "$name" "$name was EXITED and auto-revive (docker start) FAILED at $(date '+%F %T') — manual: mayssam-ai-stack.sh install"
     notify "⚠ $name down — auto-revive FAILED; needs manual repair"
   fi
 }
@@ -506,11 +506,11 @@ if [[ -d "$INSTALL_LOCK" ]]; then
   _il_age=$(( $(date +%s) - $(stat -f %m "$INSTALL_LOCK" 2>/dev/null || echo 0) ))
   # Defer ONLY for a LIVE install. The naive `[[ -d ]] && exit` deferred FOREVER on a crashed install
   # (disabling ALL auto-heal); a bare pid-liveness check instead defers for HOURS once the dead pid is
-  # RECYCLED to an unrelated process (council W1). So: pid alive AND is a vz-ai-stack process => real
+  # RECYCLED to an unrelated process (council W1). So: pid alive AND is a mayssam-ai-stack process => real
   # install, defer (any duration); pid empty but lock YOUNG (<15s) => lock_acquire's mkdir-then-write
   # race (council W2) => defer; else (dead/reused pid, or old+no-pid) => STALE => proceed.
   if [[ -n "$_il_pid" ]] && kill -0 "$_il_pid" 2>/dev/null \
-       && ps -p "$_il_pid" -o command= 2>/dev/null | grep -q 'vz-ai-stack'; then
+       && ps -p "$_il_pid" -o command= 2>/dev/null | grep -q 'mayssam-ai-stack'; then
     log "install in progress (pid $_il_pid) — deferring this cycle"; exit 0
   elif [[ -z "$_il_pid" ]] && (( _il_age < 15 )); then
     log "install lock too new (${_il_age}s, no pid yet) — deferring this cycle"; exit 0
@@ -566,7 +566,7 @@ _is_storming() {
   return 1
 }
 
-# _child_path — prepend the RESOLVED tool dirs so a shelled `vz-ai-stack.sh install`
+# _child_path — prepend the RESOLVED tool dirs so a shelled `mayssam-ai-stack.sh install`
 # finds docker/openshell/brew even under launchd's minimal PATH. (DEFECT-2: the
 # child installer's preflight does `command -v docker`; OrbStack's docker lives at
 # ~/.orbstack/bin and was NOT on the plist PATH, so every rebuild aborted.)
@@ -583,7 +583,7 @@ _child_path() {
 _phase_install() {
   local cpath="$1"; shift; local p rc=0
   for p in "$@"; do
-    PATH="$cpath" bash "$AI_STACK/vz-ai-stack.sh" install "$p" >>"$LOG" 2>&1 || { rc=1; log "  install $p FAILED (rc=$?)"; }
+    PATH="$cpath" bash "$AI_STACK/mayssam-ai-stack.sh" install "$p" >>"$LOG" 2>&1 || { rc=1; log "  install $p FAILED (rc=$?)"; }
   done
   return $rc
 }
@@ -711,7 +711,7 @@ handle_storm() {  # handle_storm <name> <cid>
   # docker start re-runs it), and the host hang it prevents is NOT recoverable.
   if [[ "$RECREATE" != "1" ]]; then
     log "ALERT: $name has an expired-token storm (cid ${cid:0:12}). NOT auto-deleting (state preserved)."
-    log "  Heal when ready (state is checkpointed first; restore via bin/openshell-state-restore.sh):  bash $AI_STACK/vz-ai-stack.sh install $phases"
+    log "  Heal when ready (state is checkpointed first; restore via bin/openshell-state-restore.sh):  bash $AI_STACK/mayssam-ai-stack.sh install $phases"
     if [[ "$HALT" == "1" ]]; then
       # Cap CPU/mem on the LIVE container first so even the detection window cannot
       # starve the host (best-effort: OrbStack may not honor a live cgroup edit — never
@@ -727,7 +727,7 @@ handle_storm() {  # handle_storm <name> <cid>
         && log "  halted the container to stop the CPU burn (record preserved; restart/recreate to use it)" \
         || log "  (docker stop failed)"
     fi
-    _failmark_set "$name" "$(printf '%s expired-token storm at %s — auto-recreate OFF (data-safe; halted+checkpointed). Heal: vz-ai-stack.sh install %s' \
+    _failmark_set "$name" "$(printf '%s expired-token storm at %s — auto-recreate OFF (data-safe; halted+checkpointed). Heal: mayssam-ai-stack.sh install %s' \
       "$name" "$(date '+%F %T')" "$phases")"
     notify "$name token storm — halted+checkpointed; recreate when ready (auto-recreate OFF)"
     return 0
@@ -765,7 +765,7 @@ handle_storm() {  # handle_storm <name> <cid>
     _failmark_clear "$name"
     notify "$name recreated ✓"
   else
-    log "  RECREATE of $name FAILED (install rc=$rc / not Ready) — sandbox is NOT healthy. Manual: bash $AI_STACK/vz-ai-stack.sh install $phases"
+    log "  RECREATE of $name FAILED (install rc=$rc / not Ready) — sandbox is NOT healthy. Manual: bash $AI_STACK/mayssam-ai-stack.sh install $phases"
     _failmark_set "$name" "$(printf '%s auto-recreate FAILED (rc=%s) at %s — sandbox missing/unhealthy; manual repair needed' "$name" "$rc" "$(date '+%F %T')")"
     notify "⚠ $name recreate FAILED — needs manual repair (see doctor)"
   fi

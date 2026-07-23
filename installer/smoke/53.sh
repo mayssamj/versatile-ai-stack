@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke for the container-liveness doctor check (installer/doctor/checks/53_container_liveness.sh).
-# Named 53.sh so `vz-ai-stack.sh test 53` resolves it (cmd_test strips after '_').
+# Named 53.sh so `mayssam-ai-stack.sh test 53` resolves it (cmd_test strips after '_').
 #
 # WHY: doctor reported "all green" for hours while autofyn-agent crash-looped and
 # llm_guard sat dead — no check asserted "every stack container that exists is
@@ -13,7 +13,7 @@
 #
 # Uses throwaway alpine containers (no bind mounts -> safe from any worktree path);
 # always cleans up. Skips cleanly if docker is unavailable.
-# Run: bash installer/smoke/53.sh   (or: vz-ai-stack.sh test 53)
+# Run: bash installer/smoke/53.sh   (or: mayssam-ai-stack.sh test 53)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export AI_STACK

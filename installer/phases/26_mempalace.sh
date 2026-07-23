@@ -46,7 +46,7 @@
 #      ~/.claude/projects history — that can be large/long; it is a printed
 #      opt-in note so we never leave a long-running task behind.)
 #
-# Standalone install: `bash vz-ai-stack.sh install 26`  (alias: mempalace)
+# Standalone install: `bash mayssam-ai-stack.sh install 26`  (alias: mempalace)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -68,7 +68,7 @@ MP_CONFIG_FILE="$MP_CONFIG_DIR/config.json"
 MP_EMBED_MODEL="${MEMPALACE_EMBEDDING_MODEL:-minilm}"
 # DURABLE: when MEMPALACE_EMBEDDING_MODEL isn't set in the env, read the `served`
 # token of the embedder assigned to `mempalace` in installer/models.yml (set via
-# `vz-ai-stack.sh embedding assign mempalace <model>`) so a re-install honors a
+# `mayssam-ai-stack.sh embedding assign mempalace <model>`) so a re-install honors a
 # re-point. For the on-device embedders `served` IS the exact MemPalace token
 # (minilm / embeddinggemma) — not the HF name — so it's handed through verbatim,
 # the same idiom as docs/openwebui/lumen. The `${...:-minilm}` above stays the
@@ -112,7 +112,7 @@ precheck() {
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
-  ok "Phase 26 — MemPalace — already installed (use 'vz-ai-stack.sh install 26' to re-run)"
+  ok "Phase 26 — MemPalace — already installed (use 'mayssam-ai-stack.sh install 26' to re-run)"
   exit 0
 fi
 
@@ -121,7 +121,7 @@ hdr "Phase 26 — MemPalace (local-first conversation memory)"
 # --- Preconditions ---
 command -v uv >/dev/null 2>&1 || {
   err "uv not on PATH. uv is installed by Phase 14 (Unsloth). Run:"
-  err "  bash $AI_STACK/vz-ai-stack.sh install 14"
+  err "  bash $AI_STACK/mayssam-ai-stack.sh install 14"
   exit 1
 }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
@@ -221,7 +221,7 @@ MP_BIN="\$HOME/.local/bin/mempalace"
 if [[ ! -x "\$MP_BIN" || "\$MP_BIN" -ef "\${BASH_SOURCE[0]}" ]]; then
   MP_BIN="\$(command -v mempalace 2>/dev/null || true)"
 fi
-[[ -n "\$MP_BIN" && -x "\$MP_BIN" && ! "\$MP_BIN" -ef "\${BASH_SOURCE[0]}" ]] || { echo "mempalace tool not found (only the wrapper is on PATH) — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
+[[ -n "\$MP_BIN" && -x "\$MP_BIN" && ! "\$MP_BIN" -ef "\${BASH_SOURCE[0]}" ]] || { echo "mempalace tool not found (only the wrapper is on PATH) — run 'bash mayssam-ai-stack.sh install 26'" >&2; exit 1; }
 
 _key="\$(_mp_get_env MEMPALACE_LITELLM_KEY)"
 export MEMPALACE_EMBEDDING_MODEL="\${MEMPALACE_EMBEDDING_MODEL:-$MP_EMBED_MODEL}"
@@ -249,7 +249,7 @@ if [[ ! -f "$MP_CONFIG_FILE" ]]; then
   [[ -f "$MP_SEED_DIR/README.md" ]] || cat > "$MP_SEED_DIR/README.md" <<'SEEDEOF'
 # MemPalace seed
 
-Neutral directory used by `vz-ai-stack.sh install 26` to bootstrap the palace
+Neutral directory used by `mayssam-ai-stack.sh install 26` to bootstrap the palace
 config (~/.mempalace) without treating the ai-stack repo as a mined corpus.
 The real memory comes from `bin/mempalace mine ~/.claude/projects --mode convos`
 and the opt-in Stop/PreCompact hooks. Safe to leave empty.

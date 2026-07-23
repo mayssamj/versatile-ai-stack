@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test_foreground_server_signal_exit.sh — offline unit test for run_foreground_server()
-# in vz-ai-stack.sh. Foreground commands (tutorial-serve / models-serve / fleet-studio /
+# in mayssam-ai-stack.sh. Foreground commands (tutorial-serve / models-serve / fleet-studio /
 # understand-dashboard / `logs -f`) exit non-zero when stopped by a signal; the top-level
 # `set -Eeuo pipefail` + ERR trap would then print a spurious `✗ ERR line N (exit=143)`
 # after a CLEAN shutdown. The helper maps ONLY the two graceful-stop signals — SIGINT/130
@@ -8,10 +8,10 @@
 # still propagates. No network, no model, no live server. Run: bash this.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VZ="$HERE/../../vz-ai-stack.sh"
-[[ -f "$VZ" ]] || { echo "  [skip] vz-ai-stack.sh not found at $VZ"; exit 0; }
+VZ="$HERE/../../mayssam-ai-stack.sh"
+[[ -f "$VZ" ]] || { echo "  [skip] mayssam-ai-stack.sh not found at $VZ"; exit 0; }
 
-# Extract the REAL function definition from vz-ai-stack.sh (not a copy — no drift) and
+# Extract the REAL function definition from mayssam-ai-stack.sh (not a copy — no drift) and
 # eval it here. Sourcing the whole file would run `main "$@"`, so we pull just the func.
 FUNC_SRC="$(sed -n '/^run_foreground_server() {/,/^}/p' "$VZ")"
 [[ -n "$FUNC_SRC" ]] || { echo "  FAIL: could not extract run_foreground_server from $VZ"; exit 1; }
@@ -37,7 +37,7 @@ check "SIGKILL(137) propagates" sigkill.sh 137
 check "exit 1 propagates"       exit1.sh   1
 check "exit 0 passthrough"      exit0.sh   0
 
-# End-to-end guard: under the SAME `set -Eeuo pipefail` + ERR trap as vz-ai-stack.sh,
+# End-to-end guard: under the SAME `set -Eeuo pipefail` + ERR trap as mayssam-ai-stack.sh,
 # a signal-stopped child must NOT print the spurious '✗ ERR' line and the outer rc = 0.
 e2e="$(
   set +e

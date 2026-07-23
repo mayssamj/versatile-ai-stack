@@ -439,7 +439,7 @@ sequenceDiagram
 
 <hr>
 <section id="sec-5-model--agent-binding-and-availability-gating"><h2>5. Model ↔ agent binding and availability-gating</h2>
-<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is the canonical source of truth for the binding; <code>vz-ai-stack.sh model sync</code> reconciles it into LiteLLM and re-renders each agent. The interesting wrinkle is <strong>availability-gating</strong>: if an agent is assigned an LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio is opt-in and may be off), the agent is rendered against the always-on fallback <code>local</code> instead — never left pointing at a dead route.</p>
+<p>How a per-agent model assignment becomes a live route. <code>models.yml</code> is the canonical source of truth for the binding; <code>mayssam-ai-stack.sh model sync</code> reconciles it into LiteLLM and re-renders each agent. The interesting wrinkle is <strong>availability-gating</strong>: if an agent is assigned an LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio is opt-in and may be off), the agent is rendered against the always-on fallback <code>local</code> instead — never left pointing at a dead route.</p>
 <div class="diagram-card">
   <div class="diagram-controls">
     <button class="zoom-btn" data-target="diag-5" data-action="out" title="Zoom out">−</button>
@@ -464,7 +464,7 @@ sequenceDiagram
   MY --> Q36
   MY --> QC
 
-  Sync["vz-ai-stack.sh model sync"]
+  Sync["mayssam-ai-stack.sh model sync"]
   MY --> Sync
 
   Sync --> P1["P1 register model_list (ADD-ONLY)"]
@@ -493,7 +493,7 @@ sequenceDiagram
 <ul><li><code>model sync</code> is opt-in and crash-safe; it is <strong>not</strong> run by</li></ul>
 <p><code>install all</code>. Phase 1 only ever adds to LiteLLM's <code>model_list</code> (ADD-ONLY), and LiteLLM is restarted at most once.</p>
 <ul><li>Because every scoped key (<code>HERMES_LITELLM_KEY</code>, <code>PI_LITELLM_KEY</code>,</li></ul>
-<p><code>ACE_LITELLM_KEY</code>, <code>RLM_LITELLM_KEY</code>) is minted against the DERIVED <code>model superset</code> (<code>vz-ai-stack.sh model superset</code> — a sorted-unique union, not a hardcoded list), <code>model assign &lt;agent&gt; &lt;model&gt;</code> (or <code>model assign all &lt;model&gt;</code> for every agent) re-points agents without ever re-minting a key.</p>
+<p><code>ACE_LITELLM_KEY</code>, <code>RLM_LITELLM_KEY</code>) is minted against the DERIVED <code>model superset</code> (<code>mayssam-ai-stack.sh model superset</code> — a sorted-unique union, not a hardcoded list), <code>model assign &lt;agent&gt; &lt;model&gt;</code> (or <code>model assign all &lt;model&gt;</code> for every agent) re-points agents without ever re-minting a key.</p>
 <ul><li>The four diagrams below (§5a–§5e) zoom into this pipeline: §5a the</li></ul>
 <p>per-agent selection (assignment → gate → effective → rendered + drift), §5b the multi-engine topology, §5c the discover/add/sync lifecycle, §5d the RAM-budget preflight, §5e Honcho agent memory.</p>
 <h3 id="sec-5a">5a. Per-agent model selection pipeline (assignment -&gt; gate -&gt; effective -&gt; rendered)</h3>
@@ -603,7 +603,7 @@ sequenceDiagram
     <div class="mermaid" id="diag-8">sequenceDiagram
   autonumber
   participant U as You
-  participant M as vz-ai-stack.sh model
+  participant M as mayssam-ai-stack.sh model
   participant LMS as LM Studio library (lms ls --json)
   participant YML as installer/models.yml
   participant CFG as litellm/config.yaml

@@ -28,7 +28,7 @@
 #     TextBlock, and observe() REJECTS thinking blocks across agent boundaries → the sim
 #     reconstructs a clean text-only Msg before handing one agent's reply to the next.
 #
-# Standalone: bash vz-ai-stack.sh install 33   (alias: agentscope)
+# Standalone: bash mayssam-ai-stack.sh install 33   (alias: agentscope)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -107,7 +107,7 @@ worktree_guard "install agentscope"
 hdr "Phase 33 — AgentScope (multi-agent simulation framework)"
 
 # --- Preconditions ---
-command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/vz-ai-stack.sh install 14"; exit 1; }
+command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/mayssam-ai-stack.sh install 14"; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -122,7 +122,7 @@ if   curl -sf --max-time 4 "$AS_LLM_HOST/health/liveliness" >/dev/null 2>&1; the
 elif curl -sf --max-time 4 "$AS_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then AS_LLM_BASE="$AS_LLM_FALLBACK"
 elif litellm_master_curl -sf --max-time 4 "$AS_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then AS_LLM_BASE="$AS_LLM_FALLBACK"
 fi
-[[ -n "$AS_LLM_BASE" ]] || { err "LiteLLM not reachable at $AS_LLM_HOST or $AS_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+[[ -n "$AS_LLM_BASE" ]] || { err "LiteLLM not reachable at $AS_LLM_HOST or $AS_LLM_FALLBACK — run 'mayssam-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $AS_LLM_BASE"
 
 # --- 1. Venv (Python 3.11) + install agentscope ---
@@ -203,9 +203,9 @@ AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 # last-wins on duplicate .env keys (matches installer/lib/env.sh get_env semantics)
 _as_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
 PY="\$AI_STACK/agentscope/.venv/bin/python"
-[[ -x "\$PY" ]] || { echo "agentscope venv missing — run 'bash vz-ai-stack.sh install 33'" >&2; exit 1; }
+[[ -x "\$PY" ]] || { echo "agentscope venv missing — run 'bash mayssam-ai-stack.sh install 33'" >&2; exit 1; }
 _key="\$(_as_get_env AGENTSCOPE_LITELLM_KEY)"
-[[ -n "\$_key" ]] || { echo "AGENTSCOPE_LITELLM_KEY absent from .env — run 'bash vz-ai-stack.sh install 33'" >&2; exit 1; }
+[[ -n "\$_key" ]] || { echo "AGENTSCOPE_LITELLM_KEY absent from .env — run 'bash mayssam-ai-stack.sh install 33'" >&2; exit 1; }
 export AGENTSCOPE_LITELLM_KEY="\$_key"
 export OPENAI_API_KEY="\$_key"
 export OPENAI_BASE_URL="http://127.0.0.1:4000/v1"
@@ -405,7 +405,7 @@ if [[ "$AS_STUDIO_ENABLED" == "1" ]]; then
   # the hardcoded :5275 health/doctor probe point at the wrong port. Abort with a clear
   # message if something already owns :5275 (lsof exits 1 when the port is free → guard set -e).
   if lsof -nP -iTCP:"$AS_STUDIO_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-    err "port :${AS_STUDIO_PORT} is already in use (Studio would silently auto-bump to another port, breaking the :${AS_STUDIO_PORT} health/doctor probe). Free it: lsof -nP -iTCP:${AS_STUDIO_PORT} -sTCP:LISTEN ; then re-run 'AGENTSCOPE_STUDIO=1 vz-ai-stack.sh install 33'"
+    err "port :${AS_STUDIO_PORT} is already in use (Studio would silently auto-bump to another port, breaking the :${AS_STUDIO_PORT} health/doctor probe). Free it: lsof -nP -iTCP:${AS_STUDIO_PORT} -sTCP:LISTEN ; then re-run 'AGENTSCOPE_STUDIO=1 mayssam-ai-stack.sh install 33'"
     exit 1
   fi
   command -v node >/dev/null 2>&1 || warn "node not on PATH — Studio needs Node>=20 (host has 22); skipping Studio"
@@ -445,9 +445,9 @@ fi
 # upgrade must NOT do unsolicited inference (mechanism-audit #2 + the operator's
 # no-unsolicited-inference stance). The venv, scoped key, wrapper and seeded sim
 # are already re-asserted above; stamp and move on. The full verified smoke still
-# runs on the install path (and via `vz-ai-stack.sh test 33`).
+# runs on the install path (and via `mayssam-ai-stack.sh test 33`).
 if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
-  note "upgrade re-assert: skipping the live AgentScope smoke (no unsolicited metered inference on 'upgrade'). Run 'vz-ai-stack.sh install 33' for the full verified smoke."
+  note "upgrade re-assert: skipping the live AgentScope smoke (no unsolicited metered inference on 'upgrade'). Run 'mayssam-ai-stack.sh install 33' for the full verified smoke."
 else
 log "Smoke: scoped key → LiteLLM chat completion…"
 _as_key="$(get_env AGENTSCOPE_LITELLM_KEY '')"
@@ -467,12 +467,12 @@ fi
 
 stamp_mark "$PHASE"
 if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
-  record "phase 33 re-asserted on upgrade (venv + scoped key + bin/agentscope + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 33' to verify)"
+  record "phase 33 re-asserted on upgrade (venv + scoped key + bin/agentscope + sim seeded; live smoke SKIPPED — run 'mayssam-ai-stack.sh install 33' to verify)"
 else
   record "phase 33 complete: AgentScope venv (py3.11) + scoped key + bin/agentscope + 2-agent-verified smoke sim"
 fi
 ok "Phase 33 — AgentScope — complete"
-note "Prove the swarm:  vz-ai-stack.sh test 33     # 2 AgentScope agents converse via LiteLLM"
+note "Prove the swarm:  mayssam-ai-stack.sh test 33     # 2 AgentScope agents converse via LiteLLM"
 note "Run the demo:     bin/agentscope agentscope/sims/smoke_sim.py"
 note "Watch it:         Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Write your own:   agentscope/sims/<your_sim>.py  then  bin/agentscope agentscope/sims/<your_sim>.py"

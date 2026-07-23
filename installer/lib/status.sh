@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # status.sh — print declared vs actual state, like kubectl get pods.
-# Invoked via vz-ai-stack.sh status.
+# Invoked via mayssam-ai-stack.sh status.
 set -Eeuo pipefail
 shopt -s inherit_errexit nullglob
 
@@ -13,7 +13,7 @@ source "$AI_STACK/installer/lib/docker.sh"
 # -d|--describe  add a dim one-line description sub-line under each row
 # --legend       decode the columns (alone: print legend and exit, zero probes)
 # Unknown flags warn (common.sh warn) but never abort; non-flag args are ignored.
-# `for a in "$@"` is a no-op with zero args (the current vz-ai-stack.sh call site),
+# `for a in "$@"` is a no-op with zero args (the current mayssam-ai-stack.sh call site),
 # so default behavior is unchanged under set -Eeuo pipefail.
 SHOW_DESC=0; SHOW_LEGEND=0; SHOW_VERSIONS=0; LOCAL_ONLY=0
 for a in "$@"; do case "$a" in
@@ -21,7 +21,7 @@ for a in "$@"; do case "$a" in
   --legend)        SHOW_LEGEND=1 ;;
   --versions|-V)   SHOW_VERSIONS=1 ;;   # focused versions view (installed + available)
   --local)         LOCAL_ONLY=1 ;;      # with --versions: installed only, skip the network
-  -h|--help)       printf 'usage: vz-ai-stack.sh status [-d|--describe] [--legend] [--versions [--local]]\n'; exit 0 ;;
+  -h|--help)       printf 'usage: mayssam-ai-stack.sh status [-d|--describe] [--legend] [--versions [--local]]\n'; exit 0 ;;
   -*)              warn "status: unknown flag '$a' (ignored)" ;;
   *)               : ;;
 esac; done
@@ -38,12 +38,12 @@ print_header() {
 # tty-gated C_BOLD/C_DIM/C_RESET; the body is plain so it stays aligned.
 print_legend() {
   printf '\n%sLegend%s\n' "$C_BOLD" "$C_RESET"
-  printf '  DECLARED   enabled / disabled   your intent in services.yml (change: vz-ai-stack.sh enable|disable <svc>)\n'
+  printf '  DECLARED   enabled / disabled   your intent in services.yml (change: mayssam-ai-stack.sh enable|disable <svc>)\n'
   printf '  ACTUAL     running              process/container is up\n'
   printf '             stopped              should be up but is not (see NOTES)\n'
   printf '             n/a                  not a long-running daemon — CLI, config, sandbox-internal, or a minted key\n'
   printf '  OWNERSHIP  managed              container started & labeled by this installer\n'
-  printf '             foreign              running but not ours (run: vz-ai-stack.sh adopt <svc>)\n'
+  printf '             foreign              running but not ours (run: mayssam-ai-stack.sh adopt <svc>)\n'
   printf '             absent               no container exists\n'
   printf '             -                    N/A — not a container (brew/host/CLI/feature)\n'
   printf '  NOTES      drift hints + the exact command to fix it\n'
@@ -57,7 +57,7 @@ print_status_footer() {
   if (( SHOW_DESC )) || (( SHOW_LEGEND )); then
     printf '\n%sWhat is each service?%s  Open the interactive explorer:  %sfile://%s/doc/EXPLORE.html%s\n' \
       "$C_BOLD" "$C_RESET" "$C_DIM" "$AI_STACK" "$C_RESET"
-    printf '  Act on drift:  vz-ai-stack.sh start <svc> · adopt <svc> · doctor · model sync   (see: vz-ai-stack.sh help)\n'
+    printf '  Act on drift:  mayssam-ai-stack.sh start <svc> · adopt <svc> · doctor · model sync   (see: mayssam-ai-stack.sh help)\n'
   else
     printf '\n%sRun %sinstall.sh status --describe%s for one-line descriptions, %s--legend%s to decode columns, or open doc/EXPLORE.html%s\n' \
       "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET"
@@ -216,7 +216,7 @@ render_row() {
 
   [[ "$declared" == "enabled" && "$actual" == "stopped" ]] && notes="${notes}should be running; "
   [[ "$declared" == "disabled" && "$actual" == "running" ]] && notes="${notes}should be stopped; "
-  [[ "$own" == "foreign" ]] && notes="${notes}foreign (run 'vz-ai-stack.sh adopt $name'); "
+  [[ "$own" == "foreign" ]] && notes="${notes}foreign (run 'mayssam-ai-stack.sh adopt $name'); "
 
   printf "$ROW_FMT" "$name" "$declared" "$actual" "$own" "$notes"
 
@@ -351,7 +351,7 @@ print_versions_view() {
     warn "probe circuit-breaker OPEN (${AI_STACK_BREAKER_TRIPS:-3} consecutive upstream-probe timeouts, no intervening success) on: ${_vs_ot} — remaining probes on those transports were SKIPPED (rows read 'unknown'). The network/proxy looks blocked there; re-run when it recovers. AI_STACK_BREAKER_TRIPS=0 disables."
   fi
   rm -f "$(_vz_breaker_file)" 2>/dev/null || true
-  note "STATUS: up-to-date · update-available · pinned (fixed tag or declared upgrade.pin — held, never auto-swept) · config (configuration surface — versions with the stack repo or its owning service; owner-backed rows show the owner's measured version) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'vz-ai-stack.sh upgrade <svc>'."
+  note "STATUS: up-to-date · update-available · pinned (fixed tag or declared upgrade.pin — held, never auto-swept) · config (configuration surface — versions with the stack repo or its owning service; owner-backed rows show the owner's measured version) · build/rebuild (locally-built) · no-oracle · unknown (registry/proxy unreachable). Act with 'mayssam-ai-stack.sh upgrade <svc>'."
 }
 
 # `--legend` alone: print the legend and exit BEFORE print_header and before any

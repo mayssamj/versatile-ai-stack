@@ -34,7 +34,7 @@ source "$SELF_ROOT/installer/lib/common.sh"
 ROOT="${AI_STACK:-$SELF_ROOT}"
 # docker.sh provides docker_anon_orphans (shared anon-volume verb, §24 2026-07-20).
 # Engine note: docker.sh's source-time DOCKER_HOST hook needs env.sh (not sourced
-# here) — via the vz-ai-stack.sh dispatch the selected engine is inherited from
+# here) — via the mayssam-ai-stack.sh dispatch the selected engine is inherited from
 # that environment; a standalone run uses the ambient socket. AI_STACK is already
 # set on the dispatch path; the default below covers direct invocation.
 export AI_STACK="${AI_STACK:-$SELF_ROOT}"
@@ -252,6 +252,6 @@ if (( DO_DELETE )); then
 else
   printf '\n'
   log "Dry-run — nothing was deleted. Re-run with ${C_BOLD:-}--yes${C_RESET:-} to delete, e.g.:"
-  printf '    vz-ai-stack.sh cleanup --yes\n'
+  printf '    mayssam-ai-stack.sh cleanup --yes\n'
 fi
 exit 0

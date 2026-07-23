@@ -2,7 +2,7 @@
 
 OpenAI GPT-5.x runs in the stack two ways, and both are **assignable** — pick a
 model id and point any agent (or the whole fleet) at it with one command. Live
-catalog any time: `vz-ai-stack.sh model list`.
+catalog any time: `mayssam-ai-stack.sh model list`.
 
 ## The model ids (type these with `model assign`)
 
@@ -22,9 +22,9 @@ verified max-reasoning path.
 
 ```bash
 # whole fleet on GPT-5.5 at max reasoning:
-vz-ai-stack.sh model assign all openai-gpt-5.5
+mayssam-ai-stack.sh model assign all openai-gpt-5.5
 # or one agent / a premium model:
-vz-ai-stack.sh model assign hermes_manager openai-gpt-5.5-pro
+mayssam-ai-stack.sh model assign hermes_manager openai-gpt-5.5-pro
 ```
 `model assign` registers the model in LiteLLM, widens the scoped keys, and
 re-points the agent(s) — nothing else to run. In Open WebUI, just pick
@@ -34,7 +34,7 @@ re-points the agent(s) — nothing else to run. In Open WebUI, just pick
 
 ```bash
 bash ~/ai-stack/bin/start-codex-bridge.sh enable      # codex login (browser) + daemon + LiteLLM reload
-vz-ai-stack.sh model assign all openai-gpt-5.5-sub    # whole fleet on your ChatGPT plan
+mayssam-ai-stack.sh model assign all openai-gpt-5.5-sub    # whole fleet on your ChatGPT plan
 ```
 `enable` is idempotent (skips the login if you're already signed in) and shows a
 one-time risk banner. ⚠ The subscription route uses the ChatGPT **product**
@@ -49,7 +49,7 @@ hard fail, never a surprise metered bill).
 
 ```bash
 # in installer/models.yml set:  primary: openai-gpt-5.5    (or openai-gpt-5.5-sub)
-vz-ai-stack.sh model sync
+mayssam-ai-stack.sh model sync
 ```
 `default:` must stay an Ollama model (the always-on offline fallback); `primary`
 is what an unassigned agent renders and it availability-gates to `default`.
@@ -61,7 +61,7 @@ is what an unassigned agent renders and it availability-gates to `default`.
 openwork) are per-phase consumers, **not** assignable agents — `model assign <sim> …`
 would write an assignment that fails `models.yml` validation (no `kinds:` entry).
 To point a sim at a different model, set its model in that phase's config and re-run
-`vz-ai-stack.sh install <NN>` for the sim; the phase reconciles the sim's scoped LiteLLM
+`mayssam-ai-stack.sh install <NN>` for the sim; the phase reconciles the sim's scoped LiteLLM
 key allow-list automatically (so the rename doesn't silent-403). The sim doctor checks
 (57–61) read `.assignments.<sim>` defensively and default to `local`, so an
 unassigned sim's key is verified against `local` — exactly the model it calls.
@@ -70,5 +70,5 @@ unassigned sim's key is verified against `local` — exactly the model it calls.
 - Metered models spend your real OpenAI bill — there's no per-key `max_budget` cap
   yet (tracked follow-up), so prefer the `-sub` models for cost-conscious fleet use.
 - A missing `OPENAI_API_KEY` (metered) or a down bridge (subscription) gates the
-  agent to `local` with a pending line — surfaced by `vz-ai-stack.sh model list`.
-- Health: `vz-ai-stack.sh doctor codex` (bridge), `vz-ai-stack.sh doctor 40` (binding).
+  agent to `local` with a pending line — surfaced by `mayssam-ai-stack.sh model list`.
+- Health: `mayssam-ai-stack.sh doctor codex` (bridge), `mayssam-ai-stack.sh doctor 40` (binding).

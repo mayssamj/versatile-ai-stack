@@ -13,10 +13,10 @@
 #   bundled static assets — no Node, no separate backend install.
 #
 # FUNNEL INTEGRATION
-#   `vz-ai-stack.sh start aionui` invokes this with NO args, so the no-arg default
+#   `mayssam-ai-stack.sh start aionui` invokes this with NO args, so the no-arg default
 #   is `install` (ensure the launchd daemon + health-gate, idempotent) — NOT a
 #   foreground exec. The launchd job itself calls `run` (the foreground server).
-#   `vz-ai-stack.sh stop aionui` → bin/stop-aionui.sh → this script's `stop`.
+#   `mayssam-ai-stack.sh stop aionui` → bin/stop-aionui.sh → this script's `stop`.
 #
 # SECURITY
 #   Bound to 127.0.0.1 ONLY (never --remote / 0.0.0.0). In local/loopback mode
@@ -83,7 +83,7 @@ _stop() {
 }
 
 _do_install() {
-  [[ -n "$AIONUI_WEB_BIN" ]] || { echo "aionui-web not found — run: bash $AI_STACK/vz-ai-stack.sh install 28" >&2; exit 1; }
+  [[ -n "$AIONUI_WEB_BIN" ]] || { echo "aionui-web not found — run: bash $AI_STACK/mayssam-ai-stack.sh install 28" >&2; exit 1; }
   cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -140,7 +140,7 @@ case "${1:-install}" in
 esac
 
 # --- foreground server (launchd entrypoint) -----------------------------------
-[[ -n "$AIONUI_WEB_BIN" ]] || { echo "aionui-web not found — run: bash $AI_STACK/vz-ai-stack.sh install 28" >&2; exit 1; }
+[[ -n "$AIONUI_WEB_BIN" ]] || { echo "aionui-web not found — run: bash $AI_STACK/mayssam-ai-stack.sh install 28" >&2; exit 1; }
 export AIONUI_PORT="$PORT" AIONUI_DATA_DIR="$DATA_DIR" AIONUI_OPEN_BROWSER=0
 # Loopback only: NO --remote. --no-open: a daemon never opens a browser itself.
 exec "$AIONUI_WEB_BIN" start --port "$PORT" --no-open

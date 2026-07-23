@@ -3,7 +3,7 @@
 #
 # Slice 1 (this file): pure Caddyfile generator (AC-4) — zero-privilege, needs
 # neither caddy nor the daemon. Later slices add live AC-1a/AC-2 probes (guarded
-# on `command -v caddy`). Run on demand: `vz-ai-stack.sh test ingress`.
+# on `command -v caddy`). Run on demand: `mayssam-ai-stack.sh test ingress`.
 #
 # AC-4: the Caddyfile is generated from aliases.tsv (via network.sh::aliases_load,
 # NOT a second parser); two services sharing a native port produce two site

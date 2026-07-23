@@ -16,7 +16,7 @@ fi
 
 # Networking precondition: ai-stack network must exist (run Phase 00·N).
 network_ensure_ai_stack || {
-  err "ai-stack docker network missing. Run:  bash vz-ai-stack.sh install 00n"
+  err "ai-stack docker network missing. Run:  bash mayssam-ai-stack.sh install 00n"
   exit 1
 }
 
@@ -30,7 +30,7 @@ network_ensure_ai_stack || {
 AF_BIND_IP="${ALIAS_IP[autofyn]:-127.0.10.13}"
 if ! ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+' | grep -qxF "$AF_BIND_IP"; then
   err "lo0 alias $AF_BIND_IP (autofyn) is missing — the dashboard binds it loopback-only and won't start without it."
-  err "Run once:  sudo $AI_STACK/vz-ai-stack.sh prepare-sudo"
+  err "Run once:  sudo $AI_STACK/mayssam-ai-stack.sh prepare-sudo"
   exit 1
 fi
 if AF_IP="$AF_BIND_IP" python3 - "$AF/docker-compose.yml" <<'PYEOF'

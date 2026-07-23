@@ -67,7 +67,7 @@ if container_running phoenix; then
     fi
   else
     warn "phoenix is running but FOREIGN."
-    warn "Run:  bash vz-ai-stack.sh adopt phoenix   to take ownership."
+    warn "Run:  bash mayssam-ai-stack.sh adopt phoenix   to take ownership."
   fi
 else
   log "Starting Phoenix..."
@@ -84,7 +84,7 @@ if [[ "$PHOENIX_CB_BEFORE" == "missing" ]]; then
   # config.yaml changed → litellm needs a restart to pick up the new callback.
   # Conservative: queue, don't auto-recreate.
   queue_restart litellm
-  warn "litellm config.yaml updated. Queued restart (run: vz-ai-stack.sh apply-restarts)."
+  warn "litellm config.yaml updated. Queued restart (run: mayssam-ai-stack.sh apply-restarts)."
 fi
 
 # --- Verify Phoenix env vars are correct in .env ---

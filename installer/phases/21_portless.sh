@@ -12,7 +12,7 @@
 # when Node < 24. We do NOT upgrade Node here — the stack pins it elsewhere.
 #
 # Idempotency: precheck() passes once `portless` is on PATH and runnable.
-# Standalone:  bash vz-ai-stack.sh install 21   (or:  vz-ai-stack.sh install portless)
+# Standalone:  bash mayssam-ai-stack.sh install 21   (or:  mayssam-ai-stack.sh install portless)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -45,7 +45,7 @@ hdr "Phase 21 — portless (agent-aware local dev proxy)"
 # npm prerequisite — soft-fail (exit 0, no stamp) so a later re-run completes.
 if ! command -v npm >/dev/null 2>&1; then
   warn "npm not on PATH — portless installs via 'npm install -g portless'."
-  warn "Install Node.js (24+ recommended), then re-run: bash vz-ai-stack.sh install portless"
+  warn "Install Node.js (24+ recommended), then re-run: bash mayssam-ai-stack.sh install portless"
   ok   "Phase 21 — skipped (npm unavailable); not stamped — re-run later."
   exit 0
 fi
@@ -66,7 +66,7 @@ else
   log "Installing portless globally (npm install -g portless)..."
   if ! npm install -g portless; then
     err "npm install -g portless failed (check 'npm config get prefix' perms + network)."
-    err "Not stamped — re-run: bash vz-ai-stack.sh install portless"
+    err "Not stamped — re-run: bash mayssam-ai-stack.sh install portless"
     exit 0   # soft-fail: leave host clean for a retry
   fi
 fi
@@ -74,7 +74,7 @@ fi
 # Verify the binary runs.
 if ! command -v portless >/dev/null 2>&1; then
   warn "portless not on PATH after install — your npm global bin dir may not be in PATH."
-  warn "Add \"\$(npm config get prefix)/bin\" to PATH, open a new shell, then re-run 'vz-ai-stack.sh install portless'."
+  warn "Add \"\$(npm config get prefix)/bin\" to PATH, open a new shell, then re-run 'mayssam-ai-stack.sh install portless'."
   ok   "Phase 21 — install ran but portless not visible; not stamped."
   exit 0
 fi

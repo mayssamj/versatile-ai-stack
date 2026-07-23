@@ -129,7 +129,7 @@ hdr "Phase 05 — Host UIs"
 # --- Open WebUI ---
 if container_running openwebui; then
   if container_managed openwebui; then ok "openwebui already running (managed)"
-  else warn "openwebui is FOREIGN; run 'vz-ai-stack.sh adopt openwebui'"
+  else warn "openwebui is FOREIGN; run 'mayssam-ai-stack.sh adopt openwebui'"
   fi
 else
   bash "$AI_STACK/bin/start-openwebui.sh"
@@ -420,10 +420,10 @@ YML
           warn "AUTO-ROLLBACK: restored the prior working override + recreated — the UI is back on the previous agent. Investigate the new release before retrying."
           record "phase 05 AUTO-ROLLBACK: restored prior override after compat fail on $HERMES_AGENT_IMAGE"
         else
-          warn "AUTO-ROLLBACK FAILED: could not restore/recreate from $_ovr_prev — restore it manually + 'vz-ai-stack.sh install 05'."
+          warn "AUTO-ROLLBACK FAILED: could not restore/recreate from $_ovr_prev — restore it manually + 'mayssam-ai-stack.sh install 05'."
         fi
       else
-        warn "No prior override snapshot to roll back to (fresh path). Pin a known-good digest in $WS_DIR/docker-compose.override.yml + 'vz-ai-stack.sh install 05'."
+        warn "No prior override snapshot to roll back to (fresh path). Pin a known-good digest in $WS_DIR/docker-compose.override.yml + 'mayssam-ai-stack.sh install 05'."
       fi
     fi
   fi

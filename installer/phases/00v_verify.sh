@@ -89,7 +89,7 @@ if (( ${#fail_aliases[@]} == 0 )); then
 else
   err "  unroutable: ${fail_aliases[*]}"
   FAILURES+=("${#fail_aliases[@]} alias(es) not routable on lo0")
-  err "  fix: sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo"
+  err "  fix: sudo bash $AI_STACK/mayssam-ai-stack.sh prepare-sudo"
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -167,9 +167,9 @@ if (( ${#FAILURES[@]} > 0 )); then
   err ""
   err "DO NOT proceed to Phase 01 until the above are fixed. Each failure"
   err "above printed an exact fix command. The most common single fix is:"
-  err "    sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo"
+  err "    sudo bash $AI_STACK/mayssam-ai-stack.sh prepare-sudo"
   err ""
-  err "After fixing, re-run: bash vz-ai-stack.sh install 00v"
+  err "After fixing, re-run: bash mayssam-ai-stack.sh install 00v"
   exit 1
 fi
 

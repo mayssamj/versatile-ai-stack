@@ -1,5 +1,5 @@
 # Declared state for the AI stack. Single source of truth.
-# Edit, then run: bash vz-ai-stack.sh status   (or `stack status` once `bin/` is on PATH)
+# Edit, then run: bash mayssam-ai-stack.sh status   (or `stack status` once `bin/` is on PATH)
 #
 # After Phase 04·G's audit, the daily-driver commands are:
 #   stack apply                       reconcile actual → declared
@@ -8,7 +8,7 @@
 #   stack restart <svc>               recreate one service (backs up state)
 #
 # Conservative-recreate policy (chosen 2026-05-27): the doctor reports drift
-# on running containers but never auto-recreates them. Use `vz-ai-stack.sh adopt
+# on running containers but never auto-recreates them. Use `mayssam-ai-stack.sh adopt
 # <svc>` to take ownership of a container started outside the installer.
 #
 # Schema v2 (networking refactor):
@@ -97,7 +97,7 @@ services:
         - curl -s http://127.0.0.1:4000/health
         - 'source ~/ai-stack/.env && curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://litellm:4000/v1/models | jq ''.data[].id'''
         - bash ~/ai-stack/bin/start-litellm.sh
-        - bash ~/ai-stack/vz-ai-stack.sh model sync
+        - bash ~/ai-stack/mayssam-ai-stack.sh model sync
       "config_notes": LiteLLM needs Postgres on host.docker.internal:5432 (provided by the Honcho compose stack) for its Prisma-managed virtual-key store. On a cold install, start Honcho (Phase 03) BEFORE LiteLLM (Phase 01) or uvicorn hangs ~60s and the phase times out with a vague 'did not come up' error. /key/generate also 404s/fails without that Postgres.
       "_gen":
         "at": "2026-06-03T22:13:46Z"
@@ -249,7 +249,7 @@ services:
         - curl -s http://127.0.10.6:8000/health
         - bash ~/ai-stack/bin/start-honcho.sh
         - bash ~/ai-stack/bin/start-honcho.sh --recreate
-        - bash ~/ai-stack/vz-ai-stack.sh status
+        - bash ~/ai-stack/mayssam-ai-stack.sh status
       "config_notes": 'All Honcho LLM roles (deriver, dialectic, summary, dream) use the platform default claude-opus-sub-xhigh (Claude subscription via Meridian; LiteLLM falls back to local only if Meridian is down) — set by Phase 03 via per-role *_MODEL_CONFIG__MODEL in honcho/.env, overridable via HONCHO_MODEL. Honcho v3 reads LLM_OPENAI_BASE_URL (the older LLM_OPENAI_API_BASE is silently ignored). After changing models, recreate to reload env: `docker compose up -d --force-recreate api deriver` from honcho/ (a plain restart does NOT reload env_file). Cross-stack calls use fully-qualified Docker DNS litellm.ai-stack:4000, NOT the bare litellm alias, because api/deriver join both the default and ai-stack networks.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
@@ -304,10 +304,10 @@ services:
       "what": The 9-role Hermes engineering-team fleet -- manager, techlead, frontend/backend/ml engineers, qa-test, reviewing, sre, incident-manager -- running as OpenShell profiles in the hermes-fleet-v1 sandbox.
       "why": This is the multi-agent software team. Reach for it when a goal needs framing, decomposition, and routing across specialist roles with typed handoffs and review gates. The manager is the operator (executes directly when fastest, else delegates); reviewing-engineer and incident-manager stay read-only.
       "usage":
-        - vz-ai-stack.sh fleet list
-        - vz-ai-stack.sh fleet list --json
-        - vz-ai-stack.sh model list
-        - vz-ai-stack.sh help fleet
+        - mayssam-ai-stack.sh fleet list
+        - mayssam-ai-stack.sh fleet list --json
+        - mayssam-ai-stack.sh model list
+        - mayssam-ai-stack.sh help fleet
       "config_notes": Roster and per-role model are declared in installer/models.yml (kinds.*.kind=hermes-profile and assignments.hermes_*); all 9 roles route to Claude Opus 4.8 over the subscription via Meridian (manager/qa/sre/incident=sub-xhigh; techlead/ml/frontend/backend/reviewing=sub-max). Souls live in agent-profiles/hermes/profiles/<role>/SOUL.md and are staged into the sandbox by Phase 04f. Add or remove a specialist with `fleet add|remove`; spin up a separate isolated fleet with `fleet new <name>`.
   hermes_telegram:
     enabled: true # Phase 20 — native hermes gateway → Telegram (@vz_hermes_controller_bot)
@@ -454,7 +454,7 @@ services:
         - bash ~/ai-stack/bin/start-llm_guard.sh && docker ps --filter name=llm_guard --format '{{.Names}} {{.Status}} {{.Ports}}'
         - bash ~/ai-stack/bin/start-llm_guard.sh
         - docker ps --filter name=llm_guard --format '{{.Names}} {{.Status}} {{.Ports}}'
-        - bash ~/ai-stack/vz-ai-stack.sh install 00n
+        - bash ~/ai-stack/mayssam-ai-stack.sh install 00n
       "config_notes": 'The alias is http://llm-guard:8000 (host-port 8000 == container-port 8000 per aliases.tsv row llm-guard 127.0.10.12), NOT :8001 — services.yml''s top-level `port: 8001` and `container_port: 8000` are stale/inconsistent v1 fields; the authoritative reach is the aliases.tsv row and the running container both saying :8000. Also it''s a soft dependency: if it''s down, requests get warnings but still complete because the in-process callback is the first line.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
@@ -812,7 +812,7 @@ services:
         - bash ~/ai-stack/bin/start-deerflow.sh build
         - bash ~/ai-stack/bin/stop-deerflow.sh
         - docker ps --filter 'label=com.docker.compose.project=deer-flow' --filter 'status=running'
-      "config_notes": 'Aliased as `deerflow` (127.0.10.17): start-deerflow.sh patches the upstream nginx publish to BOTH 127.0.0.1:2026 and 127.0.10.17:2026 (loopback-only, replacing the old 0.0.0.0:2026 all-interfaces LAN exposure), so reach it at http://localhost:2026 or http://deerflow:2026 (+ the port-free http://deerflow/ via `ingress up`). The alias bind needs the 127.0.10.17 lo0 alias, so deerflow now requires `sudo vz-ai-stack.sh prepare-sudo` to start (a pre-flight guard errors clearly if it is missing). Also the compose project is ''deer-flow'' (with a dash) so containers are deer-flow-gateway etc., never deerflow-*; status.sh detects them by the compose-project LABEL, not by name.'
+      "config_notes": 'Aliased as `deerflow` (127.0.10.17): start-deerflow.sh patches the upstream nginx publish to BOTH 127.0.0.1:2026 and 127.0.10.17:2026 (loopback-only, replacing the old 0.0.0.0:2026 all-interfaces LAN exposure), so reach it at http://localhost:2026 or http://deerflow:2026 (+ the port-free http://deerflow/ via `ingress up`). The alias bind needs the 127.0.10.17 lo0 alias, so deerflow now requires `sudo mayssam-ai-stack.sh prepare-sudo` to start (a pre-flight guard errors clearly if it is missing). Also the compose project is ''deer-flow'' (with a dash) so containers are deer-flow-gateway etc., never deerflow-*; status.sh detects them by the compose-project LABEL, not by name.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -871,7 +871,7 @@ services:
       dir: ace
       # HOLD: deliberate supply-chain SHA pin (ACE_PIN, phase 17 + .env).
       pin: "bcb7cea0504afad6f55fec4845dd4864c9f9eee7"
-      bump: "set ACE_PIN in .env to the vetted new SHA, vz-ai-stack.sh install 17, align upgrade.pin here"
+      bump: "set ACE_PIN in .env to the vetted new SHA, mayssam-ai-stack.sh install 17, align upgrade.pin here"
     network: none
     # Routes via LiteLLM virtual key ACE_LITELLM_KEY (minted by Phase 17).
     # Every LLM call appears in Phoenix project ai-stack for free.
@@ -962,11 +962,11 @@ services:
       "what": A vendored Next.js 3D 'virtual office' UI (github.com/iamlukethedev/claw3d) that visualizes the stack's agents and lets you chat with each one in-scene, pointed at the claw3d-bridge custom HTTP runtime.
       "why": Reach for it when you want a single visual surface that shows all 11 isolated agents (the 9-role Hermes team + Pi + DeerFlow) at once and chat with any of them without remembering each one's CLI.
       "usage":
-        - vz-ai-stack.sh start claw3d
+        - mayssam-ai-stack.sh start claw3d
         - open http://localhost:4310
         - curl -s -o /dev/null -w '%{http_code}' http://localhost:4310/
         - tail -f ~/ai-stack/installer/state/claw3d.log
-      "config_notes": "Start with `vz-ai-stack.sh start claw3d` — this health-gates the bridge (:7780) before the UI (:4310) and opens the browser automatically. `install claw3d` (or `install 19`) is SETUP only (clone + npm install + config); run it once before first use. The UI is http://localhost:4310 — NOT a named alias and NOT a container; claw3d is a host Node daemon that binds 127.0.0.1 only. Hermes/Pi chats need a live OpenShell relay or the agent shows '[<name> unavailable]'."
+      "config_notes": "Start with `mayssam-ai-stack.sh start claw3d` — this health-gates the bridge (:7780) before the UI (:4310) and opens the browser automatically. `install claw3d` (or `install 19`) is SETUP only (clone + npm install + config); run it once before first use. The UI is http://localhost:4310 — NOT a named alias and NOT a container; claw3d is a host Node daemon that binds 127.0.0.1 only. Hermes/Pi chats need a live OpenShell relay or the agent shows '[<name> unavailable]'."
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -1029,13 +1029,13 @@ services:
       "what": A local fine-tuning + training web UI from unslothai/unsloth (LoRA/QLoRA, MLX-accelerated on Apple Silicon, GGUF export) served as a host Python background process on :8898.
       "why": Reach for it when you want to fine-tune a base model on your own data and then re-import the resulting GGUF back into Ollama as a new local-* route.
       "usage":
-        - bash vz-ai-stack.sh install unsloth && open http://unsloth:8898
-        - bash vz-ai-stack.sh install unsloth
+        - bash mayssam-ai-stack.sh install unsloth && open http://unsloth:8898
+        - bash mayssam-ai-stack.sh install unsloth
         - curl http://127.0.0.1:8898/
         - cat ~/.unsloth/studio/auth/.bootstrap_password
         - kill $(cat ~/ai-stack/installer/state/unsloth.pid)
         - 'stack doctor unsloth   # doctor check 23'
-      "config_notes": Unsloth deliberately binds 0.0.0.0:8898 (so both http://unsloth:8898 and http://localhost:8898 reach it) — the one exception to the stack's alias-only convention. The Studio UI is AGPL-3.0 (network copyleft) while the core lib is Apache-2.0, and it gates behind a bootstrap login (user `unsloth`, password in ~/.unsloth/studio/auth/.bootstrap_password). Upgrade path — there is NO automated version bump for unsloth (the official installer manages its own env and only runs when the CLI is absent); 'upgrade all' heals the daemon but never changes the version. To genuinely upgrade, remove ~/.local/bin/unsloth and ~/.unsloth, then run 'vz-ai-stack.sh install 14' (1-3 GB download).
+      "config_notes": Unsloth deliberately binds 0.0.0.0:8898 (so both http://unsloth:8898 and http://localhost:8898 reach it) — the one exception to the stack's alias-only convention. The Studio UI is AGPL-3.0 (network copyleft) while the core lib is Apache-2.0, and it gates behind a bootstrap login (user `unsloth`, password in ~/.unsloth/studio/auth/.bootstrap_password). Upgrade path — there is NO automated version bump for unsloth (the official installer manages its own env and only runs when the CLI is absent); 'upgrade all' heals the daemon but never changes the version. To genuinely upgrade, remove ~/.local/bin/unsloth and ~/.unsloth, then run 'mayssam-ai-stack.sh install 14' (1-3 GB download).
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -1051,7 +1051,7 @@ services:
       # up_openshell arm): pinned + tarball-staged (sandbox proxy 403s scoped npm).
       # The pin is enforced in the GENERATED pi/package.json (phase 15).
       pin: "0.77.0"
-      bump: "rm -f pi/pi-bootstrap.tar.gz pi/package-lock.json && vz-ai-stack.sh install 15"
+      bump: "rm -f pi/pi-bootstrap.tar.gz pi/package-lock.json && mayssam-ai-stack.sh install 15"
       # ORACLE-only fields (no method — dispatch untouched; council): live
       # in-sandbox read when pi-v1 runs; else the HOST-STAGED pi/package.json
       # pin rendered as 'staged:<v>' (a declaration, not a measurement).
@@ -1073,7 +1073,7 @@ services:
         - bash ~/ai-stack/bin/pi --model local
         - bash ~/ai-stack/bin/pi-kill
         - openshell sandbox list
-      "config_notes": Pi has NO host alias or port — it is launched only via `bin/pi` (an `openshell sandbox exec -n pi-v1 --tty`); there is no http://pi:… URL. If bin/pi says 'PI_LITELLM_KEY missing', re-run `vz-ai-stack.sh install 15` to re-mint the key.
+      "config_notes": Pi has NO host alias or port — it is launched only via `bin/pi` (an `openshell sandbox exec -n pi-v1 --tty`); there is no http://pi:… URL. If bin/pi says 'PI_LITELLM_KEY missing', re-run `mayssam-ai-stack.sh install 15` to re-mint the key.
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -1090,7 +1090,7 @@ services:
       "usage":
         - 'source ~/ai-stack/.env && curl -s http://litellm:4000/v1/models -H "Authorization: Bearer $PI_LITELLM_KEY"'
         - grep -c PI_LITELLM_KEY ~/ai-stack/.env
-        - bash ~/ai-stack/vz-ai-stack.sh install 15
+        - bash ~/ai-stack/mayssam-ai-stack.sh install 15
       "config_notes": 'It is a credential, not a service — `network: none` in services.yml, no container, no port of its own. The allowlist is enforced by LiteLLM server-side, so even with the key Pi can never use a cloud model. The key is the superset [local, local-heavy] so `model assign/sync` never needs a re-mint.'
       "_gen":
         "at": "2026-06-03T22:13:46Z"
@@ -1108,7 +1108,7 @@ services:
       # HOLD: LUMEN_VERSION + SHA256 in 16_lumen.sh; a bump also invalidates the
       # version-keyed indexes (re-index required).
       pin: "0.0.41"
-      bump: "edit LUMEN_VERSION+LUMEN_SHA256 in installer/phases/16_lumen.sh, vz-ai-stack.sh install 16 (indexes rebuild), align upgrade.pin here"
+      bump: "edit LUMEN_VERSION+LUMEN_SHA256 in installer/phases/16_lumen.sh, mayssam-ai-stack.sh install 16 (indexes rebuild), align upgrade.pin here"
     network: none
     # Reads from Ollama for embeddings; index lives in ~/.local/share/lumen/.
     consumes_env:
@@ -1143,14 +1143,14 @@ services:
       npm_bin: /opt/homebrew/bin/npm
     network: none
     # Global npm CLI on the host; ships a Claude Code skill (portless get/list).
-    # Node 24+ recommended (runs under 22). `vz-ai-stack.sh install portless`.
+    # Node 24+ recommended (runs under 22). `mayssam-ai-stack.sh install portless`.
 
     help:
       "what": An agent-aware local dev proxy that maps stable named HTTPS URLs (name.localhost) to your local dev servers, and ships a Claude Code skill so agents resolve the right URL instead of guessing ephemeral ports.
       "why": Reach for it when running many worktrees/dev servers and your agents keep testing the wrong port; portless gives each a stable name.localhost URL and bundles a CC skill (portless get/list) so the agent looks it up.
       "usage":
         - 'portless myapp ''npm run dev''   # -> https://myapp.localhost'
-        - bash vz-ai-stack.sh install portless
+        - bash mayssam-ai-stack.sh install portless
         - portless --version
         - portless list
         - portless trust
@@ -1167,15 +1167,15 @@ services:
     phase: "22"
     network: none
     # GUI app via `brew install --cask cmux` (tap manaflow-ai/cmux). No daemon;
-    # launched by the user. `vz-ai-stack.sh install cmux`.
+    # launched by the user. `mayssam-ai-stack.sh install cmux`.
 
     help:
       "what": A native macOS terminal app (Ghostty-based) for running many parallel AI-agent sessions in tabs, each with its own git/PR/port sidebar, plus a `cmux notify` CLI you can wire into agent hooks.
       "why": Reach for it when juggling many concurrent Claude Code / agent sessions and you need to see at a glance which one needs attention; it sits above OpenShell/LiteLLM and duplicates neither.
       "usage":
-        - bash vz-ai-stack.sh install cmux && open -a cmux
+        - bash mayssam-ai-stack.sh install cmux && open -a cmux
         - cmux notify --title 'agent' --message 'session needs you'
-        - bash vz-ai-stack.sh install cmux
+        - bash mayssam-ai-stack.sh install cmux
         - brew list --cask cmux
         - ls /Applications/cmux.app
         - open -a cmux
@@ -1197,14 +1197,14 @@ services:
       build: "uv pip install --python .venv/bin/python -e ."
     network: none
     # Vendored clone (gitignored) + uv venv + bin/skillspector wrapper (--no-llm
-    # default). Optional LLM stage can point at LiteLLM. `vz-ai-stack.sh install skillspector`.
+    # default). Optional LLM stage can point at LiteLLM. `mayssam-ai-stack.sh install skillspector`.
 
     help:
       "what": NVIDIA's offline-first security scanner (vendored clone + uv venv, driven by bin/skillspector) that vets an agent skill or MCP server for prompt-injection, tool-poisoning, and dangerous shell/exfil patterns BEFORE you install it.
       "why": Reach for it as a pre-install gate on any third-party Claude/agent skill or MCP server you're about to add to the stack — the wrapper defaults to a fully OFFLINE static-analysis stage (injects --no-llm) so nothing leaves the box, with an opt-in LLM semantic stage you can point at the stack's LiteLLM.
       "usage":
         - ~/ai-stack/bin/skillspector scan ./path/to/skill
-        - bash ~/ai-stack/vz-ai-stack.sh install 23
+        - bash ~/ai-stack/mayssam-ai-stack.sh install 23
         - ~/ai-stack/bin/skillspector --help
         - ~/ai-stack/bin/skillspector scan https://github.com/user/skill
       "config_notes": By design the wrapper injects --no-llm ONLY when the first positional token is `scan` and you haven't already passed --llm/--no-llm; it deliberately does NOT inject it on `--help`/`version` (that would error a strict CLI). So the offline default applies to scans, and the only way secrets/skill text reach a model is if you yourself export the OPENAI_* vars and pass --llm.
@@ -1219,14 +1219,14 @@ services:
     phase: "24"
     network: none
     # Installs to ~/.openagents (its own portable Node); NOT wired into LiteLLM/
-    # sandboxes/UIs. `vz-ai-stack.sh install openagents`.
+    # sandboxes/UIs. `mayssam-ai-stack.sh install openagents`.
 
     help:
       "what": A self-described "Ollama for AI agents" — a launcher/dashboard with an `agn` CLI that installs and manages coding agents (Claude Code, Codex, Aider, etc.) from one place, installed into its own ~/.openagents prefix.
       "why": Reach for it ONLY as a throwaway evaluation sandbox to compare against this stack's own orchestration; it overlaps OpenShell/Hermes/AutoFyn/Open WebUI and is deliberately NOT wired into LiteLLM, the sandboxes, or any front-end.
       "usage":
-        - bash vz-ai-stack.sh install openagents && agn
-        - bash vz-ai-stack.sh install openagents
+        - bash mayssam-ai-stack.sh install openagents && agn
+        - bash mayssam-ai-stack.sh install openagents
         - agn
         - ~/.openagents/nodejs/node_modules/.bin/agn
         - 'stack doctor openagents   # doctor check 37 (pass-as-skip)'
@@ -1244,21 +1244,21 @@ services:
     # Host OpenAI server on :1234 (bound 0.0.0.0 for container access).
     # `install lmstudio` is assignment-driven: loads only models.yml-assigned MLX
     # (local-nemotron3-nano-4b-mlx); the local-lfm2-mlx demo is opt-in via
-    # LMS_LOAD_LFM2=1. Ollama stays the default. `vz-ai-stack.sh install lmstudio`.
+    # LMS_LOAD_LFM2=1. Ollama stays the default. `mayssam-ai-stack.sh install lmstudio`.
     consumes_env:
       - LITELLM_MASTER_KEY
     help:
       "what": LM Studio's Apple-MLX engine added as a SECOND OpenAI-compatible local runtime behind LiteLLM (server on :1234), home of the nemotron MLX model local-nemotron3-nano-4b-mlx. install lmstudio is ASSIGNMENT-DRIVEN — it loads ONLY MLX models assigned to an agent in models.yml and does NOT auto-load otherwise; the local-lfm2-mlx demo (LFM2.5 with working tool-calling the Ollama GGUF can't do) is OPT-IN via LMS_LOAD_LFM2=1.
       "why": Reach for it when you want MLX speed/tool-calling on Apple Silicon or to run the nemotron MLX model; Ollama stays the default and lmstudio-assigned agents fall back to local when LM Studio is down.
       "usage":
-        - vz-ai-stack.sh start lmstudio
-        - vz-ai-stack.sh install lmstudio
+        - mayssam-ai-stack.sh start lmstudio
+        - mayssam-ai-stack.sh install lmstudio
         - ~/.lmstudio/bin/lms ps
         - ~/.lmstudio/bin/lms server status
         - curl http://127.0.0.1:1234/v1/models
         - ~/.lmstudio/bin/lms server stop
         - 'stack doctor lmstudio   # doctor check 38 (pass-as-skip)'
-      "config_notes": "Start the LM Studio server with `vz-ai-stack.sh start lmstudio` — this is the documented run path (NOT `lms server start` directly or LMS_AUTOSTART, which is an install-time convenience only). `install lmstudio` is SETUP only (app + CLI + model assignment). The LM Studio DESKTOP APP idle-spins ~0.8-1 core even with no model loaded and the server stopped — so stopping the :1234 server alone is NOT enough; you must also Cmd-Q the app. It has no lo0 alias because it's reached from the LiteLLM container via host.docker.internal:1234 (host loopback isn't container-reachable), and the server binds 0.0.0.0 with no auth, exposing the LLM to your LAN."
+      "config_notes": "Start the LM Studio server with `mayssam-ai-stack.sh start lmstudio` — this is the documented run path (NOT `lms server start` directly or LMS_AUTOSTART, which is an install-time convenience only). `install lmstudio` is SETUP only (app + CLI + model assignment). The LM Studio DESKTOP APP idle-spins ~0.8-1 core even with no model loaded and the server stopped — so stopping the :1234 server alone is NOT enough; you must also Cmd-Q the app. It has no lo0 alias because it's reached from the LiteLLM container via host.docker.internal:1234 (host loopback isn't container-reachable), and the server binds 0.0.0.0 with no auth, exposing the LLM to your LAN."
       "_gen":
         "at": "2026-06-03T22:13:46Z"
         "source": explore-seed
@@ -1275,7 +1275,7 @@ services:
     # stanza) AND 127.0.10.20:7080 (the `sourcegraph` lo0 alias) — loopback-only,
     # never 0.0.0.0. So reach it at http://localhost:7080 or http://sourcegraph:7080
     # (+ port-free http://sourcegraph/ via `ingress up`). The alias bind needs the
-    # 127.0.10.20 lo0 alias, so sourcegraph now requires `sudo vz-ai-stack.sh
+    # 127.0.10.20 lo0 alias, so sourcegraph now requires `sudo mayssam-ai-stack.sh
     # prepare-sudo` (a pre-flight guard errors clearly if it is missing).
     network: none
     bind: 127.0.0.1
@@ -1291,13 +1291,13 @@ services:
       "what": A local, self-hosted Sourcegraph (the LAST single-container tag, 6.12.5040, amd64-emulated on Apple Silicon) that indexes your repos for code search AND exposes a native MCP server (12 tools — keyword_search, nls_search, read_file, go_to_definition, find_references, …) at http://localhost:7080/.api/mcp. Opt-in Phase 27 deploys it, bootstraps the admin + a user:all token, indexes the configured repo, and wires every Hermes fleet profile to it.
       "why": Reach for it when you want the Hermes fleet (or Claude Code) to search real code semantically/structurally instead of grepping. The fleet's profiles gain a `sourcegraph` MCP server automatically once this is installed; a fleet built later auto-wires via Phase 04f.
       "usage":
-        - vz-ai-stack.sh install sourcegraph
-        - vz-ai-stack.sh start sourcegraph
+        - mayssam-ai-stack.sh install sourcegraph
+        - mayssam-ai-stack.sh start sourcegraph
         - open http://localhost:7080
         - 'curl -s -X POST http://localhost:7080/.api/mcp -H "Authorization: token $(cat ~/.sourcegraph-local/sg-token)" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d ''{"jsonrpc":"2.0","id":1,"method":"tools/list"}'''
         - 'stack doctor sourcegraph   # doctor check 49 (skip-clean when SG absent)'
         - docker logs -f sourcegraph
-        - vz-ai-stack.sh stop sourcegraph
+        - mayssam-ai-stack.sh stop sourcegraph
       "config_notes": "OPT-IN: a ~4GB amd64-emulated container, so it is NOT in `install all` — install it by name. AUTO-START: it runs --restart unless-stopped, so it returns whenever the Docker engine daemon starts; on OrbStack/Docker Desktop the daemon auto-starts at login (survives reboot), but on Colima/Podman the engine does NOT auto-start by default (start it, or the container, after a reboot — the guarantee is the engine's, not a launchd unit). Dual-bound to 127.0.0.1:7080 + 127.0.10.20:7080 (the `sourcegraph` lo0 alias) — loopback only, never 0.0.0.0, so not exposed on the LAN; reach it at http://localhost:7080 or http://sourcegraph:7080 (needs `prepare-sudo` for the .20 alias). Data lives at ~/.sourcegraph-local/{config,data} (OUTSIDE the repo data/ tree — preserved across container recreate; removed only by `reset nuke`, which backs it up first). The admin password is generated and stored in .env (SOURCEGRAPH_ADMIN_PASSWORD, 0600). The fleet token is at ~/.sourcegraph-local/sg-token (0600) and is seeded into each profile's in-sandbox .env as MCP_SOURCEGRAPH_API_KEY (never in argv/log). To index different repos set SOURCEGRAPH_INDEX_REPOS (space-separated owner/name) before install."
       "_gen":
         "at": "2026-06-20T00:00:00Z"
@@ -1312,7 +1312,7 @@ services:
       method: none              # pinned GitHub-release tarball (SHA-verified by phase 28)
       # HOLD: AW_VERSION in 28_aionui.sh (phase variable = truth).
       pin: "2.1.21"
-      bump: "AIONUI_WEB_VERSION=<new|latest> vz-ai-stack.sh install aionui, then align upgrade.pin here"
+      bump: "AIONUI_WEB_VERSION=<new|latest> mayssam-ai-stack.sh install aionui, then align upgrade.pin here"
     # Host service: the desktop app is a brew cask; the WebUI server is the prebuilt
     # `aionui-web` standalone binary run as a loopback launchd daemon
     # (bin/start-aionui.sh). NOT a container / NOT on the ai-stack bridge → doctor
@@ -1329,11 +1329,11 @@ services:
       "what": "AionUi is a local Cowork workspace — a desktop app (brew --cask aionui) AND a headless WebUI server (the prebuilt, bun-compiled `aionui-web` standalone at http://127.0.0.1:25808). It chats with any OpenAI-compatible model and drives CLI agents (Claude Code, Hermes, …) in parallel over ACP — an agent workspace, not just a chat box."
       "why": "Reach for it when you want a GUI to run multiple agents side-by-side over your stack: every LiteLLM model in a desktop/browser UI, plus the Hermes agent auto-detected on PATH. Complements Open WebUI (single-model chat), claw3d, and the fleet CLI."
       "usage":
-        - vz-ai-stack.sh install aionui
-        - vz-ai-stack.sh start aionui          # ensures the WebUI daemon + opens http://127.0.0.1:25808
+        - mayssam-ai-stack.sh install aionui
+        - mayssam-ai-stack.sh start aionui          # ensures the WebUI daemon + opens http://127.0.0.1:25808
         - open -a AionUi                         # the native desktop app (quit when done)
-        - vz-ai-stack.sh help aionui
-        - vz-ai-stack.sh stop aionui
+        - mayssam-ai-stack.sh help aionui
+        - mayssam-ai-stack.sh stop aionui
       "config_notes": "OPT-IN (NOT in `install all`). The WebUI server is the prebuilt `aionui-web` binary (GitHub Releases, SHA256-verified) at ~/.local/share/aionui-web, run as a loopback launchd daemon (com.ai-stack.aionui-web) on :25808 — bound to 127.0.0.1 ONLY (aioncore disables auth in local mode; never expose off-box). Data at ~/.aionui-web (separate from the desktop app's ~/Library/Application Support/AionUi). WIRE YOUR MODELS (one-time, UI-driven — AionUi stores provider config in its own SQLite, not file-seedable): Settings → Models → Add Model → Custom → Base URL http://127.0.0.1:4000/v1 + the AIONUI_LITELLM_KEY from .env + model IDs (claude-opus-sub-xhigh, local, …). HERMES BRIDGE (Design X): host hermes-agent[acp] puts `hermes` on PATH; AionUi auto-detects it — point it at LiteLLM via `hermes model`. Pin the WebUI version with AIONUI_WEB_VERSION."
       "_gen":
         "at": "2026-06-21T00:00:00Z"
@@ -1350,7 +1350,7 @@ services:
       restart: openwork
       # HOLD: phase 29 pins OW_VERSION for reproducibility (phase variable = truth).
       pin: "0.17.1"
-      bump: "OPENWORK_VERSION=<new|latest> vz-ai-stack.sh install 29, then align upgrade.pin here"
+      bump: "OPENWORK_VERSION=<new|latest> mayssam-ai-stack.sh install 29, then align upgrade.pin here"
     # Host service: the headless orchestrator (npm-installed prebuilt `openwork`
     # binary) run as a loopback launchd daemon (bin/start-openwork.sh). It self-
     # manages OpenCode (downloads its sidecars) — NOT a container, NOT on the
@@ -1370,10 +1370,10 @@ services:
       "what": "OpenWork is a local Cowork workspace built on the OpenCode engine — an open-source alternative to Claude Cowork. The stack runs its HEADLESS orchestrator (the prebuilt `openwork-orchestrator` binary, npm-installed) as a loopback browser harness at http://127.0.0.1:8787/ui — a minimal 'Toy UI'/contract harness that needs the client token to connect (open `/ui#token=<OPENWORK_CLIENT_TOKEN from .env>`). It does file-centric agentic work with skills/plugins/MCP over your stack's models, with an auditable approval flow. The polished Cowork UI is the optional DESKTOP app; the headless orchestrator is primarily the API/daemon that runs your stack's models."
       "why": "Reach for it when you want a browser Cowork workspace that's powered by OpenCode (skills, opencode plugins, MCP servers, file diffs, approval-gated tool calls) over every LiteLLM model — file-first agentic work, not just chat. Complements Open WebUI (single-model chat), AionUi (ACP multi-agent GUI), and claw3d (fronts the fleet roles)."
       "usage":
-        - vz-ai-stack.sh install openwork
-        - vz-ai-stack.sh start openwork        # ensures the daemon + opens :8787/ui (append #token=<OPENWORK_CLIENT_TOKEN from .env> to connect)
-        - vz-ai-stack.sh help openwork
-        - vz-ai-stack.sh stop openwork
+        - mayssam-ai-stack.sh install openwork
+        - mayssam-ai-stack.sh start openwork        # ensures the daemon + opens :8787/ui (append #token=<OPENWORK_CLIENT_TOKEN from .env> to connect)
+        - mayssam-ai-stack.sh help openwork
+        - mayssam-ai-stack.sh stop openwork
       "config_notes": "OPT-IN (NOT in `install all`). The managed service is the HEADLESS orchestrator: `npm i -g openwork-orchestrator` installs a prebuilt Bun-compiled standalone binary (npm integrity-checked) that SELF-MANAGES OpenCode (downloads opencode/openwork-server/opencode-router sidecars on first run → the stack adds NO `opencode` host dependency). Run as a loopback launchd daemon (com.ai-stack.openwork) on :8787, health-gated on /health 200 — bound to 127.0.0.1 ONLY (never --remote-access; --approval manual so agentic actions need explicit approval). MODELS ARE PRE-SEEDED (file-based, unlike AionUi): Phase 29 writes ~/.openwork-stack/opencode.json with a LiteLLM provider (@ai-sdk/openai-compatible, base URL http://127.0.0.1:4000/v1, apiKey via {env:OPENWORK_LITELLM_KEY} — the literal key is NEVER on disk). Client/host tokens are openssl-generated, kept in .env (0600) and passed via env (never argv → not in `ps`). Pin the version with OPENWORK_VERSION. Per-stack workspace ~/.openwork-stack (separate from your personal ~/.config/opencode). DESKTOP APP (optional): download from https://github.com/different-ai/openwork/releases and point its OpenCode at the same provider config. Wiring the Hermes fleet / stack MCP servers in is a documented follow-up (Phase 29b)."
       "_gen":
         "at": "2026-06-21T00:00:00Z"
@@ -1390,7 +1390,7 @@ services:
     # server the Hermes fleet dials at host.docker.internal:7081. Local clients (Claude
     # Code, Pi) use the stdio entrypoint instead. NOT a container / NOT on the ai-stack
     # bridge → doctor check 16 (bridge membership) does not apply. The dashboard is a
-    # separate foreground serve: `vz-ai-stack.sh understand-dashboard`.
+    # separate foreground serve: `mayssam-ai-stack.sh understand-dashboard`.
     network: host
     bind: 127.0.0.1
     port: 7081
@@ -1402,13 +1402,13 @@ services:
       "what": "Understand-Anything analyzes a codebase into an interactive knowledge graph (.understand-anything/knowledge-graph.json — nodes=files/functions/classes/concepts with summaries + file:line, edges=imports/calls/…, plus architectural layers + a guided tour). The stack adds `understand-mcp`, a headless server that exposes the committed graph as MCP tools (graph_search, get_node, read_node_source, list_layers, get_tour, project_summary) over stdio (host Claude Code/Pi) AND http (the Hermes fleet)."
       "why": "Reach for it to ORIENT in a codebase — where a concept lives, the architecture, an onboarding tour — from ANY runtime, not just Claude Code. Generate the graph once (/understand) and commit it; the whole fleet then queries it. Complements Sourcegraph/lumen (raw source retrieval): understand = the map, read_node_source bridges to the code."
       "usage":
-        - vz-ai-stack.sh install understand
+        - mayssam-ai-stack.sh install understand
         - "cd ~/ai-stack && /understand .        # generate the graph (from MAIN), then commit it"
-        - vz-ai-stack.sh start understand         # the http daemon the fleet dials (:7081)
-        - vz-ai-stack.sh test understand          # E2E proof: a Hermes profile queries the graph
-        - vz-ai-stack.sh understand-dashboard     # interactive browser graph
-        - vz-ai-stack.sh stop understand
-      "config_notes": "OPT-IN (NOT in `install all`); needs Node ≥22 + pnpm. The Understand-Anything Claude Code plugin must be installed (marketplace Egonex-AI/Understand-Anything); Phase 30 builds its core, builds the understand-mcp shim (understand-mcp/, node_modules gitignored), mints UNDERSTAND_MCP_TOKEN in .env, registers the stdio MCP with Claude Code (`claude mcp add -s user`), starts the http daemon on 127.0.0.1:7081, and wires every Hermes profile (host.docker.internal:7081, token-gated, same mechanism as Sourcegraph — gated/non-fatal if the fleet is absent). The graph is generated by Claude Code/Pi and COMMITTED; Hermes CONSUMES it (Hermes-side generation is a documented follow-up). Search is fuzzy keyword (semantic/embeddings deferred). Rollback: `claude mcp remove -s user understand-anything`; `vz-ai-stack.sh stop understand`. See doc/UNDERSTAND.md."
+        - mayssam-ai-stack.sh start understand         # the http daemon the fleet dials (:7081)
+        - mayssam-ai-stack.sh test understand          # E2E proof: a Hermes profile queries the graph
+        - mayssam-ai-stack.sh understand-dashboard     # interactive browser graph
+        - mayssam-ai-stack.sh stop understand
+      "config_notes": "OPT-IN (NOT in `install all`); needs Node ≥22 + pnpm. The Understand-Anything Claude Code plugin must be installed (marketplace Egonex-AI/Understand-Anything); Phase 30 builds its core, builds the understand-mcp shim (understand-mcp/, node_modules gitignored), mints UNDERSTAND_MCP_TOKEN in .env, registers the stdio MCP with Claude Code (`claude mcp add -s user`), starts the http daemon on 127.0.0.1:7081, and wires every Hermes profile (host.docker.internal:7081, token-gated, same mechanism as Sourcegraph — gated/non-fatal if the fleet is absent). The graph is generated by Claude Code/Pi and COMMITTED; Hermes CONSUMES it (Hermes-side generation is a documented follow-up). Search is fuzzy keyword (semantic/embeddings deferred). Rollback: `claude mcp remove -s user understand-anything`; `mayssam-ai-stack.sh stop understand`. See doc/UNDERSTAND.md."
       "_gen":
         "at": "2026-06-21T00:00:00Z"
         "source": phase-30-understand
@@ -1425,7 +1425,7 @@ services:
       # HOLD: 32_metagpt.sh pins 0.8.2 (repro; a bump needs --prerelease=allow AND the
       # typer>=0.12 post-fix baked into the phase).
       pin: "0.8.2"
-      bump: "edit the metagpt pin in installer/phases/32_metagpt.sh, vz-ai-stack.sh install 32, align upgrade.pin here"
+      bump: "edit the metagpt pin in installer/phases/32_metagpt.sh, mayssam-ai-stack.sh install 32, align upgrade.pin here"
     network: none
     consumes_env:
       - METAGPT_LITELLM_KEY
@@ -1435,7 +1435,7 @@ services:
       "usage":
         - bin/metagpt "create a CLI 2048 game in python"   # output → metagpt/workspace/
         - METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt "..."   # bigger swarm (metered)
-        - vz-ai-stack.sh test 32        # smoke: scoped key → LiteLLM
+        - mayssam-ai-stack.sh test 32        # smoke: scoped key → LiteLLM
       "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv pinned to Python 3.11 (host 3.14 is too new for MetaGPT) at metagpt/.venv — regenerable; metagpt/workspace is DATA (kept). bin/metagpt resolves METAGPT_LITELLM_KEY from .env at RUNTIME and writes ~/.metagpt/config2.yaml (0600, never the repo) with api_type=openai base_url=http://litellm:4000/v1. Default model local (override METAGPT_MODEL or models.yml .assignments.metagpt). On the M4/24GB box keep the swarm small or route to a cloud model. Rollback: rm -rf metagpt/.venv + installer/state/phase_32.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
       "_gen":
         "at": "2026-06-23T00:00:00Z"
@@ -1459,7 +1459,7 @@ services:
       "usage":
         - bin/oasis oasis/sims/smoke_sim.py          # tiny bundled demo (a few agents)
         - "# write your own sim in oasis/sims/ then: bin/oasis oasis/sims/my_sim.py"
-        - vz-ai-stack.sh test 34        # smoke: a real multi-agent step via LiteLLM
+        - mayssam-ai-stack.sh test 34        # smoke: a real multi-agent step via LiteLLM
       "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at oasis/.venv (Python 3.11) — regenerable; oasis/sims is DATA (your sim scripts + output). bin/oasis exports OASIS_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://litellm:4000/v1; sims build a CAMEL OPENAI_COMPATIBLE model pointed there (default local). SCALE REALITY: the 1M-agent figure is upstream — on the M4/24GB box local inference serializes, so keep swarms to dozens on local or route to a cloud model (metered). Rollback: rm -rf oasis/.venv + installer/state/phase_34.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
       "_gen":
         "at": "2026-06-23T00:00:00Z"
@@ -1476,7 +1476,7 @@ services:
       pkg: gdm-concordia
       # HOLD: 37_concordia.sh pins 2.4.0 (the seeded sim's prefab keys track this API).
       pin: "2.4.0"
-      bump: "edit the gdm-concordia pin in installer/phases/37_concordia.sh, vz-ai-stack.sh install 37, align upgrade.pin here"
+      bump: "edit the gdm-concordia pin in installer/phases/37_concordia.sh, mayssam-ai-stack.sh install 37, align upgrade.pin here"
     network: none
     consumes_env:
       - CONCORDIA_LITELLM_KEY
@@ -1486,7 +1486,7 @@ services:
       "usage":
         - bin/concordia concordia/sims/smoke_sim.py    # tiny bundled demo (2 entities + a Game Master, 1 step)
         - "# write your own sim in concordia/sims/ then: bin/concordia concordia/sims/my_sim.py"
-        - vz-ai-stack.sh test 37        # smoke: a real 1-step GABM sim via LiteLLM
+        - mayssam-ai-stack.sh test 37        # smoke: a real 1-step GABM sim via LiteLLM
       "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at concordia/.venv (Python 3.12 — the FIRST 3.12 host-venv sim; the others pin 3.11) — regenerable; concordia/sims is DATA (your sim scripts + output). bin/concordia exports CONCORDIA_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://127.0.0.1:4000/v1; sims build a Concordia GptLanguageModel (OpenAI-compatible, api_base→LiteLLM) + a sentence-transformers embedder (all-MiniLM-L6-v2, 384-dim). DEFAULT MODEL = claude-opus-sub-xhigh — the platform default (models.yml), same as the other sims ('no silent local models'). The install gate's heavy seeded sim runs the faster claude-sonnet-sub-high: Concordia fires MULTIPLE component LLM calls CONCURRENTLY per step (entity_agent._parallel_call_) — ~26 for a 1-step sim — and a single local Ollama model SERIALIZES them, so local TIMES OUT and even opus xhigh-effort would blow the gate timeout (verified 2026-06-25); the user-facing default stays the capable opus-xhigh while the gate uses sonnet-sub-high. local is selectable (CONCORDIA_MODEL=local) but will time out. SCALE REALITY: GABM is LLM-call-heavy (Game Master + every entity + every component, concurrently per step) — a 2-entity/2-step sim is ~6 min on a cloud-sub model; keep sims to a handful of entities for a few steps. Override model/embedder per run: CONCORDIA_MODEL=… CONCORDIA_EMBEDDER=… bin/concordia <sim>. Rollback: rm -rf concordia/.venv + installer/state/phase_37.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md + arXiv:2312.03664."
       "_gen":
         "at": "2026-06-25T00:00:00Z"
@@ -1510,7 +1510,7 @@ services:
       "usage":
         - bin/agentscope agentscope/sims/smoke_sim.py   # tiny bundled demo (2 agents converse)
         - "# write your own sim in agentscope/sims/ then: bin/agentscope agentscope/sims/my_sim.py"
-        - vz-ai-stack.sh test 33        # smoke: a real 2-agent exchange via LiteLLM
+        - mayssam-ai-stack.sh test 33        # smoke: a real 2-agent exchange via LiteLLM
       "config_notes": "OPT-IN (NOT in `install all`); needs uv (Phase 14). Host venv at agentscope/.venv (Python 3.11) — regenerable; agentscope/sims is DATA (your sim scripts + output). bin/agentscope exports AGENTSCOPE_LITELLM_KEY (from .env at runtime) + OPENAI_BASE_URL=http://127.0.0.1:4000/v1; sims build an OpenAIChatModel whose OpenAICredential.base_url points there (default local). API IS ASYNC (agentscope 2.x rewrite: OpenAIChatModel + OpenAICredential + OpenAIChatFormatter, await agent.reply/observe). local is a reasoning model → use max_tokens>=512 and rebuild a clean text-only Msg between agents (observe() rejects ThinkingBlocks). SCALE REALITY: on the M4/24GB box local inference serializes, so keep swarms to dozens on local or route to a cloud model (metered). OPTIONAL Studio web GUI (opt-in: AGENTSCOPE_STUDIO=1) — a host launchd daemon (npm @agentscope/studio, binary as_studio; NOT pip agentscope) on http://127.0.0.1:5275 that VISUALIZES the OTLP trace spans the sims emit (it makes no LLM calls). When enabled, bin/agentscope exports OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318 + OTEL_EXPORTER_OTLP_PROTOCOL=grpc and the seeded sim attaches TracingMiddleware + an OTLP exporter (a no-op when that env is unset). The Studio OTLP gRPC receiver is pinned to :4318 (NOT the OTel default 4317, which phoenix-otlp already owns; as_studio binds 0.0.0.0 so :4317 would collide with Phoenix). SECURITY: as_studio binds 0.0.0.0 (its host:''localhost'' config is inert and there is NO loopback-only flag), so BOTH the UI :5275 and the OTLP gRPC :4318 are UNAUTHENTICATED on every interface — the loopback posture relies entirely on NOT exposing this box; keep it off untrusted networks / behind a host firewall (e.g. macOS pf or do not port-forward). Manage: bash bin/start-agentscope-studio.sh [install|status|stop|uninstall]. Rollback: rm -rf agentscope/.venv + installer/state/phase_33.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
       "_gen":
         "at": "2026-06-23T00:00:00Z"
@@ -1536,12 +1536,12 @@ services:
       "what": "ChatDev 2.0 'DevAll' (OpenBMB/ChatDev, Apache-2.0) is a multi-agent 'software company' — a workflow of role agents (CEO/CTO/programmer/reviewer/tester) collaborate to turn a brief into software. Unlike MetaGPT/OASIS/AgentScope (host-venv CLI sims), ChatDev 2.0's default branch is a WEB APP: a Vue 3 + Vite frontend (http://chatdev:5274) talking to a FastAPI/uvicorn backend (:6400). The stack runs it as ONE derived image (Python 3.12 + uv + Node) split into TWO managed containers (chatdev frontend + chatdev-backend) on the ai-stack bridge."
       "why": "Reach for it when you want a GUI to drive a role-playing software-dev agent swarm — compose a workflow of agents in the browser and watch them collaborate, every agent's LLM call routed through LiteLLM (scoped key) so it's traced in Phoenix. The web-app sibling of the CLI sims: MetaGPT (fixed PM→QA team, CLI), OASIS (emergent social swarm, CLI), AgentScope (bring-your-own-swarm framework, CLI)."
       "usage":
-        - vz-ai-stack.sh install chatdev
-        - vz-ai-stack.sh start chatdev          # builds image if needed + starts both containers
+        - mayssam-ai-stack.sh install chatdev
+        - mayssam-ai-stack.sh start chatdev          # builds image if needed + starts both containers
         - open http://chatdev:5274                # the web app (backend API: http://chatdev:6400/docs)
-        - vz-ai-stack.sh test 35                  # headless 1-agent workflow → LiteLLM
-        - vz-ai-stack.sh help chatdev
-        - vz-ai-stack.sh stop chatdev
+        - mayssam-ai-stack.sh test 35                  # headless 1-agent workflow → LiteLLM
+        - mayssam-ai-stack.sh help chatdev
+        - mayssam-ai-stack.sh stop chatdev
       "config_notes": "OPT-IN (NOT in `install all`); needs docker + git + host Node>=18. ARCHETYPE = container web app: ONE derived image (ai-stack/chatdev:local, chatdev/Dockerfile — Python 3.12 hard pin per ChatDev 2.0's requires-python>=3.12,<3.13; uv installs clean on arm64) run as TWO containers by bin/start-chatdev.sh — chatdev (Vite dev server, 127.0.10.18:5274→:5173) + chatdev-backend (uvicorn server_main:app, 127.0.10.18:6400). Both join the ai-stack bridge, publish LOOPBACK-only on 127.0.10.18, and are capped (--cpus/--memory). LLM wiring: Phase 35 writes chatdev/repo/.env with BASE_URL=http://litellm:4000/v1 (container Docker DNS, native port) + API_KEY=the scoped CHATDEV_LITELLM_KEY (never master); workflow YAML agent nodes default to ${BASE_URL}/${API_KEY}, model = the node name: (default local). UPSTREAM GOTCHAS baked into the seeded smoke workflow: do NOT set `protocol: chat` in a node's params (TypeError); keep max_tokens>=512 (the reasoning model returns empty content at tiny budgets). Frontend deps are installed on the HOST (npm install in chatdev/repo/frontend) because the runtime bind mount masks any baked node_modules. SCALE REALITY: on the M4/24GB box local inference serializes — keep the swarm small on local, or set a node's name: to claude-opus-sub-xhigh (metered). Rollback: bin/start-chatdev.sh uninstall; docker rmi ai-stack/chatdev:local; rm -rf chatdev/; rm installer/state/phase_35.done. See doc/specs/2026-06-23-agent-sim-platforms-install-plan.md."
       "_gen":
         "at": "2026-06-23T00:00:00Z"
@@ -1617,13 +1617,13 @@ services:
       "what": "A host-side, headless Node MCP shim (honcho-mcp/bin.mjs) that wraps Honcho's v3 REST API as four memory TOOLS — honcho_remember (write a turn), honcho_recall (a peer's derived representation), honcho_ask (natural-language dialectic query), honcho_search (semantic message search). Served two ways: stdio for local clients (host Claude Code, Pi) and a token-gated http daemon on 127.0.0.1:7082 (/healthz, /mcp) that the Hermes fleet dials via host.docker.internal:7082. FULL-SHARED workspace: every consumer shares one Honcho workspace + a default 'fleet' session, so anything one peer remembers is recallable by any peer (no per-agent isolation)."
       "why": "Reach for it to give agents durable, cross-session memory as MCP tools from ANY runtime — no per-client Honcho SDK glue. It is also the SECURITY choke point: Phase 40 retires the raw auth-off Honcho REST egress (:8000) from the sandboxes, so this token-gated shim becomes the ONLY in-sandbox path to Honcho. Complements the other memory surfaces — Honcho = derived cross-agent facts, MemPalace = verbatim session recall, docs-mcp = document RAG, Lumen = code search."
       "usage":
-        - "vz-ai-stack.sh install honcho_mcp   # mints token, wires claude + fleet, retires :8000 (also runs by DEFAULT under `install all --include-optionals`)"
-        - "HONCHO_MEMORY_OPT_IN=0 vz-ai-stack.sh install all --include-optionals   # DECLINE honcho memory (nothing stamped)"
-        - "vz-ai-stack.sh start honcho_mcp   # the http daemon the fleet dials (:7082)"
+        - "mayssam-ai-stack.sh install honcho_mcp   # mints token, wires claude + fleet, retires :8000 (also runs by DEFAULT under `install all --include-optionals`)"
+        - "HONCHO_MEMORY_OPT_IN=0 mayssam-ai-stack.sh install all --include-optionals   # DECLINE honcho memory (nothing stamped)"
+        - "mayssam-ai-stack.sh start honcho_mcp   # the http daemon the fleet dials (:7082)"
         - "curl -s http://127.0.0.1:7082/healthz   # -> ok:true honcho:true base workspace"
         - "claude mcp list   # host Claude Code stdio registration (honcho)"
-        - vz-ai-stack.sh stop honcho_mcp
-      "config_notes": "DEFAULT-ON as of 2026-07-16 (operator decision): NOT in core `install all`, but it now installs by DEFAULT under `install all --include-optionals`, exactly like its sibling memory phases 39 (doc-RAG) and 41 (falkordb). It was previously gated behind HONCHO_MEMORY_OPT_IN=1 — a flag NOTHING in the repo ever set — so a blanket run silently DECLINED honcho while 39/41 wired themselves, invisibly (phase 40 exits 0 and check 75 skip-cleans when unstamped). DISCLOSE, don't withhold: enabling it CHANGES THE SECURITY POSTURE — it retires the raw auth-off honcho:8000 sandbox egress (a net TIGHTENING: the token-gated shim becomes the only in-sandbox path to Honcho) and establishes FULL-SHARED memory (every consumer shares ONE Honcho workspace + a default 'fleet' session — NO per-agent isolation, so anything one peer remembers is recallable by any peer; do not put per-agent secrets in it). The phase prints all three effects before acting. DECLINE with HONCHO_MEMORY_OPT_IN=0 vz-ai-stack.sh install all --include-optionals — the decline path stamps NOTHING (check 75 keys its skip-clean on phase_40*.done, so a stamped decline would red-bar a stack that opted out). Needs node on PATH (deps). HARD DEPENDENCY: the Phase-03 honcho embedding fix (EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL → LiteLLM) must be applied first, else honcho 401s on every search/recall/ingest (a wired-but-broken shim) — the phase aborts with the exact fix command if missing. The http daemon FAILS CLOSED: it refuses --http without HONCHO_MCP_TOKEN (bound 127.0.0.1 only, but the fleet reaches it via host.docker.internal, so an unauthenticated server would be a real exposure); stdio needs no token. The token is minted ONLY if absent (a re-mint would break already-wired consumers). Pi honcho is DEFERRED — Pi ships no MCP client, so it needs a dedicated pi extension; Pi's raw :8000 egress is retired regardless. Doctor check 75 (75_honcho_mcp.sh) covers it, including a security drift-guard that reds if the raw honcho_memory (:8000) egress reappears in a sandbox policy or the 04_openshell.sh generator. Rollback: claude mcp remove -s user honcho; vz-ai-stack.sh stop honcho_mcp; rm installer/state/phase_40.done."
+        - mayssam-ai-stack.sh stop honcho_mcp
+      "config_notes": "DEFAULT-ON as of 2026-07-16 (operator decision): NOT in core `install all`, but it now installs by DEFAULT under `install all --include-optionals`, exactly like its sibling memory phases 39 (doc-RAG) and 41 (falkordb). It was previously gated behind HONCHO_MEMORY_OPT_IN=1 — a flag NOTHING in the repo ever set — so a blanket run silently DECLINED honcho while 39/41 wired themselves, invisibly (phase 40 exits 0 and check 75 skip-cleans when unstamped). DISCLOSE, don't withhold: enabling it CHANGES THE SECURITY POSTURE — it retires the raw auth-off honcho:8000 sandbox egress (a net TIGHTENING: the token-gated shim becomes the only in-sandbox path to Honcho) and establishes FULL-SHARED memory (every consumer shares ONE Honcho workspace + a default 'fleet' session — NO per-agent isolation, so anything one peer remembers is recallable by any peer; do not put per-agent secrets in it). The phase prints all three effects before acting. DECLINE with HONCHO_MEMORY_OPT_IN=0 mayssam-ai-stack.sh install all --include-optionals — the decline path stamps NOTHING (check 75 keys its skip-clean on phase_40*.done, so a stamped decline would red-bar a stack that opted out). Needs node on PATH (deps). HARD DEPENDENCY: the Phase-03 honcho embedding fix (EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL → LiteLLM) must be applied first, else honcho 401s on every search/recall/ingest (a wired-but-broken shim) — the phase aborts with the exact fix command if missing. The http daemon FAILS CLOSED: it refuses --http without HONCHO_MCP_TOKEN (bound 127.0.0.1 only, but the fleet reaches it via host.docker.internal, so an unauthenticated server would be a real exposure); stdio needs no token. The token is minted ONLY if absent (a re-mint would break already-wired consumers). Pi honcho is DEFERRED — Pi ships no MCP client, so it needs a dedicated pi extension; Pi's raw :8000 egress is retired regardless. Doctor check 75 (75_honcho_mcp.sh) covers it, including a security drift-guard that reds if the raw honcho_memory (:8000) egress reappears in a sandbox policy or the 04_openshell.sh generator. Rollback: claude mcp remove -s user honcho; mayssam-ai-stack.sh stop honcho_mcp; rm installer/state/phase_40.done."
       "_gen":
         "at": "2026-07-14T00:00:00Z"
         "source": phase-40-honcho_mcp
@@ -1656,12 +1656,12 @@ services:
       "what": "A host-side, headless Node MCP shim (falkordb-mcp/bin.mjs) that wraps FalkorDB's Cypher (GRAPH.QUERY / GRAPH.RO_QUERY over the Redis protocol) as four minimal graph-memory TOOLS — remember_fact (idempotent subject-[predicate]->object edge), recall_related (an entity's neighbors), graph_query (READ-ONLY Cypher), graph_write (write Cypher). Served two ways: stdio for local clients (host Claude Code, Pi) and a token-gated http daemon on 127.0.0.1:7083 (/healthz, /mcp) that the Hermes fleet dials via host.docker.internal:7083. ONE shared graph (FALKORDB_GRAPH=fleet-memory, no per-agent isolation) — the graph analog of honcho-mcp's one shared workspace. NO auto-extraction: a deliberate minimal primitive (operator decision D2)."
       "why": "Reach for it to give agents durable, cross-session GRAPH memory as MCP tools from ANY runtime — relationships/connectivity (who-knows-who, depends-on, cites) that a vector store can't express — with no per-client FalkorDB glue. It is the graph-memory sibling of honcho-mcp (derived cross-agent facts) and MemPalace (verbatim session recall). PURELY ADDITIVE: FalkorDB was never fleet-reachable, so this opens a NEW capability without retiring any egress (unlike honcho_mcp) — the raw falkordb:6379 endpoint stays denied to sandboxes, and this token-gated shim is the only in-sandbox path to the graph."
       "usage":
-        - "vz-ai-stack.sh install falkordb_mcp   # opt-in: mints token, wires claude + fleet (additive — no egress retired)"
-        - "vz-ai-stack.sh start falkordb_mcp   # the http daemon the fleet dials (:7083)"
+        - "mayssam-ai-stack.sh install falkordb_mcp   # opt-in: mints token, wires claude + fleet (additive — no egress retired)"
+        - "mayssam-ai-stack.sh start falkordb_mcp   # the http daemon the fleet dials (:7083)"
         - "curl -s http://127.0.0.1:7083/healthz   # -> ok:true falkordb:true graph:fleet-memory"
         - "claude mcp list   # host Claude Code stdio registration (falkordb)"
-        - vz-ai-stack.sh stop falkordb_mcp
-      "config_notes": "NOT in core `install all`, but it installs by DEFAULT with `install all --include-optionals`. UNLIKE honcho_mcp there is no decline flag and nothing to disclose, because it is purely ADDITIVE: FalkorDB was never reachable from the sandboxes, so nothing is retired and no security posture flips (honcho_mcp is also default-on as of 2026-07-16, but it retires the raw :8000 egress and establishes FULL-SHARED memory, so it prints those effects and honors HONCHO_MEMORY_OPT_IN=0). Needs node on PATH (deps) and the Phase-02 FalkorDB container running (redis://falkordb:6379). Uses the official `falkordb` npm client; the DB connect is LAZY + cached (first tool call), so a down FalkorDB surfaces as {error} per call rather than a startup crash — registering the server is always safe. The http daemon FAILS CLOSED: it refuses --http without FALKORDB_MCP_TOKEN (bound 127.0.0.1 only, but the fleet reaches it via host.docker.internal, so an unauthenticated server would be a real exposure); stdio needs no token. graph_query is READ-ONLY (rejects CREATE/MERGE/SET/DELETE — use graph_write for writes). ONE shared graph (fleet-memory); no per-agent isolation. Pi FalkorDB is DEFERRED (Pi ships no MCP client); Pi's raw :6379 access stays denied regardless. Doctor check 76 (76_falkordb_mcp.sh) covers it: a drift-guard that the falkordb_mcp (:7083) shim egress is present in the fleet policy AND no sandbox policy targets raw :6379, plus shim health, claude-cli stdio registration, and per-profile fleet wiring. Rollback: claude mcp remove -s user falkordb; vz-ai-stack.sh stop falkordb_mcp; rm installer/state/phase_41.done."
+        - mayssam-ai-stack.sh stop falkordb_mcp
+      "config_notes": "NOT in core `install all`, but it installs by DEFAULT with `install all --include-optionals`. UNLIKE honcho_mcp there is no decline flag and nothing to disclose, because it is purely ADDITIVE: FalkorDB was never reachable from the sandboxes, so nothing is retired and no security posture flips (honcho_mcp is also default-on as of 2026-07-16, but it retires the raw :8000 egress and establishes FULL-SHARED memory, so it prints those effects and honors HONCHO_MEMORY_OPT_IN=0). Needs node on PATH (deps) and the Phase-02 FalkorDB container running (redis://falkordb:6379). Uses the official `falkordb` npm client; the DB connect is LAZY + cached (first tool call), so a down FalkorDB surfaces as {error} per call rather than a startup crash — registering the server is always safe. The http daemon FAILS CLOSED: it refuses --http without FALKORDB_MCP_TOKEN (bound 127.0.0.1 only, but the fleet reaches it via host.docker.internal, so an unauthenticated server would be a real exposure); stdio needs no token. graph_query is READ-ONLY (rejects CREATE/MERGE/SET/DELETE — use graph_write for writes). ONE shared graph (fleet-memory); no per-agent isolation. Pi FalkorDB is DEFERRED (Pi ships no MCP client); Pi's raw :6379 access stays denied regardless. Doctor check 76 (76_falkordb_mcp.sh) covers it: a drift-guard that the falkordb_mcp (:7083) shim egress is present in the fleet policy AND no sandbox policy targets raw :6379, plus shim health, claude-cli stdio registration, and per-profile fleet wiring. Rollback: claude mcp remove -s user falkordb; mayssam-ai-stack.sh stop falkordb_mcp; rm installer/state/phase_41.done."
       "_gen":
         "at": "2026-07-14T00:00:00Z"
         "source": phase-41-falkordb_mcp

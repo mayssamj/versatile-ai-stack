@@ -161,7 +161,7 @@ slacklog="$(grep -iE 'slack|socket\.?mode|wss[.-][a-z0-9]*\.?slack' <<<"$gwlog" 
 
 # FATAL — the Slack TOKEN itself is bad (the bot can't work at all).
 if grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|not_allowed_token_type|invalid.?token' <<<"$slacklog"; then
-  err "Slack token/auth error in the gateway log — check SLACK_BOT_TOKEN (xoxb-) / SLACK_APP_TOKEN (xapp-, connections:write) are valid and not revoked, then re-run 'vz-ai-stack.sh install 38'."
+  err "Slack token/auth error in the gateway log — check SLACK_BOT_TOKEN (xoxb-) / SLACK_APP_TOKEN (xapp-, connections:write) are valid and not revoked, then re-run 'mayssam-ai-stack.sh install 38'."
   exit 1
 fi
 # FATAL — egress blocked: the landlock denied a SLACK host (policy_denied is the
@@ -169,7 +169,7 @@ fi
 if grep -iE 'policy_denied|egress.*deni' <<<"$gwlog" | grep -qiE 'slack|wss'; then
   host="$(grep -iE 'policy_denied|egress.*deni' <<<"$gwlog" | grep -oiE '[a-z0-9.-]+\.slack\.com' | head -1 || true)"
   err "Slack Socket Mode egress is BLOCKED — host '${host:-<a slack host>}' is missing from the Phase 04 'slack' policy."
-  err "  Add it to the 'slack' stanza in installer/phases/04_openshell.sh AND openshell/policies/hermes-fleet-v1.yaml, then re-run 'vz-ai-stack.sh install 38'."
+  err "  Add it to the 'slack' stanza in installer/phases/04_openshell.sh AND openshell/policies/hermes-fleet-v1.yaml, then re-run 'mayssam-ai-stack.sh install 38'."
   exit 1
 fi
 

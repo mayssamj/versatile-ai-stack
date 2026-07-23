@@ -1,6 +1,6 @@
 # Host prerequisites — the platform bootstrap map
 
-`vz-ai-stack.sh` targets **macOS on Apple Silicon**. It no longer *assumes* host
+`mayssam-ai-stack.sh` targets **macOS on Apple Silicon**. It no longer *assumes* host
 tools are present — it **verifies, installs what's missing, starts what needs
 starting, and re-verifies** before proceeding. No assumptions, only verified
 actions.
@@ -15,8 +15,8 @@ the `ensure_*` routines). This document mirrors it.
 Run it yourself:
 
 ```bash
-vz-ai-stack.sh deps            # show the map; install/start anything missing
-vz-ai-stack.sh deps --check    # read-only; non-zero exit if anything missing/down (CI)
+mayssam-ai-stack.sh deps            # show the map; install/start anything missing
+mayssam-ai-stack.sh deps --check    # read-only; non-zero exit if anything missing/down (CI)
 ```
 
 ## The map
@@ -24,7 +24,7 @@ vz-ai-stack.sh deps --check    # read-only; non-zero exit if anything missing/do
 | Tier | Dependency | Detect | If missing | Start + verify |
 |---|---|---|---|---|
 | **0 — bootstrap** | Homebrew | `command -v brew` | install via the official script (prompts; `NO_PROMPT=1` → unattended) | — |
-| | bash 5+ | `BASH_VERSINFO` | `brew install bash` then re-exec | handled at the top of `vz-ai-stack.sh` |
+| | bash 5+ | `BASH_VERSINFO` | `brew install bash` then re-exec | handled at the top of `mayssam-ai-stack.sh` |
 | | Xcode CLT (git, curl, …) | `command -v git curl` | guidance: `xcode-select --install` | — |
 | **1 — core CLI** | `yq` `jq` `node@22`(+`npm`) `pnpm` `uv`(+`uvx`) `git` `tesseract` `openssl@3` | `brew list` / `command -v` | `brew install <formula>` (per-formula; tolerant of symlink conflicts) | re-verify each command resolves |
 | | `python3` | `command -v python3` | `brew install python3` | — |
@@ -51,11 +51,11 @@ module `installer/lib/docker-engine.sh` resolves each engine's socket and export
 single `DOCKER_HOST`. Pick or change it intentionally:
 
 ```bash
-vz-ai-stack.sh docker-engine select        # interactive picker (then ensure + pin)
-vz-ai-stack.sh docker-engine set <id>       # pin explicitly (ensure + pin), e.g. set colima
-vz-ai-stack.sh docker-engine status         # show selected engine, resolved socket, consistency, context policy
-vz-ai-stack.sh docker-engine context status # show the global docker-context policy (switch|keep)
-vz-ai-stack.sh --engine <id> <any command>  # one-off override for a single invocation
+mayssam-ai-stack.sh docker-engine select        # interactive picker (then ensure + pin)
+mayssam-ai-stack.sh docker-engine set <id>       # pin explicitly (ensure + pin), e.g. set colima
+mayssam-ai-stack.sh docker-engine status         # show selected engine, resolved socket, consistency, context policy
+mayssam-ai-stack.sh docker-engine context status # show the global docker-context policy (switch|keep)
+mayssam-ai-stack.sh --engine <id> <any command>  # one-off override for a single invocation
 ```
 
 ### Global `docker context` policy (no mid-run prompts)
@@ -75,11 +75,11 @@ engine — so other shells/tools see it too — is a **persisted preference**,
 Set it non-interactively, either in `setup` (it asks once) or directly:
 
 ```bash
-vz-ai-stack.sh docker-engine context switch   # auto-point global context (default)
-vz-ai-stack.sh docker-engine context keep      # never touch it (also restores the prior context now)
+mayssam-ai-stack.sh docker-engine context switch   # auto-point global context (default)
+mayssam-ai-stack.sh docker-engine context keep      # never touch it (also restores the prior context now)
 ```
 
-`AI_STACK_DOCKER_CONTEXT=keep vz-ai-stack.sh <cmd>` overrides it for a single run. (The
+`AI_STACK_DOCKER_CONTEXT=keep mayssam-ai-stack.sh <cmd>` overrides it for a single run. (The
 env var shadows `.env` for as long as it is exported — handy for CI, where you may want
 `AI_STACK_DOCKER_CONTEXT=keep` so a shared runner's global context is never auto-switched;
 the stack itself is unaffected either way because `DOCKER_HOST` always wins.)
@@ -125,10 +125,10 @@ only when a key is missing or set to a stale value.
 - **`NO_PROMPT=1`** makes the Homebrew bootstrap non-interactive (for CI / cold
   automation).
 - The privileged host step (`/etc/hosts` + `lo0` aliases) is separate:
-  `sudo bash vz-ai-stack.sh prepare-sudo` (see [INSTALL.md](INSTALL.md)).
+  `sudo bash mayssam-ai-stack.sh prepare-sudo` (see [INSTALL.md](INSTALL.md)).
 - **Secrets/`.env` are a separate, optional step** — `deps` bootstraps host *tooling*;
   it does **not** touch `.env`. To seed `.env` + (optionally) enter API keys, run
-  `vz-ai-stack.sh setup` (alias `keys`). It always ensures the non-interactive baseline
+  `mayssam-ai-stack.sh setup` (alias `keys`). It always ensures the non-interactive baseline
   (generated `LITELLM_MASTER_KEY` + `PHOENIX_SECRET`, service-URL defaults), then offers
   each optional external secret — every prompt skippable. A local-only / Claude-subscription
   (`-sub`) setup needs **zero** keys. See [OPERATIONS.md § Bootstrap helpers](OPERATIONS.md#bootstrap-helpers-deps-setup---dry-run-per-command-help).
@@ -148,7 +148,7 @@ live on the **previous** engine, the **docker-engine-consistency** doctor check
 1. **Re-pin to where the containers actually live:**
 
    ```bash
-   vz-ai-stack.sh docker-engine set <previous-engine>   # e.g. set orbstack
+   mayssam-ai-stack.sh docker-engine set <previous-engine>   # e.g. set orbstack
    ```
 
 2. **Restart the OpenShell gateway** so it re-reads the freshly-rewritten
@@ -157,7 +157,7 @@ live on the **previous** engine, the **docker-engine-consistency** doctor check
    its own), force the restart explicitly:
 
    ```bash
-   OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04
+   OPENSHELL_FORCE_GATEWAY_RESTART=1 mayssam-ai-stack.sh install 04
    ```
 
 3. **Restore your global `docker context`** if the `switch` policy moved it. The
@@ -165,7 +165,7 @@ live on the **previous** engine, the **docker-engine-consistency** doctor check
    restore puts it back:
 
    ```bash
-   vz-ai-stack.sh docker-engine context keep   # restores the recorded prior context
+   mayssam-ai-stack.sh docker-engine context keep   # restores the recorded prior context
    # or, manually:
    docker context use <prior>                  # the name engine_pin printed when it switched
    ```
@@ -173,7 +173,7 @@ live on the **previous** engine, the **docker-engine-consistency** doctor check
 4. **Confirm it's clean:**
 
    ```bash
-   vz-ai-stack.sh doctor          # checks 01/47/48 green (engine reachable; no
+   mayssam-ai-stack.sh doctor          # checks 01/47/48 green (engine reachable; no
                                   # split-brain; selection present & valid)
    ```
 
@@ -198,9 +198,9 @@ and confirm the socket resolves and the doctor checks are green.
 On a box that has the target engine:
 
 ```bash
-vz-ai-stack.sh docker-engine set <engine>   # e.g. set podman
-vz-ai-stack.sh docker-engine status         # selected engine + resolved socket + consistency
-vz-ai-stack.sh doctor                        # checks 01/47/48 green before relying on it
+mayssam-ai-stack.sh docker-engine set <engine>   # e.g. set podman
+mayssam-ai-stack.sh docker-engine status         # selected engine + resolved socket + consistency
+mayssam-ai-stack.sh doctor                        # checks 01/47/48 green before relying on it
 ```
 
 `docker-engine status` plus doctor checks **01** (selected engine reachable), the

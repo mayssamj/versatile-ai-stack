@@ -3,7 +3,7 @@
 #
 # WHY THIS EXISTS (incident 2026-06-20): the stack's containers bind-mount paths
 # resolved from $AI_STACK (honcho's Postgres data dir + init.sql via the phase-03
-# override, autofyn's /workspace, etc.). When `vz-ai-stack.sh install/start` (or
+# override, autofyn's /workspace, etc.). When `mayssam-ai-stack.sh install/start` (or
 # any `docker compose up`) ran with $AI_STACK pointing at a git WORKTREE, those
 # containers were (re)created bound to the worktree path. Removing the worktree
 # then vanished the mount sources -> Postgres couldn't start -> LiteLLM returned
@@ -71,7 +71,7 @@ worktree_guard() {
   err "(see the 2026-06-20 honcho-database incident)."
   if [[ -n "$main" ]]; then
     err "Run it from the main checkout instead:"
-    err "    cd $main && ./vz-ai-stack.sh ${op} ..."
+    err "    cd $main && ./mayssam-ai-stack.sh ${op} ..."
   fi
   exit 2
 }
@@ -84,6 +84,6 @@ worktree_guard_soft() {
   ai_stack_is_worktree || return 0
   local main; main="$(ai_stack_main_path)"
   warn "Skipping '$op' auto-recovery: running from a git worktree ($AI_STACK)."
-  [[ -n "$main" ]] && warn "Recover from the main checkout: cd $main && ./vz-ai-stack.sh doctor"
+  [[ -n "$main" ]] && warn "Recover from the main checkout: cd $main && ./mayssam-ai-stack.sh doctor"
   return 1
 }

@@ -21,7 +21,7 @@
   │   • Saves edits straight to the real files (createWritable). Chrome/Edge  │
   │     get full read+write; Safari/Firefox fall back to directory-upload     │
   │     (read) + Download/Copy (save), stated honestly — never a fake "Saved".│
-  │   • Best launched via `vz-ai-stack.sh fleet-studio` (serves doc/ on       │
+  │   • Best launched via `mayssam-ai-stack.sh fleet-studio` (serves doc/ on       │
   │     http://127.0.0.1 — an unambiguous secure context so the save API is   │
   │     guaranteed). A plain file:// double-click also works in Chrome.       │
   │                                                                            │
@@ -912,7 +912,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 $("heroNote").innerHTML = HAS_FSA
-  ? "Chrome / Edge detected — full live read &amp; write. Launch via <code>vz-ai-stack.sh fleet-studio</code> for the smoothest experience."
+  ? "Chrome / Edge detected — full live read &amp; write. Launch via <code>mayssam-ai-stack.sh fleet-studio</code> for the smoothest experience."
   : "This browser has no File System Access API — Fleet Studio will open in <b>read-only</b> mode (edits export via Download/Copy). For live editing, use <b>Chrome</b> or <b>Edge</b>.";
 </script>
 </body>

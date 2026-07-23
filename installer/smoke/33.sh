@@ -16,12 +16,12 @@ source "$AI_STACK/installer/lib/env.sh"
 hdr "Smoke 33 — AgentScope (2-agent exchange -> LiteLLM)"
 
 VENV="$AI_STACK/agentscope/.venv"
-[[ -x "$VENV/bin/python" ]] || { err "agentscope venv missing — run: vz-ai-stack.sh install 33"; exit 1; }
+[[ -x "$VENV/bin/python" ]] || { err "agentscope venv missing — run: mayssam-ai-stack.sh install 33"; exit 1; }
 "$VENV/bin/python" -c "import agentscope" >/dev/null 2>&1 && ok "import agentscope OK" \
   || { err "import agentscope failed in the venv"; exit 1; }
-[[ -x "$AI_STACK/bin/agentscope" ]] || { err "bin/agentscope wrapper missing — run: vz-ai-stack.sh install 33"; exit 1; }
+[[ -x "$AI_STACK/bin/agentscope" ]] || { err "bin/agentscope wrapper missing — run: mayssam-ai-stack.sh install 33"; exit 1; }
 SIM="$AI_STACK/agentscope/sims/smoke_sim.py"
-[[ -f "$SIM" ]] || { err "seeded sim missing ($SIM) — re-run: vz-ai-stack.sh install 33"; exit 1; }
+[[ -f "$SIM" ]] || { err "seeded sim missing ($SIM) — re-run: mayssam-ai-stack.sh install 33"; exit 1; }
 
 KEY="$(get_env AGENTSCOPE_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "AGENTSCOPE_LITELLM_KEY absent from .env"; exit 1; }

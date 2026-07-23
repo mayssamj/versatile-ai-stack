@@ -22,7 +22,7 @@
 # local (nemotron-3-nano:4b) via LiteLLM, code executed in a Docker sandbox. Unlike HALO,
 # RLM uses chat-completions so it works with ollama-via-LiteLLM.
 #
-# Standalone install: `bash vz-ai-stack.sh install 18`.
+# Standalone install: `bash mayssam-ai-stack.sh install 18`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -50,14 +50,14 @@ precheck() {
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
-  ok "Phase 18 — RLM — already installed (use 'vz-ai-stack.sh install 18' to re-run)"
+  ok "Phase 18 — RLM — already installed (use 'mayssam-ai-stack.sh install 18' to re-run)"
   exit 0
 fi
 
 hdr "Phase 18 — RLM (Recursive Language Models)"
 
 # --- Preconditions ---
-command -v uv >/dev/null 2>&1 || { err "uv not on PATH — run 'bash $AI_STACK/vz-ai-stack.sh install 14' (Unsloth installs uv)."; exit 1; }
+command -v uv >/dev/null 2>&1 || { err "uv not on PATH — run 'bash $AI_STACK/mayssam-ai-stack.sh install 14' (Unsloth installs uv)."; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing from .env — Phase 01 must run first."; exit 1; }
@@ -81,7 +81,7 @@ ok "rlms installed in $RLM_VENV"
 RLM_KEY_CURRENT="$(get_env RLM_LITELLM_KEY '')"
 if [[ -z "$RLM_KEY_CURRENT" ]] \
    || ! litellm_scoped_curl "$RLM_KEY_CURRENT" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
-  # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
+  # Mint against the fixed SUPERSET so `mayssam-ai-stack.sh model assign/sync` can re-point
   # RLM without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
   log "Minting LiteLLM virtual key for RLM (models=superset[local,local-heavy])..."
@@ -124,7 +124,7 @@ set_env RLM_MODEL "$RLM_MODEL_VAL"
 litellm_reconcile_key RLM_LITELLM_KEY "$RLM_MODEL_VAL" local local-heavy
 ( umask 077; cat > "$RLM_DIR/.env" <<ENVEOF
 # ai-stack: rendered by installer/phases/18_rlm.sh. Routes RLM through LiteLLM.
-# Do not edit; re-run 'bash vz-ai-stack.sh install 18' to regenerate.
+# Do not edit; re-run 'bash mayssam-ai-stack.sh install 18' to regenerate.
 OPENAI_API_KEY=$RLM_KEY_NOW
 OPENAI_BASE_URL=http://litellm:4000/v1
 RLM_MODEL=$RLM_MODEL_VAL
@@ -194,7 +194,7 @@ cat > "$RLM_WRAPPER" <<WRAPEOF
 set -Eeuo pipefail
 AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 RLM_DIR="\$AI_STACK/rlm"
-[[ -x "\$RLM_DIR/.venv/bin/python" ]] || { echo "RLM not installed — run 'bash vz-ai-stack.sh install 18'" >&2; exit 1; }
+[[ -x "\$RLM_DIR/.venv/bin/python" ]] || { echo "RLM not installed — run 'bash mayssam-ai-stack.sh install 18'" >&2; exit 1; }
 # Load OPENAI_BASE_URL + OPENAI_API_KEY (LiteLLM routing) from rlm/.env.
 set -a; [[ -f "\$RLM_DIR/.env" ]] && source "\$RLM_DIR/.env"; set +a
 exec "\$RLM_DIR/.venv/bin/python" "\$RLM_DIR/run_rlm.py" "\$@"

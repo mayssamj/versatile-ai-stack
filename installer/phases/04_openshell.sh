@@ -8,11 +8,11 @@
 # 127.0.0.1:17670 with TLS + mTLS by default.
 #
 # Known issues on M-series macOS:
-#   1. The vz-ai-stack.sh's `brew services start openshell` can fail with
+#   1. The mayssam-ai-stack.sh's `brew services start openshell` can fail with
 #      launchctl bootstrap error 5 if a previous service is loaded but
 #      in error state. We probe and `brew services restart` (or stop/start)
 #      to clear it.
-#   2. The official vz-ai-stack.sh's TLS-handshake verification step itself
+#   2. The official mayssam-ai-stack.sh's TLS-handshake verification step itself
 #      may time out (the gateway is up, the cert dance hasn't completed).
 #      We don't rely on its exit code; we probe the port + try a CLI op.
 #   3. The CLI policy schema upstream-changed from the original install
@@ -22,7 +22,7 @@
 #
 # Best-effort: if the gateway can't come up despite our retries, we stamp
 # the phase as scaffold-complete with a clear deferred-manual note. The
-# user can re-run `bash vz-ai-stack.sh install 04` after fixing brew/launchctl.
+# user can re-run `bash mayssam-ai-stack.sh install 04` after fixing brew/launchctl.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -223,17 +223,17 @@ network_policies:
 EOF
 ok "wrote network policy: $POLICY"
 
-# --- Install OpenShell via official vz-ai-stack.sh if brew openshell is absent --
+# --- Install OpenShell via official mayssam-ai-stack.sh if brew openshell is absent --
 if [[ ! -x /opt/homebrew/bin/openshell ]]; then
   if command -v brew >/dev/null; then
-    log "Installing OpenShell via the official vz-ai-stack.sh..."
-    # The vz-ai-stack.sh may time out waiting for the TLS-handshake verification
+    log "Installing OpenShell via the official mayssam-ai-stack.sh..."
+    # The mayssam-ai-stack.sh may time out waiting for the TLS-handshake verification
     # step; that's OK — the brew formula + plist are installed regardless.
     curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh 2>/dev/null | sh 2>&1 | tail -3 || true
     if [[ -x /opt/homebrew/bin/openshell ]]; then
       ok "openshell installed via brew"
     else
-      warn "official vz-ai-stack.sh did not install brew openshell — gateway start will fail"
+      warn "official mayssam-ai-stack.sh did not install brew openshell — gateway start will fail"
     fi
   else
     warn "brew not on PATH; cannot install the brew openshell formula. Skipping."
@@ -281,7 +281,7 @@ mkdir -p "$(dirname "$GATEWAY_ENV_FILE")"
 # Do NOT perform a hidden global pin deep inside this phase.
 _selected="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
 if [[ -z "$_selected" ]] || ! _engine_valid "$_selected"; then
-  err "Phase 04: no Docker engine selected. Run: vz-ai-stack.sh docker-engine select first"
+  err "Phase 04: no Docker engine selected. Run: mayssam-ai-stack.sh docker-engine select first"
   exit 1
 fi
 DESIRED_DOCKER_HOST="$(engine_socket "$_selected")" || {
@@ -323,7 +323,7 @@ if [[ -n "$state" ]]; then
         if (( ${#_others_arr[@]} > 0 )) && [[ "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
           warn "gateway DOCKER_HOST changed but Ready sandbox(es) exist: ${_others_arr[*]}"
           warn "NOT restarting (would error them ALL). A restart is PENDING — doctor will surface it."
-          warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04"
+          warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 mayssam-ai-stack.sh install 04"
         else
           # Reached either when NO Ready sandboxes exist, OR when OPENSHELL_FORCE_GATEWAY_RESTART=1
           # overrides the Ready-sandbox guard above (intentional restart even with live sandboxes).
@@ -414,7 +414,7 @@ else
     warn "openshell is not registered as a brew service (uv/pipx install, or the formula has no service)."
     warn "  No brew-managed lifecycle — the gateway must be started manually if it isn't already up."
   fi
-  warn "doctor check 'openshell_gateway' will report this until it's resolved: vz-ai-stack.sh doctor openshell_gateway"
+  warn "doctor check 'openshell_gateway' will report this until it's resolved: mayssam-ai-stack.sh doctor openshell_gateway"
 fi
 
 # --- Wait for the gateway port to come up ----------------------------------
@@ -443,7 +443,7 @@ ok "Gateway listening on :$GATEWAY_PORT"
 # We register with --local (mTLS via stored certs from the brew install).
 # Plaintext http:// fails the TLS handshake; --local uses the cert tree.
 # Older installs may have stored the gateway under a different name (e.g.
-# `openshell` from the official vz-ai-stack.sh) — accept any LOCAL-type
+# `openshell` from the official mayssam-ai-stack.sh) — accept any LOCAL-type
 # gateway that points at our port instead of forcing a rename.
 EXISTING_LOCAL_GW="$("$OSH" gateway list 2>/dev/null \
   | awk 'NR>1 && $3=="local" {print $1; exit}' \

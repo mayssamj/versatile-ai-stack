@@ -274,7 +274,7 @@ ok "wrote $BOOT_DIR/bootstrap.sh"
 
 if [[ "${SKIP_SANDBOX_ACTIONS:-0}" == "1" ]]; then
   warn "Sandbox not available; skipping mount + bootstrap. Souls + bootstrap.sh are staged on host."
-  note "After the sandbox exists, re-run 'vz-ai-stack.sh install 04f' to finish."
+  note "After the sandbox exists, re-run 'mayssam-ai-stack.sh install 04f' to finish."
   # Don't stamp — re-entry must complete the sandbox-side actions.
   exit 0
 fi
@@ -318,7 +318,7 @@ fi
 if [[ "${OPENSHELL_FORCE_RECREATE:-0}" == "1" ]]; then
   err "OPENSHELL_FORCE_RECREATE=1 with a standalone 'install 04f' would (re)create hermes-fleet-v1"
   err "WITHOUT its network policy (Phase 04 owns create + policy). Run the recreate through Phase 04:"
-  err "    OPENSHELL_FORCE_RECREATE=1 bash $AI_STACK/vz-ai-stack.sh install 04 04f"
+  err "    OPENSHELL_FORCE_RECREATE=1 bash $AI_STACK/mayssam-ai-stack.sh install 04 04f"
   exit 1
 fi
 if ! openshell_sandbox_ensure "$OSH" "$SANDBOX" base; then
@@ -326,7 +326,7 @@ if ! openshell_sandbox_ensure "$OSH" "$SANDBOX" base; then
   err "It is LEFT AS-IS for inspection — NOT deleted/recreated (its /sandbox state is preserved)."
   err "If its container is GONE or genuinely unrecoverable, an EXPLICIT destructive recreate"
   err "(checkpoint-first; Phase 04 re-applies the network policy) is:"
-  err "    OPENSHELL_FORCE_RECREATE=1 bash $AI_STACK/vz-ai-stack.sh install 04 04f"
+  err "    OPENSHELL_FORCE_RECREATE=1 bash $AI_STACK/mayssam-ai-stack.sh install 04 04f"
   exit 1
 fi
 # NB: do NOT re-check openshell_token_storm here — ensure already confirmed Phase=Ready,
@@ -370,7 +370,7 @@ if [[ "${AI_STACK_UPGRADE:-}" == "1" ]] || ! "$OSH" sandbox exec -n "$SANDBOX" -
       err "Sandbox exec relay died MID-INSTALL ('relay open timed out') — the 1h gateway token"
       err "likely expired during the phase. Just RE-RUN 'install 04f': the health gate at the top"
       err "now revives the sandbox IN PLACE (host re-mint + restart, non-destructive) before retrying."
-      err "    bash $AI_STACK/vz-ai-stack.sh install 04f"
+      err "    bash $AI_STACK/mayssam-ai-stack.sh install 04f"
     else
       err "Hermes install inside sandbox failed (pip install hermes-agent)."
       err "If PyPI is 403'd through the proxy, pre-stage hermes-agent like Phase 15 does for Pi (tarball upload)."
@@ -436,7 +436,7 @@ if [[ -z "$LITELLM_MASTER_KEY" ]]; then
   exit 1
 fi
 # Scoped key is minted against the fixed SUPERSET (legacy IDs UNION the 3
-# canonical model<->agent slugs) so a later `vz-ai-stack.sh model assign/sync` never
+# canonical model<->agent slugs) so a later `mayssam-ai-stack.sh model assign/sync` never
 # needs to re-mint when a profile is pointed at local-nemotron3-nano-4b-mlx.
 # These canonical IDs are registered in config.yaml by Phase 01 BEFORE this mint
 # (superset-before-mint). LiteLLM still enforces the allowlist server-side.
@@ -634,7 +634,7 @@ if [[ "$_mgr_model" != "$HERMES_MODEL" ]] && grep -qE 'model_name: openai-gpt-su
   if [[ "$FB_OUT" == "FB_OK" ]]; then
     ok "hermes_manager cloud fallback wired (fallback_model -> openai-gpt-sub)"
   else
-    warn "hermes_manager cloud fallback NOT detected (got '${FB_OUT:-none}') — opus-out-of-usage would yield EMPTY replies; re-run 'vz-ai-stack.sh install 04f'"
+    warn "hermes_manager cloud fallback NOT detected (got '${FB_OUT:-none}') — opus-out-of-usage would yield EMPTY replies; re-run 'mayssam-ai-stack.sh install 04f'"
   fi
 fi
 
@@ -644,14 +644,14 @@ fi
 # so a fleet rebuild stays green when SG is absent. When SG IS installed, every
 # profile gets the `sourcegraph` MCP server (12 code-search tools). Shared with
 # Phase 27 via lib/mcp.sh so install order (SG-first vs fleet-first) doesn't matter.
-configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "Sourcegraph MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install 04f' after fixing)"
+configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "Sourcegraph MCP wiring incomplete (non-fatal; re-run 'mayssam-ai-stack.sh install 04f' after fixing)"
 
 # --- Wire the fleet to the doc-RAG MCP — ONLY if fleet-memory was opted in ---------
 # docs-mcp is untokened, so gate on the Phase 39 stamp: a plain fleet rebuild must NOT
 # silently add doc-RAG, but if the operator DID `install fleet_memory`, re-wire it here
 # so a rebuild doesn't lose it (mirrors how SG survives rebuilds via this same phase).
 if stamp_check 39; then
-  configure_hermes_mcp_docs "$OSH" "$SANDBOX" || warn "doc-RAG MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install fleet_memory')"
+  configure_hermes_mcp_docs "$OSH" "$SANDBOX" || warn "doc-RAG MCP wiring incomplete (non-fatal; re-run 'mayssam-ai-stack.sh install fleet_memory')"
 fi
 
 # --- Wire the fleet to the honcho memory MCP — ONLY if honcho_mcp was opted in --------
@@ -659,12 +659,12 @@ fi
 # honcho shim + token + retired :8000 egress are Phase 40's job; here we just re-assert the
 # per-profile wiring so a fleet rebuild doesn't lose it.
 if stamp_check 40; then
-  configure_hermes_mcp_honcho "$OSH" "$SANDBOX" || warn "honcho MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install honcho_mcp')"
+  configure_hermes_mcp_honcho "$OSH" "$SANDBOX" || warn "honcho MCP wiring incomplete (non-fatal; re-run 'mayssam-ai-stack.sh install honcho_mcp')"
 fi
 
 # --- Wire the fleet to the FalkorDB graph-memory MCP — ONLY if falkordb_mcp was opted in ----
 if stamp_check 41; then
-  configure_hermes_mcp_falkordb "$OSH" "$SANDBOX" || warn "FalkorDB MCP wiring incomplete (non-fatal; re-run 'vz-ai-stack.sh install falkordb_mcp')"
+  configure_hermes_mcp_falkordb "$OSH" "$SANDBOX" || warn "FalkorDB MCP wiring incomplete (non-fatal; re-run 'mayssam-ai-stack.sh install falkordb_mcp')"
 fi
 
 stamp_mark "$PHASE"

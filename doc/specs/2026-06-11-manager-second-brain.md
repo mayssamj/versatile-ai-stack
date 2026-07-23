@@ -175,5 +175,5 @@ The removed `agent-profiles/claude-code/.claude/agents/manager.md` carried YAML 
 ### Implementation + verification (branch `feat/manager-fleet-reroot-d2`)
 New `fleet/manager.md`; rewired `04h` (install_main_agent + precheck), `check_fleet_parity.sh` (named manager assertion + souls), doctor-42 (marker → managed block); pi `(24→25)`; removed cc `agents/manager.md`; docs + TUTORIAL.html regenerated. **Verified:** parity green (27/27 souls, all bodies ×3); `bash -n` clean on all edited scripts; throwaway-`$HOME` migration test 11/11 (fresh + D1→D2 in-place upgrade + idempotency); the real `~/.claude` was never touched.
 
-**User's live step (per the §9-D1 guardrail — never mutate the real `~/.claude` from the repo):** `bash vz-ai-stack.sh install 04h` upgrades the relative import → absolute and removes the orphan; then reload a Claude Code session.
+**User's live step (per the §9-D1 guardrail — never mutate the real `~/.claude` from the repo):** `bash mayssam-ai-stack.sh install 04h` upgrades the relative import → absolute and removes the orphan; then reload a Claude Code session.
 

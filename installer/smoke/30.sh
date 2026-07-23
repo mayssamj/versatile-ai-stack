@@ -12,7 +12,7 @@ hdr "Smoke 30 — Understand-Anything fleet MCP (real graph_search)"
 
 PORT="$(get_env UNDERSTAND_MCP_PORT '7081')"
 TOKEN="$(get_env UNDERSTAND_MCP_TOKEN '')"
-[[ -n "$TOKEN" ]] || { err "UNDERSTAND_MCP_TOKEN absent from .env — run: vz-ai-stack.sh install understand"; exit 1; }
+[[ -n "$TOKEN" ]] || { err "UNDERSTAND_MCP_TOKEN absent from .env — run: mayssam-ai-stack.sh install understand"; exit 1; }
 [[ -f "$AI_STACK/.understand-anything/knowledge-graph.json" ]] || { err "no committed graph — run '/understand .' from $AI_STACK and commit it"; exit 1; }
 
 # 1. Ensure the host http daemon is up (start idempotently).
@@ -33,7 +33,7 @@ OSH="$(_osh)"; [[ -n "$OSH" ]] || { err "openshell CLI not found"; exit 1; }
 # 2. Sandbox Ready.
 "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
   | awk 'NR>1 && $1=="hermes-fleet-v1" && $NF=="Ready"{ok=1} END{exit !ok}' \
-  || { err "hermes-fleet-v1 sandbox not Ready — vz-ai-stack.sh install 04"; exit 1; }
+  || { err "hermes-fleet-v1 sandbox not Ready — mayssam-ai-stack.sh install 04"; exit 1; }
 
 # 3. REAL graph_search from INSIDE the sandbox, asserting a recognizable node.
 probe="$(mktemp /tmp/und-smoke-XXXX.py)"; trap 'rm -f "$probe"' EXIT
@@ -66,6 +66,6 @@ if grep -qE 'TOOLS=[1-9][0-9]* MATCHES=[1-9]' <<<"$out"; then
   ok "Smoke 30 PASS — fleet reached understand-mcp and graph_search returned graph nodes"
 else
   err "Smoke 30 FAIL — expected >=1 tool and >=1 match; got: $out"
-  err "(If a connection error: ensure 'vz-ai-stack.sh start understand' and the fleet wiring — vz-ai-stack.sh install understand)"
+  err "(If a connection error: ensure 'mayssam-ai-stack.sh start understand' and the fleet wiring — mayssam-ai-stack.sh install understand)"
   exit 1
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# models-serve.sh — `vz-ai-stack.sh models-serve [--port N] [--ttl 30m] [--read-only] [--revoke]`
+# models-serve.sh — `mayssam-ai-stack.sh models-serve [--port N] [--ttl 30m] [--read-only] [--revoke]`
 #
 # Serves doc/MODELS.html — the Model & Agent Console — plus a loopback proxy
 # (installer/lib/models_proxy.py) that WRAPS the `model` CLI to view/stage/apply
@@ -57,7 +57,7 @@ while (( $# )); do
     --force)  FORCE=1 ;;
     -h|--help)
       cat <<EOF
-vz-ai-stack.sh models-serve [--port N] [--ttl 30m] [--read-only] [--force] [--revoke]
+mayssam-ai-stack.sh models-serve [--port N] [--ttl 30m] [--read-only] [--force] [--revoke]
   Serve doc/MODELS.html (the Model & Agent Console) + a loopback proxy that wraps
   the \`model\` CLI to view / stage / apply model + agent-binding changes via UI.
   --port N      loopback port (default 8898)
@@ -125,7 +125,7 @@ ensure_port_free() {
     else
       err "Port $port is already in use by PID $pid — not a models-serve process:"
       err "  $cmd"
-      err "Re-run with --force to kill it and rebind, or pick another: vz-ai-stack.sh models-serve --port <N>"
+      err "Re-run with --force to kill it and rebind, or pick another: mayssam-ai-stack.sh models-serve --port <N>"
       exit 1
     fi
   done

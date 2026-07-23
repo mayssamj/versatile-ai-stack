@@ -13,10 +13,10 @@
 #   binary, Bun not required at runtime").
 #
 # FUNNEL INTEGRATION
-#   `vz-ai-stack.sh start openwork` invokes this with NO args → the no-arg default
+#   `mayssam-ai-stack.sh start openwork` invokes this with NO args → the no-arg default
 #   is `install` (ensure the launchd daemon + health-gate, idempotent) — NOT a
 #   foreground exec. The launchd job itself calls `run` (the foreground server).
-#   `vz-ai-stack.sh stop openwork` → bin/stop-openwork.sh → this script's `stop`.
+#   `mayssam-ai-stack.sh stop openwork` → bin/stop-openwork.sh → this script's `stop`.
 #
 # SECURITY
 #   Bound to 127.0.0.1 ONLY (never --remote-access / 0.0.0.0). Client + host
@@ -109,7 +109,7 @@ _stop() {
 }
 
 _do_install() {
-  [[ -n "$OPENWORK_BIN" ]] || { echo "openwork not found — run: bash $AI_STACK/vz-ai-stack.sh install 29" >&2; exit 1; }
+  [[ -n "$OPENWORK_BIN" ]] || { echo "openwork not found — run: bash $AI_STACK/mayssam-ai-stack.sh install 29" >&2; exit 1; }
   local litellm_key client_tok host_tok
   litellm_key="$(_envval OPENWORK_LITELLM_KEY)"
   client_tok="$(_envval OPENWORK_CLIENT_TOKEN)"
@@ -177,7 +177,7 @@ case "${1:-install}" in
 esac
 
 # --- foreground server (launchd entrypoint) -----------------------------------
-[[ -n "$OPENWORK_BIN" ]] || { echo "openwork not found — run: bash $AI_STACK/vz-ai-stack.sh install 29" >&2; exit 1; }
+[[ -n "$OPENWORK_BIN" ]] || { echo "openwork not found — run: bash $AI_STACK/mayssam-ai-stack.sh install 29" >&2; exit 1; }
 # Tokens are passed via the ENV ONLY (the binary reads OPENWORK_TOKEN +
 # OPENWORK_HOST_TOKEN — verified in its strings table), NEVER as CLI flags, so
 # they never appear in `ps`. The plist's EnvironmentVariables set OPENWORK_CLIENT_TOKEN;

@@ -1,5 +1,5 @@
 # common.sh — log, color, lock, paths, per-run id, CHANGELOG entry helper.
-# Sourced by vz-ai-stack.sh. Do not run directly.
+# Sourced by mayssam-ai-stack.sh. Do not run directly.
 #
 # Assumes AI_STACK and bash 5+ are already established by the caller.
 
@@ -33,7 +33,7 @@ note() { printf '%s %s\n'   "${C_BLUE}·${C_RESET}"      "$*"; }
 # and because renaming the doc must not mean grepping for prose.
 #
 # ABSOLUTE paths on purpose: `bin/stack` is a PATH-able alias and the documented
-# invocation is `bash ~/ai-stack/vz-ai-stack.sh`, so a repo-relative path is exactly
+# invocation is `bash ~/ai-stack/mayssam-ai-stack.sh`, so a repo-relative path is exactly
 # wrong from any other cwd — at the one moment the message assumes the reader is
 # already frustrated. An absolute path also pastes straight into the agent it names.
 #
@@ -58,7 +58,7 @@ hdr() {
 
 # --- per-run id + CHANGELOG.d ------------------------------------------------
 # Avoid CHANGELOG.md race conditions by writing per-run files.
-# vz-ai-stack.sh history compiles them.
+# mayssam-ai-stack.sh history compiles them.
 RUN_ID="${RUN_ID:-$(date +%Y%m%d-%H%M%S)-$$}"
 export RUN_ID
 RUN_LOG="$AI_STACK/CHANGELOG.d/${RUN_ID}.md"
@@ -110,7 +110,7 @@ lock_acquire() {
         rm -rf "$LOCKDIR"
         continue
       fi
-      err "Another vz-ai-stack.sh/doctor is running (pid $held). Re-run with LOCK_FORCE=1 to break."
+      err "Another mayssam-ai-stack.sh/doctor is running (pid $held). Re-run with LOCK_FORCE=1 to break."
       exit 3
     fi
     (( ++tries > 30 )) && {
@@ -355,7 +355,7 @@ m=info.get("models") or []
 print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
   if [[ -n "$allow" ]] && ! printf '%s\n' "$allow" | grep -qxF '__wildcard__' \
      && ! printf '%s\n' "$allow" | grep -qxF "$want"; then
-    echo "$key_env allow-list missing '$want' ($model_descr) — stale key after a model rename/re-assign; self-heal: 'vz-ai-stack.sh install $phase' (its precheck now re-reconciles on allow-list drift), or reconcile every scoped key at once with 'vz-ai-stack.sh model sync'"
+    echo "$key_env allow-list missing '$want' ($model_descr) — stale key after a model rename/re-assign; self-heal: 'mayssam-ai-stack.sh install $phase' (its precheck now re-reconciles on allow-list drift), or reconcile every scoped key at once with 'mayssam-ai-stack.sh model sync'"
     return 1
   fi
   return 0

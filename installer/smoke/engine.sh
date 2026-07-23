@@ -81,7 +81,7 @@ log "lint: no bare =\$(engine_…)/=\$(get_env …) command-substitution assignm
 if grep -rnE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\"?\$\((engine_|get_env)' \
      "$AI_STACK/installer/lib/docker-engine.sh" "$AI_STACK/installer/lib/deps.sh" \
      "$AI_STACK/installer/lib/docker.sh" "$AI_STACK/installer/phases/04_openshell.sh" \
-     "$AI_STACK/vz-ai-stack.sh" \
+     "$AI_STACK/mayssam-ai-stack.sh" \
      "$AI_STACK/installer/doctor/checks/01_orbstack_running.sh" \
      "$AI_STACK/installer/doctor/checks/02_host_docker_internal.sh" \
      "$AI_STACK/installer/doctor/checks/47_docker_engine_consistency.sh" \
@@ -347,16 +347,16 @@ ok "setup_docker_context: NO_PROMPT skips; Y→switch, n→keep persisted"
 
 ok "Task 1 registry-pure tests passed"
 
-log "central export: pinned .env → DOCKER_HOST exported by the REAL vz-ai-stack.sh load path"
+log "central export: pinned .env → DOCKER_HOST exported by the REAL mayssam-ai-stack.sh load path"
 tmpenv="$(mktemp -t aistack-export.XXXXXX)"
 printf 'AI_STACK_DOCKER_ENGINE=orbstack\n' > "$tmpenv"
-got="$(ENV_FILE="$tmpenv" bash "$AI_STACK/vz-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
+got="$(ENV_FILE="$tmpenv" bash "$AI_STACK/mayssam-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
 rm -f "$tmpenv"
 grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
   || { err "central export not wired (real load path did not export DOCKER_HOST): $got"; exit 1; }
 # Empty-engine case: unset .env → export is a no-op (DOCKER_HOST stays unset/ambient).
 tmpe2="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=\n' > "$tmpe2"
-got2="$(env -u DOCKER_HOST ENV_FILE="$tmpe2" bash "$AI_STACK/vz-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
+got2="$(env -u DOCKER_HOST ENV_FILE="$tmpe2" bash "$AI_STACK/mayssam-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
 rm -f "$tmpe2"
 grep -q 'DOCKER_HOST=<unset>' <<<"$got2" || { err "empty engine should be a no-op export: $got2"; exit 1; }
 ok "central DOCKER_HOST export wired (real path; no-op when unset)"
@@ -487,7 +487,7 @@ fi
 # ===========================================================================
 log "11a: global --engine <id> argv → AI_STACK_ENGINE_FLAG → engine_select"
 tmpenv="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=\n' > "$tmpenv"
-got="$(env -u DOCKER_HOST ENV_FILE="$tmpenv" bash "$AI_STACK/vz-ai-stack.sh" --engine orbstack __print-docker-host 2>/dev/null || true)"
+got="$(env -u DOCKER_HOST ENV_FILE="$tmpenv" bash "$AI_STACK/mayssam-ai-stack.sh" --engine orbstack __print-docker-host 2>/dev/null || true)"
 rm -f "$tmpenv"
 grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
   || { err "global --engine flag not plumbed to AI_STACK_ENGINE_FLAG/engine_select: $got"; exit 1; }
@@ -497,7 +497,7 @@ log "11a-regression: --engine with no value errors clearly (exit 2, not silent)"
 # Was a silent exit 1 (the pre-scan consumed the last token, then the trailing
 # shift on an empty $@ tripped set -e before the ERR trap was installed). Now an
 # explicit arity check must error clearly AND exit 2 (never a silent exit 1).
-out="$(ENV_FILE="$(mktemp)" bash "$AI_STACK/vz-ai-stack.sh" --engine 2>&1; echo "rc=$?")"
+out="$(ENV_FILE="$(mktemp)" bash "$AI_STACK/mayssam-ai-stack.sh" --engine 2>&1; echo "rc=$?")"
 grep -q 'requires an <id>' <<<"$out" || { err "--engine missing-value did not error clearly: $out"; exit 1; }
 grep -q 'rc=2' <<<"$out" || { err "--engine missing-value should exit 2: $out"; exit 1; }
 ok "11a-regression: --engine missing-value handled"
@@ -529,7 +529,7 @@ rm -f "$_t11_env" "$_t11_gw"
 ok "11: both --engine forms parse (parse-only; no pin)"
 
 log "11: help docker-engine routes to usage (not services.yml service-help)"
-out="$(bash "$AI_STACK/vz-ai-stack.sh" help docker-engine 2>&1 || true)"
+out="$(bash "$AI_STACK/mayssam-ai-stack.sh" help docker-engine 2>&1 || true)"
 grep -q 'docker-engine select' <<<"$out" \
   || { err "help docker-engine did not route to docker-engine usage: $out"; exit 1; }
 ok "11: help docker-engine routes correctly"

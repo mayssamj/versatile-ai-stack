@@ -27,7 +27,7 @@ endpoint**, driven by **one script**. Nothing leaves the machine unless you add 
 
 Three things to burn in:
 
-1. **One control surface.** Everything is `bash vz-ai-stack.sh <command>` (alias `bin/stack`).
+1. **One control surface.** Everything is `bash mayssam-ai-stack.sh <command>` (alias `bin/stack`).
    You almost never run `docker` by hand.
 2. **One inference hub.** Every agent's only route to a model is `http://litellm:4000/v1`
    (LiteLLM). That's where keys, routing, guardrails, and tracing live. There is no second door.
@@ -38,7 +38,7 @@ Three things to burn in:
         You ── UI / CLI ──┐
                           ▼
    ┌──────────────────────────────────────────────────────────────┐
-   │  vz-ai-stack.sh  (install · start · doctor · model · …)        │
+   │  mayssam-ai-stack.sh  (install · start · doctor · model · …)        │
    └──────────────────────────────────────────────────────────────┘
                           │ operates
                           ▼
@@ -55,10 +55,10 @@ Three things to burn in:
 | Thing | Snapshot | Get it live |
 |---|---|---|
 | Services | **53** in `services.yml` (~27 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
-| Doctor checks | **82** (dynamic — a new check file auto-bumps it) | `bash vz-ai-stack.sh doctor` |
-| Phase files | **49** (00–41 + sub-phases; 29 core / 20 opt-in) | `bash vz-ai-stack.sh phases` |
-| Chat-model routes | **20** across **6 runtimes** | `bash vz-ai-stack.sh model list` |
-| Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash vz-ai-stack.sh status` |
+| Doctor checks | **82** (dynamic — a new check file auto-bumps it) | `bash mayssam-ai-stack.sh doctor` |
+| Phase files | **49** (00–41 + sub-phases; 29 core / 20 opt-in) | `bash mayssam-ai-stack.sh phases` |
+| Chat-model routes | **20** across **6 runtimes** | `bash mayssam-ai-stack.sh model list` |
+| Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash mayssam-ai-stack.sh status` |
 
 > Why "53" but other docs say different: `services.yml` has 53 keys, but many are not *reachable
 > services* — 2 `litellm-feature` (in-process callbacks), 1 `agent-pattern` (a prompting
@@ -128,7 +128,7 @@ HOST (your Mac, brew + launchd)        CONTAINERS (OrbStack, "ai-stack" bridge n
   ├─ Meridian daemon   :3456 (Claude)   ├─ Qdrant         :6333  (vectors)                 deny-by-default egress;
   ├─ docs-mcp, paperclip (bg daemons)   ├─ FalkorDB       :6379  (graph)                    reach LiteLLM via
   ├─ Caddy ingress (opt, :80/:443)      ├─ Honcho (+PG)   :8000  (memory)                   host.docker.internal
-  └─ vz-ai-stack.sh + bin/* + installer/└─ Open WebUI     :8080  (chat UI)                  + a scoped virtual key
+  └─ mayssam-ai-stack.sh + bin/* + installer/└─ Open WebUI     :8080  (chat UI)                  + a scoped virtual key
 ```
 
 - **Reach everything by name, same on Mac and in containers**: `http://litellm:4000`,
@@ -151,7 +151,7 @@ Full design rationale, idempotency model, lock strategy, file responsibilities:
 
 ---
 
-## 3. The control surface — `vz-ai-stack.sh`
+## 3. The control surface — `mayssam-ai-stack.sh`
 
 One entry point (`bin/stack` is a thin wrapper). Put `bin/` on PATH:
 `export PATH="$HOME/ai-stack/bin:$PATH"`.
@@ -211,7 +211,7 @@ Read [`ARCHITECTURE.md`](ARCHITECTURE.md); the essentials:
   `installer/state/`.
 - **Stamps are advisory cache, not truth (discipline rule #1).** `precheck()` re-checks every
   time; a `docker rm` + re-run won't be silently skipped.
-- **Core vs opt-in is one lever:** `install_all_phase_order()` in `vz-ai-stack.sh` echoes the core
+- **Core vs opt-in is one lever:** `install_all_phase_order()` in `mayssam-ai-stack.sh` echoes the core
   phase IDs. **In the list → core** (run by `install all`). **Not in the list → opt-in** (install
   by name, or all of them via `--include-optionals`; the opt-in set is computed at runtime as
   *all phases − core*, so it can't drift). To promote an opt-in phase to core, add its ID to that
@@ -318,7 +318,7 @@ reviewing_engineer · sre_engineer · incident_manager`
   review-gate pipeline (INTAKE→DESIGN→IMPLEMENT→QA→REVIEW→MERGE→DEPLOY), escalation, turn budget,
   and the **§5 autonomy hard line**. The 7 shared skills are byte-identical across the 3 fleets —
   edit hermes then `cp` to pi + claude-code, and run `installer/lib/check_fleet_parity.sh`.
-- Review/edit any persona/skill in one page: `vz-ai-stack.sh fleet-studio` (`doc/FLEET.html`).
+- Review/edit any persona/skill in one page: `mayssam-ai-stack.sh fleet-studio` (`doc/FLEET.html`).
 
 ### §24 — the review council (how "done" is earned here)
 
@@ -513,7 +513,7 @@ any flagged claim directly before acting on it.
 
 ```
 ~/ai-stack/
-├── vz-ai-stack.sh          # THE entry point (bash-5 gate + subcommand dispatch)
+├── mayssam-ai-stack.sh          # THE entry point (bash-5 gate + subcommand dispatch)
 ├── services.yml            # 53 services + profiles (source of truth)
 ├── README.md · CHANGELOG.md
 ├── bin/                    # stack, start-/stop-<svc>.sh, pi, lumen, mempalace, ingress, audit.sh …

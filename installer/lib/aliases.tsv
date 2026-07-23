@@ -13,7 +13,7 @@
 #   http://phoenix:6006  (both sides)
 #   redis://falkordb:6379  (both sides)
 #
-# 2026-06-21 — the OPT-IN host ingress (Phase 31; `vz-ai-stack.sh ingress up`)
+# 2026-06-21 — the OPT-IN host ingress (Phase 31; `mayssam-ai-stack.sh ingress up`)
 # ADDS port-free Mac-browser URLs http://litellm/ + https://litellm/ on top of
 # the above, via a host-native Caddy that binds each service's OWN
 # 127.0.10.x:80/:443 (a HOST process, NOT a docker --publish — so it sidesteps
@@ -21,7 +21,7 @@
 # unchanged. HTTP rows on a 127.0.10.x IP get a site; redis/grpc + 127.0.0.1
 # rows are excluded. Spec: doc/specs/2026-06-21-bare-hostname-ingress.md
 #
-# 2026-06-29 — `vz-ai-stack.sh ingress add <name> <port>` registers a NEW port-free
+# 2026-06-29 — `mayssam-ai-stack.sh ingress add <name> <port>` registers a NEW port-free
 # http://name/ for any host server bound to 127.0.0.1:<port> (e.g. a *-serve viewer),
 # WITHOUT modifying that server. It appends a row with protocol `http-loopback`: the host
 # Caddy binds the alias 127.0.10.x:80/:443 and reverse-proxies to 127.0.0.1:<port> with an

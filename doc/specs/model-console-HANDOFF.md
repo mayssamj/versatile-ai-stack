@@ -48,7 +48,7 @@ worktree is gone, recreate one — never edit the branch in the shared main chec
   flag; trap models.sh exit 2 -> 400 JSON, never crash), POST /api/apply (run the
   staged change via the model CLI; confirm_recreate gate; pre-apply timestamped
   backups of models.yml/config.yaml/.env). WRAP the CLI — never reimplement model
-  logic in Python. Wire `models-serve` into vz-ai-stack.sh dispatch + help.
+  logic in Python. Wire `models-serve` into mayssam-ai-stack.sh dispatch + help.
 - P3: doc/MODELS.html — fresh modern single-page UI, fully self-contained INLINE
   css/js (static server blocks .js). Sections: Models (catalog grouped by runtime +
   availability; add/edit/remove; alias), Fallbacks (view; guarded edit), Agents

@@ -6,7 +6,7 @@
 #   nuke:  + .env (backed up) + ollama models + /etc/hosts block removed.
 #          User must type 'nuke ai-stack' literally.
 #
-# Non-interactive: `vz-ai-stack.sh reset --confirm hard --yes` exports
+# Non-interactive: `mayssam-ai-stack.sh reset --confirm hard --yes` exports
 # AI_STACK_ASSUME_YES=1 so the soft/hard y/n gate auto-accepts (see prompt.sh).
 # The nuke typed gate is NOT a confirm() and stays manual regardless of --yes.
 #
@@ -25,7 +25,7 @@ if [[ -f "$AI_STACK/installer/lib/network.sh" ]]; then
 fi
 # docker.sh provides docker_anon_orphans (shared anonymous-volume verb, §24
 # 2026-07-20). Engine selection note: docker.sh's source-time DOCKER_HOST hook
-# needs env.sh (not sourced here) — when run via the vz-ai-stack.sh dispatch the
+# needs env.sh (not sourced here) — when run via the mayssam-ai-stack.sh dispatch the
 # selected engine is inherited from that environment; a STANDALONE
 # `bash installer/lib/reset.sh` uses the ambient docker socket.
 if [[ -f "$AI_STACK/installer/lib/docker.sh" ]]; then

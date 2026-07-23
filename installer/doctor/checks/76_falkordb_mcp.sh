@@ -20,7 +20,7 @@ _falkordb_mcp_resolve_openshell() {
 falkordb_mcp_diagnose() {
   # (0) Not installed → skip-clean (opt-in Phase 41).
   if ! compgen -G "$AI_STACK/installer/state/phase_41*.done" >/dev/null 2>&1; then
-    echo "(FalkorDB graph memory not installed — opt-in Phase 41: vz-ai-stack.sh install falkordb_mcp; skip)"
+    echo "(FalkorDB graph memory not installed — opt-in Phase 41: mayssam-ai-stack.sh install falkordb_mcp; skip)"
     return 0
   fi
 
@@ -29,19 +29,19 @@ falkordb_mcp_diagnose() {
   local ppol="$AI_STACK/openshell/policies/pi-v1.yaml"
 
   # (1) DRIFT-GUARD: shim egress present for the fleet; raw :6379 NEVER opened to a sandbox.
-  grep -qE '^[[:space:]]*falkordb_mcp:' "$fpol" 2>/dev/null || fails+=("  falkordb_mcp (:7083) shim egress MISSING from hermes-fleet-v1.yaml — re-run 'vz-ai-stack.sh install 04'")
+  grep -qE '^[[:space:]]*falkordb_mcp:' "$fpol" 2>/dev/null || fails+=("  falkordb_mcp (:7083) shim egress MISSING from hermes-fleet-v1.yaml — re-run 'mayssam-ai-stack.sh install 04'")
   grep -qE '^[[:space:]]*port:[[:space:]]*6379\b' "$fpol" "$ppol" 2>/dev/null && fails+=("  SECURITY: a sandbox-policy endpoint targets raw falkordb :6379 — sandboxes must reach FalkorDB only via the :7083 shim")
 
   # (2) claude-cli registration (if the claude CLI is present).
   if command -v claude >/dev/null 2>&1; then
-    claude mcp list 2>/dev/null | grep -q '^falkordb[: ]' || fails+=("  claude-cli MCP 'falkordb' not registered — run: vz-ai-stack.sh install falkordb_mcp")
+    claude mcp list 2>/dev/null | grep -q '^falkordb[: ]' || fails+=("  claude-cli MCP 'falkordb' not registered — run: mayssam-ai-stack.sh install falkordb_mcp")
   fi
 
   # (3) shim health (the fleet's http daemon). /healthz also reports FalkorDB reachability.
   local port; port="$(get_env FALKORDB_MCP_PORT '7083')"
   local hz; hz="$(curl -s --max-time 3 "http://127.0.0.1:$port/healthz" 2>/dev/null || true)"
   if [[ -z "$hz" ]]; then
-    fails+=("  falkordb-mcp shim not answering on 127.0.0.1:$port — start it: vz-ai-stack.sh start falkordb_mcp")
+    fails+=("  falkordb-mcp shim not answering on 127.0.0.1:$port — start it: mayssam-ai-stack.sh start falkordb_mcp")
   elif ! grep -q '"falkordb":true' <<<"$hz"; then
     echo "  (shim up but FalkorDB backend unreachable per /healthz — check falkordb is running)"
   fi
@@ -60,7 +60,7 @@ falkordb_mcp_diagnose() {
     wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 </dev/null -- bash -c \
       'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "falkordb:" "$f" && grep -q "host.docker.internal:$1" "$f" && echo WIRED || echo MISSING' \
       _ "$port" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
-    [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to FalkorDB MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install falkordb_mcp")
+    [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to FalkorDB MCP (got '${wired:-no-response}') — run: mayssam-ai-stack.sh install falkordb_mcp")
   fi
 
   # (5) LIVE negative probe (slow / --all): the running fleet sandbox must be DENIED raw
@@ -77,7 +77,7 @@ falkordb_mcp_diagnose() {
         bash -c 'exec 3<>/dev/tcp/host.docker.internal/6379 2>/dev/null && printf "PING\r\n" >&3 && { IFS= read -t 4 -r line <&3 2>/dev/null; printf "%s" "$line"; }' \
         2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g')"
       if grep -q 'PONG' <<<"$pong"; then
-        fails+=("  LIVE-SECURITY: hermes-fleet-v1 can REACH raw falkordb:6379 (got a Redis PONG — egress NOT denied). Sandboxes must reach FalkorDB only via the :7083 shim. Re-apply: vz-ai-stack.sh install 04")
+        fails+=("  LIVE-SECURITY: hermes-fleet-v1 can REACH raw falkordb:6379 (got a Redis PONG — egress NOT denied). Sandboxes must reach FalkorDB only via the :7083 shim. Re-apply: mayssam-ai-stack.sh install 04")
       fi
     fi
   else
@@ -93,6 +93,6 @@ falkordb_mcp_diagnose() {
 
 falkordb_mcp_fix() {
   warn "FalkorDB graph memory MCP not fully wired (or a raw :6379 sandbox egress appeared). Install/re-assert:"
-  warn "    vz-ai-stack.sh install falkordb_mcp"
+  warn "    mayssam-ai-stack.sh install falkordb_mcp"
   return 1
 }

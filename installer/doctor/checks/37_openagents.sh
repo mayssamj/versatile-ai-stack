@@ -22,7 +22,7 @@ _oa_resolve_agn() {
 openagents_diagnose() {
   local agn
   if ! agn="$(_oa_resolve_agn 2>/dev/null)"; then
-    echo "agn not installed — opt-in; run 'vz-ai-stack.sh install 24' to add it. [skip]"
+    echo "agn not installed — opt-in; run 'mayssam-ai-stack.sh install 24' to add it. [skip]"
     return 0
   fi
   # Installed but not on the active PATH? Surface it (still a pass — it works
@@ -37,7 +37,7 @@ openagents_diagnose() {
 
 openagents_fix() {
   warn "OpenAgents is opt-in. Install or repair it with:"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 24"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 24"
   warn "If it's installed but 'agn' isn't found, open a new shell (the installer"
   warn "edits your rc) or run it directly: $(_oa_bin_dir)/agn"
   return 1

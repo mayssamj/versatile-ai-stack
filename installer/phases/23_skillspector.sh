@@ -38,7 +38,7 @@
 # Very new upstream (~5 commits at time of writing) so the install step is defensive:
 # clone failures, missing console script, and import failures all degrade gracefully.
 #
-# Standalone install: `bash vz-ai-stack.sh install 23`.
+# Standalone install: `bash mayssam-ai-stack.sh install 23`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -61,7 +61,7 @@ precheck() {
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
-  ok "Phase 23 — SkillSpector — already installed (use 'vz-ai-stack.sh install 23' to re-run)"
+  ok "Phase 23 — SkillSpector — already installed (use 'mayssam-ai-stack.sh install 23' to re-run)"
   exit 0
 fi
 
@@ -69,12 +69,12 @@ hdr "Phase 23 — SkillSpector (agent-skill / MCP security scanner)"
 
 # --- Preconditions (soft-fail: warn + exit 0 WITHOUT stamping) ---------------
 if ! command -v git >/dev/null 2>&1; then
-  warn "git not on PATH — cannot clone SkillSpector. Install git (xcode-select --install) then re-run 'vz-ai-stack.sh install 23'."
+  warn "git not on PATH — cannot clone SkillSpector. Install git (xcode-select --install) then re-run 'mayssam-ai-stack.sh install 23'."
   exit 0
 fi
 if ! command -v uv >/dev/null 2>&1; then
   warn "uv not on PATH — SkillSpector needs it to build its venv."
-  warn "Run 'bash $AI_STACK/vz-ai-stack.sh install 14' (Unsloth installs uv), then re-run 'vz-ai-stack.sh install 23'."
+  warn "Run 'bash $AI_STACK/mayssam-ai-stack.sh install 14' (Unsloth installs uv), then re-run 'mayssam-ai-stack.sh install 23'."
   exit 0
 fi
 
@@ -84,7 +84,7 @@ fi
 if [[ ! -d "$SS_DIR/.git" ]]; then
   log "Cloning SkillSpector into $SS_DIR ..."
   if ! git clone --depth 1 "$SS_REPO" "$SS_DIR" 2>&1 | tail -3; then
-    warn "git clone failed (no network, or the repo moved?). Nothing stamped — re-run 'vz-ai-stack.sh install 23' when connectivity is back."
+    warn "git clone failed (no network, or the repo moved?). Nothing stamped — re-run 'mayssam-ai-stack.sh install 23' when connectivity is back."
     # Clean up a partial clone so the next run starts fresh.
     [[ -d "$SS_DIR" && ! -d "$SS_DIR/.git" ]] && rm -rf "$SS_DIR"
     exit 0
@@ -108,7 +108,7 @@ if [[ ! -x "$SS_PY" ]]; then
   log "Creating venv via uv (Python 3.12)..."
   if ! uv venv "$SS_VENV" --python 3.12 2>&1 | tail -3; then
     warn "uv venv failed (Python 3.12+ unavailable to uv?). uv can fetch it — check 'uv python list'."
-    warn "Resolve the interpreter, then re-run 'vz-ai-stack.sh install 23'. Nothing stamped."
+    warn "Resolve the interpreter, then re-run 'mayssam-ai-stack.sh install 23'. Nothing stamped."
     exit 0
   fi
 fi
@@ -116,7 +116,7 @@ fi
 # --- 3. Editable install of the checkout into the venv -----------------------
 log "Installing SkillSpector (editable) into its venv..."
 if ! uv pip install --python "$SS_PY" -e "$SS_DIR" 2>&1 | tail -8; then
-  warn "uv pip install -e failed (network or upstream dep issue). Nothing stamped — re-run 'vz-ai-stack.sh install 23'."
+  warn "uv pip install -e failed (network or upstream dep issue). Nothing stamped — re-run 'mayssam-ai-stack.sh install 23'."
   exit 0
 fi
 
@@ -127,7 +127,7 @@ if [[ ! -x "$SS_CLI" ]]; then
   exit 0
 fi
 if ! "$SS_CLI" --help >/dev/null 2>&1; then
-  warn "'$SS_CLI --help' did not run cleanly (broken deps?). Nothing stamped — re-run 'vz-ai-stack.sh install 23'."
+  warn "'$SS_CLI --help' did not run cleanly (broken deps?). Nothing stamped — re-run 'mayssam-ai-stack.sh install 23'."
   exit 0
 fi
 ok "skillspector CLI installed + runs in $SS_VENV"
@@ -159,7 +159,7 @@ cat > "$SS_WRAPPER" <<'WRAP'
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SS_CLI="$AI_STACK/skillspector/.venv/bin/skillspector"
-[[ -x "$SS_CLI" ]] || { echo "SkillSpector not installed — run 'bash vz-ai-stack.sh install 23'" >&2; exit 1; }
+[[ -x "$SS_CLI" ]] || { echo "SkillSpector not installed — run 'bash mayssam-ai-stack.sh install 23'" >&2; exit 1; }
 
 # --no-llm is a `scan` subcommand flag, NOT a global one — injecting it on
 # `--help`, `version`, etc. errors on a strict CLI. So only inject when the first

@@ -54,6 +54,6 @@ ace_diagnose() {
 
 ace_fix() {
   warn "Re-run Phase 17 (idempotent — git fetch + uv sync + key check):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 17"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 17"
   return 1
 }

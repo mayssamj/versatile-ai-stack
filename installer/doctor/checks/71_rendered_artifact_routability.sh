@@ -49,7 +49,7 @@ rendered_artifact_routability_diagnose() {
     def="${def#*:-}"; def="${def%\}}"
     [[ -n "$def" ]] || continue    # couldn't parse a baked default — never false-fail
     if ! printf '%s\n' "$routable" | grep -qxF "$def"; then
-      echo "bin/$app baked default model '$def' is NOT a routable LiteLLM model_name — re-render: 'rm $AI_STACK/installer/state/phase_${phase}*.done' + 'vz-ai-stack.sh install ${phase}'"
+      echo "bin/$app baked default model '$def' is NOT a routable LiteLLM model_name — re-render: 'rm $AI_STACK/installer/state/phase_${phase}*.done' + 'mayssam-ai-stack.sh install ${phase}'"
       fail=1
     fi
   done
@@ -63,7 +63,7 @@ rendered_artifact_routability_diagnose() {
       printf '%s\n' "$routable" | grep -qxF "$m" || df_stale+=("$m")
     done < <(yq -r '.models[].model' "$df" 2>/dev/null)
     if (( ${#df_stale[@]} > 0 )); then
-      echo "deer-flow/config.yaml picker model(s) not routable in LiteLLM config: ${df_stale[*]} — regenerate the picker: 'vz-ai-stack.sh model sync' (or 'vz-ai-stack.sh install 10')"
+      echo "deer-flow/config.yaml picker model(s) not routable in LiteLLM config: ${df_stale[*]} — regenerate the picker: 'mayssam-ai-stack.sh model sync' (or 'mayssam-ai-stack.sh install 10')"
       fail=1
     fi
   fi
@@ -75,7 +75,7 @@ rendered_artifact_routability_fix() {
   warn "A rendered artifact bakes a model name LiteLLM can no longer route (catalog drift after a"
   warn "version-less add/remove/rename). These artifacts are write-once and are NOT re-seeded by"
   warn "'model sync', so re-render the SPECIFIC one named in the failure detail above:"
-  warn "  bin/metagpt|agentscope|oasis : rm the matching installer/state/phase_3X*.done, then 'vz-ai-stack.sh install 3X'"
-  warn "  deer-flow/config.yaml picker : 'vz-ai-stack.sh model sync' (regenerates the picker from served models)"
+  warn "  bin/metagpt|agentscope|oasis : rm the matching installer/state/phase_3X*.done, then 'mayssam-ai-stack.sh install 3X'"
+  warn "  deer-flow/config.yaml picker : 'mayssam-ai-stack.sh model sync' (regenerates the picker from served models)"
   return 1
 }

@@ -52,7 +52,7 @@ pi_litellm_key_allowlist_diagnose() {
   local pi_key
   pi_key="$(get_env PI_LITELLM_KEY '' 2>/dev/null || echo '')"
   if [[ -z "$pi_key" ]]; then
-    echo "PI_LITELLM_KEY missing from .env — re-run 'bash vz-ai-stack.sh install 15'"
+    echo "PI_LITELLM_KEY missing from .env — re-run 'bash mayssam-ai-stack.sh install 15'"
     return 1
   fi
 
@@ -118,7 +118,7 @@ pi_litellm_key_allowlist_fix() {
   warn "(a models.yml add/remove/rename changed the catalog). Re-running Phase 15 is a NO-OP on a"
   warn "valid key — it only re-mints a DEAD one. Reconcile every scoped key's allow-list to the"
   warn "EXACT superset in place (widens AND narrows via /key/update — same key, no .env churn):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh model sync"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh model sync"
   warn "(Only if the key is fully DEAD — /v1/models rejects it — re-mint it: 'install 15'.)"
   return 1
 }

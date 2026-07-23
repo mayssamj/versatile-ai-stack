@@ -1,7 +1,7 @@
-# Model <-> agent binding (`vz-ai-stack.sh model`)
+# Model <-> agent binding (`mayssam-ai-stack.sh model`)
 
 `installer/models.yml` is the **single source of truth** for which LLM each
-agent uses. `vz-ai-stack.sh model {list,assign,sync,discover,add,superset}` renders
+agent uses. `mayssam-ai-stack.sh model {list,assign,sync,discover,add,superset}` renders
 every agent's config and the LiteLLM `model_list` from it.
 
 > Diagrams for everything below live in
@@ -13,7 +13,7 @@ every agent's config and the LiteLLM `model_list` from it.
 
 One file — `installer/models.yml` — declares **both** every agent's model
 binding **and** the canonical entries of the LiteLLM `model_list`. Nothing else
-hand-edits an agent's model; `vz-ai-stack.sh model {list,assign,sync,discover,add,superset}`
+hand-edits an agent's model; `mayssam-ai-stack.sh model {list,assign,sync,discover,add,superset}`
 renders it all from this file.
 
 ### The local model IDs (nemotron-only, 2026-07-01)
@@ -190,9 +190,9 @@ the start command for each.
   `nemotron-3-nano:4b` + `nomic-embed-text`. Serves the default `local`. Reached
   by LiteLLM at `http://ollama:11434`.
 - **LM Studio (MLX)** — **opt-in, no auto-start**. Start the server with
-  `vz-ai-stack.sh start lmstudio` (idempotent; warns it idle-spins ~0.8 core, so
+  `mayssam-ai-stack.sh start lmstudio` (idempotent; warns it idle-spins ~0.8 core, so
   quit when done, and that **no model auto-loads** — assign one in `models.yml` +
-  `vz-ai-stack.sh model sync`). `vz-ai-stack.sh stop lmstudio` stops the server.
+  `mayssam-ai-stack.sh model sync`). `mayssam-ai-stack.sh stop lmstudio` stops the server.
   Reached at `http://host.docker.internal:${LMS_PORT}/v1` (`LMS_PORT` defaults to
   `1234` — see `LMS_PORT` in `installer/lib/lmstudio.sh`). Serves `local` /
   `local`. The host-side probe uses `http://127.0.0.1:${LMS_PORT}`
@@ -207,7 +207,7 @@ the start command for each.
   `{model: openai/<served>, api_base, api_key: os.environ/<KEY_ENV>}` into
   `litellm/config.yaml` and joins it to the scoped-key superset — so a metered vendor
   like **Sakana Fugu** (`sakana-fugu` / `sakana-fugu-ultra`, `key_env SAKANA_API_KEY`)
-  is **assignable** (`vz-ai-stack.sh model assign <agent> sakana-fugu`), not just a
+  is **assignable** (`mayssam-ai-stack.sh model assign <agent> sakana-fugu`), not just a
   hand-edited config entry. The `api_key` stays the literal `os.environ/` sentinel
   (never the expanded secret). Availability-gates to `default` (local) when the
   key is absent. The key must also be in `bin/start-litellm.sh`'s `-e` allowlist
@@ -247,7 +247,7 @@ the start command for each.
   - These models are declared in **`installer/models.yml`** with `runtime:
     meridian` (+ an `effort:` field) — `model sync` renders them into
     `litellm/config.yaml`, joins them to the scoped-key superset, and makes them
-    **assignable** (`vz-ai-stack.sh model assign pi claude-opus-sub-xhigh`).
+    **assignable** (`mayssam-ai-stack.sh model assign pi claude-opus-sub-xhigh`).
     They availability-gate to `default` (local) when Meridian is down.
   - **Current assignments:** every agent runs on the **Claude Opus subscription**
     via Meridian. `pi` and `deerflow` → `claude-opus-sub-max`; `ace` and `rlm` →
@@ -281,7 +281,7 @@ the start command for each.
     burst-guard is set on the model entries.
   - **Assignable** (2026-06-22): declared in `installer/models.yml` with `runtime:
     codex-bridge`, so any agent or the whole fleet can be pointed at them —
-    `vz-ai-stack.sh model assign all openai-gpt-5.5-sub`. The metered twins use
+    `mayssam-ai-stack.sh model assign all openai-gpt-5.5-sub`. The metered twins use
     `runtime: openai` (`openai-gpt-5.5` / `openai-gpt-5.5-pro` / `openai-gpt-5.4`).
     `effort` (optional, → OpenAI `reasoning_effort` none|low|medium|high|xhigh;
     `xhigh`=max) is set per entry — **doctor check 40 asserts it actually reaches the
@@ -297,18 +297,18 @@ the start command for each.
 ## Workflow
 
 ```sh
-vz-ai-stack.sh model list                 # READ-ONLY catalog + live agent matrix
-vz-ai-stack.sh model list --json          # machine-readable
-vz-ai-stack.sh model assign pi local   # re-point one agent (then syncs it)
-vz-ai-stack.sh model assign all local       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
-vz-ai-stack.sh model sync                 # render EVERY agent + the LiteLLM model_list
-vz-ai-stack.sh model sync pi              # render just one agent
-vz-ai-stack.sh model sync --dry-run       # print the plan + a config.yaml diff, write nothing
-vz-ai-stack.sh model sync --no-restart    # don't restart LiteLLM even if config changed
-vz-ai-stack.sh model discover             # READ-ONLY LM Studio library catalog (server may be down)
-vz-ai-stack.sh model add <slug> [as <name>]        # declare an LM Studio library model, then sync
-vz-ai-stack.sh model superset             # print the DERIVED scoped-key allowlist
-vz-ai-stack.sh model superset --json      # machine-readable
+mayssam-ai-stack.sh model list                 # READ-ONLY catalog + live agent matrix
+mayssam-ai-stack.sh model list --json          # machine-readable
+mayssam-ai-stack.sh model assign pi local   # re-point one agent (then syncs it)
+mayssam-ai-stack.sh model assign all local       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
+mayssam-ai-stack.sh model sync                 # render EVERY agent + the LiteLLM model_list
+mayssam-ai-stack.sh model sync pi              # render just one agent
+mayssam-ai-stack.sh model sync --dry-run       # print the plan + a config.yaml diff, write nothing
+mayssam-ai-stack.sh model sync --no-restart    # don't restart LiteLLM even if config changed
+mayssam-ai-stack.sh model discover             # READ-ONLY LM Studio library catalog (server may be down)
+mayssam-ai-stack.sh model add <slug> [as <name>]        # declare an LM Studio library model, then sync
+mayssam-ai-stack.sh model superset             # print the DERIVED scoped-key allowlist
+mayssam-ai-stack.sh model superset --json      # machine-readable
 ```
 
 `model sync` is **opt-in** — it is *not* run by `install all` (like `install
@@ -438,7 +438,7 @@ any key is minted (superset-before-mint).
 The superset is **not** a hardcoded list — it is **DERIVED** (the sorted-unique
 union of the legacy names `{local, local-heavy}` **plus every model
 key in `models.yml`**), computed by `superset_members()` and printed by
-`vz-ai-stack.sh model superset`. So a `model add`-ed slug is automatically covered
+`mayssam-ai-stack.sh model superset`. So a `model add`-ed slug is automatically covered
 — **do not hand-edit any array**. The hardcoded `LEGACY_SUPERSET` (the 6-name
 array in `installer/lib/models.sh`) is **only** the fallback used when
 `models.yml` is absent/unparseable.
@@ -471,10 +471,10 @@ gateway can't serve.
 2. Scoped keys cover it automatically — the superset is **derived** from
    `models.yml` (see "Scoped keys: the DERIVED superset" above), so there is
    **no array to edit**. For an LM Studio library model, prefer
-   `vz-ai-stack.sh model add <slug>` (or `model assign`), which extends the derived
+   `mayssam-ai-stack.sh model add <slug>` (or `model assign`), which extends the derived
    superset for you. The `LEGACY_SUPERSET` array in `installer/lib/models.sh` is
    only the fallback used when `models.yml` is missing.
-3. `vz-ai-stack.sh model sync` (registers it in `config.yaml`, restarts LiteLLM
+3. `mayssam-ai-stack.sh model sync` (registers it in `config.yaml`, restarts LiteLLM
    once, widens keys, renders any agent assigned to it).
 
 ### Add a NEW agent
@@ -490,7 +490,7 @@ gateway can't serve.
 2. If the agent needs a brand-new render shape, add a `case` arm to the
    `render_agent` dispatch in `installer/lib/models.sh` (keep it a simple case —
    not a plugin framework).
-3. `vz-ai-stack.sh model sync my_agent`.
+3. `mayssam-ai-stack.sh model sync my_agent`.
 
 ## Per-agent memory (Honcho)
 

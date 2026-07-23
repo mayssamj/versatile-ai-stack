@@ -37,7 +37,7 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "litellm" in
 # 3. daemon serves 200 on loopback /health
 code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT/health" 2>/dev/null || true)"
 [[ "$code" == "200" ]] && ok "OpenWork daemon serves HTTP 200 on http://127.0.0.1:$PORT/health" \
-  || { err "OpenWork daemon not serving 200 on :$PORT/health (got $code) — 'vz-ai-stack.sh start openwork'; log: installer/state/openwork.launchd.log"; exit 1; }
+  || { err "OpenWork daemon not serving 200 on :$PORT/health (got $code) — 'mayssam-ai-stack.sh start openwork'; log: installer/state/openwork.launchd.log"; exit 1; }
 
 # 4. minted key lists models + completes 1 token (the real OpenWork → LiteLLM path)
 key="$(get_env OPENWORK_LITELLM_KEY '')"

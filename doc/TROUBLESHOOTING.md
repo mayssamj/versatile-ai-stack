@@ -67,12 +67,12 @@ docker exec honcho-database-1 psql -U postgres -tAc \
 
 ## "My `.env` looks corrupted (catalog text in a value)" — re-run `setup`
 
-`vz-ai-stack.sh setup` (alias `keys`) writes nothing harmful. If an older run ever
+`mayssam-ai-stack.sh setup` (alias `keys`) writes nothing harmful. If an older run ever
 corrupted `.env` — e.g. its own prompt catalog text landed inside a value — just re-run it
 and it **self-heals** the file:
 
 ```bash
-bash ~/ai-stack/vz-ai-stack.sh setup
+bash ~/ai-stack/mayssam-ai-stack.sh setup
 ```
 
 `setup` always ensures the non-interactive baseline first, so a local-only / Claude-subscription
@@ -176,8 +176,8 @@ If a sandbox is still wedged (e.g. left over from an interrupted run), do a
 clean recreate:
 
 ```bash
-bash vz-ai-stack.sh reset --confirm hard --yes   # deletes OpenShell sandboxes (preserves data)
-bash vz-ai-stack.sh install all                  # watchdog recreates them
+bash mayssam-ai-stack.sh reset --confirm hard --yes   # deletes OpenShell sandboxes (preserves data)
+bash mayssam-ai-stack.sh install all                  # watchdog recreates them
 ```
 
 ---
@@ -219,12 +219,12 @@ recent logs, or a climbing `RestartCount` → the sandbox is already dead, so ac
 loses nothing — it won't false-fire on a busy sandbox). **By default** it then halts the
 container to stop the CPU burn, writes an alert to
 `installer/state/openshell-watchdog.alert` (surfaced by doctor check 43), and posts a
-desktop notification — it leaves the sandbox for **you** to recreate (`vz-ai-stack.sh
+desktop notification — it leaves the sandbox for **you** to recreate (`mayssam-ai-stack.sh
 install 04 04f 15 20 38 04h`), since recreation discards in-sandbox state. With
 `AI_STACK_WATCHDOG_RECREATE=1` it instead verifies the rebuild can run, then deletes +
 recreates (throttled ≤ 1 recreate per thing per 30 min) and fails loud if the rebuild
 doesn't come back Ready. It logs to `installer/state/openshell-watchdog.log` and skips
-while a `vz-ai-stack.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
+while a `mayssam-ai-stack.sh` is already running. Doctor **check 39 (`openshell_storm`)** is the
 on-demand twin (`stack doctor openshell` surfaces a live storm and whether the watchdog
 is loaded); **check 43 (`watchdog_alert`)** surfaces a pending alert the watchdog left.
 
@@ -282,14 +282,14 @@ box that's a real liability. So:
 
 - Run LM Studio **only when you want its MLX models** — the two big agent models
   `local-nemotron3-nano-4b-mlx` (the same nemotron on Apple MLX, opt-in). Start the server with
-  `vz-ai-stack.sh start lmstudio` (idempotent). `install lmstudio` is the one-time
+  `mayssam-ai-stack.sh start lmstudio` (idempotent). `install lmstudio` is the one-time
   **assignment-driven** setup: it loads only MLX models assigned to an agent in
   `models.yml`. (The retired `local-lfm2-mlx` demo, LFM2.5, is no longer wired by
-  default; it stays an `LMS_LOAD_LFM2=1 bash vz-ai-stack.sh install lmstudio` opt-in.)
+  default; it stays an `LMS_LOAD_LFM2=1 bash mayssam-ai-stack.sh install lmstudio` opt-in.)
   `local` stays on Ollama, which remains the default runtime.
 - **QUIT LM Studio when done:**
   ```bash
-  vz-ai-stack.sh stop lmstudio        # stop the OpenAI server on :1234
+  mayssam-ai-stack.sh stop lmstudio        # stop the OpenAI server on :1234
   # then quit the LM Studio app itself (Cmd-Q) — stopping the server is not enough
   ```
 - Want MLX without the app idle-cost? Use the **headless** alternative:
@@ -297,11 +297,11 @@ box that's a real liability. So:
   same way Phase 25 wires the LM Studio server).
 
 If you opted into the retired `local-lfm2-mlx` (`LMS_LOAD_LFM2=1`) and its calls fail
-after you quit LM Studio, that's why — restart the server (`vz-ai-stack.sh start
+after you quit LM Studio, that's why — restart the server (`mayssam-ai-stack.sh start
 lmstudio`) or remove the model from `litellm/config.yaml` while it's off.
 The same availability-gating protects subscription-assigned agents: the nine Hermes
 profiles (e.g. `hermes_backend_engineer` → `claude-opus-sub-max`), `pi`, and
-`deerflow` don't 404 when the Meridian host daemon is down — `vz-ai-stack.sh model sync`
+`deerflow` don't 404 when the Meridian host daemon is down — `mayssam-ai-stack.sh model sync`
 gates them back to `local`. Re-run `model sync` once Meridian is up
 (`bin/start-meridian.sh`) to promote them again (see [models.md](models.md)).
 
@@ -317,14 +317,14 @@ Find the correct upstream, then either:
 
 ```bash
 git clone <real-url> ~/ai-stack/<svc>
-bash vz-ai-stack.sh install <phase>   # phase detects existing checkout and proceeds
+bash mayssam-ai-stack.sh install <phase>   # phase detects existing checkout and proceeds
 ```
 
 Or, if you have the source elsewhere:
 
 ```bash
 cp -R /path/to/source ~/ai-stack/<svc>
-bash vz-ai-stack.sh install <phase>
+bash mayssam-ai-stack.sh install <phase>
 ```
 
 ---
@@ -381,7 +381,7 @@ cat ~/ai-stack/honcho/docker-compose.override.yml
 If missing, re-run phase 03:
 
 ```bash
-bash vz-ai-stack.sh install 03
+bash mayssam-ai-stack.sh install 03
 ```
 
 ---
@@ -410,7 +410,7 @@ df -h ~                  # ~/.ollama lives in your home; need ~30GB free
 ## "Permission denied" on .env from a script
 
 `.env` is mode 0600. If a script run by another user (or via sudo) tries to
-read it, permission denied. Don't run installer scripts with sudo (vz-ai-stack.sh
+read it, permission denied. Don't run installer scripts with sudo (mayssam-ai-stack.sh
 refuses anyway).
 
 If `.env` got chmod'd wrong (e.g., an editor recreated it):
@@ -423,7 +423,7 @@ The doctor's `env_valid` check fixes this automatically.
 
 ---
 
-## "I want to see what the vz-ai-stack.sh actually did"
+## "I want to see what the mayssam-ai-stack.sh actually did"
 
 Per-run logs are in `CHANGELOG.d/<run-id>.md`:
 
@@ -439,7 +439,7 @@ there.
 
 ## "Connection refused on http://<alias>:<port>"
 
-The single most common post-refactor problem. Run `bash vz-ai-stack.sh verify`
+The single most common post-refactor problem. Run `bash mayssam-ai-stack.sh verify`
 first — Phase 00·V's 6 probes will pinpoint which layer broke. If
 that's not available, the four most likely causes, in order:
 
@@ -452,12 +452,12 @@ that's not available, the four most likely causes, in order:
    ifconfig lo0 | grep 127.0.10
    ```
    Should list every alias IP from `installer/lib/aliases.tsv`. If it's
-   missing rows, run `sudo bash vz-ai-stack.sh prepare-sudo`. Doctor check
+   missing rows, run `sudo bash mayssam-ai-stack.sh prepare-sudo`. Doctor check
    19 detects this systematically. The launchd plist
    `/Library/LaunchDaemons/com.ai-stack.loopback.plist` re-binds on
    boot — confirm with `sudo launchctl list | grep ai-stack.loopback`.
 
-2. **`/etc/hosts` block missing.** Run Phase 00·N: `bash vz-ai-stack.sh install 00n`.
+2. **`/etc/hosts` block missing.** Run Phase 00·N: `bash mayssam-ai-stack.sh install 00n`.
    It's idempotent (no-op if already correct) and prompts for `sudo` once.
    Confirm with `dscacheutil -q host -a name litellm` — should print
    `ip_address: 127.0.10.1`.
@@ -513,8 +513,8 @@ every HTTP service. Mac and container dial the SAME URL form
 (`http://litellm:4000`, `http://phoenix:6006`, `http://openwebui:8080`).
 If you still see the symptom, you have stale `bin/start-*.sh` files from
 before the patch — re-pull or re-run the installer to refresh them, then
-`bash vz-ai-stack.sh reset --confirm hard` (preserves data) and
-`bash vz-ai-stack.sh install all` to re-publish on native ports.
+`bash mayssam-ai-stack.sh reset --confirm hard` (preserves data) and
+`bash mayssam-ai-stack.sh install all` to re-publish on native ports.
 
 ---
 
@@ -565,7 +565,7 @@ common collisions, but a corporate VPN can still inject routes that win.
 Phase 00·N pre-flights this and refuses to install if a pre-existing
 `127.0.10.x` route is present. If you saw the install proceed and routes
 appeared later (VPN connected after install), disconnect the VPN, run
-`bash vz-ai-stack.sh install 00n` to re-flush, then reconnect.
+`bash mayssam-ai-stack.sh install 00n` to re-flush, then reconnect.
 
 For Docker subnet collisions (rare, but VPN tunnels do span 10.x):
 
@@ -575,7 +575,7 @@ docker network inspect ai-stack --format '{{(index .IPAM.Config 0).Subnet}}'
 
 # If it conflicts with a VPN tunnel:
 docker network rm ai-stack
-AI_STACK_SUBNET=10.142.0.0/24 bash vz-ai-stack.sh install 00n
+AI_STACK_SUBNET=10.142.0.0/24 bash mayssam-ai-stack.sh install 00n
 ```
 
 See [refactor-design-final.md § D22](../installer/state/refactor-design-final.md)
@@ -585,7 +585,7 @@ for the full design rationale.
 
 ## "Lock held by pid N. Re-run with LOCK_FORCE=1."
 
-Another `vz-ai-stack.sh` or `doctor` is running. If you're sure it's hung or dead:
+Another `mayssam-ai-stack.sh` or `doctor` is running. If you're sure it's hung or dead:
 
 ```bash
 LOCK_FORCE=1 stack doctor
@@ -611,7 +611,7 @@ and Phase 20 prints a loud "BOT IS LOCKED" banner. Fix:
 # 2. Add it to .env (mode 0600):
 echo 'HERMES_TELEGRAM_ALLOWED_USERS=123456789' >> ~/ai-stack/.env   # your id
 # 3. Re-apply (restarts the gateway with the new allowlist):
-bash ~/ai-stack/vz-ai-stack.sh install 20
+bash ~/ai-stack/mayssam-ai-stack.sh install 20
 ```
 
 Open access (anyone who finds the bot) is `HERMES_TELEGRAM_ALLOW_ALL=true` in `.env`
@@ -637,7 +637,7 @@ bash ~/ai-stack/bin/start-hermes-telegram.sh
 - **Gateway not running after a relay outage** → the gateway long-polls Telegram
   *directly* (not through the relay), so it survives relay idle-timeouts; but if the
   sandbox itself was recreated (`reset … hard` + `install`), Phase 20 re-runs and
-  restarts it. If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).
+  restarts it. If the sandbox is down, fix that first (`mayssam-ai-stack.sh install 04`).
 
 ---
 
@@ -653,7 +653,7 @@ LOCKED**" note, and Phase 38 prints a loud "SLACK BOT IS LOCKED" banner. Fix:
 # 2. Add it to .env (mode 0600):
 echo 'HERMES_SLACK_ALLOWED_USERS=U0123ABCD' >> ~/ai-stack/.env   # your member id
 # 3. Re-apply (restarts the Slack role router with the new allowlist):
-bash ~/ai-stack/vz-ai-stack.sh install 38
+bash ~/ai-stack/mayssam-ai-stack.sh install 38
 ```
 
 `HERMES_SLACK_ALLOW_ALL=true` does **not** grant operator authority in the default
@@ -676,7 +676,7 @@ bash ~/ai-stack/bin/start-hermes-slack.sh
 - **`policy_denied` / blocked egress** in the log → a Slack host is missing from the
   Phase 04 `slack` egress policy (Socket Mode needs `slack.com`, `api.slack.com`,
   `wss-primary.slack.com`, `wss-backup.slack.com`, `files.slack.com`). Re-run
-  `vz-ai-stack.sh install 04` (or `install 38`, which live-applies the policy).
+  `mayssam-ai-stack.sh install 04` (or `install 38`, which live-applies the policy).
 - **`invalid_auth` / `token_revoked` / `missing_scope` / `not_allowed_token_type`**
   in the log → a token is wrong/revoked or the app is missing a scope. Slack needs
   BOTH `HERMES_SLACK_BOT_TOKEN` (`xoxb-…`) and `HERMES_SLACK_APP_TOKEN` (`xapp-…`,
@@ -698,7 +698,7 @@ bash ~/ai-stack/bin/start-hermes-slack.sh
 - **Role router not running after a relay outage** → the Socket-Mode WebSocket dials
   slack.com *directly* (not through the relay), so it survives relay idle-timeouts;
   but if the sandbox was recreated (`reset … hard` + `install`), re-run `install 38`.
-  If the sandbox is down, fix that first (`vz-ai-stack.sh install 04`).
+  If the sandbox is down, fix that first (`mayssam-ai-stack.sh install 04`).
 
 ---
 
@@ -717,10 +717,10 @@ vectors. So swapping model FAMILY (local↔cloud, or nomic↔jina) needs a **re-
 single canonical dim buys you.
 
 Assignments live in `installer/models.yml .embedding_assignments`; re-point with
-`vz-ai-stack.sh embedding assign <svc> <model>`. The 768 embedders are `embed-nomic`
+`mayssam-ai-stack.sh embedding assign <svc> <model>`. The 768 embedders are `embed-nomic`
 (local default) and `embed-openai-small-768` (cloud drop-in = `text-embedding-3-small`
 @ `dimensions=768`). Doctor **check 77** (`embedding_dim`) fails if any live store's dim
-drifts from its assigned model's dim; `EMBEDDING_DIM_DEEP=1 vz-ai-stack.sh doctor`
+drifts from its assigned model's dim; `EMBEDDING_DIM_DEEP=1 mayssam-ai-stack.sh doctor`
 additionally round-trips a live vector and checks its emitted length.
 
 **The family stamp — why "green" no longer means "dim matches".** Dim equality cannot
@@ -750,8 +750,8 @@ schema rebuild is needed because the dim is unchanged — you only recompute vec
 
 **docs (Qdrant `ai-stack-docs`):**
 ```bash
-vz-ai-stack.sh embedding assign docs embed-nomic     # or embed-openai-small-768
-vz-ai-stack.sh install 06                             # re-bakes ingest.py/mcp_server.py to the new route (dim stays 768)
+mayssam-ai-stack.sh embedding assign docs embed-nomic     # or embed-openai-small-768
+mayssam-ai-stack.sh install 06                             # re-bakes ingest.py/mcp_server.py to the new route (dim stays 768)
 
 # `install 06` re-bakes CODE but NEVER re-embeds. The re-index below is the step that
 # actually matters — skipping it is precisely what check 77's family stamp now catches.
@@ -774,13 +774,13 @@ bash ~/ai-stack/bin/start-docs_mcp.sh --recreate
 # `--recreate` (or `restart`) is the arm that actually stops and restarts the daemon.
 
 # verify: real hits + a green family guard
-EMBEDDING_DIM_DEEP=1 vz-ai-stack.sh doctor embedding_dim
+EMBEDDING_DIM_DEEP=1 mayssam-ai-stack.sh doctor embedding_dim
 ```
 
 **honcho (pgvector):**
 ```bash
-vz-ai-stack.sh embedding assign honcho embed-nomic   # or embed-openai-small-768
-vz-ai-stack.sh install honcho_mcp   # sets EMBEDDING_VECTOR_DIMENSIONS + runs honcho scripts/configure_embeddings.py, reloads api+deriver
+mayssam-ai-stack.sh embedding assign honcho embed-nomic   # or embed-openai-small-768
+mayssam-ai-stack.sh install honcho_mcp   # sets EMBEDDING_VECTOR_DIMENSIONS + runs honcho scripts/configure_embeddings.py, reloads api+deriver
 ```
 The honcho path drives the pgvector schema through honcho's OWN `scripts/configure_embeddings.py`
 (idempotent — survives a volume reset, where an Alembic migration otherwise re-pins the column to
@@ -837,7 +837,7 @@ gotchas:
   backend adapter (`mempalace/backend-qdrant/`) is deliberately **tested in an
   isolated venv**, not the tool env. If `import chromadb` is throwing protobuf
   errors, you (or a tool) co-installed qdrant-client — recreate the tool env via
-  `bash ~/ai-stack/vz-ai-stack.sh install 26`.
+  `bash ~/ai-stack/mayssam-ai-stack.sh install 26`.
 
 - **"No palace found".** Expected until you've populated memory. Run a `mine` (or
   let the auto-save hooks capture a session) first:

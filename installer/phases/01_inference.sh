@@ -5,7 +5,7 @@
 #   - Ollama brew install + brew services start: skipped if already.
 #   - Model pulls: skipped if model already present in `ollama list`.
 #   - LiteLLM container: if already running AND foreign (not managed by us),
-#     prompts user to `vz-ai-stack.sh adopt litellm`. If already running AND
+#     prompts user to `mayssam-ai-stack.sh adopt litellm`. If already running AND
 #     managed, it is HEALTH-PROBED (not trusted blindly): a managed container
 #     that isn't actually serving /v1/models (stale config, old master key,
 #     Postgres down, mid-boot — the classic cold/second-machine failure) is
@@ -27,7 +27,7 @@ PHASE=01
 # LOCAL-MODEL policy (operator directive 2026-07-01): nemotron-3-nano:4b is the
 # ONLY local chat model. Eager-pull ONLY it (`local`/`local-heavy` both map to it,
 # ~2.8GB, very light on a 24GB box) + the embedding model. No other local model is
-# pulled by install OR doctor. See installer/models.yml + 'vz-ai-stack.sh model'.
+# pulled by install OR doctor. See installer/models.yml + 'mayssam-ai-stack.sh model'.
 REQUIRED_MODELS=(
   nemotron-3-nano:4b
   nomic-embed-text
@@ -199,7 +199,7 @@ if container_running litellm; then
     fi
   else
     warn "litellm is running but FOREIGN (started outside the installer)."
-    warn "Run:  bash vz-ai-stack.sh adopt litellm   to take ownership."
+    warn "Run:  bash mayssam-ai-stack.sh adopt litellm   to take ownership."
     # Do not fail the phase — the user has a working litellm, just unmanaged.
   fi
 else

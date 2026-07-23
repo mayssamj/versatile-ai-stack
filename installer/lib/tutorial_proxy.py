@@ -100,7 +100,7 @@ HONCHO_WS, HONCHO_SID, HONCHO_PEER = "tutorial", "session-1", "mayssam"
 # qdrant filter (no injection surface). Upstream errors are normalized to a clean hint (a raw
 # qdrant body is never surfaced, which would leak internal schema/shard topology).
 DOCS_COLL, DOCS_TOP_K = "ai-stack-docs", 5
-DOCS_INGEST_CMD = "vz-ai-stack.sh install docs_ingestor"
+DOCS_INGEST_CMD = "mayssam-ai-stack.sh install docs_ingestor"
 
 # --- read-only Phoenix traces demo (FIXED server-side literals) -----------------
 # The traces demo GETs Phoenix's documented read-only spans API at a FIXED path:
@@ -164,7 +164,7 @@ LAUNCH_SERVICES = {
 }
 LAUNCH_ENV_STRIP = {"TUT_KEY", "TUT_KEY_FILE", "TUT_LITELLM", "TUT_ROOT",
                     "TUT_PORT", "TUT_MODELS", "TUT_HTML", "TUT_LAUNCH", "TUT_EMBED"}
-VZ = os.path.join(ROOT, "vz-ai-stack.sh") if ROOT else ""
+VZ = os.path.join(ROOT, "mayssam-ai-stack.sh") if ROOT else ""
 # Enabled ONLY if explicitly opted in AND the entrypoint really exists (validated
 # once at startup; never construct the path at request time, never trust PATH).
 LAUNCH_ENABLED = (os.environ.get("TUT_LAUNCH") == "1" and bool(ROOT) and os.path.isfile(VZ))
@@ -424,7 +424,7 @@ class H(BaseHTTPRequestHandler):
         Not handled at all unless LAUNCH_ENABLED (computed once at startup)."""
         if not LAUNCH_ENABLED:
             return self._json(404, {"error": "launch not enabled — restart with: "
-                                             "vz-ai-stack.sh tutorial-serve --launch-enabled"})
+                                             "mayssam-ai-stack.sh tutorial-serve --launch-enabled"})
         # (Host is already pinned to loopback in do_POST for every POST route.)
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)

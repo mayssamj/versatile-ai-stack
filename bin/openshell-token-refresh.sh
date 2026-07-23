@@ -499,7 +499,7 @@ REJECTION (gateway does NOT accept external mint):
   - Sandbox stays in a non-Ready state.
   - In this case: fall back to checkpoint + recreate:
       bash $AI_STACK/bin/openshell-checkpoint.sh $name manual
-      vz-ai-stack.sh install <phases>
+      mayssam-ai-stack.sh install <phases>
   - Original token backup is at: ${jwt_file}.bak
 
 This experiment documents whether the platform's 'never lose state' goal can be

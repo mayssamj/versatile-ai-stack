@@ -112,7 +112,7 @@ storm_detect() {
   # >=8 reconnect lines WITHOUT a token-rejection line = SUSPECTED, not confirmed. CAPTURE-then-
   # compare (NOT `(( $(grep -c …) ))`): `grep -c` EXITS 1 on a zero count, and inside a command
   # substitution that exit-1 is NOT AND-OR-exempt — under the inherited `set -E` ERR trap
-  # vz-ai-stack.sh installs, a benign zero-count would fire a spurious "ERR line …". `|| true` +
+  # mayssam-ai-stack.sh installs, a benign zero-count would fire a spurious "ERR line …". `|| true` +
   # numeric-validate neutralizes it.
   local _reconnects=0
   _reconnects="$(grep -cE 'log push (stream lost, reconnecting|reconnected \(attempt)' <<<"$logs" 2>/dev/null)" || true

@@ -27,23 +27,23 @@ hermes_gateway_config_diagnose() {
       echo "  AUTO-HEALED: gateway config was GUTTED (no model/provider) — restored from host snapshot + relaunched gateway"
       return 0
     fi
-    echo "gateway config is GUTTED (no model/provider) and no healthy host snapshot — re-run 'vz-ai-stack.sh install 04f'"
+    echo "gateway config is GUTTED (no model/provider) and no healthy host snapshot — re-run 'mayssam-ai-stack.sh install 04f'"
     return 1
   fi
   # Complete-but-LOCAL (won't snapshot — a restore would load a local model + OOM) — surface, don't fail.
   if hermes_gw_config_complete "$live"; then
-    echo "  gateway config is COMPLETE but the default model looks LOCAL — NOT snapshotting (a local restore would OOM the box). Set a cloud default if unintended: 'vz-ai-stack.sh model ...'"
+    echo "  gateway config is COMPLETE but the default model looks LOCAL — NOT snapshotting (a local restore would OOM the box). Set a cloud default if unintended: 'mayssam-ai-stack.sh model ...'"
     return 0
   fi
   # Incomplete but NOT a clean gut (large — possible Hermes schema change) — do NOT auto-restore.
-  echo "gateway config is INCOMPLETE but not a clean truncation (schema change?) — NOT auto-restoring. Inspect: 'vz-ai-stack.sh hermes config show'"
+  echo "gateway config is INCOMPLETE but not a clean truncation (schema change?) — NOT auto-restoring. Inspect: 'mayssam-ai-stack.sh hermes config show'"
   return 1
 }
 
 hermes_gateway_config_fix() {
   warn "Restore or rebuild the Hermes gateway config:"
-  warn "  vz-ai-stack.sh hermes config restore     # from the host snapshot (installer/state/)"
-  warn "  vz-ai-stack.sh install 04f               # rebuild the per-profile + gateway config"
+  warn "  mayssam-ai-stack.sh hermes config restore     # from the host snapshot (installer/state/)"
+  warn "  mayssam-ai-stack.sh install 04f               # rebuild the per-profile + gateway config"
   warn "  NOTE: after a destructive sandbox RECREATE the Slack allowlist also needs"
   warn "        HERMES_SLACK_ALLOWED_USERS in the host .env (or re-run 'hermes slack allow <id>')."
   return 1

@@ -133,7 +133,7 @@ Functions:
   engine.
 - **`installer/phases/04_openshell.sh`**: replace the OrbStack-hardcoded
   `DESIRED_DOCKER_HOST` (lines 220–230) with `engine_socket "$selected"`.
-- **`vz-ai-stack.sh`**: new subcommand `docker-engine [status|select|set <id>]`
+- **`mayssam-ai-stack.sh`**: new subcommand `docker-engine [status|select|set <id>]`
   for intentional, re-runnable selection, plus a `help docker-engine` block in
   `installer/lib/help.sh` and `services.yml` help prose.
 - **Central env load** (`installer/lib/common.sh` / `env.sh`): export

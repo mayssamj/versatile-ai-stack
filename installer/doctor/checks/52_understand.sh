@@ -19,8 +19,8 @@ understand_diagnose() {
   fi
 
   local link="$HOME/.understand-anything-plugin"
-  [[ -f "$link/packages/core/dist/index.js" ]] || { echo "plugin core not built ($link/packages/core/dist) — re-run 'vz-ai-stack.sh install understand'"; return 1; }
-  [[ -d "$AI_STACK/understand-mcp/node_modules/@modelcontextprotocol/sdk" ]] || { echo "understand-mcp deps missing — re-run 'vz-ai-stack.sh install understand'"; return 1; }
+  [[ -f "$link/packages/core/dist/index.js" ]] || { echo "plugin core not built ($link/packages/core/dist) — re-run 'mayssam-ai-stack.sh install understand'"; return 1; }
+  [[ -d "$AI_STACK/understand-mcp/node_modules/@modelcontextprotocol/sdk" ]] || { echo "understand-mcp deps missing — re-run 'mayssam-ai-stack.sh install understand'"; return 1; }
 
   if [[ ! -f "$AI_STACK/.understand-anything/knowledge-graph.json" ]]; then
     echo "Installed, but no knowledge graph committed yet. Generate it from the MAIN checkout:"
@@ -50,11 +50,11 @@ understand_diagnose() {
   if curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$port/healthz" 2>/dev/null | grep -q '^200$'; then
     echo "  http daemon healthy on :$port (fleet-reachable via host.docker.internal:$port)"
   else
-    echo "  http daemon not running (start with 'vz-ai-stack.sh start understand' for fleet access)"
+    echo "  http daemon not running (start with 'mayssam-ai-stack.sh start understand' for fleet access)"
   fi
   return 0
 }
 
 understand_fix() {
-  echo "vz-ai-stack.sh install understand   # rebuild plugin core + shim, re-register MCP, restart daemon"
+  echo "mayssam-ai-stack.sh install understand   # rebuild plugin core + shim, re-register MCP, restart daemon"
 }

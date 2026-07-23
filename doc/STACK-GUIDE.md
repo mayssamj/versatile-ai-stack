@@ -66,7 +66,7 @@ does for us**, and **how it connects to the rest**.
 
 ### Host bootstrap — `deps` and `setup` (before any phase)
 
-**What is it?** Two pre-install helpers on `vz-ai-stack.sh` that get a clean Mac ready.
+**What is it?** Two pre-install helpers on `mayssam-ai-stack.sh` that get a clean Mac ready.
 
 - **`deps [--check]`** is the authoritative host-dependency bootstrap: it verifies, then
   installs, starts, and re-verifies the host prerequisites — Homebrew, bash 5+, the core
@@ -538,7 +538,7 @@ profiles with hand-written `SOUL.md` identity files — a full delivery pipeline
 from spec to deploy:
 
 Each profile's model is declared per-agent in `installer/models.yml` (the
-shipped defaults are below) and rendered by `vz-ai-stack.sh model sync` — see
+shipped defaults are below) and rendered by `mayssam-ai-stack.sh model sync` — see
 [models.md](models.md). All nine route to a **Claude subscription via Meridian**;
 when Meridian is down, `model sync` availability-gates every profile back to
 `local`.
@@ -565,7 +565,7 @@ gates. The **same 9-role team is realized on three platforms** — Hermes
 profiles (here, in `hermes-fleet-v1`), **Pi personas** (`bin/pi-as <role>`),
 and **Claude Code subagents** (the manager installs as the main agent via an
 `~/.claude/CLAUDE.md` @-import; the other 8 roles as subagents under
-`~/.claude/agents`, global). All three share `team-protocol`. Install via `vz-ai-stack.sh install agent_fleet` (phase 04h /
+`~/.claude/agents`, global). All three share `team-protocol`. Install via `mayssam-ai-stack.sh install agent_fleet` (phase 04h /
 04f).
 
 **Where does it fit?** Inside the OpenShell sandbox, talking to
@@ -1310,7 +1310,7 @@ flowchart LR
 ```
 
 **Gotcha:** Phase 26 is part of `install all` (also installable by name:
-`vz-ai-stack.sh install mempalace`). Because embeddings are on-device and the refiner is optional,
+`mayssam-ai-stack.sh install mempalace`). Because embeddings are on-device and the refiner is optional,
 MemPalace works fully offline with zero LiteLLM dependency unless you ask for
 `--extract general`.
 

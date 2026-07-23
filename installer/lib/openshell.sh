@@ -376,7 +376,7 @@ openshell_sandbox_ensure() {
       # Revive failed -> FAIL EXPLICITLY and PRESERVE the container untouched for diagnosis.
       err "sandbox '$name' is present (Phase=${phase:-down}) but could NOT be revived — LEAVING IT AS-IS so its state/status is preserved for diagnosis (NOT deleting/recreating)."
       err "  Diagnose:  docker logs --tail 80 openshell-${name}-*  ;  $osh sandbox get $name"
-      err "  After diagnosis, an EXPLICIT destructive recreate (checkpoint-first) is: OPENSHELL_FORCE_RECREATE=1 vz-ai-stack.sh install <phase>"
+      err "  After diagnosis, an EXPLICIT destructive recreate (checkpoint-first) is: OPENSHELL_FORCE_RECREATE=1 mayssam-ai-stack.sh install <phase>"
       printf '%s revive FAILED at %s — left intact for diagnosis (NOT recreated). Force a clean recreate: OPENSHELL_FORCE_RECREATE=1 install <phase>\n' \
         "$name" "$(date '+%F %T')" > "$failmark" 2>/dev/null || true
       return 1
@@ -386,7 +386,7 @@ openshell_sandbox_ensure() {
     # Recreate is the only option and it's destructive -> opt-in only.
     if [[ "$force_recreate" != "1" ]]; then
       err "sandbox '$name' has a registry record (Phase=$phase) but its CONTAINER is GONE — cannot revive (its /sandbox is already lost)."
-      err "  Recreate is destructive and opt-in: OPENSHELL_FORCE_RECREATE=1 vz-ai-stack.sh install <phase>"
+      err "  Recreate is destructive and opt-in: OPENSHELL_FORCE_RECREATE=1 mayssam-ai-stack.sh install <phase>"
       return 1
     fi
     warn "OPENSHELL_FORCE_RECREATE=1 — clearing the stale registry record for '$name' before create"

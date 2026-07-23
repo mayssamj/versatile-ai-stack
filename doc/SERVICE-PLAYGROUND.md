@@ -8,14 +8,14 @@ about right now.
 Every command below is verified against `services.yml` and the per-service `help` blocks.
 Everything is **local-first**: nothing leaves your machine unless you wire in a cloud key.
 Services are reached by **name** (`http://litellm:4000`, `http://phoenix:6006`), which
-requires the one-time `sudo bash vz-ai-stack.sh prepare-sudo` step (Act I, L2); where a
+requires the one-time `sudo bash mayssam-ai-stack.sh prepare-sudo` step (Act I, L2); where a
 bare hostname won't resolve yet, the loopback `127.0.x.x` fallback is noted.
 
 ## Tier legend
 
 | Tier | Meaning | How you try it |
 |------|---------|----------------|
-| **Tier 1** | live-widget | Has a first-party in-browser demo in `doc/TUTORIAL.html` (start `vz-ai-stack.sh tutorial-serve`). Five services: **litellm · qdrant · docs_mcp · honcho · phoenix**. |
+| **Tier 1** | live-widget | Has a first-party in-browser demo in `doc/TUTORIAL.html` (start `mayssam-ai-stack.sh tutorial-serve`). Five services: **litellm · qdrant · docs_mcp · honcho · phoenix**. |
 | **Tier 2** | guided-walkthrough | Ships a web UI you open in the browser — chat UIs, dashboards, watchable sims. |
 | **Tier 3** | API / CLI | Driven from a terminal: a `curl` endpoint, a `bin/<tool>` CLI, or a library import. |
 | **Tier 4** | infra | A behind-the-scenes capability (storage, a guardrail hook, a virtual key, a sandbox) — you verify it's working rather than "open" it. |
@@ -23,9 +23,9 @@ bare hostname won't resolve yet, the loopback `127.0.x.x` fallback is noted.
 General health/status for any service:
 
 ```
-vz-ai-stack.sh status            # one-line health per service
-vz-ai-stack.sh doctor            # full check suite
-vz-ai-stack.sh help <name>       # what / config / usage for one service
+mayssam-ai-stack.sh status            # one-line health per service
+mayssam-ai-stack.sh doctor            # full check suite
+mayssam-ai-stack.sh help <name>       # what / config / usage for one service
 ```
 
 ---
@@ -44,7 +44,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Multi-agent simulation framework for building/scaling your own agent swarms, run via `bin/agentscope` (opt-in).
 
-**Setup/health:** `vz-ai-stack.sh test 33` · sims live in `agentscope/sims/`.
+**Setup/health:** `mayssam-ai-stack.sh test 33` · sims live in `agentscope/sims/`.
 
 **Try it:** `bin/agentscope agentscope/sims/smoke_sim.py`
 
@@ -54,7 +54,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Desktop + browser Cowork workspace over your stack (LiteLLM models + a Hermes agent via ACP).
 
-**Setup/health:** `vz-ai-stack.sh install aionui && vz-ai-stack.sh start aionui`
+**Setup/health:** `mayssam-ai-stack.sh install aionui && mayssam-ai-stack.sh start aionui`
 
 **Try it:** open `http://aionui:25808` (web UI), or `open -a AionUi` (desktop app).
 
@@ -114,7 +114,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Multi-agent software-company sim (Vue + FastAPI web app; role agents collaborate to build software).
 
-**Setup/health:** `vz-ai-stack.sh install chatdev && vz-ai-stack.sh start chatdev`
+**Setup/health:** `mayssam-ai-stack.sh install chatdev && mayssam-ai-stack.sh start chatdev`
 
 **Try it:** open `http://chatdev:5274` (also via the tutorial **Launch a service** panel).
 
@@ -126,7 +126,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `curl -s -o /dev/null -w '%{http_code}' http://localhost:4310/`
 
-**Try it:** `vz-ai-stack.sh start claw3d` then open `http://localhost:4310`.
+**Try it:** `mayssam-ai-stack.sh start claw3d` then open `http://localhost:4310`.
 
 **Notes:** The UI talks to its bridge (`claw3d_bridge`); start that too. Reachable via the tutorial **Launch a service** panel. See doc/HERMES-HANDSON.md for the full hands-on.
 
@@ -144,7 +144,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Native macOS terminal for running many parallel agent sessions in tabs.
 
-**Setup/health:** `bash vz-ai-stack.sh install cmux`
+**Setup/health:** `bash mayssam-ai-stack.sh install cmux`
 
 **Try it:** `open -a cmux` · `cmux notify --title 'agent' --message 'session needs you'`
 
@@ -186,7 +186,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `source ~/ai-stack/.env` (uses `LITELLM_MASTER_KEY`).
 
-**Try it:** run the worked example in `vz-ai-stack.sh help dual_llm_researcher` — feed a document containing `IGNORE PREVIOUS INSTRUCTIONS…` and watch the injection get dropped from the operator-visible summary.
+**Try it:** run the worked example in `mayssam-ai-stack.sh help dual_llm_researcher` — feed a document containing `IGNORE PREVIOUS INSTRUCTIONS…` and watch the injection get dropped from the operator-visible summary.
 
 **Notes:** Security pattern, Phase 04·G. There's no port; it's how you wire two LiteLLM calls.
 
@@ -214,9 +214,9 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** The 9-role Hermes engineering-team fleet, running in the `hermes-fleet-v1` OpenShell sandbox.
 
-**Setup/health:** `vz-ai-stack.sh fleet list` (add `--json` for machine-readable).
+**Setup/health:** `mayssam-ai-stack.sh fleet list` (add `--json` for machine-readable).
 
-**Try it:** `vz-ai-stack.sh model list` to see each role's bound model, then dispatch work to a role.
+**Try it:** `mayssam-ai-stack.sh model list` to see each role's bound model, then dispatch work to a role.
 
 **Notes:** Each role holds a *scoped* LiteLLM key (never the master key). The team-protocol skill is the keystone. See doc/HERMES-HANDSON.md for the full hands-on.
 
@@ -296,7 +296,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `~/.lmstudio/bin/lms ps`
 
-**Try it:** `vz-ai-stack.sh install lmstudio && vz-ai-stack.sh start lmstudio` — then the MLX models become routable via LiteLLM.
+**Try it:** `mayssam-ai-stack.sh install lmstudio && mayssam-ai-stack.sh start lmstudio` — then the MLX models become routable via LiteLLM.
 
 **Notes:** Opt-in. Hosts the nemotron MLX model (`local-nemotron3-nano-4b-mlx`) — the same model Ollama serves as GGUF.
 
@@ -324,7 +324,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Multi-agent software-company sim (PM → architect → engineer → QA), run via `bin/metagpt` (opt-in).
 
-**Setup/health:** `vz-ai-stack.sh test 32`
+**Setup/health:** `mayssam-ai-stack.sh test 32`
 
 **Try it:** `bin/metagpt "create a CLI 2048 game in python"` (override model with `METAGPT_MODEL=claude-opus-sub-xhigh bin/metagpt "…"`).
 
@@ -334,7 +334,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Large-scale social-media agent swarm simulation (CAMEL), run via `bin/oasis` (opt-in).
 
-**Setup/health:** `vz-ai-stack.sh test 34`
+**Setup/health:** `mayssam-ai-stack.sh test 34`
 
 **Try it:** `bin/oasis oasis/sims/smoke_sim.py` (write your own in `oasis/sims/`).
 
@@ -354,7 +354,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Launcher/dashboard + `agn` CLI to install and manage coding agents.
 
-**Setup/health:** `bash vz-ai-stack.sh install openagents`
+**Setup/health:** `bash mayssam-ai-stack.sh install openagents`
 
 **Try it:** `agn`
 
@@ -384,9 +384,9 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Headless OpenCode-powered Cowork workspace over your stack (browser UI, LiteLLM models, skills/plugins/MCP, approval-gated).
 
-**Setup/health:** `vz-ai-stack.sh help openwork`
+**Setup/health:** `mayssam-ai-stack.sh help openwork`
 
-**Try it:** `vz-ai-stack.sh install openwork && vz-ai-stack.sh start openwork` then open `http://openwork:8787/ui`.
+**Try it:** `mayssam-ai-stack.sh install openwork && mayssam-ai-stack.sh start openwork` then open `http://openwork:8787/ui`.
 
 **Notes:** Opt-in. The `openwork-orchestrator` daemon self-manages OpenCode (no host dependency).
 
@@ -438,7 +438,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `source ~/ai-stack/.env && curl -s http://litellm:4000/v1/models -H "Authorization: Bearer $PI_LITELLM_KEY"` — see exactly the model allowlist Pi is granted.
 
-**Notes:** Re-mint with `vz-ai-stack.sh install 15`. The 403-on-out-of-allowlist behavior is the scoped-key guarantee in action.
+**Notes:** Re-mint with `mayssam-ai-stack.sh install 15`. The 403-on-out-of-allowlist behavior is the scoped-key guarantee in action.
 
 ## portless · Tier 3 · Phase 21
 
@@ -488,15 +488,15 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Try it:** `~/ai-stack/bin/skillspector scan ./path/to/skill`
 
-**Notes:** Opt-in (`vz-ai-stack.sh install 23`). Offline-first — runs on-box.
+**Notes:** Opt-in (`mayssam-ai-stack.sh install 23`). Offline-first — runs on-box.
 
 ## sourcegraph · Tier 2 · Phase 27
 
 **What it is:** Local self-hosted Sourcegraph (code search) + native MCP for the Hermes fleet.
 
-**Setup/health:** `vz-ai-stack.sh start sourcegraph`
+**Setup/health:** `mayssam-ai-stack.sh start sourcegraph`
 
-**Try it:** `vz-ai-stack.sh install sourcegraph` then open `http://localhost:7080` (or `http://sourcegraph:7080`).
+**Try it:** `mayssam-ai-stack.sh install sourcegraph` then open `http://localhost:7080` (or `http://sourcegraph:7080`).
 
 **Notes:** Opt-in. Native MCP works on the free tier (12 tools). The `:6.12.5040` tag is the last single-container release (amd64-emulated).
 
@@ -504,7 +504,7 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **What it is:** Understand-Anything — a codebase knowledge graph, queryable from Claude Code, Pi, and the Hermes fleet via MCP.
 
-**Setup/health:** `vz-ai-stack.sh install understand && vz-ai-stack.sh start understand`
+**Setup/health:** `mayssam-ai-stack.sh install understand && mayssam-ai-stack.sh start understand`
 
 **Try it:** from your **main** checkout: `cd ~/ai-stack && /understand .` to generate the graph, then commit it.
 
@@ -516,6 +516,6 @@ vz-ai-stack.sh help <name>       # what / config / usage for one service
 
 **Setup/health:** `curl http://127.0.0.1:8898/`
 
-**Try it:** `bash vz-ai-stack.sh install unsloth && open http://unsloth:8898`.
+**Try it:** `bash mayssam-ai-stack.sh install unsloth && open http://unsloth:8898`.
 
 **Notes:** Opt-in. Training is RAM-hungry — mind the 24 GB ceiling.

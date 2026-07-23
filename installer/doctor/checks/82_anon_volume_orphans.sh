@@ -35,7 +35,7 @@ anon_volume_orphans_diagnose() {
 anon_volume_orphans_fix() {
   warn "Dangling anonymous volumes have accreted (sandbox force-recreates, other projects' debris — or a new leak if climbing fast)."
   warn "Review + reclaim them explicitly — the list is HOST-WIDE (other projects' debris shows too):"
-  warn "    vz-ai-stack.sh cleanup --docker          # itemized dry-run (size + age per volume)"
-  warn "    vz-ai-stack.sh cleanup --docker --yes    # tar-backup each, then remove"
+  warn "    mayssam-ai-stack.sh cleanup --docker          # itemized dry-run (size + age per volume)"
+  warn "    mayssam-ai-stack.sh cleanup --docker --yes    # tar-backup each, then remove"
   return 1
 }

@@ -11,7 +11,7 @@
 #   g) success: print CPU-idle-spin warning + model-sync reminder
 #
 # The authoritative URL/Stop report line + browser-open are handled by
-# cmd_start (vz-ai-stack.sh) — this script only brings the server up.
+# cmd_start (mayssam-ai-stack.sh) — this script only brings the server up.
 set -Eeuo pipefail
 
 if (( BASH_VERSINFO[0] < 5 )); then
@@ -33,7 +33,7 @@ fi
 # --- c. /Applications/LM Studio.app must exist --------------------------------
 if [[ ! -d "/Applications/LM Studio.app" ]]; then
   err "LM Studio is not installed — /Applications/LM Studio.app not found."
-  err "Set it up first:  vz-ai-stack.sh install lmstudio"
+  err "Set it up first:  mayssam-ai-stack.sh install lmstudio"
   exit 1
 fi
 
@@ -44,7 +44,7 @@ source "$AI_STACK/installer/lib/lmstudio.sh"
 LMS="$(lms_cli 2>/dev/null || echo "")"
 if [[ -z "$LMS" ]]; then
   err "lms CLI not found. Open LM Studio.app once (it bootstraps the CLI at ~/.lmstudio/bin/lms), then retry."
-  err "Set up via:  vz-ai-stack.sh install lmstudio"
+  err "Set up via:  mayssam-ai-stack.sh install lmstudio"
   exit 1
 fi
 
@@ -77,5 +77,5 @@ ok "LM Studio server up on :${LMS_PORT} (http://127.0.0.1:${LMS_PORT})"
 
 # --- g. Reminders -------------------------------------------------------------
 warn "LM Studio's app idle-spins ~0.8 core; quit it when done: \`lms server stop\` + quit the app"
-note "No model auto-loads — assign one in models.yml + run \`vz-ai-stack.sh model sync\`"
+note "No model auto-loads — assign one in models.yml + run \`mayssam-ai-stack.sh model sync\`"
 note "Endpoint:  http://127.0.0.1:${LMS_PORT}/v1  (OpenAI-compatible; LiteLLM routes local-nemotron3-nano-4b-mlx through here)"

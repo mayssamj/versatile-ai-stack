@@ -2,7 +2,7 @@
 # Phase 29 — OpenWork (OPT-IN; headless OpenCode-powered Cowork workspace over your stack).
 #
 # NOT in `install all` — a headless agent workspace + its OpenCode sidecars is a
-# deliberate opt-in (run: `vz-ai-stack.sh install openwork`). What this phase does:
+# deliberate opt-in (run: `mayssam-ai-stack.sh install openwork`). What this phase does:
 #   (a) Install the headless orchestrator — `npm i -g openwork-orchestrator@<pin>`,
 #       a prebuilt Bun-compiled standalone binary (npm integrity-checked). It
 #       SELF-MANAGES OpenCode (downloads + caches the opencode/openwork-server/
@@ -98,7 +98,7 @@ fi
 hdr "Phase 29 — OpenWork (opt-in headless OpenCode-powered Cowork workspace)"
 
 # --- Preconditions -----------------------------------------------------------
-command -v npm >/dev/null 2>&1 || { err "npm/node required (host dep) — see doc/PREREQUISITES.md or run 'vz-ai-stack.sh deps'."; exit 1; }
+command -v npm >/dev/null 2>&1 || { err "npm/node required (host dep) — see doc/PREREQUISITES.md or run 'mayssam-ai-stack.sh deps'."; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -107,7 +107,7 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 # /v1/models fallback so a bad/expired master key reads as a key error at the mint step below,
 # not a misleading "LiteLLM not reachable" here.
 if ! curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; then
-  err "LiteLLM not reachable at http://litellm:4000 — run 'vz-ai-stack.sh start litellm'."
+  err "LiteLLM not reachable at http://litellm:4000 — run 'mayssam-ai-stack.sh start litellm'."
   exit 1
 fi
 
@@ -224,10 +224,10 @@ ok "smoke: openwork installed + daemon healthy on http://127.0.0.1:$OW_PORT/heal
 stamp_mark "$PHASE"
 record "phase 29 complete: openwork-orchestrator daemon + scoped LiteLLM key + seeded opencode.json"
 ok "Phase 29 — OpenWork — complete"
-note "WebUI:    'vz-ai-stack.sh start openwork' opens it PRE-AUTHED (no token to type) at http://openwork:$OW_PORT/ui — run 'sudo vz-ai-stack.sh prepare-sudo' once for the openwork hostname (until then it opens http://127.0.0.1:$OW_PORT/ui). Minimal 'Toy UI' harness; the polished Cowork UI is the optional desktop app."
+note "WebUI:    'mayssam-ai-stack.sh start openwork' opens it PRE-AUTHED (no token to type) at http://openwork:$OW_PORT/ui — run 'sudo mayssam-ai-stack.sh prepare-sudo' once for the openwork hostname (until then it opens http://127.0.0.1:$OW_PORT/ui). Minimal 'Toy UI' harness; the polished Cowork UI is the optional desktop app."
 note "Models:   pre-seeded via $OW_OPENCODE_JSON → LiteLLM (claude-opus-sub-xhigh, local, …)"
 note "Workspace: $OW_WORKDIR   (per-stack; separate from your personal ~/.config/opencode)"
 note "Heads-up (24GB): the orchestrator + its OpenCode sidecars stay resident — 'stop openwork' when done, especially alongside AionUi or heavy local models."
 note "Desktop app (optional alternate UI): download from https://github.com/different-ai/openwork/releases — point its OpenCode at the same opencode.json."
-note "Manage: vz-ai-stack.sh start openwork | stop openwork | help openwork | doctor openwork"
-note "Uninstall: vz-ai-stack.sh stop openwork; bash $AI_STACK/bin/start-openwork.sh uninstall; npm uninstall -g openwork-orchestrator; rm -rf $OW_WORKDIR"
+note "Manage: mayssam-ai-stack.sh start openwork | stop openwork | help openwork | doctor openwork"
+note "Uninstall: mayssam-ai-stack.sh stop openwork; bash $AI_STACK/bin/start-openwork.sh uninstall; npm uninstall -g openwork-orchestrator; rm -rf $OW_WORKDIR"

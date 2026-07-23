@@ -29,7 +29,7 @@ ver="$("$AW" version 2>/dev/null | head -1)"; [[ -n "$ver" ]] && ok "aionui-web 
 # 3. WebUI serves 200 on loopback
 code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT/" 2>/dev/null || true)"
 [[ "$code" == "200" ]] && ok "WebUI serves HTTP 200 on http://127.0.0.1:$PORT" \
-  || { err "WebUI not serving 200 on :$PORT (got $code) — 'vz-ai-stack.sh start aionui'; log: installer/state/aionui-web.launchd.log"; exit 1; }
+  || { err "WebUI not serving 200 on :$PORT (got $code) — 'mayssam-ai-stack.sh start aionui'; log: installer/state/aionui-web.launchd.log"; exit 1; }
 
 # 4. minted key lists models + completes 1 token (the real AionUi → LiteLLM path)
 key="$(get_env AIONUI_LITELLM_KEY '')"

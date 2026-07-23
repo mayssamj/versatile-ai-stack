@@ -8,8 +8,8 @@
 # Single source of truth = installer/lib/aliases.tsv. This file REUSES
 # network.sh::aliases_load — it does NOT re-parse the TSV.
 #
-# Dual-mode: sourced by vz-ai-stack.sh / 00n_networking.sh / reset.sh, OR run
-# directly as the `ingress` CLI (bin/ingress → `vz-ai-stack.sh ingress …`).
+# Dual-mode: sourced by mayssam-ai-stack.sh / 00n_networking.sh / reset.sh, OR run
+# directly as the `ingress` CLI (bin/ingress → `mayssam-ai-stack.sh ingress …`).
 #
 # Design: doc/specs/2026-06-21-bare-hostname-ingress.md
 
@@ -112,7 +112,7 @@ ingress_caddyfile_content() {
   # lo0 makes `caddy run` fail to bind at STARTUP — and with KeepAlive=Crashed that
   # crash-loops the WHOLE daemon, taking every other ingress site down. So SKIP such
   # a site (with a warning) instead of emitting an unbindable `bind`; the operator
-  # runs `sudo vz-ai-stack.sh prepare-sudo` then re-reloads and the site self-heals.
+  # runs `sudo mayssam-ai-stack.sh prepare-sudo` then re-reloads and the site self-heals.
   # (`caddy validate` only checks syntax, not address availability, so it won't catch
   # this — the guard must live here. Exact-match, mirroring the start-script guards.)
   lo0_ips="$(/sbin/ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+')"
@@ -124,7 +124,7 @@ ingress_caddyfile_content() {
     # worktree). NEVER set in production — the guard below is the daemon's
     # crash-loop protection (the negative smoke test asserts it fires when unset).
     if [[ -z "${INGRESS_TEST_NO_LO0_GUARD:-}" ]] && ! printf '%s\n' "$lo0_ips" | grep -qxF "$ip"; then
-      warn "ingress: skipping http(s)://$a — its loopback IP $ip is not on lo0 (run: sudo vz-ai-stack.sh prepare-sudo, then re-reload)" >&2
+      warn "ingress: skipping http(s)://$a — its loopback IP $ip is not on lo0 (run: sudo mayssam-ai-stack.sh prepare-sudo, then re-reload)" >&2
       continue
     fi
     if [[ "${ALIAS_PROTOCOL[$a]}" == "http-loopback" ]]; then
@@ -269,7 +269,7 @@ ingress_install_daemon() {
   # can't get it (not root, no cached sudo, AND not a tty to prompt on).
   if (( EUID != 0 )) && ! sudo -n true 2>/dev/null && ! { [[ -t 0 ]] || [[ -t 1 ]]; }; then
     warn "ingress daemon needs sudo; none cached and not a tty — deferring."
-    note "Run 'sudo bash vz-ai-stack.sh ingress up' to install the port-80 daemon."
+    note "Run 'sudo bash mayssam-ai-stack.sh ingress up' to install the port-80 daemon."
     return 0
   fi
   local SUDO=""; (( EUID != 0 )) && SUDO="sudo"
@@ -483,14 +483,14 @@ ingress_list() {
   echo
   note "Every HTTP alias is also reachable at localhost:<port>."
   if (( caddy_up )); then note "Port-free http://name/ is served by the ingress daemon (running)."
-  else note "Port-free http://name/ needs the ingress daemon: sudo vz-ai-stack.sh ingress up"; fi
+  else note "Port-free http://name/ needs the ingress daemon: sudo mayssam-ai-stack.sh ingress up"; fi
 
   hdr "Host-only servers — no hostname (reach at localhost:PORT)"
   printf '  %-22s %-16s %s\n' "tutorial-serve"       "localhost:8899" "on-demand doc server (loopback Host-pinned)"
   printf '  %-22s %-16s %s\n' "models-serve"         "localhost:8898" "model console (loopback Host-pinned; shares :8898 w/ unsloth)"
   printf '  %-22s %-16s %s\n' "fleet-studio"         "localhost:8975" "needs an https:// secure context to use a hostname"
   printf '  %-22s %-16s %s\n' "understand-dashboard" "localhost:5173" "Vite graph dashboard (on-demand)"
-  note "Give any localhost:PORT a port-free hostname:  vz-ai-stack.sh ingress add <name> <port>"
+  note "Give any localhost:PORT a port-free hostname:  mayssam-ai-stack.sh ingress add <name> <port>"
 
   # LAN-exposure scan — generic (catches host servers with NO alias too, e.g. lmstudio).
   local lan; lan="$(lsof -nP +c 0 -iTCP -sTCP:LISTEN 2>/dev/null \
@@ -518,7 +518,7 @@ ingress_add() {
              else err "ingress add: too many arguments"; return 2; fi; shift ;;
     esac
   done
-  [[ -n "$name" && -n "$port" ]] || { err "usage: vz-ai-stack.sh ingress add <name> <port> [--ip 127.0.10.N]"; return 2; }
+  [[ -n "$name" && -n "$port" ]] || { err "usage: mayssam-ai-stack.sh ingress add <name> <port> [--ip 127.0.10.N]"; return 2; }
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { err "ingress add: <name> must be lowercase DNS-safe ^[a-z0-9][a-z0-9-]*\$ (got '$name')"; return 2; }
   [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || { err "ingress add: <port> must be 1-65535 (got '$port')"; return 2; }
   aliases_load || return 1
@@ -560,7 +560,7 @@ ingress_add() {
 # dual-bind aliases (removing one would break the stack — edit aliases.tsv directly instead).
 ingress_remove() {
   local name="${1:-}"
-  [[ -n "$name" ]] || { err "usage: vz-ai-stack.sh ingress remove <name>"; return 2; }
+  [[ -n "$name" ]] || { err "usage: mayssam-ai-stack.sh ingress remove <name>"; return 2; }
   # Validate BEFORE using $name in the ERE below (a metachar-laden name could over-match).
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { err "ingress remove: invalid name '$name' (expected ^[a-z0-9][a-z0-9-]*\$)"; return 2; }
   aliases_load || return 1
@@ -588,7 +588,7 @@ ingress_remove() {
   ingress_write_caddyfile >/dev/null 2>&1 || true
   echo
   note "Apply (needs sudo — run from your MAIN checkout):"
-  printf '    sudo vz-ai-stack.sh prepare-sudo && sudo vz-ai-stack.sh ingress reload\n'
+  printf '    sudo mayssam-ai-stack.sh prepare-sudo && sudo mayssam-ai-stack.sh ingress reload\n'
   note "prepare-sudo removes the /etc/hosts entry + updates the lo0 plist so $ip is NOT re-bound on reboot."
   note "$ip stays on lo0 until your next reboot (harmless); free it now with: sudo ifconfig lo0 -alias $ip"
 }
@@ -598,7 +598,7 @@ _ingress_print_activation() {
   local name="$1"
   echo
   note "Activate (needs sudo — run from your MAIN checkout, then quit+reopen the browser for https):"
-  printf '    sudo vz-ai-stack.sh prepare-sudo && sudo vz-ai-stack.sh ingress reload\n'
+  printf '    sudo mayssam-ai-stack.sh prepare-sudo && sudo mayssam-ai-stack.sh ingress reload\n'
   note "Verify:  curl -I http://$name/    (200/301/401/404 = wired; 000/502 = upstream not up)"
 }
 

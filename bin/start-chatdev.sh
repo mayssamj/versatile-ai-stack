@@ -99,11 +99,11 @@ case "$ARG1" in
 esac
 
 # --- bring-up ---------------------------------------------------------------
-[[ -d "$CD_REPO" ]]   || { err "ChatDev source missing ($CD_REPO) — run 'vz-ai-stack.sh install 35' first (it clones the repo)."; exit 1; }
-[[ -f "$DOCKERFILE" ]] || { err "Dockerfile missing ($DOCKERFILE) — run 'vz-ai-stack.sh install 35' (it writes it)."; exit 1; }
-[[ -f "$CD_REPO/.env" ]] || { err "chatdev/repo/.env missing — run 'vz-ai-stack.sh install 35' (it writes the LiteLLM wiring)."; exit 1; }
+[[ -d "$CD_REPO" ]]   || { err "ChatDev source missing ($CD_REPO) — run 'mayssam-ai-stack.sh install 35' first (it clones the repo)."; exit 1; }
+[[ -f "$DOCKERFILE" ]] || { err "Dockerfile missing ($DOCKERFILE) — run 'mayssam-ai-stack.sh install 35' (it writes it)."; exit 1; }
+[[ -f "$CD_REPO/.env" ]] || { err "chatdev/repo/.env missing — run 'mayssam-ai-stack.sh install 35' (it writes the LiteLLM wiring)."; exit 1; }
 
-network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash vz-ai-stack.sh install 00n"; exit 1; }
+network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash mayssam-ai-stack.sh install 00n"; exit 1; }
 
 # Build the derived image (idempotent: only when missing OR --recreate). The build
 # is native arm64 — ChatDev 2.0 deps (faiss/cartopy/etc) ship prebuilt arm64 wheels,
@@ -150,7 +150,7 @@ _cd_reconcile() {
       warn "$name exists but failed to start; rebuild with: bash bin/start-chatdev.sh --recreate"; return 1
     fi
     warn "Container '$name' already exists and is NOT managed by ai-stack."
-    warn "Adopt it (vz-ai-stack.sh adopt $name) or replace: bash bin/start-chatdev.sh --recreate"; return 1
+    warn "Adopt it (mayssam-ai-stack.sh adopt $name) or replace: bash bin/start-chatdev.sh --recreate"; return 1
   fi
   # Absent → the caller (_run_backend/_run_frontend) will `docker run` a fresh
   # partial=true container; drop any marker from a prior life removed outside this
@@ -225,7 +225,7 @@ case "$_rc" in 0) _run_frontend ;; 10) : ;; *) exit 1 ;; esac
 # readiness (mark_ready). NOTE (2026-07-05): mark_ready now writes a durable marker
 # under installer/state/ready/<name> — the old `docker update --label-add` was a
 # silent no-op (no such flag; Docker labels are immutable post-create), which let
-# `vz-ai-stack.sh gc` treat every healthy managed container as a partial orphan. gc
+# `mayssam-ai-stack.sh gc` treat every healthy managed container as a partial orphan. gc
 # now excludes running/ready containers, so these calls genuinely un-flag the pair.
 mark_ready "$BE_NAME"; mark_ready "$NAME"
 record "start-chatdev: pid=$$ image=$IMAGE fe=$FE_HOST_PORT be=$BE_PORT"

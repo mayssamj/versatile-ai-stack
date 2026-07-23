@@ -3,7 +3,7 @@
 #   (1) EXIT-trap: the honesty summary survives a mid-run abort; prints EXACTLY once on
 #       the normal path (no double-print); the lock is released even if print_summary
 #       itself aborts; and INT/TERM STOP the run (not merely unlock mid-loop).
-#   (2) bash-5: NO bare-`bash` sub-dispatch survives in vz-ai-stack.sh OR upgrade.sh
+#   (2) bash-5: NO bare-`bash` sub-dispatch survives in mayssam-ai-stack.sh OR upgrade.sh
 #       (all go through "$BASH"), and upgrade.sh self-gates to bash-5.
 #   (3) compose pinned-tag: the logic lives in versions.sh (_compose_lone_semver_tag,
 #       behaviorally tested in test_versions.sh); here we assert check_one CALLS it.
@@ -12,7 +12,7 @@
 # name grep) — since upgrade.sh self-runs upgrade_main and can't be sourced whole.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-UPG="$ROOT/installer/lib/upgrade.sh"; VZ="$ROOT/vz-ai-stack.sh"; CMN="$ROOT/installer/lib/common.sh"
+UPG="$ROOT/installer/lib/upgrade.sh"; VZ="$ROOT/mayssam-ai-stack.sh"; CMN="$ROOT/installer/lib/common.sh"
 BASH5="${BASH:-/opt/homebrew/bin/bash}"
 PASS=0; FAIL=0
 ok(){  PASS=$((PASS+1)); echo "  ok   $1"; }

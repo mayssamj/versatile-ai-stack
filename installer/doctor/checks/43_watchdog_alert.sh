@@ -13,7 +13,7 @@ watchdog_alert_diagnose() {
   [[ -f "$mark" ]] || { echo "(no watchdog alert — sandboxes not flagged)"; return 0; }
   echo "OpenShell watchdog raised an alert (a sandbox hit an expired-token storm):"
   sed 's/^/    /' "$mark"
-  echo "  Heal: recreate the affected sandbox(es) — e.g. 'vz-ai-stack.sh install 04 04f 15 20 04h'."
+  echo "  Heal: recreate the affected sandbox(es) — e.g. 'mayssam-ai-stack.sh install 04 04f 15 20 04h'."
   echo "  (Recreate now CHECKPOINTS in-sandbox state FIRST; restore it with: bash $AI_STACK/bin/openshell-state-restore.sh <name>.)"
   echo "  Then clear this alert: rm '$mark'  (or it clears automatically on a verified auto-recreate)."
   return 1
@@ -23,7 +23,7 @@ watchdog_alert_fix() {
   # Non-destructive on purpose: recreation loses in-sandbox state, so it stays a
   # deliberate human action. We only point at the heal command.
   warn "Watchdog alert present — recreate when ready (recreate CHECKPOINTS state first; restore via openshell-state-restore.sh):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 04 04f 15 20 04h"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 04 04f 15 20 04h"
   warn "Then: rm $AI_STACK/installer/state/openshell-watchdog.alert"
   return 1
 }

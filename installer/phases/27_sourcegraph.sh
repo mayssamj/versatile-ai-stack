@@ -2,7 +2,7 @@
 # Phase 27 — Sourcegraph (OPT-IN; code search + MCP for the Hermes fleet).
 #
 # NOT in `install all` — a ~4GB amd64-emulated single-container is a deliberate
-# opt-in (run: `vz-ai-stack.sh install sourcegraph`). Once installed it is fully
+# opt-in (run: `mayssam-ai-stack.sh install sourcegraph`). Once installed it is fully
 # managed: deploy (--restart unless-stopped → auto-starts on reboot via the
 # engine daemon) + idempotent bootstrap (site-init / token mint / repo index) +
 # live network-policy backstop + auto-wire of an EXISTING Hermes fleet. Zero
@@ -30,7 +30,7 @@ SANDBOX=hermes-fleet-v1
 POLICY="$AI_STACK/openshell/policies/${SANDBOX}.yaml"
 # Repo(s) to index (space-separated owner/name). Public clone via the OTHER code
 # host (no GitHub token needed for public repos).
-SG_INDEX_REPOS="$(get_env SOURCEGRAPH_INDEX_REPOS 'mayssamj/versatile-ai-stack')"
+SG_INDEX_REPOS="$(get_env SOURCEGRAPH_INDEX_REPOS 'mayssamj/mayssam-versatile-ai-stack')"
 SG_EXTSVC_NAME="ai-stack (local)"
 
 # Resolve the gateway-matching openshell binary (prefer brew; matches Phase 04/04f).
@@ -172,7 +172,7 @@ else
       --data-urlencode "username=$SG_ADMIN_USER" --data-urlencode "password=$SG_ADMIN_PASS" >/dev/null
     TOKEN="$(_mint_token_with_cookie "$jar")"
   fi
-  [[ -n "$TOKEN" ]] || { err "Sourcegraph is initialized but no valid token/admin creds. Manual recovery: sign in at $SG_URL and create a user:all token into $TOKEN_FILE. (If this is a FRESH machine, SG may still be initializing — wait, then re-run 'vz-ai-stack.sh install sourcegraph'.)"; exit 1; }
+  [[ -n "$TOKEN" ]] || { err "Sourcegraph is initialized but no valid token/admin creds. Manual recovery: sign in at $SG_URL and create a user:all token into $TOKEN_FILE. (If this is a FRESH machine, SG may still be initializing — wait, then re-run 'mayssam-ai-stack.sh install sourcegraph'.)"; exit 1; }
   ok "re-minted token via admin sign-in"
 fi
 
@@ -207,7 +207,7 @@ if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m/
     if "$OSH" policy set "$SANDBOX" --policy "$POLICY" --wait --timeout 60 </dev/null >/dev/null 2>&1; then
       ok "applied sourcegraph_mcp network policy to live sandbox $SANDBOX"
     else
-      warn "live policy set returned non-zero — re-run 'vz-ai-stack.sh install 04' to apply the sourcegraph_mcp stanza"
+      warn "live policy set returned non-zero — re-run 'mayssam-ai-stack.sh install 04' to apply the sourcegraph_mcp stanza"
     fi
   fi
 else
@@ -223,12 +223,12 @@ if [[ -n "$OSH" ]] && "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m/
   # which now self-heals, so just point there.
   if openshell_token_storm "$SANDBOX"; then
     note "Hermes fleet '$SANDBOX' present but token-storming — skipping MCP wiring (would no-op over the dead relay)."
-    note "  Heal + wire in one step (04f now self-heals in place): vz-ai-stack.sh install 04f"
+    note "  Heal + wire in one step (04f now self-heals in place): mayssam-ai-stack.sh install 04f"
   else
-    configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "fleet MCP wiring incomplete (re-run 'vz-ai-stack.sh install 04f')"
+    configure_hermes_mcp_sourcegraph "$OSH" "$SANDBOX" || warn "fleet MCP wiring incomplete (re-run 'mayssam-ai-stack.sh install 04f')"
   fi
 else
-  note "No Hermes fleet sandbox yet — it will auto-wire when you run 'vz-ai-stack.sh install agent_fleet'."
+  note "No Hermes fleet sandbox yet — it will auto-wire when you run 'mayssam-ai-stack.sh install agent_fleet'."
 fi
 
 stamp_mark "$PHASE"

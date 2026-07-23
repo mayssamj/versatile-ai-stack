@@ -1,7 +1,7 @@
-sudo bash ~/ai-stack/vz-ai-stack.sh ingress up
+sudo bash ~/ai-stack/mayssam-ai-stack.sh ingress up
 Expect: wrote Caddyfile (13 sites) → ingress daemon (re)started. Then the moment of truth:
 
-bash ~/ai-stack/vz-ai-stack.sh ingress status
+bash ~/ai-stack/mayssam-ai-stack.sh ingress status
 curl -so /dev/null -w 'litellm/ -> HTTP %{http_code}\n' http://litellm/
 curl -so /dev/null -w 'phoenix/ -> HTTP %{http_code}\n' http://phoenix/
 

@@ -37,7 +37,7 @@ if [[ ! -d "$PLUGIN_ROOT/packages/dashboard" ]]; then
   fi
 fi
 DASH="$PLUGIN_ROOT/packages/dashboard"
-[[ -d "$DASH" ]] || { err "dashboard not found under $PLUGIN_ROOT — run 'vz-ai-stack.sh install understand'"; exit 1; }
+[[ -d "$DASH" ]] || { err "dashboard not found under $PLUGIN_ROOT — run 'mayssam-ai-stack.sh install understand'"; exit 1; }
 
 if [[ ! -f "$GRAPH_DIR/.understand-anything/knowledge-graph.json" ]]; then
   err "No knowledge graph at $GRAPH_DIR/.understand-anything/knowledge-graph.json"

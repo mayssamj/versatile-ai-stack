@@ -274,8 +274,8 @@ PL
       fi
     fi
     echo "codex-bridge: ENABLED. Point agents at the subscription, e.g.:"
-    echo "    bash $AI_STACK/vz-ai-stack.sh model assign all openai-gpt-sub   # whole fleet, no metered cost"
-    echo "    bash $AI_STACK/vz-ai-stack.sh model assign hermes_manager openai-gpt-sub"
+    echo "    bash $AI_STACK/mayssam-ai-stack.sh model assign all openai-gpt-sub   # whole fleet, no metered cost"
+    echo "    bash $AI_STACK/mayssam-ai-stack.sh model assign hermes_manager openai-gpt-sub"
     echo "  or pick 'openai-gpt-sub' in Open WebUI. (Metered, no bridge needed: 'openai-gpt'.)"
     exit 0 ;;
   run) : ;;   # fall through and exec the server (launchd entrypoint)

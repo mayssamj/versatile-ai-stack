@@ -5,7 +5,7 @@
 #   AI Town is a 3-container Convex compose stack (backend + frontend + dashboard)
 #   under the stable project name `aitown`. This is the single funnel that brings it
 #   up, enforces per-container resource caps, and health-gates the frontend — so
-#   `vz-ai-stack.sh start aitown` (no args → `install`) and the phase do the IDENTICAL
+#   `mayssam-ai-stack.sh start aitown` (no args → `install`) and the phase do the IDENTICAL
 #   thing. It is a COMPOSE stack, so it does NOT use docker.sh's recreate_guard
 #   (docker-run only); it drives `docker compose` directly like start-honcho.sh /
 #   start-deerflow.sh / start-autofyn.sh.
@@ -88,8 +88,8 @@ _apply_caps() {
 }
 
 _do_up() {
-  _present || { err "AI Town not installed at $AT_DIR — run 'bash $AI_STACK/vz-ai-stack.sh install 36' first."; exit 1; }
-  network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash $AI_STACK/vz-ai-stack.sh install 00n"; exit 1; }
+  _present || { err "AI Town not installed at $AT_DIR — run 'bash $AI_STACK/mayssam-ai-stack.sh install 36' first."; exit 1; }
+  network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash $AI_STACK/mayssam-ai-stack.sh install 00n"; exit 1; }
   mkdir -p "$AT_DATA/convex"
 
   # Idempotent: if all 3 are already running, this is a no-op success (print the line
@@ -161,7 +161,7 @@ _do_uninstall() {
     fi
     _compose down -v 2>&1 | tail -8 || true
     rm -rf "$AT_DATA"
-    note "aitown world removed. Re-install: 'vz-ai-stack.sh install 36' (regenerates the admin key + re-pushes the schema). Backup kept above."
+    note "aitown world removed. Re-install: 'mayssam-ai-stack.sh install 36' (regenerates the admin key + re-pushes the schema). Backup kept above."
     ok "aitown nuked (down -v + data removed; backup retained)"
   else
     # uninstall (no --nuke): down -v reaps the anon node_modules mask-guard too;

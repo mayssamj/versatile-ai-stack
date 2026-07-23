@@ -4,9 +4,9 @@
 #   installer/models.yml is the CANONICAL source of truth. This lib renders every
 #   agent's config + the LiteLLM model_list from it.
 #
-#     vz-ai-stack.sh model list  [--json]            READ-ONLY catalog + live matrix
-#     vz-ai-stack.sh model assign <agent> <model>    re-point one agent (yq -i + sync-one)
-#     vz-ai-stack.sh model sync   [<agent>]          crash-safe 6-phase reconcile
+#     mayssam-ai-stack.sh model list  [--json]            READ-ONLY catalog + live matrix
+#     mayssam-ai-stack.sh model assign <agent> <model>    re-point one agent (yq -i + sync-one)
+#     mayssam-ai-stack.sh model sync   [<agent>]          crash-safe 6-phase reconcile
 #
 # Design (per the adversarial critique — these are load-bearing):
 #   1. FRESH-INSTALL SAFE — never auto-run by `install all`; phases keep their
@@ -89,7 +89,7 @@ seed_if_missing() {
   [[ -f "$MODELS_YML" ]] && return 0
   warn "installer/models.yml absent — seeding the canonical template"
   cat > "$MODELS_YML" <<'YAML'
-# Seeded by vz-ai-stack.sh model (models.yml was missing). Edit + re-run `model sync`.
+# Seeded by mayssam-ai-stack.sh model (models.yml was missing). Edit + re-run `model sync`.
 version: 1
 models:
   local:
@@ -720,7 +720,7 @@ PYEOF
     ok "deerflow: two-tier models rewritten (basic=$basic, reasoning=$reasoning)"
     if [[ "${MODELS_NO_RESTART:-0}" != "1" && "${DRY_RUN:-0}" != "1" ]]; then
       log "restarting deerflow (config changed)..."
-      bash "$AI_STACK/vz-ai-stack.sh" start deerflow >/dev/null 2>&1 || warn "deerflow restart returned non-zero (non-fatal)"
+      bash "$AI_STACK/mayssam-ai-stack.sh" start deerflow >/dev/null 2>&1 || warn "deerflow restart returned non-zero (non-fatal)"
     fi
   else
     ok "deerflow: two-tier models already current (basic=$basic, reasoning=$reasoning)"
@@ -945,7 +945,7 @@ cmd_assign() {
   done
   validate || exit $?
   if [[ -z "$agent" || -z "$model" ]]; then
-    err "usage: vz-ai-stack.sh model assign <agent|all> <model> [--dry-run] [--no-sync]"
+    err "usage: mayssam-ai-stack.sh model assign <agent|all> <model> [--dry-run] [--no-sync]"
     exit 2
   fi
   if ! model_exists "$model"; then
@@ -978,7 +978,7 @@ cmd_assign() {
     yq -i 'del(.parked)' "$MODELS_YML" 2>/dev/null || true   # blanket assign re-enables everyone (unpark all)
     ok "assigned all $n agents -> $model  (prior models.yml backed up to $(basename "$MODELS_YML").bak)"
     if (( nosync )); then
-      note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync' to apply."
+      note "--no-sync: not reconciling. Run 'mayssam-ai-stack.sh model sync' to apply."
       exit 0
     fi
     cmd_sync   # no agent arg = reconcile every agent
@@ -1003,7 +1003,7 @@ cmd_assign() {
     AG="$agent" yq -i 'del(.parked[strenv(AG)])' "$MODELS_YML" 2>/dev/null && note "unparked '$agent' (assigning re-enables it)"
   fi
   if (( nosync )); then
-    note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync $agent' to apply."
+    note "--no-sync: not reconciling. Run 'mayssam-ai-stack.sh model sync $agent' to apply."
     exit 0
   fi
   cmd_sync "$agent"
@@ -1019,7 +1019,7 @@ cmd_assign() {
 cmd_discover() {
   local lib; lib="$(lms_library_json || true)"
   if [[ -z "$lib" ]]; then
-    note "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: vz-ai-stack.sh model discover"
+    note "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: mayssam-ai-stack.sh model discover"
     return 0
   fi
 
@@ -1175,7 +1175,7 @@ cmd_add_remote() {
 
   # ollama + openai-compat declared into models.yml -> sync registers + widens keys.
   if (( nosync )); then
-    note "declared only; run vz-ai-stack.sh model sync to register it into LiteLLM + widen scoped keys"
+    note "declared only; run mayssam-ai-stack.sh model sync to register it into LiteLLM + widen scoped keys"
   else
     cmd_sync
   fi
@@ -1205,14 +1205,14 @@ cmd_add() {
   validate || exit $?
 
   if [[ -z "$slug" ]]; then
-    err "usage: vz-ai-stack.sh model add <lms-slug> [as <name>] [--dry-run] [--no-sync]"
+    err "usage: mayssam-ai-stack.sh model add <lms-slug> [as <name>] [--dry-run] [--no-sync]"
     exit 2
   fi
 
   # Library + slug check FIRST (no auto-start, no blind add).
   local lib; lib="$(lms_library_json || true)"
   if [[ -z "$lib" ]]; then
-    err "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: vz-ai-stack.sh model add"
+    err "LM Studio CLI not found / library empty. Open LM Studio (or run: lms server start) then re-run: mayssam-ai-stack.sh model add"
     exit 2
   fi
   if ! lms_lib_has_slug "$slug"; then
@@ -1340,7 +1340,7 @@ for m in (d if isinstance(d,list) else []):
 
   # Sync unless told not to.
   if (( nosync )); then
-    note "declared only; run vz-ai-stack.sh model sync to register it into LiteLLM + widen scoped keys"
+    note "declared only; run mayssam-ai-stack.sh model sync to register it into LiteLLM + widen scoped keys"
   else
     cmd_sync
   fi
@@ -1370,7 +1370,7 @@ cmd_edit() {
   done
   validate || exit $?
   if [[ -z "$name" || -z "$field" || $set_val -eq 0 ]]; then
-    err "usage: vz-ai-stack.sh model edit <name> <field> <value> [--dry-run] [--no-sync]"
+    err "usage: mayssam-ai-stack.sh model edit <name> <field> <value> [--dry-run] [--no-sync]"
     err "  editable fields: rpm | tpm | ttl | big | effort | note"
     exit 2
   fi
@@ -1399,7 +1399,7 @@ cmd_edit() {
       yq_set=".models[strenv(NM)].note = strenv(VAL)" ;;
     runtime|served|api_base|key_env)
       err "edit: '$field' changes the model's identity/endpoint — use remove + re-add instead:"
-      err "  vz-ai-stack.sh model remove $name   &&   vz-ai-stack.sh model add ..."
+      err "  mayssam-ai-stack.sh model remove $name   &&   mayssam-ai-stack.sh model add ..."
       exit 2 ;;
     *)
       err "edit: unknown/unsafe field '$field' (editable: rpm|tpm|ttl|big|effort|note)"; exit 2 ;;
@@ -1411,7 +1411,7 @@ cmd_edit() {
   NM="$name" VAL="$value" yq -i "$yq_set" "$MODELS_YML" || { err "yq -i edit failed"; exit 1; }
   ok "models.$name.$field: ${before} -> ${value}"
   if (( nosync )); then
-    note "--no-sync: not reconciling. Run 'vz-ai-stack.sh model sync' to apply."; exit 0
+    note "--no-sync: not reconciling. Run 'mayssam-ai-stack.sh model sync' to apply."; exit 0
   fi
   cmd_sync
 }
@@ -1439,7 +1439,7 @@ cmd_remove() {
     esac
   done
   validate || exit $?
-  [[ -n "$name" ]] || { err "usage: vz-ai-stack.sh model remove <name> [--dry-run] [--no-sync]"; exit 2; }
+  [[ -n "$name" ]] || { err "usage: mayssam-ai-stack.sh model remove <name> [--dry-run] [--no-sync]"; exit 2; }
   if ! model_exists "$name"; then
     err "unknown model '$name' (nothing to remove)"; exit 2
   fi
@@ -1453,7 +1453,7 @@ cmd_remove() {
   local users; users="$(MN="$name" yq -r '.assignments | to_entries | map(select(.value == strenv(MN))) | .[].key' "$MODELS_YML" 2>/dev/null || true)"
   if [[ -n "$users" ]]; then
     err "refuse: '$name' is still assigned to: $(echo "$users" | tr '\n' ' ')"
-    err "  reassign those agents first: vz-ai-stack.sh model assign <agent> <other-model>"
+    err "  reassign those agents first: mayssam-ai-stack.sh model assign <agent> <other-model>"
     exit 2
   fi
 
@@ -1516,7 +1516,7 @@ cmd_park() {
     esac
   done
   validate || exit $?
-  [[ -n "$agent" ]] || { err "usage: vz-ai-stack.sh model park <agent> [--dry-run] [--no-sync]"; exit 2; }
+  [[ -n "$agent" ]] || { err "usage: mayssam-ai-stack.sh model park <agent> [--dry-run] [--no-sync]"; exit 2; }
   if ! agent_exists "$agent"; then
     err "unknown agent '$agent'. Valid agents:"; my_q '.kinds | keys | .[]' | sed 's/^/    /' >&2; exit 2
   fi
@@ -1525,7 +1525,7 @@ cmd_park() {
   if (( dry )); then note "[dry-run] would park '$agent' -> renders to $def (assignment '$(agent_assigned "$agent")' preserved)"; exit 0; fi
   AG="$agent" yq -i '.parked[strenv(AG)] = true' "$MODELS_YML" || { err "yq -i park failed"; exit 1; }
   ok "parked '$agent' (assignment '$(agent_assigned "$agent")' preserved); renders to $def until unparked"
-  if (( nosync )); then note "--no-sync: run 'vz-ai-stack.sh model sync $agent' to apply."; exit 0; fi
+  if (( nosync )); then note "--no-sync: run 'mayssam-ai-stack.sh model sync $agent' to apply."; exit 0; fi
   cmd_sync "$agent"
 }
 
@@ -1540,7 +1540,7 @@ cmd_unpark() {
     esac
   done
   validate || exit $?
-  [[ -n "$agent" ]] || { err "usage: vz-ai-stack.sh model unpark <agent> [--dry-run] [--no-sync]"; exit 2; }
+  [[ -n "$agent" ]] || { err "usage: mayssam-ai-stack.sh model unpark <agent> [--dry-run] [--no-sync]"; exit 2; }
   if ! agent_exists "$agent"; then
     err "unknown agent '$agent'. Valid agents:"; my_q '.kinds | keys | .[]' | sed 's/^/    /' >&2; exit 2
   fi
@@ -1548,7 +1548,7 @@ cmd_unpark() {
   if (( dry )); then note "[dry-run] would unpark '$agent' -> restores assignment '$(agent_assigned "$agent")'"; exit 0; fi
   AG="$agent" yq -i 'del(.parked[strenv(AG)])' "$MODELS_YML" || { err "yq -i unpark failed"; exit 1; }
   ok "unparked '$agent'; restored '$(agent_assigned "$agent")'"
-  if (( nosync )); then note "--no-sync: run 'vz-ai-stack.sh model sync $agent' to apply."; exit 0; fi
+  if (( nosync )); then note "--no-sync: run 'mayssam-ai-stack.sh model sync $agent' to apply."; exit 0; fi
   cmd_sync "$agent"
 }
 
@@ -1666,7 +1666,7 @@ print(json.dumps(lst))' 2>/dev/null || echo "$rk_models")"
   ok "model sync complete${only:+ ($only)}"
   if [[ -f "$PENDING_FILE" ]] && [[ -s "$PENDING_FILE" ]]; then
     warn "some agents are availability-gated to $(default_model) (LM Studio down or slug not served)."
-    note "Start LM Studio + load the model, then re-run 'vz-ai-stack.sh model sync' to promote them."
+    note "Start LM Studio + load the model, then re-run 'mayssam-ai-stack.sh model sync' to promote them."
   fi
   return 0
 }
@@ -1681,7 +1681,7 @@ _verify() {
     eff="$(resolve_effective "$ag")"
     rendered="$(rendered_model "$ag" 2>/dev/null || echo '')"
     if [[ -n "$rendered" && "$rendered" != "$eff" ]]; then
-      warn "verify: $ag rendered '$rendered' != expected '$eff' — re-run 'vz-ai-stack.sh model sync $ag'"
+      warn "verify: $ag rendered '$rendered' != expected '$eff' — re-run 'mayssam-ai-stack.sh model sync $ag'"
       problems=$((problems+1))
     fi
     keyenv="$(agent_keyenv "$ag")"
@@ -1861,7 +1861,7 @@ _fb_set() {
       *) if [[ -z "$model" ]]; then model="$a"; else targets+=("$a"); fi ;;
     esac
   done
-  { [[ -n "$model" ]] && (( ${#targets[@]} >= 1 )); } || { err "usage: vz-ai-stack.sh model fallback set <model> <target...> [--allow-non-local] [--dry-run]"; exit 2; }
+  { [[ -n "$model" ]] && (( ${#targets[@]} >= 1 )); } || { err "usage: mayssam-ai-stack.sh model fallback set <model> <target...> [--allow-non-local] [--dry-run]"; exit 2; }
   [[ -f "$CONFIG" ]] || { err "config.yaml not found at $CONFIG"; exit 2; }
   local x
   for x in "$model" "${targets[@]}"; do
@@ -1889,7 +1889,7 @@ _fb_remove() {
       *) [[ -z "$model" ]] && model="$a" ;;
     esac
   done
-  [[ -n "$model" ]] || { err "usage: vz-ai-stack.sh model fallback remove <model> [--dry-run]"; exit 2; }
+  [[ -n "$model" ]] || { err "usage: mayssam-ai-stack.sh model fallback remove <model> [--dry-run]"; exit 2; }
   [[ -f "$CONFIG" ]] || { err "config.yaml not found at $CONFIG"; exit 2; }
   [[ "$model" =~ ^[a-zA-Z0-9_./@-]+$ ]] || { err "fallback: name '$model' is outside the safe charset"; exit 2; }
   _fb_commit remove "$model" "" "$dry" ""
@@ -1957,7 +1957,7 @@ cmd_fallback() {
     set)    _fb_set "$@" ;;
     remove) _fb_remove "$@" ;;
     -h|--help|help) cat <<'EOF'
-vz-ai-stack.sh model fallback — view/edit the hand-curated LiteLLM failover chains
+mayssam-ai-stack.sh model fallback — view/edit the hand-curated LiteLLM failover chains
   model fallback list [--json]                                            show the chains (config.yaml-only policy)
   model fallback set <model> <target...> [--allow-non-local] [--dry-run]  set/replace <model>'s failover chain
   model fallback remove <model> [--dry-run]                               delete <model>'s failover chain
@@ -1990,7 +1990,7 @@ main() {
     superset) cmd_superset "$@" ;;
     -h|--help|help)
       cat <<'EOF'
-vz-ai-stack.sh model — declarative model<->agent binding (installer/models.yml)
+mayssam-ai-stack.sh model — declarative model<->agent binding (installer/models.yml)
   model list [--json]              READ-ONLY catalog + live agent matrix
   model assign <agent> <model> [--dry-run] [--no-sync]    re-point one agent
   model assign all <model> [--dry-run] [--no-sync]        re-point EVERY agent (blanket)

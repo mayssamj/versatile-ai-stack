@@ -11,7 +11,7 @@ on this stack and on what it must never touch on your machine. (A red `doctor` a
 
 ## The `stack` command
 
-After install, `~/ai-stack/bin/stack` is a thin wrapper around `vz-ai-stack.sh`
+After install, `~/ai-stack/bin/stack` is a thin wrapper around `mayssam-ai-stack.sh`
 subcommands. Add `~/ai-stack/bin` to your `$PATH` (the installer prints the
 exact line to add):
 
@@ -20,7 +20,7 @@ echo 'export PATH="$HOME/ai-stack/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/vz-ai-stack.sh <cmd>`.
+Then everywhere below, `stack <cmd>` is equivalent to `bash ~/ai-stack/mayssam-ai-stack.sh <cmd>`.
 
 ---
 
@@ -52,8 +52,8 @@ stack reset --confirm soft|hard|nuke    # tiered destructive reset
 ### Phases by name or number
 
 `install` and `test` accept a **phase name OR number**. Phase files are
-`<id>_<name>.sh`, so the name is the filename suffix — `vz-ai-stack.sh install phoenix`
-is the same as `install 01h`. `vz-ai-stack.sh phases` prints the full `id → name` table.
+`<id>_<name>.sh`, so the name is the filename suffix — `mayssam-ai-stack.sh install phoenix`
+is the same as `install 01h`. `mayssam-ai-stack.sh phases` prints the full `id → name` table.
 
 ```bash
 stack install phoenix          # == install 01h
@@ -157,7 +157,7 @@ Verified models: `local`, `local-heavy`, `local-nemotron3-nano-4b`,
 `claude-sonnet`, `claude-opus`, `openai-gpt-5.5`, `openrouter-claude-opus-4.7`,
 `google-gemini-3.1-pro`, plus more (the retired `local` / `local-heavy` /
 `local` slugs still resolve for old keys but aren't auto-pulled — use
-`local`). Run `vz-ai-stack.sh model list` for the live per-agent matrix.
+`local`). Run `mayssam-ai-stack.sh model list` for the live per-agent matrix.
 
 ### Watch traces stream
 
@@ -210,7 +210,7 @@ docker network inspect ai-stack --format '{{range .Containers}}{{.Name}} {{end}}
 ```
 
 If an `http://<alias>:<port>` curl returns "connection refused" or hangs,
-run `bash vz-ai-stack.sh verify` — Phase 00·V's probes pinpoint which layer
+run `bash mayssam-ai-stack.sh verify` — Phase 00·V's probes pinpoint which layer
 broke (lo0 binding, /etc/hosts, DNS, host-gateway, end-to-end). See
 [TROUBLESHOOTING.md § Connection refused](TROUBLESHOOTING.md) for the
 manual diagnosis sequence.
@@ -226,7 +226,7 @@ docker stop openwebui
 
 # Re-enable
 yq -i '.services.openwebui.enabled = true' ~/ai-stack/services.yml
-vz-ai-stack.sh start openwebui
+mayssam-ai-stack.sh start openwebui
 ```
 
 ### Recreate one container (drift detected)
@@ -253,7 +253,7 @@ source .venv/bin/activate
 python ingest.py
 
 # Or serve the MCP server for agents (cohesive way; binds :8765)
-vz-ai-stack.sh start docs_mcp        # (low-level: python mcp_server.py)
+mayssam-ai-stack.sh start docs_mcp        # (low-level: python mcp_server.py)
 ```
 
 The MCP server exposes a `search_documents(query, top_k)` tool that Hermes
@@ -305,7 +305,7 @@ OSH=/opt/homebrew/bin/openshell
 # Start / restart (idempotent — ends with exactly one gateway on the latest config):
 bash ~/ai-stack/bin/start-hermes-telegram.sh
 # or, to also (re)apply token + allowlist from .env:
-bash ~/ai-stack/vz-ai-stack.sh install 20
+bash ~/ai-stack/mayssam-ai-stack.sh install 20
 
 # Status / logs / stop:
 $OSH sandbox exec -n hermes-fleet-v1 -- hermes gateway status
@@ -343,7 +343,7 @@ OSH=/opt/homebrew/bin/openshell
 # Start / restart (idempotent — latest Slack role-router config):
 bash ~/ai-stack/bin/start-hermes-slack.sh
 # or, to also (re)apply tokens + egress + allowlist from .env:
-bash ~/ai-stack/vz-ai-stack.sh install 38            # alias: install slack
+bash ~/ai-stack/mayssam-ai-stack.sh install 38            # alias: install slack
 
 # Status / logs / stop:
 $OSH sandbox exec -n hermes-fleet-v1 -- cat /sandbox/.hermes-slack/health.json
@@ -374,7 +374,7 @@ sandbox-internal daemon); the real liveness probe is `doctor` check 67. See
 ## Which model each agent uses (declarative, per-agent)
 
 Each agent's LLM is **declared per-agent** in `installer/models.yml` (the single source
-of truth) and rendered into every agent's config by `vz-ai-stack.sh model {list,assign,sync,superset}`.
+of truth) and rendered into every agent's config by `mayssam-ai-stack.sh model {list,assign,sync,superset}`.
 See [models.md](models.md) for the full reference. One local chat model (nemotron-only, 2026-07-01):
 
 | model | runtime | role |
@@ -390,14 +390,14 @@ Meridian**, uniformly — all nine Hermes roles (`hermes_manager`, `hermes_techl
 `claude-opus-sub-max`. A subscription-assigned agent **auto-falls-back to `local`** when
 the Meridian host daemon is down, so a plain `install all` works with no Meridian. To
 activate the subscription models: bring Meridian up (`bin/start-meridian.sh`), then
-`vz-ai-stack.sh model sync`.
+`mayssam-ai-stack.sh model sync`.
 
 ```bash
-vz-ai-stack.sh model list                 # read-only catalog + live per-agent matrix
-vz-ai-stack.sh model assign pi local   # re-point one agent (then syncs it)
-vz-ai-stack.sh model assign all local       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
-vz-ai-stack.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
-vz-ai-stack.sh model superset             # print the canonical scoped-key allowlist
+mayssam-ai-stack.sh model list                 # read-only catalog + live per-agent matrix
+mayssam-ai-stack.sh model assign pi local   # re-point one agent (then syncs it)
+mayssam-ai-stack.sh model assign all local       # blanket-assign EVERY agent (before→after + models.yml.bak), then syncs
+mayssam-ai-stack.sh model sync [<agent>]       # render every agent + the LiteLLM model_list (crash-safe)
+mayssam-ai-stack.sh model superset             # print the canonical scoped-key allowlist
 ```
 
 Ollama is kept lazy (`OLLAMA_KEEP_ALIVE=30m`, the default model stays warm for 30 min
@@ -417,7 +417,7 @@ installs a launchd watchdog (`com.ai-stack.openshell-watchdog`, every 600 s) tha
 detects the storm. By **default it is warn-only and data-safe**: it halts the
 container to stop the CPU burn and writes an alert (surfaced by `doctor` check 43)
 — it does **not** delete/recreate the sandbox, because recreation discards in-sandbox
-state. You recreate when ready (`vz-ai-stack.sh install 04 04f 15 20 38 04h`), then clear
+state. You recreate when ready (`mayssam-ai-stack.sh install 04 04f 15 20 38 04h`), then clear
 the alert (`rm installer/state/openshell-watchdog.alert`). Opt into automatic
 delete+recreate (capability-checked, Ready-verified, fails loud) with
 `AI_STACK_WATCHDOG_RECREATE=1`.
@@ -449,15 +449,15 @@ assigned to an agent in `models.yml` (`model assign <agent> local`) — it does
 **not** auto-load anything otherwise. (The retired LFM2.5 demo `local-lfm2-mlx` is no
 longer wired by default; it remains an `LMS_LOAD_LFM2=1` install-time opt-in.)
 
-Run the server with `vz-ai-stack.sh start lmstudio` (idempotent; macOS-guarded). It
+Run the server with `mayssam-ai-stack.sh start lmstudio` (idempotent; macOS-guarded). It
 prints the endpoint, warns the app idle-spins ~0.8 core (quit when done), and reminds
-you **no model auto-loads** — assign one in `models.yml` + `vz-ai-stack.sh model sync`.
-`vz-ai-stack.sh stop lmstudio` stops the `:1234` server.
+you **no model auto-loads** — assign one in `models.yml` + `mayssam-ai-stack.sh model sync`.
+`mayssam-ai-stack.sh stop lmstudio` stops the `:1234` server.
 
 ```bash
 stack install lmstudio                          # one-time setup: loads only assigned MLX models
-vz-ai-stack.sh start lmstudio                   # start the :1234 server (idempotent)
-vz-ai-stack.sh stop lmstudio                    # stop the server when done…
+mayssam-ai-stack.sh start lmstudio                   # start the :1234 server (idempotent)
+mayssam-ai-stack.sh stop lmstudio                    # stop the server when done…
 #   …then Cmd-Q the LM Studio app (stopping the server alone is not enough)
 ```
 
@@ -516,7 +516,7 @@ it does the recreate path, not `docker restart`.
 
 ---
 
-## Upgrading services (`vz-ai-stack.sh upgrade`)
+## Upgrading services (`mayssam-ai-stack.sh upgrade`)
 
 A generic, **type-dispatched** upgrade verb — it reads each service's `type`
 from `services.yml` and does the right thing: docker → `pull` + recreate,
@@ -713,13 +713,13 @@ itself uses `__check` to minimize collision risk.)
 
 5. Add a doctor check in `installer/doctor/checks/`.
 
-6. Re-run: `bash vz-ai-stack.sh install <phase>`.
+6. Re-run: `bash mayssam-ai-stack.sh install <phase>`.
 
 ---
 
 ## Common questions
 
-**Q: Will `vz-ai-stack.sh install all` mess with my running containers?**
+**Q: Will `mayssam-ai-stack.sh install all` mess with my running containers?**
 A: No, not in conservative mode (the default). It detects foreign containers,
 flags them in `status`, and tells you to `adopt` when you're ready. It will
 start NEW containers for services that aren't running.

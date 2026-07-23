@@ -26,7 +26,7 @@
 # HERMES_SLACK_ALLOW_ALL does not grant role-router operator authority; the bot
 # can drive all fleet profiles, so it must never be open by accident.
 #
-# Standalone:  bash vz-ai-stack.sh install 38   (aliases: hermes_slack, slack)
+# Standalone:  bash mayssam-ai-stack.sh install 38   (aliases: hermes_slack, slack)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -208,7 +208,7 @@ BOT="$(get_env HERMES_SLACK_BOT_TOKEN '')"
 APP="$(get_env HERMES_SLACK_APP_TOKEN '')"
 if [[ -z "$BOT" || -z "$APP" ]]; then
   err "Slack needs BOTH HERMES_SLACK_BOT_TOKEN (xoxb-…) and HERMES_SLACK_APP_TOKEN (xapp-…) in .env."
-  err "Create the app at https://api.slack.com/apps (see doc/HERMES-HANDSON.md §Slack), then re-run 'vz-ai-stack.sh install 38'."
+  err "Create the app at https://api.slack.com/apps (see doc/HERMES-HANDSON.md §Slack), then re-run 'mayssam-ai-stack.sh install 38'."
   exit 1
 fi
 # Shape-check WITHOUT printing. Fail fast BEFORE touching the shared gateway so a
@@ -218,7 +218,7 @@ fi
 
 # --- 2. Sandbox Ready + LIVE-APPLY the Slack egress policy (backstop) ---------
 STATE="$(hermes_sandbox_state "$OSH")"
-[[ "$STATE" == "Ready" ]] || { err "sandbox $SANDBOX not Ready (state='${STATE:-absent}') — run 'vz-ai-stack.sh install 04'"; exit 1; }
+[[ "$STATE" == "Ready" ]] || { err "sandbox $SANDBOX not Ready (state='${STATE:-absent}') — run 'mayssam-ai-stack.sh install 04'"; exit 1; }
 # Phase 04's heredoc is the SOURCE OF TRUTH for the policy; here we LIVE-APPLY it
 # (the Phase-27 backstop pattern). Writing the YAML alone does NOT update the
 # running sandbox's landlock egress — only `openshell policy set` does — so without
@@ -229,9 +229,9 @@ POLICY="$AI_STACK/openshell/policies/hermes-fleet-v1.yaml"
 if [[ -f "$POLICY" ]] && grep -q 'name: slack' "$POLICY"; then
   log "Applying network policy (incl. Slack egress) to $SANDBOX (live backstop)..."
   "$OSH" policy set "$SANDBOX" --policy "$POLICY" --wait --timeout 60 >/dev/null 2>&1 \
-    || warn "policy set returned non-zero — if Slack won't connect, re-run 'vz-ai-stack.sh install 04'"
+    || warn "policy set returned non-zero — if Slack won't connect, re-run 'mayssam-ai-stack.sh install 04'"
 else
-  warn "policy file is missing a 'slack' stanza ($POLICY) — Slack egress may be blocked; re-run 'vz-ai-stack.sh install 04'."
+  warn "policy file is missing a 'slack' stanza ($POLICY) — Slack egress may be blocked; re-run 'mayssam-ai-stack.sh install 04'."
 fi
 
 # --- 3. Push BOTH tokens into the sandbox (stdin, not argv/logs) --------------
@@ -369,7 +369,7 @@ if [[ "$LOCKED" == "1" ]]; then
   warn " The gateway is connected to Slack, but won't respond until you:"
   warn "   1. In Slack: your profile → ⋮ (More) → Copy member ID (U…)"
   warn "   2. Add to .env:   HERMES_SLACK_ALLOWED_USERS=<your_member_id>"
-  warn "   3. Re-run:        bash vz-ai-stack.sh install 38"
+  warn "   3. Re-run:        bash mayssam-ai-stack.sh install 38"
   warn "════════════════════════════════════════════════════════════════════"
 else
   note "DM your Hermes app in Slack (or @mention it in a channel it's in) — it routes to the fleet."

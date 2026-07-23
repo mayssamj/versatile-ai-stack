@@ -97,6 +97,6 @@ print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models"
 
 mempalace_fix() {
   warn "Re-run Phase 26 (idempotent — uv tool upgrade + key check + wrapper/launchers):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 26"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 26"
   return 1
 }

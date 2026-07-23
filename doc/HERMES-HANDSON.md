@@ -21,9 +21,9 @@ and you reach it four ways:
 > **Conventions.** 🟢 basic · 🟡 intermediate · 🔴 advanced. Commands are
 > **copy-run** — paste them, compare against **Expected**. Services are reached
 > by **name** (`http://workspace:3000`), which needs the one-time
-> `sudo bash vz-ai-stack.sh prepare-sudo` step (tutorial L2); the loopback
+> `sudo bash mayssam-ai-stack.sh prepare-sudo` step (tutorial L2); the loopback
 > `127.0.x.x` fallback is noted where a bare hostname won't resolve yet.
-> `vz-ai-stack.sh` is the CLI entrypoint (`bin/stack` takes the same arguments).
+> `mayssam-ai-stack.sh` is the CLI entrypoint (`bin/stack` takes the same arguments).
 
 ---
 
@@ -115,15 +115,15 @@ response degrades gracefully instead of white-screening the sidebar.
 and configure. The catch: `hermes` lives **inside** the `hermes-fleet-v1`
 sandbox — you don't run it on the host directly, you run it *through* OpenShell.
 
-**The easy way — `vz-ai-stack.sh hermes <role>`.** One command does the OpenShell
+**The easy way — `mayssam-ai-stack.sh hermes <role>`.** One command does the OpenShell
 dance for you: it maps a short role to its `hermes_<role>` profile and runs it in
 the `hermes-fleet-v1` sandbox. No prompt → interactive TUI; a prompt → one-shot.
 This is the recommended day-to-day entry point.
 
 ```bash
-vz-ai-stack.sh hermes techlead                                  # interactive TUI
-vz-ai-stack.sh hermes backend "Sketch a POST /tokens contract (JWT in an httpOnly cookie). Contract only."   # one-shot
-vz-ai-stack.sh hermes manager -m claude-opus-sub-max "Frame + route a /healthz endpoint to a reviewed diff."
+mayssam-ai-stack.sh hermes techlead                                  # interactive TUI
+mayssam-ai-stack.sh hermes backend "Sketch a POST /tokens contract (JWT in an httpOnly cookie). Contract only."   # one-shot
+mayssam-ai-stack.sh hermes manager -m claude-opus-sub-max "Frame + route a /healthz endpoint to a reviewed diff."
 ```
 
 Roles: `manager techlead frontend backend ml qa reviewing sre incident` (or a full
@@ -195,7 +195,7 @@ The subcommands you'll reach for:
 | `hermes slack` / `hermes send` | chat-app messaging — see §5 |
 | `hermes sessions` | list / inspect conversation sessions |
 | `hermes kanban` | a multi-profile work board |
-| `hermes model` | the **in-agent** model picker (this is *not* the installer's `vz-ai-stack.sh model` — see §4) |
+| `hermes model` | the **in-agent** model picker (this is *not* the installer's `mayssam-ai-stack.sh model` — see §4) |
 | `hermes status` | the agent's own status |
 | `hermes doctor` | the agent's self-diagnostics |
 | `hermes config` | read/check/set agent config (e.g. `config check` — see §4) |
@@ -203,7 +203,7 @@ The subcommands you'll reach for:
 **See the roster from the host** (no sandbox round-trip):
 
 ```bash
-vz-ai-stack.sh fleet list           # add --json for machine-readable
+mayssam-ai-stack.sh fleet list           # add --json for machine-readable
 ```
 
 **Expected.** A table of the 9 roles with each one's bound model — manager,
@@ -302,14 +302,14 @@ upward. That's `team-protocol §4` working, not the model being unhelpful.
 **Why.** Every role ships bound to Claude Opus 4.8 over the subscription, but you
 can re-point any role at a local model (to save the cloud budget, or to test) —
 or blanket-reassign the whole fleet. This is the **installer's** model plane
-(`vz-ai-stack.sh model`), which is the source of truth, not the in-agent
+(`mayssam-ai-stack.sh model`), which is the source of truth, not the in-agent
 `hermes model` picker.
 
 **See the matrix first** — it's read-only and shows what each role is *assigned*
 vs what it *effectively* renders, and flags **DRIFT**:
 
 ```bash
-vz-ai-stack.sh model list           # add --json for machine-readable
+mayssam-ai-stack.sh model list           # add --json for machine-readable
 ```
 
 **Expected.** A catalog of models plus a per-agent "Agent matrix" whose columns are:
@@ -327,7 +327,7 @@ upstream is reachable, and the scoped key may use it.
 **Reassign one role:**
 
 ```bash
-vz-ai-stack.sh model assign hermes_ml_engineer local
+mayssam-ai-stack.sh model assign hermes_ml_engineer local
 ```
 
 This re-points `installer/models.yml` and syncs that agent.
@@ -335,7 +335,7 @@ This re-points `installer/models.yml` and syncs that agent.
 **Blanket-assign every role:**
 
 ```bash
-vz-ai-stack.sh model assign all claude-opus-sub-max
+mayssam-ai-stack.sh model assign all claude-opus-sub-max
 ```
 
 `assign all` backs up `models.yml` to **`models.yml.bak`** first (rollback:
@@ -344,9 +344,9 @@ vz-ai-stack.sh model assign all claude-opus-sub-max
 **Render everything** (reconcile config + restart LiteLLM):
 
 ```bash
-vz-ai-stack.sh model sync                 # full reconcile
-vz-ai-stack.sh model sync --dry-run       # preview: plan + a unified diff of config.yaml, NO writes
-vz-ai-stack.sh model sync --no-restart    # reconcile config but skip the LiteLLM restart
+mayssam-ai-stack.sh model sync                 # full reconcile
+mayssam-ai-stack.sh model sync --dry-run       # preview: plan + a unified diff of config.yaml, NO writes
+mayssam-ai-stack.sh model sync --no-restart    # reconcile config but skip the LiteLLM restart
 ```
 
 **Availability-gating (teach this).** If the assigned model's upstream is down —
@@ -368,10 +368,10 @@ Two equivalent ways to change it (both auto-`sync` to apply):
 
 ```bash
 # A) the model-edit subcommand (validates the level against the runtime, then syncs):
-vz-ai-stack.sh model edit claude-opus-sub-max effort xhigh
+mayssam-ai-stack.sh model edit claude-opus-sub-max effort xhigh
 
 # B) edit installer/models.yml -> the model's `effort:` field, then:
-vz-ai-stack.sh model sync
+mayssam-ai-stack.sh model sync
 ```
 
 `model edit` only touches **safe** fields (`rpm | tpm | ttl | big | effort | note`);
@@ -388,11 +388,11 @@ openshell sandbox exec -n hermes-fleet-v1 --no-tty -- hermes --profile hermes_ma
 
 **Expected.** A config-status report (e.g. `Config version: NN ✓`, then the
 required/optional env keys with ○/✓ markers). For the *routed model itself*, the
-authoritative views are `vz-ai-stack.sh model list` (the EFFECTIVE column, host
+authoritative views are `mayssam-ai-stack.sh model list` (the EFFECTIVE column, host
 side) or the rendered LiteLLM config (`providers.litellm.model` in the agent's
 config.yaml, which the installer greps directly when verifying routing).
 
-> Note: `vz-ai-stack.sh model assign/sync/edit` is the **installer's**
+> Note: `mayssam-ai-stack.sh model assign/sync/edit` is the **installer's**
 > declarative binding (the source of truth in `models.yml`); `hermes model`
 > (§2) is the **agent's own in-session** picker — different layer, different job.
 
@@ -407,7 +407,7 @@ natively supports several chat platforms; ai-stack wires these two, both two-way
 ### Telegram — pre-wired by ai-stack (Phase 20)
 
 ```bash
-vz-ai-stack.sh install 20
+mayssam-ai-stack.sh install 20
 ```
 
 **Secure-by-default.** With **no allowlist** the bot connects but **denies every
@@ -419,7 +419,7 @@ numeric Telegram id in `.env` and re-run the phase:
 # in ~/ai-stack/.env:
 HERMES_TELEGRAM_ALLOWED_USERS=<your numeric Telegram id>
 # then:
-vz-ai-stack.sh install 20
+mayssam-ai-stack.sh install 20
 ```
 
 The gateway runs **inside** the sandbox and long-polls `api.telegram.org`
@@ -470,7 +470,7 @@ HERMES_SLACK_APP_TOKEN=xapp-…
 HERMES_SLACK_ALLOWED_USERS=<your Slack member id>   # U… — see secure-by-default below
 HERMES_SLACK_HOME_CHANNEL=C0BDEMEM19R               # optional mission-room, e.g. hermes_notification
 # then:
-vz-ai-stack.sh install 38            # alias: install slack
+mayssam-ai-stack.sh install 38            # alias: install slack
 ```
 
 `install 38` writes the tokens into the sandbox, applies Phase 04's `slack` egress
@@ -573,13 +573,13 @@ fun front-end; the bridge is the part you can also script.
 **Install (one-time setup — clone + npm + .env + settings.json):**
 
 ```bash
-vz-ai-stack.sh install 19
+mayssam-ai-stack.sh install 19
 ```
 
 **Run (health-gated composite):**
 
 ```bash
-vz-ai-stack.sh start claw3d
+mayssam-ai-stack.sh start claw3d
 ```
 
 `start claw3d` starts the **bridge on `:7780`**, waits for its `/health`, **then**
@@ -587,7 +587,7 @@ brings up the **UI on `:4310`** and opens the browser — so you never land on
 "UI up, bridge dead". Bring both down with:
 
 ```bash
-vz-ai-stack.sh stop claw3d
+mayssam-ai-stack.sh stop claw3d
 ```
 
 **At the Connect screen.** `http://localhost:4310` redirects to `/office`
@@ -639,7 +639,7 @@ Logs and health:
 ```bash
 tail -f installer/state/claw3d-bridge.log     # the bridge
 tail -f installer/state/claw3d.log            # the UI
-vz-ai-stack.sh doctor claw3d                  # health check
+mayssam-ai-stack.sh doctor claw3d                  # health check
 ```
 
 ---
@@ -651,10 +651,10 @@ make the fleet safe to hand a goal to.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `openshell sandbox …` → **"Connection refused (os error 61)"** | the OpenShell **gateway** (:17670) is down — most often because Docker/OrbStack is **hung** (it crash-loops trying to reach a dead docker socket) | **Check Docker FIRST:** `docker ps` — if it *hangs*, OrbStack's daemon is thrashing (often swap-full). **Free RAM** (close apps) and it recovers when pressure eases, or restart OrbStack from its menu-bar app (note: `orb restart` is for Linux *machines*, NOT the engine). *Then* `brew services restart openshell` and confirm `openshell sandbox list` shows `Ready`. If a sandbox shows `Error`: `vz-ai-stack.sh install 04 04f 15`. |
+| `openshell sandbox …` → **"Connection refused (os error 61)"** | the OpenShell **gateway** (:17670) is down — most often because Docker/OrbStack is **hung** (it crash-loops trying to reach a dead docker socket) | **Check Docker FIRST:** `docker ps` — if it *hangs*, OrbStack's daemon is thrashing (often swap-full). **Free RAM** (close apps) and it recovers when pressure eases, or restart OrbStack from its menu-bar app (note: `orb restart` is for Linux *machines*, NOT the engine). *Then* `brew services restart openshell` and confirm `openshell sandbox list` shows `Ready`. If a sandbox shows `Error`: `mayssam-ai-stack.sh install 04 04f 15`. |
 | `openshell sandbox exec/connect` fails fast (gateway already up) | relay idle-timed-out | `brew services restart openshell`; confirm `openshell sandbox list` (`Ready`) |
 | Bridge / office shows `[<name> unavailable]` | that agent's relay is down | `brew services restart openshell` (§6) |
-| Local-model 500: **"No fallback model group found for local"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local` has no fallback group | warm it once (`ollama run nemotron-3-nano:4b ''`), or just use the role's **default** model — `vz-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
+| Local-model 500: **"No fallback model group found for local"** | Ollama **cold-load** (~13s) exceeds LiteLLM's request timeout; `local` has no fallback group | warm it once (`ollama run nemotron-3-nano:4b ''`), or just use the role's **default** model — `mayssam-ai-stack.sh hermes <role> "…"` *without* `-m` (the cloud/Meridian default answers instantly) |
 | Workspace **Sessions sidebar** crashes (`reading 'map'`) | dashboard unreachable → gateway fallback | ai-stack ships the hardened image + binds the dashboard to `127.0.0.1` with the UI in the agent's netns (`network_mode: service:hermes-agent`, v0.18.0) (§1) |
 | Slack bot silent | secure-by-default denies all with no allowlist | set `HERMES_SLACK_ALLOWED_USERS` + re-run `install 38` (§5) |
 | Telegram bot silent | secure-by-default denies all with no allowlist | set `HERMES_TELEGRAM_ALLOWED_USERS` + re-run `install 20` (§5) |

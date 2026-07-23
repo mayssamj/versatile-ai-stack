@@ -64,7 +64,7 @@ Phase **29**, **opt-in**, fail-isolated **leaf** — NOT in `install_all_phase_o
 
 **Edit:**
 - `services.yml` — one `openwork` entry, **`type: node-bg`**, **`network: host`** (host process, not a container → doctor check 16 N/A; no bridge-exempt label), `port: 8787`, `phase: "29"`, `health: http://127.0.0.1:8787/health`, with a `help:` block (+ `_gen`).
-- `vz-ai-stack.sh` — add 29 to the opt-in extras help strings (lines ~268, ~566) — and fix the pre-existing omission of 28 there while at it; start/stop/help dispatch is generic (service-name → `bin/start-openwork.sh` / services.yml), so no per-service code. (29 is opt-in by being ABSENT from `install_all_phase_order()` — no edit there.)
+- `mayssam-ai-stack.sh` — add 29 to the opt-in extras help strings (lines ~268, ~566) — and fix the pre-existing omission of 28 there while at it; start/stop/help dispatch is generic (service-name → `bin/start-openwork.sh` / services.yml), so no per-service code. (29 is opt-in by being ABSENT from `install_all_phase_order()` — no edit there.)
 - LiteLLM virtual-key mint (scoped) — Phase 28 mint pattern, distinct minimal scope.
 - `doc/TUTORIAL.md` (+ regen `TUTORIAL.html`, `--check` drift guard green) — add OpenWork to the L29 opt-in-extras lesson + the install block (like aionui was added).
 - `doc/EXPLORE.html` — SERVICES array entry (tier `extras`; count self-audits via `SERVICES.length`) + the hardcoded `"All 41 installed services"` subtitle bump.
@@ -105,9 +105,9 @@ Run BEFORE / during building the corresponding plank; any failure auto-defers th
 
 ## 10. Acceptance criteria (testable) & DoD
 
-- **AC-1:** `vz-ai-stack.sh install 29` (alias `install openwork`) is idempotent and, on success, leaves `openwork` installed + the daemon healthy on `:8787/health`. Smoke `installer/smoke/29.sh` asserts: `openwork` resolves + `--version` runs; the OpenWork LiteLLM virtual key exists in `/key/list` and performs a **real 1-token chat completion** against `http://127.0.0.1:4000/v1` (the actual OpenWork→OpenCode→LiteLLM path); `:8787/health` returns `200`; `opencode.json` is present + valid JSON with the LiteLLM provider; `build_tutorial_html.py --check` exits 0. Stamp written only AFTER smoke passes.
-- **AC-2:** `vz-ai-stack.sh doctor` is green from **main** — the new `51_openwork.sh` passes (green advisory when OpenWork absent/disabled; red only when enabled-and-unhealthy). Doctor count reflects the new check (verified by file-count).
-- **AC-3:** `vz-ai-stack.sh help openwork` returns what/why/usage/config; `start openwork` / `stop openwork` work as a single funnel (opens the URL gated on health).
+- **AC-1:** `mayssam-ai-stack.sh install 29` (alias `install openwork`) is idempotent and, on success, leaves `openwork` installed + the daemon healthy on `:8787/health`. Smoke `installer/smoke/29.sh` asserts: `openwork` resolves + `--version` runs; the OpenWork LiteLLM virtual key exists in `/key/list` and performs a **real 1-token chat completion** against `http://127.0.0.1:4000/v1` (the actual OpenWork→OpenCode→LiteLLM path); `:8787/health` returns `200`; `opencode.json` is present + valid JSON with the LiteLLM provider; `build_tutorial_html.py --check` exits 0. Stamp written only AFTER smoke passes.
+- **AC-2:** `mayssam-ai-stack.sh doctor` is green from **main** — the new `51_openwork.sh` passes (green advisory when OpenWork absent/disabled; red only when enabled-and-unhealthy). Doctor count reflects the new check (verified by file-count).
+- **AC-3:** `mayssam-ai-stack.sh help openwork` returns what/why/usage/config; `start openwork` / `stop openwork` work as a single funnel (opens the URL gated on health).
 - **AC-4 (live E2E, SOUL §5):** from a browser at `http://127.0.0.1:8787/ui`, with the seeded LiteLLM provider, **get a reply from a stack model** through OpenWork→OpenCode→LiteLLM. Verified from the app, not a green log. (Live-test by the orchestrator from main.)
 - **AC-5 (security):** the minted key is scoped-minimal and not the master/fleet key; `openwork serve` binds loopback only; tokens generated + env-passed, never printed/in-argv; `--approval manual`; no `--remote-access`; daemon log 0600.
 - **AC-6 (docs cohesion):** tutorial lesson present + `--check` green; EXPLORE.html + all count-bearing docs swept and consistent (file-count verified); CHANGELOG updated.

@@ -108,14 +108,14 @@ Phase 30 wires the fleet **per-profile** (each profile gets the `understand-anyt
 HTTP MCP entry; not inherited). Prove a fleet profile can reach the `ai-stack` graph:
 
 ```bash
-vz-ai-stack.sh test understand     # E2E: fleet profile → http MCP → ai-stack graph
+mayssam-ai-stack.sh test understand     # E2E: fleet profile → http MCP → ai-stack graph
 ```
 
 ### 4. Open the dashboard
 
 ```bash
-vz-ai-stack.sh understand-dashboard            # current repo
-vz-ai-stack.sh understand-dashboard ~/ai-stack # explicit path
+mayssam-ai-stack.sh understand-dashboard            # current repo
+mayssam-ai-stack.sh understand-dashboard ~/ai-stack # explicit path
 ```
 
 Launches the interactive browser dashboard (Vite preview from the plugin),
@@ -126,7 +126,7 @@ health-gated, then auto-opens. The native `/understand-dashboard` skill works to
 The graph is a **periodically-refreshed snapshot, not live.** It reflects the commit
 it was generated at, not your working tree.
 
-- `project_summary()` and `vz-ai-stack.sh doctor` surface **staleness** (graph SHA vs
+- `project_summary()` and `mayssam-ai-stack.sh doctor` surface **staleness** (graph SHA vs
   repo HEAD).
 - Re-run `/understand` on **material drift** (new layers, big refactors, new
   subsystems) — **not** every commit. After regenerating, commit the graph and call
@@ -135,7 +135,7 @@ it was generated at, not your working tree.
 ### 6. Install / uninstall
 
 ```bash
-vz-ai-stack.sh install understand     # opt-in; needs Node >= 22 + pnpm
+mayssam-ai-stack.sh install understand     # opt-in; needs Node >= 22 + pnpm
 ```
 
 Rollback:

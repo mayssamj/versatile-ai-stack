@@ -6,7 +6,7 @@
 # decision D2: NO auto-extraction) — remember_fact / recall_related / graph_query / graph_write
 # over one shared graph (fleet-memory).
 #
-# NOT in `install all`. Install by name: `vz-ai-stack.sh install falkordb_mcp`.
+# NOT in `install all`. Install by name: `mayssam-ai-stack.sh install falkordb_mcp`.
 # Unlike the honcho slice this is PURELY ADDITIVE — FalkorDB was never fleet-reachable (raw
 # :6379 always denied to sandboxes), so there is NO egress to retire and NO security-posture
 # flag gate; a plain opt-in phase suffices. The shim + token are the only sandbox path.
@@ -14,7 +14,7 @@
 # Idempotent: token minted ONLY if absent; shim start is _alive+_health-gated; `claude mcp add`
 # (remove-then-add) + `hermes config set` + `openshell policy set` all re-assert cleanly.
 #
-# Rollback: claude mcp remove -s user falkordb ; vz-ai-stack.sh stop falkordb_mcp ;
+# Rollback: claude mcp remove -s user falkordb ; mayssam-ai-stack.sh stop falkordb_mcp ;
 #   rm installer/state/phase_41.done ; (un-wire fleet: hermes config unset mcp_servers.falkordb).
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -51,7 +51,7 @@ if precheck 2>/dev/null && stamp_check "$PHASE"; then
 fi
 
 worktree_guard "install falkordb_mcp"
-command -v node >/dev/null 2>&1 || { err "node not found on PATH. Run 'vz-ai-stack.sh deps'."; exit 1; }
+command -v node >/dev/null 2>&1 || { err "node not found on PATH. Run 'mayssam-ai-stack.sh deps'."; exit 1; }
 
 # 1. shim deps ----------------------------------------------------------------------
 log "Installing falkordb-mcp shim deps…"
@@ -91,7 +91,7 @@ if sandbox_present "$OSH" "$SANDBOX"; then
   if "$OSH" policy set "$SANDBOX" --policy "$FLEET_POLICY" --wait --timeout 60 </dev/null >/dev/null 2>&1; then
     ok "applied falkordb_mcp egress policy to live sandbox $SANDBOX (:7083 reachable)"
   else
-    warn "live policy set for $SANDBOX returned non-zero — re-apply via 'vz-ai-stack.sh install 04'"
+    warn "live policy set for $SANDBOX returned non-zero — re-apply via 'mayssam-ai-stack.sh install 04'"
   fi
 fi
 
@@ -108,7 +108,7 @@ if sandbox_ready "$OSH" "$SANDBOX"; then
   else
     err "Hermes fleet FalkorDB wiring did NOT land — hermes_manager profile is missing 'falkordb:' / 'host.docker.internal:${PORT}'. NOT stamping Phase 41."
     err "  Inspect: openshell sandbox exec -n $SANDBOX -- cat ~/.hermes/profiles/hermes_manager/config.yaml"
-    err "  Then re-run: vz-ai-stack.sh install falkordb_mcp"
+    err "  Then re-run: mayssam-ai-stack.sh install falkordb_mcp"
     exit 1
   fi
 else

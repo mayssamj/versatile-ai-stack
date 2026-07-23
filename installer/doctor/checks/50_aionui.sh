@@ -17,16 +17,16 @@ aionui_diagnose() {
     return 0
   fi
 
-  brew list --cask aionui >/dev/null 2>&1 || { echo "AionUi desktop cask missing — re-run 'vz-ai-stack.sh install 28'"; return 1; }
-  [[ -x "$aw" ]] || { echo "aionui-web binary missing ($aw) — re-run 'vz-ai-stack.sh install 28'"; return 1; }
+  brew list --cask aionui >/dev/null 2>&1 || { echo "AionUi desktop cask missing — re-run 'mayssam-ai-stack.sh install 28'"; return 1; }
+  [[ -x "$aw" ]] || { echo "aionui-web binary missing ($aw) — re-run 'mayssam-ai-stack.sh install 28'"; return 1; }
   # Health: the WebUI serves HTTP 200 at / when aioncore is up. Explicit '^200$'
   # grep (NOT the http_ok helper — documented 000-concat false-healthy bug).
   if ! curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:25808/ 2>/dev/null | grep -q '^200$'; then
-    echo "aionui-web not serving 200 on :25808 — 'vz-ai-stack.sh start aionui' (or check installer/state/aionui-web.launchd.log)"
+    echo "aionui-web not serving 200 on :25808 — 'mayssam-ai-stack.sh start aionui' (or check installer/state/aionui-web.launchd.log)"
     return 1
   fi
   local key; key="$(get_env AIONUI_LITELLM_KEY '')"
-  [[ -n "$key" ]] || { echo "AIONUI_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 28'"; return 1; }
+  [[ -n "$key" ]] || { echo "AIONUI_LITELLM_KEY missing from .env — re-run 'mayssam-ai-stack.sh install 28'"; return 1; }
   # Gate the key probe on LiteLLM reachability so a down LiteLLM doesn't red-bar this.
   if ! litellm_scoped_curl "$key" -sf --max-time 5 http://litellm:4000/v1/models >/dev/null 2>&1; then
     if declare -F litellm_db_down >/dev/null && litellm_db_down; then
@@ -34,10 +34,10 @@ aionui_diagnose() {
       return 1
     fi
     if curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1; then
-      echo "AIONUI_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via 'vz-ai-stack.sh install 28'"
+      echo "AIONUI_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via 'mayssam-ai-stack.sh install 28'"
       return 1
     fi
-    echo "LiteLLM not reachable — start it ('vz-ai-stack.sh start litellm'), then re-check"
+    echo "LiteLLM not reachable — start it ('mayssam-ai-stack.sh start litellm'), then re-check"
     return 1
   fi
   return 0
@@ -45,7 +45,7 @@ aionui_diagnose() {
 
 aionui_fix() {
   warn "(Re)start the AionUi WebUI daemon, or re-run the phase (both idempotent):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh start aionui"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 28"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh start aionui"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 28"
   return 1
 }

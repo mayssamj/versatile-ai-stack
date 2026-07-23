@@ -42,11 +42,11 @@ RECREATE_FLAG="${1:-}"
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing"; exit 1; }
 
 # Validate .env doesn't have CRLF / malformed lines (docker --env-file is fussy).
-load_env_strict || { err ".env has malformed lines; fix or run 'vz-ai-stack.sh doctor'."; exit 1; }
+load_env_strict || { err ".env has malformed lines; fix or run 'mayssam-ai-stack.sh doctor'."; exit 1; }
 
 # Networking precondition: ai-stack network must exist (run Phase 00·N).
 network_ensure_ai_stack || {
-  err "ai-stack docker network missing. Run:  bash vz-ai-stack.sh install 00n"
+  err "ai-stack docker network missing. Run:  bash mayssam-ai-stack.sh install 00n"
   exit 1
 }
 
@@ -59,7 +59,7 @@ PHOENIX_PROJECT="$(require_env PHOENIX_PROJECT_NAME ai-stack)"
 # `honcho-database-1`). On a cold install LiteLLM hangs uvicorn startup
 # for 60s+ waiting for Prisma migrations to apply, then Phase 01 times out
 # with a vague "did not come up" error. Failing loudly here catches the
-# real cause before the hang. See CHANGELOG 2026-05-30. vz-ai-stack.sh now
+# real cause before the hang. See CHANGELOG 2026-05-30. mayssam-ai-stack.sh now
 # orders Phase 03 (Honcho) before Phase 01 (LiteLLM) to prevent this.
 if ! nc -z 127.0.0.1 5432 2>/dev/null \
    && ! (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
@@ -67,8 +67,8 @@ if ! nc -z 127.0.0.1 5432 2>/dev/null \
   err "LiteLLM needs Postgres for its Prisma-managed virtual-key store."
   err "Postgres is provided by the Honcho compose stack."
   err "Fix: run Phase 03 first:"
-  err "    bash $AI_STACK/vz-ai-stack.sh install 03"
-  err "Then retry: bash $AI_STACK/vz-ai-stack.sh install 01"
+  err "    bash $AI_STACK/mayssam-ai-stack.sh install 03"
+  err "Then retry: bash $AI_STACK/mayssam-ai-stack.sh install 01"
   exit 1
 fi
 ok "Postgres reachable on :5432 — LiteLLM can connect to its key store"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke for the openshell-gateway doctor check (installer/doctor/checks/54_openshell_gateway.sh).
-# Named 54.sh so `vz-ai-stack.sh test 54` resolves it (cmd_test strips after '_').
+# Named 54.sh so `mayssam-ai-stack.sh test 54` resolves it (cmd_test strips after '_').
 #
 # WHY: install warns "openshell is not registered as a brew service" but doctor
 # never detected it. This check asserts the gateway is UP on :17670 and MANAGEABLE
@@ -17,7 +17,7 @@
 # HERMETIC: stubs port_listening + brew + the installed/has-brew probes (defined AFTER
 # the source so they win), so it needs no live openshell/brew/docker and is safe from
 # any worktree path. Driven by STUB_* env vars.
-# Run: bash installer/smoke/54.sh   (or: vz-ai-stack.sh test 54)
+# Run: bash installer/smoke/54.sh   (or: mayssam-ai-stack.sh test 54)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; export AI_STACK
 source "$AI_STACK/installer/lib/common.sh"

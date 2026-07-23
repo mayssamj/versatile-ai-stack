@@ -6,10 +6,10 @@
 #   owning phases READ their assignment at install time (with the phase's current
 #   hardcoded value as the fallback), so a re-install honors a re-point here.
 #
-#     vz-ai-stack.sh embedding list  [--json]               READ-ONLY registry + assignments
-#     vz-ai-stack.sh embedding show  [<service>]            assignment(s) + consistency check
-#     vz-ai-stack.sh embedding assign <service> <model> [--dry-run] [--force]
-#     vz-ai-stack.sh embedding global <model> [--dry-run] [--force]
+#     mayssam-ai-stack.sh embedding list  [--json]               READ-ONLY registry + assignments
+#     mayssam-ai-stack.sh embedding show  [<service>]            assignment(s) + consistency check
+#     mayssam-ai-stack.sh embedding assign <service> <model> [--dry-run] [--force]
+#     mayssam-ai-stack.sh embedding global <model> [--dry-run] [--force]
 #
 # House style mirrors lib/models.sh (its sibling for CHAT models): source the
 # libs, simple dispatch, log/ok/warn/err from common.sh, atomic `yq -i` writes
@@ -134,12 +134,12 @@ validate() {
 # re-reads models.yml). openwebui is a bin/ restart, not a numbered phase.
 owning_phase() {
   case "$1" in
-    docs)      echo "vz-ai-stack.sh install 06   (re-runs ingest.py + mcp_server.py)" ;;
+    docs)      echo "mayssam-ai-stack.sh install 06   (re-runs ingest.py + mcp_server.py)" ;;
     openwebui) echo "bash bin/start-openwebui.sh   (restart Open WebUI)" ;;
-    lumen)     echo "vz-ai-stack.sh install 16   (re-pulls + re-points Lumen)" ;;
-    mempalace) echo "vz-ai-stack.sh install 26   (re-renders the mempalace wrapper)" ;;
-    honcho)    echo "vz-ai-stack.sh install honcho_mcp   (honcho.sh reads .embedding_assignments.honcho + reconciles the pgvector dim via configure_embeddings.py; 'install 03' on a fresh box)" ;;
-    *)         echo "vz-ai-stack.sh install <owning-phase>" ;;
+    lumen)     echo "mayssam-ai-stack.sh install 16   (re-pulls + re-points Lumen)" ;;
+    mempalace) echo "mayssam-ai-stack.sh install 26   (re-renders the mempalace wrapper)" ;;
+    honcho)    echo "mayssam-ai-stack.sh install honcho_mcp   (honcho.sh reads .embedding_assignments.honcho + reconciles the pgvector dim via configure_embeddings.py; 'install 03' on a fresh box)" ;;
+    *)         echo "mayssam-ai-stack.sh install <owning-phase>" ;;
   esac
 }
 
@@ -325,7 +325,7 @@ cmd_assign() {
   done
   validate || exit $?
   if [[ -z "$svc" || -z "$model" ]]; then
-    err "usage: vz-ai-stack.sh embedding assign <service> <model> [--dry-run] [--force]"
+    err "usage: mayssam-ai-stack.sh embedding assign <service> <model> [--dry-run] [--force]"
     err "  services: ${EMBED_SERVICES[*]}"
     exit 2
   fi
@@ -353,7 +353,7 @@ cmd_assign() {
   # embedding_assignments.honcho (Phase 03 + Phase 40) and reconciles honcho's pgvector schema
   # dim via honcho's own scripts/configure_embeddings.py, so this assignment DOES apply on install.
   if [[ "$svc" == "honcho" ]]; then
-    note "honcho: apply with 'vz-ai-stack.sh install honcho_mcp' (reloads honcho + reconciles the"
+    note "honcho: apply with 'mayssam-ai-stack.sh install honcho_mcp' (reloads honcho + reconciles the"
     note "  pgvector dim). A DIM change needs 0 non-null embeddings, else configure_embeddings.py refuses."
   fi
 
@@ -397,7 +397,7 @@ cmd_global() {
   done
   validate || exit $?
   if [[ -z "$model" ]]; then
-    err "usage: vz-ai-stack.sh embedding global <model> [--dry-run] [--force]"
+    err "usage: mayssam-ai-stack.sh embedding global <model> [--dry-run] [--force]"
     exit 2
   fi
   if ! emb_exists "$model"; then
@@ -447,7 +447,7 @@ cmd_global() {
     if [[ "$_gdim" != "$_cdim" ]]; then
       err "REFUSED: 'global' would change the docs embedder dim ${_cdim} -> ${_gdim} — a one-way, data-destroying Qdrant re-ingest."
       err "  'global --force' overrides the lumen/mempalace SCOPE only, NOT the docs dim guard (two separate intents)."
-      err "  Do it explicitly + acknowledged:  vz-ai-stack.sh embedding assign docs $model --force   (then re-ingest with AI_STACK_FORCE_RECREATE=1)"
+      err "  Do it explicitly + acknowledged:  mayssam-ai-stack.sh embedding assign docs $model --force   (then re-ingest with AI_STACK_FORCE_RECREATE=1)"
       exit 2
     fi
   fi
@@ -503,7 +503,7 @@ main() {
     global) cmd_global "$@" ;;
     -h|--help|help)
       cat <<'EOF'
-vz-ai-stack.sh embedding — declarative embedding-model<->service binding (installer/models.yml)
+mayssam-ai-stack.sh embedding — declarative embedding-model<->service binding (installer/models.yml)
   embedding list [--json]                       READ-ONLY registry + per-service assignments
   embedding show [<service>]                    assignment(s) + a consistency check
   embedding assign <service> <model> [--dry-run] [--force]
@@ -517,7 +517,7 @@ vz-ai-stack.sh embedding — declarative embedding-model<->service binding (inst
                  unless --force (then re-ingest with AI_STACK_FORCE_RECREATE=1);
              (2) global refuses lumen (code) + mempalace (on-device) unless --force;
              (3) a code embedder on a text service (or vice-versa) WARNs.
-  apply    : the owning phase re-reads models.yml — e.g. `vz-ai-stack.sh install 06` for docs.
+  apply    : the owning phase re-reads models.yml — e.g. `mayssam-ai-stack.sh install 06` for docs.
 EOF
       ;;
     *) err "embedding: unknown subcommand '$sub' (want list|show|assign|global)"; exit 2 ;;

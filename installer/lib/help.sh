@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # help.sh — per-service `help` for the AI-stack CLI.
 #
-#   vz-ai-stack.sh help                      overview + pointer to `help services`
-#   vz-ai-stack.sh help services             list services that have help prose
-#   vz-ai-stack.sh help <service|alias>      WHAT · HOW IT'S CONFIGURED · HOW TO USE
-#   vz-ai-stack.sh help regen [<svc>] [--apply] [--check] [--model <m>] [--force]
+#   mayssam-ai-stack.sh help                      overview + pointer to `help services`
+#   mayssam-ai-stack.sh help services             list services that have help prose
+#   mayssam-ai-stack.sh help <service|alias>      WHAT · HOW IT'S CONFIGURED · HOW TO USE
+#   mayssam-ai-stack.sh help regen [<svc>] [--apply] [--check] [--model <m>] [--force]
 #
 # Design (see doc/specs/2026-06-03-service-help-design.md):
 #   - PROSE (what/why/usage/config_notes) is authored in services.yml `help:` blocks.
@@ -117,7 +117,7 @@ cmd_help_show() {
     err "unknown service '$sel'"
     local sug; sug="$(fuzzy_suggest "$sel")"
     [[ -n "$sug" ]] && { echo "Did you mean:" >&2; sed 's/^/  /' <<<"$sug" >&2; }
-    echo "Run 'vz-ai-stack.sh help services' for the full list." >&2
+    echo "Run 'mayssam-ai-stack.sh help services' for the full list." >&2
     return 1
   fi
 
@@ -162,14 +162,14 @@ cmd_help_show() {
     [[ -n "$see" ]] && { printf '\n'; note "See also: $see"; }
   fi
   if ! has_help_block "$key"; then
-    printf '\n'; note "(no authored help yet — run: vz-ai-stack.sh help regen $key --apply)"
+    printf '\n'; note "(no authored help yet — run: mayssam-ai-stack.sh help regen $key --apply)"
   fi
   printf '\n'
   return 0
 }
 
 cmd_help_list() {
-  hdr "Services with help (vz-ai-stack.sh help <service>)"
+  hdr "Services with help (mayssam-ai-stack.sh help <service>)"
   local k cur_phase="" ph
   # Sort by phase then key for a stable, grouped listing.
   while IFS=$'\t' read -r ph k; do
@@ -182,24 +182,24 @@ cmd_help_list() {
     else printf '    %-26s %s%s%s\n' "$k" "$C_YELLOW" "(no help yet) " "$C_RESET"; fi
   done < <(all_keys | while IFS= read -r k; do [[ -n "$k" ]] && printf '%s\t%s\n' "$(svc_phase "$k")" "$k"; done | LC_ALL=C sort)
   printf '\n'
-  note "Detail:  vz-ai-stack.sh help <service>     ·   Refresh prose:  vz-ai-stack.sh help regen [<svc>] --apply"
+  note "Detail:  mayssam-ai-stack.sh help <service>     ·   Refresh prose:  mayssam-ai-stack.sh help regen [<svc>] --apply"
   return 0
 }
 
 cmd_help_usage() {
   cat <<EOF
 
-vz-ai-stack.sh help — per-service help
+mayssam-ai-stack.sh help — per-service help
 
-  vz-ai-stack.sh help services            list services that have help
-  vz-ai-stack.sh help <service|alias>     what it is · how it's configured · how to use
-  vz-ai-stack.sh help regen [<svc>]       refresh help prose from the live codebase
+  mayssam-ai-stack.sh help services            list services that have help
+  mayssam-ai-stack.sh help <service|alias>     what it is · how it's configured · how to use
+  mayssam-ai-stack.sh help regen [<svc>]       refresh help prose from the live codebase
        [--apply] [--check] [--model <m>] [--force]
 
 Examples:
-  vz-ai-stack.sh help claw3d
-  vz-ai-stack.sh help pi
-  vz-ai-stack.sh help unsloth-studio
+  mayssam-ai-stack.sh help claw3d
+  mayssam-ai-stack.sh help pi
+  mayssam-ai-stack.sh help unsloth-studio
 EOF
   return 0
 }
@@ -341,7 +341,7 @@ cmd_help_check() {
     if (( ge > 0 && ce > ge )); then echo "STALE    $k (code newer than help _gen.at)"; problems=$((problems+1)); fi
   done <<<"$keys"
   if (( problems == 0 )); then ok "help: all checked services present + fresh"; return 0; fi
-  warn "help: $problems service(s) missing/stale (run: vz-ai-stack.sh help regen [<svc>] --apply)"
+  warn "help: $problems service(s) missing/stale (run: mayssam-ai-stack.sh help regen [<svc>] --apply)"
   return 1
 }
 

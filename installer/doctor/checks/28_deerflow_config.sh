@@ -52,6 +52,6 @@ deerflow_config_diagnose() {
 
 deerflow_config_fix() {
   warn "Re-run Phase 10 (idempotent — patches config.yaml + compose + .env):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 10"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 10"
   return 1
 }

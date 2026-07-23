@@ -14,8 +14,8 @@
 #     tap is required. Updates self-apply via Sparkle (or `brew upgrade --cask
 #     cmux`).
 #
-# OPT-IN: not wired into the default `vz-ai-stack.sh install` run. Add it on demand
-# with `bash vz-ai-stack.sh install 22`.
+# OPT-IN: not wired into the default `mayssam-ai-stack.sh install` run. Add it on demand
+# with `bash mayssam-ai-stack.sh install 22`.
 #
 # IDEMPOTENT + RESILIENT: re-runnable. If a hard prerequisite is unmet (not
 # macOS, no Homebrew, tap/cask unavailable, no network) it prints an actionable
@@ -23,7 +23,7 @@
 # prerequisite is satisfied — it never leaves the system half-installed and
 # never hard-fails on a soft/prereq problem.
 #
-# Standalone install: `bash vz-ai-stack.sh install 22`.
+# Standalone install: `bash mayssam-ai-stack.sh install 22`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -76,7 +76,7 @@ fi
 # Homebrew required to install the cask.
 if ! command -v brew >/dev/null 2>&1; then
   warn "Homebrew not found — needed to install the cmux cask."
-  warn "Install it from https://brew.sh then re-run: bash vz-ai-stack.sh install $PHASE"
+  warn "Install it from https://brew.sh then re-run: bash mayssam-ai-stack.sh install $PHASE"
   exit 0
 fi
 
@@ -89,7 +89,7 @@ if ! brew tap 2>/dev/null | grep -qxi "$CMUX_TAP"; then
   if ! brew tap "$CMUX_TAP" 2>&1 | tail -5; then
     warn "Failed to tap $CMUX_TAP (no network, or the tap was renamed/removed upstream)."
     warn "Check https://github.com/manaflow-ai/cmux for the current install steps,"
-    warn "then re-run: bash vz-ai-stack.sh install $PHASE"
+    warn "then re-run: bash mayssam-ai-stack.sh install $PHASE"
     exit 0
   fi
 fi
@@ -101,7 +101,7 @@ if ! brew install --cask "$CMUX_CASK" 2>&1 | tail -8; then
   warn "brew install --cask $CMUX_CASK did not complete cleanly."
   warn "If it was a symlink/quarantine prompt, finish it manually, or try:"
   warn "    brew install --cask --force $CMUX_CASK"
-  warn "Then re-run: bash vz-ai-stack.sh install $PHASE   (it will converge if cmux.app exists)."
+  warn "Then re-run: bash mayssam-ai-stack.sh install $PHASE   (it will converge if cmux.app exists)."
   # Some cask failures still leave a working app; verify before giving up.
   if ! _cmux_installed; then
     exit 0
@@ -111,7 +111,7 @@ fi
 # --- 3. Verify the install landed -----------------------------------------
 if ! _cmux_installed; then
   warn "cmux does not appear installed after brew install (no cask record, no cmux.app)."
-  warn "Re-run after resolving the brew output above: bash vz-ai-stack.sh install $PHASE"
+  warn "Re-run after resolving the brew output above: bash mayssam-ai-stack.sh install $PHASE"
   exit 0
 fi
 ok "cmux installed (cmux.app present)"

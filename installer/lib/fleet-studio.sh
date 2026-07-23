@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet-studio.sh — `vz-ai-stack.sh fleet-studio [--port N] [--no-open]`
+# fleet-studio.sh — `mayssam-ai-stack.sh fleet-studio [--port N] [--no-open]`
 #
 # Serves doc/FLEET.html on a LOOPBACK-ONLY (127.0.0.1) static server and opens
 # your browser to it. Fleet Studio reviews + edits every file in agent-profiles/
@@ -35,7 +35,7 @@ while (( $# )); do
     --no-open) DO_OPEN=0 ;;
     -h|--help)
       cat <<EOF
-vz-ai-stack.sh fleet-studio [--port N] [--no-open]
+mayssam-ai-stack.sh fleet-studio [--port N] [--no-open]
   Serve doc/FLEET.html on http://127.0.0.1:N and open it in your browser to
   review + edit every file in agent-profiles/ (writes go straight to disk via
   the browser's File System Access API — Chrome/Edge for live editing).

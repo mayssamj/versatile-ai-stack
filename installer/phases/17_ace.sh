@@ -38,7 +38,7 @@
 # (Unsloth). If user ever runs the AppWorld task (agent-interaction sim
 # which DOES execute generated tool calls), they should move into pi-v1.
 #
-# Standalone install: `bash vz-ai-stack.sh install 17`.
+# Standalone install: `bash mayssam-ai-stack.sh install 17`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -82,7 +82,7 @@ precheck() {
 }
 
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
-  ok "Phase 17 — ACE — already installed (use 'vz-ai-stack.sh install 17' to re-run)"
+  ok "Phase 17 — ACE — already installed (use 'mayssam-ai-stack.sh install 17' to re-run)"
   exit 0
 fi
 
@@ -91,7 +91,7 @@ hdr "Phase 17 — ACE (Agentic Context Engineering)"
 # --- Preconditions ---
 command -v uv >/dev/null 2>&1 || {
   err "uv not on PATH. uv is installed by Phase 14 (Unsloth). Run:"
-  err "  bash $AI_STACK/vz-ai-stack.sh install 14"
+  err "  bash $AI_STACK/mayssam-ai-stack.sh install 14"
   exit 1
 }
 command -v git >/dev/null 2>&1 || { err "git not on PATH."; exit 1; }
@@ -136,7 +136,7 @@ ACE_KEY_CURRENT="$(get_env ACE_LITELLM_KEY '')"
 if [[ -z "$ACE_KEY_CURRENT" ]] \
    || ! litellm_scoped_curl "$ACE_KEY_CURRENT" -sf --max-time 5 \
         http://litellm:4000/v1/models >/dev/null 2>&1; then
-  # Mint against the fixed SUPERSET so `vz-ai-stack.sh model assign/sync` can re-point
+  # Mint against the fixed SUPERSET so `mayssam-ai-stack.sh model assign/sync` can re-point
   # ACE without re-minting. Canonical IDs are registered in config.yaml by Phase
   # 01 first (superset-before-mint).
   log "Minting LiteLLM virtual key for ACE (models=superset[local,local-heavy])..."
@@ -162,7 +162,7 @@ ACE_KEY_NOW="$(get_env ACE_LITELLM_KEY '')"
 # fallback when models.yml is unreadable (the always-servable keyless net), and
 # the gate drops to `.default` (local) only for a down lmstudio assignment. If
 # ACE upstream IGNORES OPENAI_MODEL/ACE_DEFAULT_MODEL, the binding is
-# allowlist-only — `vz-ai-stack.sh model list` flags ACE as "(allowlist-only)" so it
+# allowlist-only — `mayssam-ai-stack.sh model list` flags ACE as "(allowlist-only)" so it
 # never falsely reads as model-bound.
 ACE_MODEL="local"
 if [[ -f "$AI_STACK/installer/models.yml" ]] && command -v yq >/dev/null 2>&1; then
@@ -191,7 +191,7 @@ litellm_reconcile_key ACE_LITELLM_KEY "$ACE_MODEL" local local-heavy
 # `from X import Y` in ACE's provider files.
 cat > "$ACE_DIR/.env" <<ENVEOF
 # ai-stack: rendered by installer/phases/17_ace.sh on $(date -u +%FT%TZ).
-# Do not edit; re-run 'bash vz-ai-stack.sh install 17' to regenerate.
+# Do not edit; re-run 'bash mayssam-ai-stack.sh install 17' to regenerate.
 OPENAI_API_KEY=$ACE_KEY_NOW
 OPENAI_BASE_URL=http://litellm:4000/v1
 OPENAI_MODEL=$ACE_MODEL
@@ -221,7 +221,7 @@ cat > "$ACE_WRAPPER" <<'WRAPEOF'
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACE_DIR="$AI_STACK/ace"
-[[ -d "$ACE_DIR/.git" ]] || { echo "ACE not installed — run 'bash vz-ai-stack.sh install 17'" >&2; exit 1; }
+[[ -d "$ACE_DIR/.git" ]] || { echo "ACE not installed — run 'bash mayssam-ai-stack.sh install 17'" >&2; exit 1; }
 
 case "${1:-}" in
   --help|-h|"")
@@ -270,7 +270,7 @@ ok "wrote $ACE_WRAPPER"
 # --- 7. Smoke test: wrapper runs (hard-err per Reviewer A) ---
 if ! "$ACE_WRAPPER" --help >/dev/null 2>&1; then
   err "bin/ace --help failed — wrapper broken; phase will not stamp."
-  err "Inspect: $ACE_WRAPPER and re-run 'bash vz-ai-stack.sh install 17'."
+  err "Inspect: $ACE_WRAPPER and re-run 'bash mayssam-ai-stack.sh install 17'."
   exit 1
 fi
 ok "bin/ace --help: smoke-test passed"

@@ -13,8 +13,8 @@
 #   2  services    — install AND start AND verify (OrbStack/docker, Ollama).
 #   3  opt-in      — each owned by its own phase (lms, openshell, blaxel, …); NOT here.
 #
-# Sourced by vz-ai-stack.sh (after common.sh) and by Phase 00/01. Also runnable as
-# `vz-ai-stack.sh deps [--check]`. Safe to source twice.
+# Sourced by mayssam-ai-stack.sh (after common.sh) and by Phase 00/01. Also runnable as
+# `mayssam-ai-stack.sh deps [--check]`. Safe to source twice.
 
 # --- the manifest (single source of truth; doc/PREREQUISITES.md mirrors this) ----
 # Core brew formulae. `<formula>` may carry a version (node@22); the short name is
@@ -44,7 +44,7 @@ command -v note >/dev/null 2>&1 || note() { printf '  %s\n' "$*"; }
 command -v hdr  >/dev/null 2>&1 || hdr()  { printf '\n=== %s ===\n' "$*"; }
 
 # The Docker-engine registry (engine_select/engine_ensure/engine_pin/engine_socket/
-# engine_display/_engine_valid). vz-ai-stack.sh already sources it before deps.sh, but
+# engine_display/_engine_valid). mayssam-ai-stack.sh already sources it before deps.sh, but
 # the standalone `deps`/phase entrypoints don't — source it here (idempotent, guarded
 # by docker-engine.sh's own load-once flag) so ensure_docker_engine + deps_report's
 # engine status block resolve their helpers. Needs AI_STACK (set by the caller).
@@ -290,7 +290,7 @@ _dep_ollama_patch_env() {
     # formula and RE-WIPES the env we just set (the exact regression this function
     # exists to prevent) — a container call may still hit 127.0.0.1. Surface it loudly
     # so it isn't a silent re-break (review finding).
-    warn "ollama: launchctl bootstrap failed — falling back to 'brew services restart', which may RE-WIPE OLLAMA_HOST. Verify 'lsof -nP -iTCP:11434' shows *:11434; re-run 'vz-ai-stack.sh doctor ollama_models' if local models 500."
+    warn "ollama: launchctl bootstrap failed — falling back to 'brew services restart', which may RE-WIPE OLLAMA_HOST. Verify 'lsof -nP -iTCP:11434' shows *:11434; re-run 'mayssam-ai-stack.sh doctor ollama_models' if local models 500."
     brew services restart ollama 2>&1 | tail -2 || warn "ollama reload failed"
   fi
 }
@@ -362,18 +362,18 @@ deps_report() {
     _gw_host="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
     note "Docker engine: $_sel ($(engine_display "$_sel"))   socket: $_sock"
     [[ "$_ctx_host" == "$_sock" ]] && ok "  CLI context socket == selected" || warn "  CLI context socket ($_ctx_host) != selected ($_sock)"
-    [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: vz-ai-stack.sh doctor (docker-engine-consistency check)"
+    [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: mayssam-ai-stack.sh doctor (docker-engine-consistency check)"
   else
     # ADVISORY ONLY — deliberately does NOT bump rc. Engine selection is materialized
     # during install / Phase 00, so a pre-install box must not hard-fail
     # `deps_report --check` merely because no engine is pinned yet.
-    warn "Docker engine: not selected — run: vz-ai-stack.sh docker-engine select"
+    warn "Docker engine: not selected — run: mayssam-ai-stack.sh docker-engine select"
   fi
 
   if (( check_only )); then
     echo
     (( rc == 0 )) && ok "all host dependencies present + services running" \
-                  || err "one or more host dependencies missing/down (run 'vz-ai-stack.sh deps' to install)"
+                  || err "one or more host dependencies missing/down (run 'mayssam-ai-stack.sh deps' to install)"
     return $rc
   fi
   if (( rc )); then

@@ -31,7 +31,7 @@
 #      the first MCP query from any client returns useful results without
 #      requiring the user to choose a repo first.
 #
-# Standalone install: `bash vz-ai-stack.sh install 16`.
+# Standalone install: `bash mayssam-ai-stack.sh install 16`.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -46,7 +46,7 @@ LUMEN_SHA256="367aa8b50b1cc605801a03a814a6f953342fa1a0116074f132d32ef61c441b13"
 LUMEN_DIR="$AI_STACK/vendor/lumen"
 LUMEN_BIN="$LUMEN_DIR/$LUMEN_ASSET"
 # Embedding model. DURABLE: read the `served` id of the embedder assigned to
-# `lumen` in installer/models.yml (set via `vz-ai-stack.sh embedding assign lumen
+# `lumen` in installer/models.yml (set via `mayssam-ai-stack.sh embedding assign lumen
 # <model>`) so a re-install honors a re-point. The hardcoded default below is the
 # FALLBACK — a missing models.yml / embeddings section / yq never breaks the phase.
 LUMEN_EMBED_MODEL="ordis/jina-embeddings-v2-base-code"

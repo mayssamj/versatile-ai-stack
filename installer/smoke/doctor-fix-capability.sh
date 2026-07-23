@@ -19,7 +19,7 @@
 #   5. a check with NO _fix at all is unaffected (no fix branch)
 #
 # MUST run under bash 5 (the repo re-execs into it; /bin/bash 3.2 dies on inherit_errexit).
-#   bash installer/smoke/doctor-fix-capability.sh   (or: vz-ai-stack.sh test doctor-fix-capability)
+#   bash installer/smoke/doctor-fix-capability.sh   (or: mayssam-ai-stack.sh test doctor-fix-capability)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; export AI_STACK
 source "$AI_STACK/installer/lib/common.sh"
@@ -49,7 +49,7 @@ CHK
 mk_adv()   { cat > "$1/zzadv.sh"   <<'CHK'
 CHECKS+=(zzadv); CHECK_TITLE[zzadv]="synthetic ADVISORY check"
 zzadv_diagnose(){ echo "zzadv: broken (manual only)"; return 1; }
-zzadv_fix(){ warn "ADVICE_XYZZY: run 'vz-ai-stack.sh install foo' by hand"; return 1; }
+zzadv_fix(){ warn "ADVICE_XYZZY: run 'mayssam-ai-stack.sh install foo' by hand"; return 1; }
 CHK
 }
 mk_heal()  { cat > "$1/zzheal.sh"  <<'CHK'

@@ -82,7 +82,7 @@ uv pip install --python .venv/bin/python -r requirements.txt 2>&1 | tail -5 \
 # DURABLE embedder resolution. ingest.py + mcp_server.py are COUPLED — both
 # target the same Qdrant `ai-stack-docs` collection, pinned to one vector dim. We
 # resolve the embedder assigned to `docs` in installer/models.yml (set via
-# `vz-ai-stack.sh embedding assign docs <model>`) so a re-install honors a
+# `mayssam-ai-stack.sh embedding assign docs <model>`) so a re-install honors a
 # re-point: EMBED_MODEL <- the LiteLLM `route` of that embedder, EMBED_DIM <- its
 # `dim`. The hardcoded values below (embed-local / 768) are the FALLBACK — a
 # missing models.yml / embeddings section / yq leaves them untouched, so the

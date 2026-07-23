@@ -9,7 +9,7 @@
 # `install all --include-optionals`, exactly like its sibling memory phases 39 (doc-RAG) and
 # 41 (falkordb) — see the DISCLOSURE + opt-OUT gate below for the 2026-07-16 operator decision
 # that flipped it, and decline with:
-#     HONCHO_MEMORY_OPT_IN=0 vz-ai-stack.sh install all --include-optionals
+#     HONCHO_MEMORY_OPT_IN=0 mayssam-ai-stack.sh install all --include-optionals
 # It CHANGES THE SECURITY POSTURE, so the gate DISCLOSES rather than withholds: the phase
 # prints every effect before acting. The posture it establishes (operator decision, §24 council
 # 2026-07-13): FULL-SHARED memory — all consumers share one Honcho workspace, no per-agent
@@ -20,7 +20,7 @@
 # is _alive+_health-gated; `hermes config set` + `claude mcp add` (remove-then-add) re-assert
 # cleanly; `openshell policy set` re-applies the same committed policy.
 #
-# Rollback: claude mcp remove -s user honcho ; vz-ai-stack.sh stop honcho_mcp ;
+# Rollback: claude mcp remove -s user honcho ; mayssam-ai-stack.sh stop honcho_mcp ;
 #   rm installer/state/phase_40.done ; (to re-open pi/hermes :8000 egress you would have to
 #   revert the 04_openshell.sh heredoc + pi-v1.yaml — deliberately hard).
 set -Eeuo pipefail
@@ -52,14 +52,14 @@ PI_POLICY="$AI_STACK/openshell/policies/pi-v1.yaml"
 # stamped decline would flip that check live and red-bar a stack that opted out.
 if [[ "${HONCHO_MEMORY_OPT_IN:-1}" != "1" ]]; then
   note "Phase 40 (honcho_mcp) DECLINED via HONCHO_MEMORY_OPT_IN=0 — skipping (nothing stamped)."
-  note "  Re-enable with:  vz-ai-stack.sh install honcho_mcp     (default-on)"
+  note "  Re-enable with:  mayssam-ai-stack.sh install honcho_mcp     (default-on)"
   exit 0
 fi
 note "Phase 40 (honcho_mcp) — enabling honcho fleet memory. This CHANGES the security posture:"
 note "  • retires the raw honcho:8000 sandbox egress (closes the auth-off REST hole)"
 note "  • exposes a token-gated honcho-mcp shim on 127.0.0.1:$PORT for claude + the fleet"
 note "  • FULL-SHARED memory: all consumers share one Honcho workspace (no per-agent isolation)"
-note "  Decline with:  HONCHO_MEMORY_OPT_IN=0 vz-ai-stack.sh install all --include-optionals"
+note "  Decline with:  HONCHO_MEMORY_OPT_IN=0 mayssam-ai-stack.sh install all --include-optionals"
 
 precheck() {
   [[ -d "$SHIM_DIR/node_modules/@modelcontextprotocol/sdk" ]] || return 1
@@ -87,11 +87,11 @@ worktree_guard "install honcho_mcp"
 #    only api+deriver) — do NOT defer to 'install 03', which is a NO-OP on an already-stamped
 #    honcho (its precheck short-circuits). Fails only if honcho isn't installed at all.
 if ! honcho_ensure_embedding_env; then
-  err "Honcho is not installed (no honcho/.env). Install it first:  vz-ai-stack.sh install 03"
-  err "then re-run:  vz-ai-stack.sh install honcho_mcp"
+  err "Honcho is not installed (no honcho/.env). Install it first:  mayssam-ai-stack.sh install 03"
+  err "then re-run:  mayssam-ai-stack.sh install honcho_mcp"
   exit 1
 fi
-command -v node >/dev/null 2>&1 || { err "node not found on PATH. Run 'vz-ai-stack.sh deps'."; exit 1; }
+command -v node >/dev/null 2>&1 || { err "node not found on PATH. Run 'mayssam-ai-stack.sh deps'."; exit 1; }
 
 # 1. shim deps ----------------------------------------------------------------------
 log "Installing honcho-mcp shim deps…"
@@ -133,7 +133,7 @@ if [[ -n "$OSH" ]]; then
     if "$OSH" policy set "$_sb" --policy "$_pf" --wait --timeout 60 </dev/null >/dev/null 2>&1; then
       ok "applied retired-honcho-egress policy to live sandbox $_sb (raw :8000 now denied)"
     else
-      warn "live policy set for $_sb returned non-zero — re-apply via 'vz-ai-stack.sh install 04' (fleet) / 'install 15' (pi)"
+      warn "live policy set for $_sb returned non-zero — re-apply via 'mayssam-ai-stack.sh install 04' (fleet) / 'install 15' (pi)"
     fi
   }
   _apply_policy "$SANDBOX" "$FLEET_POLICY"
@@ -153,7 +153,7 @@ if sandbox_ready "$OSH" "$SANDBOX"; then
   else
     err "Hermes fleet honcho wiring did NOT land — hermes_manager profile is missing 'honcho:' / 'host.docker.internal:${PORT}'. NOT stamping Phase 40."
     err "  Inspect: openshell sandbox exec -n $SANDBOX -- cat ~/.hermes/profiles/hermes_manager/config.yaml"
-    err "  Then re-run: vz-ai-stack.sh install honcho_mcp"
+    err "  Then re-run: mayssam-ai-stack.sh install honcho_mcp"
     exit 1
   fi
 else

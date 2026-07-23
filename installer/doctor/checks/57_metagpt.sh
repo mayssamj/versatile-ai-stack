@@ -14,22 +14,22 @@ metagpt_diagnose() {
   fi
 
   local venv="$AI_STACK/metagpt/.venv"
-  [[ -x "$venv/bin/metagpt" ]] || { echo "metagpt venv missing ($venv) — re-run 'vz-ai-stack.sh install 32'"; return 1; }
-  "$venv/bin/python" -c "import metagpt" >/dev/null 2>&1 || { echo "import metagpt failed in the venv — re-run 'vz-ai-stack.sh install 32'"; return 1; }
-  [[ -x "$AI_STACK/bin/metagpt" ]] || { echo "bin/metagpt wrapper missing — re-run 'vz-ai-stack.sh install 32'"; return 1; }
+  [[ -x "$venv/bin/metagpt" ]] || { echo "metagpt venv missing ($venv) — re-run 'mayssam-ai-stack.sh install 32'"; return 1; }
+  "$venv/bin/python" -c "import metagpt" >/dev/null 2>&1 || { echo "import metagpt failed in the venv — re-run 'mayssam-ai-stack.sh install 32'"; return 1; }
+  [[ -x "$AI_STACK/bin/metagpt" ]] || { echo "bin/metagpt wrapper missing — re-run 'mayssam-ai-stack.sh install 32'"; return 1; }
 
   local key; key="$(get_env METAGPT_LITELLM_KEY '')"
-  [[ -n "$key" ]] || { echo "METAGPT_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 32'"; return 1; }
+  [[ -n "$key" ]] || { echo "METAGPT_LITELLM_KEY missing from .env — re-run 'mayssam-ai-stack.sh install 32'"; return 1; }
   local models
   models="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
   printf '%s' "$models" | grep -q '"id"' \
     || models="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
-      echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint"
+      echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'mayssam-ai-stack.sh doctor keystore'); do NOT re-mint"
       return 1
     fi
-    echo "METAGPT_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'vz-ai-stack.sh install 32'"
+    echo "METAGPT_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'mayssam-ai-stack.sh install 32'"
     return 1
   fi
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
@@ -43,5 +43,5 @@ metagpt_diagnose() {
 }
 
 metagpt_fix() {
-  echo "vz-ai-stack.sh install 32   # rebuild venv + re-mint scoped key + refresh bin/metagpt"
+  echo "mayssam-ai-stack.sh install 32   # rebuild venv + re-mint scoped key + refresh bin/metagpt"
 }

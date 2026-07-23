@@ -26,7 +26,7 @@ KEY="$(require_env LITELLM_MASTER_KEY "")"
 
 # Networking precondition: ai-stack network must exist (run Phase 00·N).
 network_ensure_ai_stack || {
-  err "ai-stack docker network missing. Run:  bash vz-ai-stack.sh install 00n"
+  err "ai-stack docker network missing. Run:  bash mayssam-ai-stack.sh install 00n"
   exit 1
 }
 
@@ -39,7 +39,7 @@ mkdir -p "$AI_STACK/data/openwebui"
 # which, on a cold volume after `reset --hard`, leaves the HTTP server unstarted
 # (doctor alias probe gets HTTP 000, container reported unhealthy). Local + offline.
 # DURABLE: read the `served` id of the embedder assigned to `openwebui` in
-# installer/models.yml (set via `vz-ai-stack.sh embedding assign openwebui <model>`)
+# installer/models.yml (set via `mayssam-ai-stack.sh embedding assign openwebui <model>`)
 # so a restart honors a re-point. Hardcoded default = the FALLBACK; a missing
 # models.yml / embeddings section / yq never breaks the start. NB: the RAG engine
 # stays `ollama`, so the value must be an Ollama-pulled model name.

@@ -32,21 +32,21 @@ chatdev_diagnose() {
 
   # Image + both containers present (the container web archetype's footprint).
   docker image inspect "ai-stack/chatdev:local" >/dev/null 2>&1 \
-    || { echo "ChatDev image ai-stack/chatdev:local missing — re-run 'vz-ai-stack.sh install 35'"; return 1; }
+    || { echo "ChatDev image ai-stack/chatdev:local missing — re-run 'mayssam-ai-stack.sh install 35'"; return 1; }
   docker ps --format '{{.Names}}' | grep -qx "chatdev-backend" \
-    || { echo "chatdev-backend container not running — 'vz-ai-stack.sh start chatdev'"; return 1; }
+    || { echo "chatdev-backend container not running — 'mayssam-ai-stack.sh start chatdev'"; return 1; }
   docker ps --format '{{.Names}}' | grep -qx "chatdev" \
-    || { echo "chatdev (frontend) container not running — 'vz-ai-stack.sh start chatdev'"; return 1; }
+    || { echo "chatdev (frontend) container not running — 'mayssam-ai-stack.sh start chatdev'"; return 1; }
 
   # Health: the web app serves HTTP 200 at / when Vite is up. Explicit '^200$' grep
   # (NOT the http_ok helper — documented 000-concat false-healthy bug).
   if ! curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$fe_ip:$fe_port/" 2>/dev/null | grep -q '^200$'; then
-    echo "ChatDev frontend not serving 200 on http://$fe_ip:$fe_port — 'vz-ai-stack.sh start chatdev' (or check 'docker logs chatdev')"
+    echo "ChatDev frontend not serving 200 on http://$fe_ip:$fe_port — 'mayssam-ai-stack.sh start chatdev' (or check 'docker logs chatdev')"
     return 1
   fi
 
   local key; key="$(get_env CHATDEV_LITELLM_KEY '')"
-  [[ -n "$key" ]] || { echo "CHATDEV_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 35'"; return 1; }
+  [[ -n "$key" ]] || { echo "CHATDEV_LITELLM_KEY missing from .env — re-run 'mayssam-ai-stack.sh install 35'"; return 1; }
   # Gate the key probe on LiteLLM reachability so a down LiteLLM doesn't red-bar this.
   local models
   models="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
@@ -54,14 +54,14 @@ chatdev_diagnose() {
     || models="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
-      echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint."
+      echo "LiteLLM key-store DOWN (503 no_db_connection) — NOT a bad key. Heal the DB (check 05a / 'mayssam-ai-stack.sh doctor keystore'); do NOT re-mint."
       return 1
     fi
     if curl -sf --max-time 3 http://litellm:4000/health >/dev/null 2>&1 || curl -sf --max-time 3 http://127.0.0.1:4000/health >/dev/null 2>&1; then
-      echo "CHATDEV_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via 'vz-ai-stack.sh install 35'"
+      echo "CHATDEV_LITELLM_KEY rejected by LiteLLM /v1/models — re-mint via 'mayssam-ai-stack.sh install 35'"
       return 1
     fi
-    echo "LiteLLM not reachable — start it ('vz-ai-stack.sh start litellm'), then re-check"
+    echo "LiteLLM not reachable — start it ('mayssam-ai-stack.sh start litellm'), then re-check"
     return 1
   fi
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
@@ -70,13 +70,13 @@ chatdev_diagnose() {
   # local). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-down;
   # FAILs (with its own message) only on a genuine stale-key miss.
   _doctor_assert_key_allowlist "$key" CHATDEV_LITELLM_KEY chatdev "the model ChatDev calls" 35 || return 1
-  echo "ChatDev ready (image + both containers + frontend 200 + scoped key lists models); prove the swarm: vz-ai-stack.sh test 35"
+  echo "ChatDev ready (image + both containers + frontend 200 + scoped key lists models); prove the swarm: mayssam-ai-stack.sh test 35"
   return 0
 }
 
 chatdev_fix() {
   warn "(Re)build + (re)start the ChatDev containers, or re-run the phase (both idempotent):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh start chatdev"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 35"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh start chatdev"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 35"
   return 1
 }

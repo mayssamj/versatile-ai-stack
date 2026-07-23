@@ -1,4 +1,4 @@
-# vz-ai-stack
+# mayssam-versatile-ai-stack
 
 **Your own private AI cloud — 53 services, one Mac, zero bytes leaving the building.**
 
@@ -145,7 +145,7 @@ A plain-language tour of the headline pieces (the full inventory is in the table
   shared `team-protocol`, isolated inside an OpenShell sandbox. The same team is also
   realized as Pi personas (`bin/pi-as <role>`) and Claude Code agents — the manager as the main agent, the other 8 as subagents it dispatches. You can even
   chat with them from your phone via a Telegram bot. Review and edit every persona,
-  skill and bootstrap file in one page with `vz-ai-stack.sh fleet-studio` (`doc/FLEET.html`).
+  skill and bootstrap file in one page with `mayssam-ai-stack.sh fleet-studio` (`doc/FLEET.html`).
 - **Pi — sandboxed coding agent.** A coding agent locked in its own `pi-v1` sandbox
   with a tight egress allowlist — it can reach local models, memory, and your docs,
   but not Phoenix, Qdrant, the master key, or the open internet. Launch it with `bin/pi`.
@@ -186,28 +186,28 @@ cd ~/ai-stack
 #    user, NO sudo. Verifies + installs + starts + re-verifies Homebrew, the core
 #    CLI tools (yq jq node pnpm uv git tesseract openssl), OrbStack, and Ollama.
 #    `deps --check` is a read-only CI gate. (Folded into install too, so skippable.)
-bash vz-ai-stack.sh deps
+bash mayssam-ai-stack.sh deps
 
 # 2. (Optional, recommended) Enter API keys interactively — runs as your normal
 #    user. EVERY key is skippable — a local-only or Claude-subscription (-sub, incl.
 #    opus) setup needs NONE of them: local gemma + the subscription models work on
 #    the generated baseline. (Skip this — ANY `install` (all or single-phase) makes
 #    the .env baseline its first step and offers this on the first interactive run.)
-bash vz-ai-stack.sh setup
+bash mayssam-ai-stack.sh setup
 
 # 3. The ONE sudo step (first time only).
 #    Writes the /etc/hosts block, binds the 127.0.10.x loopback aliases to lo0,
 #    installs a launchd plist so they persist across reboots, and flushes DNS.
 #    Idempotent — safe to re-run.
-sudo bash vz-ai-stack.sh prepare-sudo
+sudo bash mayssam-ai-stack.sh prepare-sudo
 
 # 4. Full install — runs as your normal user, NO sudo (it refuses to run under sudo).
 #    Installs all core phases top-to-bottom; resumes if interrupted.
 #    Preview first with `install all --dry-run` (alias --plan) — read-only, changes nothing.
-bash vz-ai-stack.sh install all
+bash mayssam-ai-stack.sh install all
 
 # 5. Verify everything is healthy. Expect 68/68.
-bash vz-ai-stack.sh doctor
+bash mayssam-ai-stack.sh doctor
 ```
 
 > No cloud keys? You're done — `setup` (or the first-step baseline that every
@@ -216,7 +216,7 @@ bash vz-ai-stack.sh doctor
 > and `setup`) are optional-but-recommended and both run as your normal user; only
 > `prepare-sudo` needs `sudo`.
 
-> Tip: a cheap `bash vz-ai-stack.sh verify` (< 10 sec) probes the alias chain end-to-end
+> Tip: a cheap `bash mayssam-ai-stack.sh verify` (< 10 sec) probes the alias chain end-to-end
 > and is worth running *before* the full install.
 
 > Red checks — or an install that stopped partway? Both print a pointer to
@@ -297,7 +297,7 @@ sequenceDiagram
 cp ~/Downloads/some-paper.pdf ~/ai-stack/ingestor/inbox/
 cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py
 curl -s http://qdrant:6333/collections/ai-stack-docs | jq '.result.points_count'
-bash ~/ai-stack/vz-ai-stack.sh start docs_mcp
+bash ~/ai-stack/mayssam-ai-stack.sh start docs_mcp
 curl -s http://docs-mcp:8765/health
 ```
 
@@ -446,37 +446,37 @@ subcommands are:
 
 ```bash
 # Bootstrap host deps / .env before installing (both no-sudo; see quickstart)
-bash ~/ai-stack/vz-ai-stack.sh deps [--check]      # host-dependency bootstrap / CI gate
-bash ~/ai-stack/vz-ai-stack.sh setup               # interactive .env / API-key bootstrap (alias: keys)
+bash ~/ai-stack/mayssam-ai-stack.sh deps [--check]      # host-dependency bootstrap / CI gate
+bash ~/ai-stack/mayssam-ai-stack.sh setup               # interactive .env / API-key bootstrap (alias: keys)
 
 # Pick the Docker engine the WHOLE stack runs on (OrbStack default; also Docker
 # Desktop / Colima / Podman). Pins AI_STACK_DOCKER_ENGINE → one DOCKER_HOST for
 # every container + the OpenShell gateway. (Any command also takes `--engine <id>`.)
-bash ~/ai-stack/vz-ai-stack.sh docker-engine select   # interactive picker (also: status | set <id> | context)
+bash ~/ai-stack/mayssam-ai-stack.sh docker-engine select   # interactive picker (also: status | set <id> | context)
 # Whether to also point your GLOBAL `docker context` at the stack engine is a saved
 # preference (AI_STACK_DOCKER_CONTEXT: switch=default | keep), set in `setup` or via
 # `docker-engine context <switch|keep>` — never an interactive prompt during install/doctor.
 
 # Install/re-run one phase by NAME or number (run `phases` to list id→name)
-bash ~/ai-stack/vz-ai-stack.sh install phoenix     # == install 01h
-bash ~/ai-stack/vz-ai-stack.sh install all --dry-run  # read-only preview (alias --plan)
-bash ~/ai-stack/vz-ai-stack.sh phases
+bash ~/ai-stack/mayssam-ai-stack.sh install phoenix     # == install 01h
+bash ~/ai-stack/mayssam-ai-stack.sh install all --dry-run  # read-only preview (alias --plan)
+bash ~/ai-stack/mayssam-ai-stack.sh phases
 
 # Manage embedding models per-service or globally (guards dim/coupling)
-bash ~/ai-stack/vz-ai-stack.sh embedding list|show|assign <service> <model>|global <model>
+bash ~/ai-stack/mayssam-ai-stack.sh embedding list|show|assign <service> <model>|global <model>
 
 # Focused per-command help (bare `help` / `--help` = full command list)
-bash ~/ai-stack/vz-ai-stack.sh install --help      # == help install
-bash ~/ai-stack/vz-ai-stack.sh help <service>      # per-service: what / config / usage
+bash ~/ai-stack/mayssam-ai-stack.sh install --help      # == help install
+bash ~/ai-stack/mayssam-ai-stack.sh help <service>      # per-service: what / config / usage
 
 # See declared vs actual state
-bash ~/ai-stack/vz-ai-stack.sh status
+bash ~/ai-stack/mayssam-ai-stack.sh status
 
 # Take ownership of a container started outside the installer
-bash ~/ai-stack/vz-ai-stack.sh adopt <service>
+bash ~/ai-stack/mayssam-ai-stack.sh adopt <service>
 
 # Apply queued restarts (e.g. after .env changes)
-bash ~/ai-stack/vz-ai-stack.sh apply-restarts
+bash ~/ai-stack/mayssam-ai-stack.sh apply-restarts
 ```
 
 Add this to your shell rc for the short `stack` alias:
@@ -538,7 +538,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   matrix, 3 sequence diagrams for the most-important request flows,
   startup-order graph, and a failure-mode-cascade table for triage.
 - **[models.md](doc/models.md)** — declarative model ↔ agent binding. `models.yml`
-  as the single source of truth, the three local models, `vz-ai-stack.sh model
+  as the single source of truth, the three local models, `mayssam-ai-stack.sh model
   {list,assign,sync,superset}`, availability-gating, and the scoped-key superset.
 
 ### Operate
@@ -600,7 +600,7 @@ the guard rails.
 
 ```
 ~/ai-stack/
-├── vz-ai-stack.sh              # entry point — bash-5+ gate + subcommand dispatcher
+├── mayssam-ai-stack.sh              # entry point — bash-5+ gate + subcommand dispatcher
 ├── services.yml            # single source of truth (53 services, 4 profiles)
 ├── .env                    # secrets + config (0600)
 ├── README.md ← you are here
@@ -629,17 +629,17 @@ the guard rails.
 ## Status
 
 See [CHANGELOG.md](CHANGELOG.md) and [doc/HANDOFF.md](doc/HANDOFF.md) for the full
-snapshot; run `bash vz-ai-stack.sh doctor` for live state. Top-line:
+snapshot; run `bash mayssam-ai-stack.sh doctor` for live state. Top-line:
 
 - **29 core install phases (+20 opt-in extras: portless · cmux · skillspector · openagents · lmstudio · sourcegraph · aionui · openwork · understand · ingress · metagpt · agentscope · oasis · chatdev · aitown · concordia · slack · fleet_memory · honcho_mcp · falkordb_mcp) · 53 services · 84 doctor checks.**
-- Phases install by **name or number** (`install phoenix` == `install 01h`); `vz-ai-stack.sh phases` lists id→name.
+- Phases install by **name or number** (`install phoenix` == `install 01h`); `mayssam-ai-stack.sh phases` lists id→name.
 - A clean `reset --confirm hard --yes` → `install all` reaches **doctor green**
   (verified end-to-end 2026-05-31, incl. Phase 18 RLM, Phase 19 claw3d, Phase 20 Telegram);
   the 8 opt-in extras' checks (34–38, 49, 50, 51) pass-as-skip when not installed, check 39
   (`openshell_storm`) reports the watchdog status, and check 45 (`tutorial`, always-on)
   asserts `doc/TUTORIAL.html` and `doc/DIAGRAMS.html` are self-contained and in sync with their markdown sources.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
-  of truth) and rendered by `vz-ai-stack.sh model {list,assign,sync,superset}`. Three local
+  of truth) and rendered by `mayssam-ai-stack.sh model {list,assign,sync,superset}`. Three local
   models: `local` (Ollama nemotron-3-nano:4b — the always-on fallback agents gate to when their runtime is down),
   `local` (LM Studio MLX, heavy reasoning), `local` (LM Studio MLX,
   coding). lmstudio-assigned agents auto-fall-back to `local` when LM Studio (:1234)

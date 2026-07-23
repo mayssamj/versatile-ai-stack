@@ -80,7 +80,7 @@ phoenix_project_fix() {
   # dedicated smoke test which is the correct, scoped, operator-controlled path.
   warn "The 'ai-stack' Phoenix project is created by the first real inference call."
   warn "Run the stack smoke test to materialise it (no side-effects beyond one trace):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh smoke 01"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh smoke 01"
   warn "The smoke test sends exactly one call through LiteLLM and waits for the OTLP"
   warn "batch to flush. Re-run doctor after it completes."
   return 1

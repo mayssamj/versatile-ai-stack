@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke for the codex-bridge doctor check (installer/doctor/checks/55_codex_bridge.sh).
-# Named 55.sh so `vz-ai-stack.sh test 55` resolves it (cmd_test strips after '_').
+# Named 55.sh so `mayssam-ai-stack.sh test 55` resolves it (cmd_test strips after '_').
 #
 # Pins every branch of codex_bridge_diagnose:
 #   - not installed (no plist, not healthy)   -> pass + opt-in message

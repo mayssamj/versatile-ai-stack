@@ -188,7 +188,7 @@ cmd_render() {
   # then inject the new section, then append the rest.  If CHANGELOG.md does not
   # exist, create it with a standard preamble.
   if [[ ! -f "$CHANGELOG_MD" ]]; then
-    printf '# ai-stack-installer — change log\n\nAuto-appended by `vz-ai-stack.sh`. Newest entries at the top.\n\n---\n\n' > "$CHANGELOG_MD"
+    printf '# ai-stack-installer — change log\n\nAuto-appended by `mayssam-ai-stack.sh`. Newest entries at the top.\n\n---\n\n' > "$CHANGELOG_MD"
   fi
 
   local tmp; tmp="$(mktemp "${CHANGELOG_MD}.XXXXXX")"

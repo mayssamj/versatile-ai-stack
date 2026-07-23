@@ -2,17 +2,17 @@
 # ai-stack-installer — single-command bootstrap for the personal multi-agent AI stack.
 #
 # Usage:
-#   bash vz-ai-stack.sh                  interactive top-to-bottom install (resumes)
-#   bash vz-ai-stack.sh install <phase>  install one phase (e.g. 01h)
-#   bash vz-ai-stack.sh test <phase>     run smoke tests for one phase
-#   bash vz-ai-stack.sh status           tabular service status (declared vs actual)
-#   bash vz-ai-stack.sh doctor [<svc>]   diagnose & offer fixes
-#   bash vz-ai-stack.sh adopt <svc>      take ownership of a container started outside the installer
-#   bash vz-ai-stack.sh apply-restarts   drain the queue of services needing a restart
-#   bash vz-ai-stack.sh logs <svc> [-f]  tail recent logs from a service
-#   bash vz-ai-stack.sh history          assemble per-run CHANGELOG.d entries into one view
-#   bash vz-ai-stack.sh gc               list/clean partial container orphans
-#   bash vz-ai-stack.sh reset --confirm soft|hard|nuke    destructive resets, tiered
+#   bash mayssam-ai-stack.sh                  interactive top-to-bottom install (resumes)
+#   bash mayssam-ai-stack.sh install <phase>  install one phase (e.g. 01h)
+#   bash mayssam-ai-stack.sh test <phase>     run smoke tests for one phase
+#   bash mayssam-ai-stack.sh status           tabular service status (declared vs actual)
+#   bash mayssam-ai-stack.sh doctor [<svc>]   diagnose & offer fixes
+#   bash mayssam-ai-stack.sh adopt <svc>      take ownership of a container started outside the installer
+#   bash mayssam-ai-stack.sh apply-restarts   drain the queue of services needing a restart
+#   bash mayssam-ai-stack.sh logs <svc> [-f]  tail recent logs from a service
+#   bash mayssam-ai-stack.sh history          assemble per-run CHANGELOG.d entries into one view
+#   bash mayssam-ai-stack.sh gc               list/clean partial container orphans
+#   bash mayssam-ai-stack.sh reset --confirm soft|hard|nuke    destructive resets, tiered
 #
 # Conservative-recreate mode by default: the installer will never `docker rm -f`
 # an already-running container without explicit confirmation. See `adopt` above.
@@ -34,7 +34,7 @@ ai-stack-installer requires bash 5+ (you're on bash 3.2, which macOS ships).
 Install brew-bash and re-run:
 
     brew install bash
-    bash ~/ai-stack/vz-ai-stack.sh
+    bash ~/ai-stack/mayssam-ai-stack.sh
 
 EOF
   exit 2
@@ -46,7 +46,7 @@ shopt -s inherit_errexit nullglob
 # Use pwd -P (physical path; resolves symlinks) so attacker-planted symlink
 # chains don't redirect AI_STACK to a tree they control (Reviewer Y-2/Y-3).
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" \
-  || { echo "vz-ai-stack.sh: cannot resolve script directory" >&2; exit 2; }
+  || { echo "mayssam-ai-stack.sh: cannot resolve script directory" >&2; exit 2; }
 export AI_STACK
 LIB="$AI_STACK/installer/lib"
 
@@ -62,12 +62,12 @@ if (( ${EUID:-$(id -u)} == 0 )); then
       exit 2 ;;
   esac
   if [[ -L "${BASH_SOURCE[0]}" ]]; then
-    echo "✗ vz-ai-stack.sh is a symlink. Refusing to run as root." >&2
+    echo "✗ mayssam-ai-stack.sh is a symlink. Refusing to run as root." >&2
     exit 2
   fi
   if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
     echo "✗ Cannot determine invoking user (SUDO_USER unset or 'root')." >&2
-    echo "  Use 'sudo bash vz-ai-stack.sh prepare-sudo', not 'sudo -i' or 'su -'." >&2
+    echo "  Use 'sudo bash mayssam-ai-stack.sh prepare-sudo', not 'sudo -i' or 'su -'." >&2
     exit 2
   fi
   __ai_stack_owner="$(stat -f '%Su' "$AI_STACK" 2>/dev/null)" \
@@ -76,7 +76,7 @@ if (( ${EUID:-$(id -u)} == 0 )); then
     echo "✗ $AI_STACK owned by '$__ai_stack_owner', not invoking user '$SUDO_USER'. Refusing." >&2
     exit 2
   fi
-  for __f in vz-ai-stack.sh \
+  for __f in mayssam-ai-stack.sh \
              installer/lib/common.sh installer/lib/env.sh installer/lib/docker.sh \
              installer/lib/validate.sh installer/lib/prompt.sh installer/lib/litellm.sh \
              installer/lib/bootstrap.sh installer/lib/network.sh; do
@@ -110,13 +110,13 @@ _vz_args=(); while (( $# )); do
   case "$1" in
     --engine)
       if (( $# < 2 )); then
-        echo "vz-ai-stack.sh: --engine requires an <id> (orbstack|docker-desktop|colima|podman)" >&2
+        echo "mayssam-ai-stack.sh: --engine requires an <id> (orbstack|docker-desktop|colima|podman)" >&2
         exit 2
       fi
       shift; export AI_STACK_ENGINE_FLAG="$1";;
     --engine=*)
       export AI_STACK_ENGINE_FLAG="${1#--engine=}"
-      [[ -n "$AI_STACK_ENGINE_FLAG" ]] || { echo "vz-ai-stack.sh: --engine= requires a value" >&2; exit 2; }
+      [[ -n "$AI_STACK_ENGINE_FLAG" ]] || { echo "mayssam-ai-stack.sh: --engine= requires a value" >&2; exit 2; }
       ;;
     *) _vz_args+=("$1");;
   esac
@@ -149,7 +149,7 @@ trap 'err "ERR line $LINENO: $BASH_COMMAND (exit=$?)"' ERR
 preflight() {
   # Refuse sudo — it would strip PATH and might chown .env to root.
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-    err "Do not run vz-ai-stack.sh under sudo. Run as your normal user."
+    err "Do not run mayssam-ai-stack.sh under sudo. Run as your normal user."
     exit 2
   fi
 
@@ -186,86 +186,86 @@ usage() {
 ai-stack-installer — usage:
 
   First-run bootstrap (recommended):
-    sudo bash vz-ai-stack.sh prepare-sudo   one-time host-system setup (sudo)
-    bash vz-ai-stack.sh setup               (optional) enter API keys — all skippable; local + Claude-sub need none
-    bash vz-ai-stack.sh                     full install (no sudo; offers setup on first run)
+    sudo bash mayssam-ai-stack.sh prepare-sudo   one-time host-system setup (sudo)
+    bash mayssam-ai-stack.sh setup               (optional) enter API keys — all skippable; local + Claude-sub need none
+    bash mayssam-ai-stack.sh                     full install (no sudo; offers setup on first run)
 
   All subcommands:
-    vz-ai-stack.sh                          interactive top-to-bottom install
-    vz-ai-stack.sh prepare-sudo             write /etc/hosts + flush DNS (REQUIRES sudo)
-    vz-ai-stack.sh install <phase>          install one phase BY ID or NAME, e.g.
-                                          vz-ai-stack.sh install 01h
-                                          vz-ai-stack.sh install phoenix
-                                          vz-ai-stack.sh install hermes_telegram  (alias: telegram)
-                                          vz-ai-stack.sh install docs_ingestor    (a 'status' service name → its phase)
-    vz-ai-stack.sh install [all] --dry-run  preview ONLY: host-deps status + the ordered
+    mayssam-ai-stack.sh                          interactive top-to-bottom install
+    mayssam-ai-stack.sh prepare-sudo             write /etc/hosts + flush DNS (REQUIRES sudo)
+    mayssam-ai-stack.sh install <phase>          install one phase BY ID or NAME, e.g.
+                                          mayssam-ai-stack.sh install 01h
+                                          mayssam-ai-stack.sh install phoenix
+                                          mayssam-ai-stack.sh install hermes_telegram  (alias: telegram)
+                                          mayssam-ai-stack.sh install docs_ingestor    (a 'status' service name → its phase)
+    mayssam-ai-stack.sh install [all] --dry-run  preview ONLY: host-deps status + the ordered
                                           phases (done vs would-run). Changes nothing. (alias --plan)
-    vz-ai-stack.sh install all --include-optionals
+    mayssam-ai-stack.sh install all --include-optionals
                                           ALSO install every opt-in phase (all phases minus core)
                                           after the core run — best-effort: a failing optional
                                           warns + continues. (alias --with-optionals)
-    vz-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
-    vz-ai-stack.sh test <phase|service>     run smoke tests for one phase (id, name, or a
+    mayssam-ai-stack.sh phases                   list every phase as `id  name` (also: steps, list)
+    mayssam-ai-stack.sh test <phase|service>     run smoke tests for one phase (id, name, or a
                                           service name → its owning phase's smoke)
-    vz-ai-stack.sh deps [--check]           show the host dependency map; install/start
+    mayssam-ai-stack.sh deps [--check]           show the host dependency map; install/start
                                           what's missing (--check = read-only, CI exit code)
-    vz-ai-stack.sh setup                    interactive .env / API-key bootstrap (alias: keys);
+    mayssam-ai-stack.sh setup                    interactive .env / API-key bootstrap (alias: keys);
                                           all keys optional + skippable; local + Claude-sub need none
-    vz-ai-stack.sh status [--versions]      tabular service status; --versions shows a
+    mayssam-ai-stack.sh status [--versions]      tabular service status; --versions shows a
                                         focused installed-vs-available table (add --local = installed only, no network)
-    vz-ai-stack.sh help <service>           what it is · how it's configured · how to use
-    vz-ai-stack.sh help services            list services that have help prose
-    vz-ai-stack.sh help regen [<svc>]       refresh help prose from the live codebase
+    mayssam-ai-stack.sh help <service>           what it is · how it's configured · how to use
+    mayssam-ai-stack.sh help services            list services that have help prose
+    mayssam-ai-stack.sh help regen [<svc>]       refresh help prose from the live codebase
                                         ([--apply] writes; [--check] CI staleness; [--model <m>])
-    vz-ai-stack.sh model list [--json]      show the model<->agent binding matrix (models.yml)
-    vz-ai-stack.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
-    vz-ai-stack.sh model assign all <m>     blanket-assign EVERY agent to <m> (before→after + models.yml.bak), then sync
-    vz-ai-stack.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
+    mayssam-ai-stack.sh model list [--json]      show the model<->agent binding matrix (models.yml)
+    mayssam-ai-stack.sh model assign <a> <m>     re-point agent <a> to model <m> (then sync that agent)
+    mayssam-ai-stack.sh model assign all <m>     blanket-assign EVERY agent to <m> (before→after + models.yml.bak), then sync
+    mayssam-ai-stack.sh model sync [<a>]         render every agent + LiteLLM model_list from models.yml
                                         (opt-in; NOT run by 'install all'. --dry-run / --no-restart)
-    vz-ai-stack.sh embedding list [--json]  list embedding models (registry) + per-service assignments
-    vz-ai-stack.sh embedding show [<svc>]   current assignment(s) + consistency status
-    vz-ai-stack.sh embedding assign <svc> <m>   assign an embedder to a service (docs|openwebui|lumen|
+    mayssam-ai-stack.sh embedding list [--json]  list embedding models (registry) + per-service assignments
+    mayssam-ai-stack.sh embedding show [<svc>]   current assignment(s) + consistency status
+    mayssam-ai-stack.sh embedding assign <svc> <m>   assign an embedder to a service (docs|openwebui|lumen|
                                         mempalace|honcho); [--dry-run] [--force]. Refuses changing `docs`
                                         to a different vector dim (Qdrant collection is dim-pinned) w/o
                                         --force; warns on code/text kind mismatch.
-    vz-ai-stack.sh embedding global <m>     set the general-text embedder for docs+openwebui; [--dry-run]
+    mayssam-ai-stack.sh embedding global <m>     set the general-text embedder for docs+openwebui; [--dry-run]
                                         [--force]. Refuses code-tuned (lumen) / on-device (mempalace).
                                         (assignments live in models.yml .embeddings/.embedding_assignments;
                                         re-run the owning service phase to apply.)
-    vz-ai-stack.sh hermes <role> ["prompt"] [-m <model>]  run ONE Hermes agent (manager techlead frontend backend ml qa
+    mayssam-ai-stack.sh hermes <role> ["prompt"] [-m <model>]  run ONE Hermes agent (manager techlead frontend backend ml qa
                                         reviewing sre incident) — interactive TUI, or one-shot with a "prompt".
-                                        e.g. vz-ai-stack.sh hermes techlead   |   hermes backend "design POST /tokens"
-    vz-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
-    vz-ai-stack.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
-    vz-ai-stack.sh fleet remove <name>      remove a fleet profile (reverses add)
-    vz-ai-stack.sh fleet new <name> [--profiles a,b,c]   create a SEPARATE isolated fleet sandbox <name>-v1
-    vz-ai-stack.sh fleet destroy <name>     tear down a fleet created by `fleet new`
-                                        NOTE: `vz-ai-stack.sh install fleet|hermes` runs the PHASE (04f
-                                        re-render); `vz-ai-stack.sh fleet <add|remove|list|new|destroy>`
+                                        e.g. mayssam-ai-stack.sh hermes techlead   |   hermes backend "design POST /tokens"
+    mayssam-ai-stack.sh fleet list [--json]      list Hermes fleet profiles (models.yml + sandbox presence)
+    mayssam-ai-stack.sh fleet add <name> --role "<d>" [--model <m>]   add a profile to hermes-fleet-v1
+    mayssam-ai-stack.sh fleet remove <name>      remove a fleet profile (reverses add)
+    mayssam-ai-stack.sh fleet new <name> [--profiles a,b,c]   create a SEPARATE isolated fleet sandbox <name>-v1
+    mayssam-ai-stack.sh fleet destroy <name>     tear down a fleet created by `fleet new`
+                                        NOTE: `mayssam-ai-stack.sh install fleet|hermes` runs the PHASE (04f
+                                        re-render); `mayssam-ai-stack.sh fleet <add|remove|list|new|destroy>`
                                         is the fleet MANAGER. (add/remove default new profiles to the
                                         nemotron-3-nano:4b default; nothing loads a model.)
-    vz-ai-stack.sh docker-engine status     show the selected Docker engine + resolved socket
+    mayssam-ai-stack.sh docker-engine status     show the selected Docker engine + resolved socket
                                         + CLI/gateway consistency
-    vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
+    mayssam-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
                                         (orbstack|docker-desktop|colima|podman); idempotent
-    vz-ai-stack.sh docker-engine set <id>   pin the engine explicitly to <id> (ensure + pin)
-    vz-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
+    mayssam-ai-stack.sh docker-engine set <id>   pin the engine explicitly to <id> (ensure + pin)
+    mayssam-ai-stack.sh docker-engine context [status|switch|keep]   global docker-context policy
                                         (switch=auto-point at ai-stack-<engine>, default; keep=never touch).
                                         Also set non-interactively via 'setup'.
-    vz-ai-stack.sh ingress <list|add|remove|up|down|reload|status|trust|untrust>   bare-hostname host ingress
+    mayssam-ai-stack.sh ingress <list|add|remove|up|down|reload|status|trust|untrust>   bare-hostname host ingress
                                         (OPT-IN; gives the Mac browser port-free http(s)://litellm/ etc.
                                         'list' = every hostname + all URL forms + reachability + bind posture;
                                         'add <name> <port>' maps a localhost:port to http://name/ (then sudo
                                         prepare-sudo + ingress reload); 'up' needs sudo to bind :80/:443).
-    vz-ai-stack.sh url [<alias>]            print canonical name:port URL(s) from aliases.tsv (--open|--curl|--copy)
-    vz-ai-stack.sh doctor [<service>]       diagnose & offer fixes
-    vz-ai-stack.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
-    vz-ai-stack.sh adopt <service>          take ownership of a foreign container
-    vz-ai-stack.sh apply-restarts           drain the queued-restart list
-    vz-ai-stack.sh logs <service> [-f]      tail logs from a service
-    vz-ai-stack.sh history                  assemble CHANGELOG.d/* into one view
-    vz-ai-stack.sh gc                       list/clean partial container orphans
-    vz-ai-stack.sh cleanup [--yes]          reclaim disk: remove REGENERABLE artifacts
+    mayssam-ai-stack.sh url [<alias>]            print canonical name:port URL(s) from aliases.tsv (--open|--curl|--copy)
+    mayssam-ai-stack.sh doctor [<service>]       diagnose & offer fixes
+    mayssam-ai-stack.sh verify                   runtime end-to-end verification sweep (run BEFORE install)
+    mayssam-ai-stack.sh adopt <service>          take ownership of a foreign container
+    mayssam-ai-stack.sh apply-restarts           drain the queued-restart list
+    mayssam-ai-stack.sh logs <service> [-f]      tail logs from a service
+    mayssam-ai-stack.sh history                  assemble CHANGELOG.d/* into one view
+    mayssam-ai-stack.sh gc                       list/clean partial container orphans
+    mayssam-ai-stack.sh cleanup [--yes]          reclaim disk: remove REGENERABLE artifacts
                                             (--docker adds dangling layers + itemized
                                             dangling anonymous volumes, tar-backed-up
                                             before removal under --yes)
@@ -274,58 +274,58 @@ ai-stack-installer — usage:
                                         --node/--venv/--caches; --docker also prunes dangling
                                         docker layers; --all = everything. (gc = orphan
                                         containers; cleanup = disk artifacts.)
-    vz-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
-    vz-ai-stack.sh upgrade <service|all> [--dry-run] [--no-check]   Pull/rebuild + recreate a
+    mayssam-ai-stack.sh migrate-v2               run the v1→v2 services.yml migration
+    mayssam-ai-stack.sh upgrade <service|all> [--dry-run] [--no-check]   Pull/rebuild + recreate a
                                         service (or all enabled), type-dispatched. Prints a
                                         pre-upgrade installed→available version report first
                                         (--no-check skips it), and the summary's VERSION column
                                         shows what actually moved — no more green 'upgraded' on a no-op.
-    vz-ai-stack.sh upgrade hermes           GROUP: upgrade EVERY hermes surface to latest
+    mayssam-ai-stack.sh upgrade hermes           GROUP: upgrade EVERY hermes surface to latest
                                         (fleet pip + workspace UI image + Telegram/Slack gateways)
-    vz-ai-stack.sh upgrade --check [service|all]   READ-ONLY: installed vs available per service
+    mayssam-ai-stack.sh upgrade --check [service|all]   READ-ONLY: installed vs available per service
                                         (docker registry digest / brew / npm / PyPI / git ls-remote;
                                         downloads nothing). npm/pip/git now show real versions, not 'manual'.
-    vz-ai-stack.sh upgrade --outdated [--dry-run]   upgrade ONLY services --check finds outdated —
+    mayssam-ai-stack.sh upgrade --outdated [--dry-run]   upgrade ONLY services --check finds outdated —
                                         docker/compose/brew CURRENCY only; does NOT reach the
                                         sandbox/CLI/pip/fleet plane or host globals (it names what
                                         it skipped). For those, use 'upgrade all' or 'upgrade hermes'.
-    vz-ai-stack.sh upgrade --check --all    include non-checkable (manual: sandbox/CLI/config) rows too
+    mayssam-ai-stack.sh upgrade --check --all    include non-checkable (manual: sandbox/CLI/config) rows too
                                         (--all is inert with --outdated — warns if combined)
-    vz-ai-stack.sh upgrade --check --json   machine-readable availability report
+    mayssam-ai-stack.sh upgrade --check --json   machine-readable availability report
                                         (--dry-run prints the plan and changes nothing;
                                          AI_STACK_ASSUME_YES=1 auto-accepts the pinned-tag re-pull prompt)
-    vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]   serve doc/TUTORIAL.html
+    mayssam-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]   serve doc/TUTORIAL.html
                                         + safe 'Try it live' proxy (ephemeral local-only key)
-    vz-ai-stack.sh models-serve [--port N] [--read-only] [--revoke]   serve doc/MODELS.html
+    mayssam-ai-stack.sh models-serve [--port N] [--read-only] [--revoke]   serve doc/MODELS.html
                                         (Model & Agent Console) — view/stage/apply model +
                                         agent-binding changes via UI; wraps the `model` CLI
-    vz-ai-stack.sh fleet-studio [--port N] [--no-open]   review+edit agent-profiles/ in a
+    mayssam-ai-stack.sh fleet-studio [--port N] [--no-open]   review+edit agent-profiles/ in a
                                         browser (live read+write via File System Access API)
-    vz-ai-stack.sh understand-dashboard [path] [--no-open] [--port N]   interactive
+    mayssam-ai-stack.sh understand-dashboard [path] [--no-open] [--port N]   interactive
                                         knowledge-graph dashboard (Phase 30; default path = stack repo)
-    vz-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
+    mayssam-ai-stack.sh reset --confirm soft|hard|nuke [--yes]   tiered destructive reset
                                         (--yes/-y: non-interactive; auto-accepts the
                                          soft/hard y/n gate. nuke's typed gate stays manual.)
-    vz-ai-stack.sh start <service>          start a service; prints URL + Stop line; opens browser for UI
+    mayssam-ai-stack.sh start <service>          start a service; prints URL + Stop line; opens browser for UI
                                         services (gated: interactive TTY, not NO_BROWSER/CI).
                                         Special: `start lmstudio` — guards macOS + /Applications/LM Studio.app;
                                         `start claw3d` — health-gated composite (bridge + UI).
                                         Flags: --no-open (suppress browser), --open (force browser past CI gate).
                                         Non-daemon types (cli-only, agent-pattern, etc.) print usage + exit 0.
-    vz-ai-stack.sh run <service>            alias for start
-    vz-ai-stack.sh stop <service>           stop a service (bin/stop-<service>.sh, docker stop, else brew services for ollama/openshell)
-    vz-ai-stack.sh <service> start          shortcut for: vz-ai-stack.sh start <service>
-    vz-ai-stack.sh <service> run            shortcut for: vz-ai-stack.sh start <service>
-    vz-ai-stack.sh <service> stop           shortcut for: vz-ai-stack.sh stop <service>
+    mayssam-ai-stack.sh run <service>            alias for start
+    mayssam-ai-stack.sh stop <service>           stop a service (bin/stop-<service>.sh, docker stop, else brew services for ollama/openshell)
+    mayssam-ai-stack.sh <service> start          shortcut for: mayssam-ai-stack.sh start <service>
+    mayssam-ai-stack.sh <service> run            shortcut for: mayssam-ai-stack.sh start <service>
+    mayssam-ai-stack.sh <service> stop           shortcut for: mayssam-ai-stack.sh stop <service>
                                         (enable/disable are accepted as aliases for start/stop)
 
-Phases (in install order) — pass the id OR the name (run `vz-ai-stack.sh phases` for the table):
+Phases (in install order) — pass the id OR the name (run `mayssam-ai-stack.sh phases` for the table):
   00 00s 00n 00v 02 03 01 01h 04 04f 04g 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 04h 26
   opt-in extras (not in `install all` — add them all with `install all --include-optionals`): 21 portless · 22 cmux · 23 skillspector · 24 openagents · 25 lmstudio · 27 sourcegraph · 28 aionui · 29 openwork · 30 understand · 31 ingress · 32 metagpt · 33 agentscope · 34 oasis · 35 chatdev · 36 aitown · 37 concordia · 38 hermes_slack · 39 fleet_memory · 40 honcho_mcp · 41 falkordb_mcp
 
-Per-command help:  vz-ai-stack.sh <command> --help   OR   vz-ai-stack.sh help <command>
-  e.g.  vz-ai-stack.sh install --help   ·   vz-ai-stack.sh help model   ·   vz-ai-stack.sh help embedding
-Per-SERVICE help:  vz-ai-stack.sh help <service>   (what it is · config · usage; `help services` lists them)
+Per-command help:  mayssam-ai-stack.sh <command> --help   OR   mayssam-ai-stack.sh help <command>
+  e.g.  mayssam-ai-stack.sh install --help   ·   mayssam-ai-stack.sh help model   ·   mayssam-ai-stack.sh help embedding
+Per-SERVICE help:  mayssam-ai-stack.sh help <service>   (what it is · config · usage; `help services` lists them)
 EOF
 }
 
@@ -336,7 +336,7 @@ EOF
 usage_for() {
   local t="$1" out
   out="$(usage | awk -v t="$t" '
-    /^    vz-ai-stack\.sh /{ show = ($0 ~ "^    vz-ai-stack\\.sh "t"([ ]|$)") }
+    /^    mayssam-ai-stack\.sh /{ show = ($0 ~ "^    mayssam-ai-stack\\.sh "t"([ ]|$)") }
     show { print }
   ')"
   if [[ -z "$out" ]]; then
@@ -344,7 +344,7 @@ usage_for() {
     usage
     return 0
   fi
-  printf 'vz-ai-stack.sh %s — usage:\n\n%s\n\nFull command list:  vz-ai-stack.sh --help\n' "$t" "$out"
+  printf 'mayssam-ai-stack.sh %s — usage:\n\n%s\n\nFull command list:  mayssam-ai-stack.sh --help\n' "$t" "$out"
 }
 
 # is_subcommand TOKEN — true if TOKEN is a known top-level verb (for routing
@@ -360,19 +360,19 @@ is_subcommand() {
 
 # --- prepare-sudo subcommand -------------------------------------------------
 # The ONE step that needs root: write /etc/hosts and flush macOS DNS cache.
-# Designed to be invoked as `sudo bash vz-ai-stack.sh prepare-sudo` so the
-# subsequent `bash vz-ai-stack.sh` (no sudo) has nothing left that requires
+# Designed to be invoked as `sudo bash mayssam-ai-stack.sh prepare-sudo` so the
+# subsequent `bash mayssam-ai-stack.sh` (no sudo) has nothing left that requires
 # privilege. Idempotent — re-running is a no-op if /etc/hosts is correct.
 #
 # Hardening (post 3-agent review):
 #   - Path-injection guard: refuses if AI_STACK lives under /tmp/* or contains
 #     symlinks or is owned by anyone other than the invoking user. Stops
-#     `sudo bash /tmp/evil/vz-ai-stack.sh prepare-sudo` from sourcing attacker-
+#     `sudo bash /tmp/evil/mayssam-ai-stack.sh prepare-sudo` from sourcing attacker-
 #     controlled libs as root (Reviewer C #1).
 #   - chown -h on specific files only (no -R): symlink-safe (Reviewer B Q2,
 #     Reviewer C #2).
 #   - SUDO_USER cross-checked against directory owner (Reviewer C #3).
-#   - lock_acquire serializes with concurrent vz-ai-stack.sh runs (Reviewer B Q3).
+#   - lock_acquire serializes with concurrent mayssam-ai-stack.sh runs (Reviewer B Q3).
 #   - chown failures surfaced as a warning, not silently swallowed
 #     (Reviewer C #4).
 cmd_prepare_sudo() {
@@ -403,7 +403,7 @@ cmd_prepare_sudo() {
   esac
   # Refuse if any key library file is a symlink (could redirect to attacker code).
   local f
-  for f in vz-ai-stack.sh installer/lib/common.sh installer/lib/network.sh installer/lib/env.sh; do
+  for f in mayssam-ai-stack.sh installer/lib/common.sh installer/lib/network.sh installer/lib/env.sh; do
     if [[ -L "$AI_STACK/$f" ]]; then
       err "$f is a symlink. Refusing for security."
       exit 2
@@ -505,7 +505,7 @@ install_all_phase_order() {
 # 21-36 opt-in range). Run only by `install all --include-optionals`. This function is the
 # runtime SOURCE OF TRUTH; the at-a-glance opt-in id list in cmd_help's usage heredoc is a
 # hand-maintained convenience copy — keep it in sync when adding a phase (or rely on the
-# dynamic `vz-ai-stack.sh phases`).
+# dynamic `mayssam-ai-stack.sh phases`).
 install_all_optional_phase_order() {
   local core=" $(install_all_phase_order) " out="" f id
   for f in "$AI_STACK"/installer/phases/*.sh; do
@@ -547,7 +547,7 @@ install_log_start() {
   # Header goes straight to the file (not the terminal) so the log is self-describing
   # and joinable to this run's CHANGELOG.d entry.
   {
-    printf '# vz-ai-stack.sh install %s\n' "${*:-all}"
+    printf '# mayssam-ai-stack.sh install %s\n' "${*:-all}"
     printf '# run-id : %s\n' "$RUN_ID"
     printf '# started: %s\n' "$(ts)"
     printf '# bash   : %s\n' "$BASH_VERSION"
@@ -887,7 +887,7 @@ resolve_phase_script() {
 run_phase() {
   local p="$1" script
   if ! script="$(resolve_phase_script "$p")"; then
-    err "Could not resolve phase '$p' to a single script. Run 'vz-ai-stack.sh phases' to list ids + names."
+    err "Could not resolve phase '$p' to a single script. Run 'mayssam-ai-stack.sh phases' to list ids + names."
     return 1
   fi
   log "==> phase $p — $(basename "$script")"
@@ -906,7 +906,7 @@ cmd_phases() {
     printf '%-7s  %s\n' "$id" "$name"
   done < <(find "$AI_STACK/installer/phases" -maxdepth 1 -name '*.sh' | sort)
   echo
-  echo "Use either form:  vz-ai-stack.sh install <id>   |   vz-ai-stack.sh install <name>"
+  echo "Use either form:  mayssam-ai-stack.sh install <id>   |   mayssam-ai-stack.sh install <name>"
   echo "A service name shown in 'status' also works — it resolves to the phase that installs it."
   echo "Aliases: litellm=inference, telegram=hermes_telegram, slack=hermes_slack, hermes=hermes_fleet, sandbox=openshell, unsloth=unsloth_studio, halo=halo_autoreason, ui=uis, docs=documents, memory=alt_memory"
 }
@@ -922,7 +922,7 @@ cmd_hermes()  {   # config|slack = gateway admin (config durability + Slack allo
   case "${1:-}" in
     config) shift; source "$AI_STACK/installer/lib/hermes.sh"; hermes_cmd_config "$@" ;;
     slack)  shift; source "$AI_STACK/installer/lib/hermes.sh"; hermes_cmd_slack  "$@" ;;
-    *)      "$BASH" "$AI_STACK/installer/lib/fleet.sh" run "$@" ;;   # run ONE agent: vz-ai-stack.sh hermes <role> ["prompt"]
+    *)      "$BASH" "$AI_STACK/installer/lib/fleet.sh" run "$@" ;;   # run ONE agent: mayssam-ai-stack.sh hermes <role> ["prompt"]
   esac
 }
 cmd_docker_engine() { "$BASH" "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
@@ -1027,7 +1027,7 @@ _report_started() {
   elif [[ -n "$host_port" ]]; then
     ok "Endpoint: http://localhost:${host_port}"
   fi
-  note "Stop:  vz-ai-stack.sh stop $svc"
+  note "Stop:  mayssam-ai-stack.sh stop $svc"
 }
 
 # _browser_open <svc> <url> — best-effort browser open, gated on TTY/CI/flags.
@@ -1064,7 +1064,7 @@ _browser_open() {
        && ! awk -v h="$_host" '$1!~/^#/{for(i=2;i<=NF;i++) if($i==h) f=1} END{exit !f}' /etc/hosts 2>/dev/null; then
       local _old="//$_host" _new="//127.0.0.1"
       url="${url/$_old/$_new}"
-      note "(hostname '$_host' not in /etc/hosts yet — opening 127.0.0.1; run 'sudo vz-ai-stack.sh prepare-sudo' for the friendly name)"
+      note "(hostname '$_host' not in /etc/hosts yet — opening 127.0.0.1; run 'sudo mayssam-ai-stack.sh prepare-sudo' for the friendly name)"
     fi
     # Token-gated UIs (services.yml `open_url_token_env`, e.g. openwork): open the
     # PRE-TOKENED url via a 0600 temp redirect so the token never lands in argv/ps/
@@ -1114,14 +1114,14 @@ _ensure_setup() {
         # Continue to start ONLY if setup succeeded — a partial install must not
         # fall through to a confusing "node_modules missing" start error.
         if ! cmd_install "$svc"; then
-          err "$svc setup failed — fix the above, then: vz-ai-stack.sh install $svc"
+          err "$svc setup failed — fix the above, then: mayssam-ai-stack.sh install $svc"
           exit 1
         fi
         return 0
         ;;
     esac
   fi
-  err "$svc isn't set up — run: vz-ai-stack.sh install $svc"
+  err "$svc isn't set up — run: mayssam-ai-stack.sh install $svc"
   exit 1
 }
 
@@ -1143,7 +1143,7 @@ cmd_start() {
   set -- "${passthrough[@]+"${passthrough[@]}"}"
   svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    err "Usage: vz-ai-stack.sh start <service>"
+    err "Usage: mayssam-ai-stack.sh start <service>"
     _list_startable_services
     exit 2
   fi
@@ -1216,7 +1216,7 @@ cmd_start() {
 
   # Step 3: brew-managed service (ollama/openshell)?
   if _is_brew_service "$svc"; then
-    [[ "$svc" == openshell ]] && warn "Note: this starts only the OpenShell GATEWAY daemon. Sandboxes (hermes-fleet-v1/pi-v1) are separate — recreate them with 'vz-ai-stack.sh install 04 04f 15' if needed."
+    [[ "$svc" == openshell ]] && warn "Note: this starts only the OpenShell GATEWAY daemon. Sandboxes (hermes-fleet-v1/pi-v1) are separate — recreate them with 'mayssam-ai-stack.sh install 04 04f 15' if needed."
     log "No bin/start-${svc}.sh — '$svc' is a brew service; using 'brew services start $svc'"
     brew services start "$svc"
     _report_started "$svc"
@@ -1239,7 +1239,7 @@ cmd_start() {
       if [[ -n "$usage_prose" ]]; then
         printf '%s\n' "$usage_prose"
       else
-        note "  (no usage prose in services.yml — run: vz-ai-stack.sh help $svc)"
+        note "  (no usage prose in services.yml — run: mayssam-ai-stack.sh help $svc)"
       fi
       return 0
       ;;
@@ -1257,7 +1257,7 @@ cmd_start() {
 cmd_stop() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    err "Usage: vz-ai-stack.sh stop <service>"
+    err "Usage: mayssam-ai-stack.sh stop <service>"
     exit 2
   fi
   worktree_guard stop
@@ -1310,7 +1310,7 @@ cmd_stop() {
   if _is_brew_service "$svc"; then
     if [[ "$svc" == ollama ]]; then
       warn "Ollama is the DEFAULT local inference + every agent's availability-gating fallback (local)."
-      warn "Stopping it breaks any agent on the fallback. Note: 'vz-ai-stack.sh deps' and an interactive 'doctor' fix may restart it."
+      warn "Stopping it breaks any agent on the fallback. Note: 'mayssam-ai-stack.sh deps' and an interactive 'doctor' fix may restart it."
     elif [[ "$svc" == openshell ]]; then
       warn "Note: this stops only the OpenShell GATEWAY daemon; sandbox containers keep running but lose their gateway (orphaned). The watchdog/relay expect the gateway up."
     fi
@@ -1335,7 +1335,7 @@ _list_startable_services() {
 # Non-interactive (NO_PROMPT / no TTY) ensures the baseline and skips prompts.
 cmd_setup() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-    err "Do not run 'vz-ai-stack.sh setup' under sudo. Run as your normal user."
+    err "Do not run 'mayssam-ai-stack.sh setup' under sudo. Run as your normal user."
     exit 2
   fi
   setup_run "$@"
@@ -1346,7 +1346,7 @@ cmd_setup() {
 # exit if anything is missing/down). Logic lives in installer/lib/deps.sh.
 cmd_deps() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-    err "Do not run 'vz-ai-stack.sh deps' under sudo. Run as your normal user."
+    err "Do not run 'mayssam-ai-stack.sh deps' under sudo. Run as your normal user."
     exit 2
   fi
   deps_report "${1:-}"
@@ -1376,10 +1376,10 @@ cmd_verify() {
   "$BASH" "$AI_STACK/installer/doctor/doctor.sh" etc_hosts_ownership      || true
   echo
   if (( v_rc == 0 )); then
-    ok "Runtime verification PASSED. Safe to run: bash vz-ai-stack.sh"
+    ok "Runtime verification PASSED. Safe to run: bash mayssam-ai-stack.sh"
     return 0
   else
-    err "Runtime verification FAILED. See diagnoses above; fix BEFORE bash vz-ai-stack.sh"
+    err "Runtime verification FAILED. See diagnoses above; fix BEFORE bash mayssam-ai-stack.sh"
     return 1
   fi
 }
@@ -1412,7 +1412,7 @@ cmd_apply_restarts() {
 
 cmd_reset() {
   if [[ "${1:-}" != "--confirm" ]]; then
-    err "reset requires --confirm <tier>. See:  vz-ai-stack.sh reset --help"
+    err "reset requires --confirm <tier>. See:  mayssam-ai-stack.sh reset --help"
     exit 2
   fi
   local tier="${2:-soft}"
@@ -1439,11 +1439,11 @@ summary_end_of_install() {
   # surface anything still pending so they know the exact catch-up command.
   local restarts="$AI_STACK/installer/state/restarts-needed.txt"
   if [[ -s "$restarts" ]]; then
-    warn "Queued restarts still pending (run 'vz-ai-stack.sh apply-restarts' when ready):"
+    warn "Queued restarts still pending (run 'mayssam-ai-stack.sh apply-restarts' when ready):"
     sed 's/^/    /' "$restarts"
   fi
-  note "Status:  bash vz-ai-stack.sh status"
-  note "Doctor:  bash vz-ai-stack.sh doctor"
+  note "Status:  bash mayssam-ai-stack.sh status"
+  note "Doctor:  bash mayssam-ai-stack.sh doctor"
   # Name the log while the operator is still looking — an unfindable log is no log.
   if [[ -n "${INSTALL_LOG:-}" ]]; then
     note "Log:     $INSTALL_LOG"
@@ -1455,7 +1455,7 @@ summary_end_of_install() {
 main() {
   local cmd="${1:-install}"
   shift || true
-  # Per-command help: `vz-ai-stack.sh <command> --help|-h` → focused usage for
+  # Per-command help: `mayssam-ai-stack.sh <command> --help|-h` → focused usage for
   # that command (instead of the command rejecting the flag). `help`/`-h`/`--help`
   # as the command itself fall through to the case below.
   if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then

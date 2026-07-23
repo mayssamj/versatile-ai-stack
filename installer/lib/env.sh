@@ -1,5 +1,5 @@
 # env.sh — safe .env reads + writes.
-# Sourced by vz-ai-stack.sh after common.sh.
+# Sourced by mayssam-ai-stack.sh after common.sh.
 #
 # Design notes (Reviewer B #6, Reviewer Adversarial #4):
 #   - WRITES: awk → tmpfile → mv. 0600 chmod BEFORE content is written.
@@ -150,7 +150,7 @@ load_env_strict() {
 # env_ensure_baseline — make .env install/doctor-ready WITHOUT any prompting.
 #
 # Idempotent, non-interactive. Single source of truth for the ".env baseline"
-# shared by Phase 00 (00_host.sh) and the interactive `vz-ai-stack.sh setup`:
+# shared by Phase 00 (00_host.sh) and the interactive `mayssam-ai-stack.sh setup`:
 #   1. Ensure the file exists @ 0600.
 #   2. Set non-secret DEFAULTS (service URLs, project name) only when empty.
 #   3. Migrate stale `host.docker.internal` URL values to Docker-DNS names

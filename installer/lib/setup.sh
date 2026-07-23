@@ -1,7 +1,7 @@
 # setup.sh — interactive .env / API-key bootstrap for new users.
-# Sourced by vz-ai-stack.sh AFTER common.sh + env.sh + prompt.sh.
+# Sourced by mayssam-ai-stack.sh AFTER common.sh + env.sh + prompt.sh.
 #
-# Backs `vz-ai-stack.sh setup` (alias `keys`) and the first-run auto-offer in
+# Backs `mayssam-ai-stack.sh setup` (alias `keys`) and the first-run auto-offer in
 # `cmd_install`. Two guarantees:
 #   1. It ALWAYS ensures the non-interactive .env baseline first
 #      (env.sh::env_ensure_baseline) — so a local-only / Claude-subscription
@@ -87,7 +87,7 @@ setup_docker_context() {
   fi
 }
 
-# setup_run — the `vz-ai-stack.sh setup` body. Ensures baseline, then (if
+# setup_run — the `mayssam-ai-stack.sh setup` body. Ensures baseline, then (if
 # interactive) walks the optional-secret catalog.
 setup_run() {
   hdr "Interactive .env setup"
@@ -122,7 +122,7 @@ setup_run() {
   if [[ "${NO_PROMPT:-0}" == "1" ]] || [[ ! -t 0 ]]; then
     note "Non-interactive (NO_PROMPT or no TTY): skipped the optional API-key prompts."
     note "A local-only / Claude-subscription setup needs nothing more — run 'doctor' next."
-    note "Add keys anytime, interactively: vz-ai-stack.sh setup"
+    note "Add keys anytime, interactively: mayssam-ai-stack.sh setup"
     : > "$SETUP_OFFERED_STAMP" 2>/dev/null || true
     return 0
   fi
@@ -154,7 +154,7 @@ setup_run() {
   echo >&2
   note "Claude subscription models (-sub, incl. opus): no API key needed — start the Meridian"
   note "daemon ('bin/start-meridian.sh') and run 'claude login'. See doc/models.md."
-  ok "Setup complete. Next: vz-ai-stack.sh install all   (then: vz-ai-stack.sh doctor)"
+  ok "Setup complete. Next: mayssam-ai-stack.sh install all   (then: mayssam-ai-stack.sh doctor)"
   : > "$SETUP_OFFERED_STAMP" 2>/dev/null || true
 }
 
@@ -184,6 +184,6 @@ setup_maybe_offer() {
     setup_run
   else
     : > "$SETUP_OFFERED_STAMP" 2>/dev/null || true
-    note "Skipped. Add keys anytime with: vz-ai-stack.sh setup"
+    note "Skipped. Add keys anytime with: mayssam-ai-stack.sh setup"
   fi
 }

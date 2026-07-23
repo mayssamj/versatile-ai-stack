@@ -7,7 +7,7 @@
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RLM_DIR="$AI_STACK/rlm"
-[[ -x "$RLM_DIR/.venv/bin/python" ]] || { echo "RLM not installed — run 'bash vz-ai-stack.sh install 18'" >&2; exit 1; }
+[[ -x "$RLM_DIR/.venv/bin/python" ]] || { echo "RLM not installed — run 'bash mayssam-ai-stack.sh install 18'" >&2; exit 1; }
 # Load OPENAI_BASE_URL + OPENAI_API_KEY (LiteLLM routing) from rlm/.env.
 set -a; [[ -f "$RLM_DIR/.env" ]] && source "$RLM_DIR/.env"; set +a
 exec "$RLM_DIR/.venv/bin/python" "$RLM_DIR/run_rlm.py" "$@"

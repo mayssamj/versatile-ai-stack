@@ -7,7 +7,7 @@
 # does NOT duplicate them. It asserts only what the console itself needs to exist:
 #   1. installer/lib/models-serve.sh + installer/lib/models_proxy.py are present, and
 #      the proxy is syntactically valid Python (so `models-serve` will actually boot).
-#   2. `models-serve` is wired into vz-ai-stack.sh dispatch (lib present but unreachable
+#   2. `models-serve` is wired into mayssam-ai-stack.sh dispatch (lib present but unreachable
 #      is the regression this guards).
 #   3. doc/MODELS.html (the console page) is present.
 #   4. installer/models.yml parses (fail-closed — the console reads it via the CLI).
@@ -18,13 +18,13 @@
 #      means that route will 401 at call time — worth flagging, but not a stack fault
 #      (a keyless box is a legitimate local-only setup).
 CHECKS+=(models_console)
-CHECK_TITLE[models_console]="Model & Agent Console (models-serve) present + wired (vz-ai-stack.sh models-serve)"
+CHECK_TITLE[models_console]="Model & Agent Console (models-serve) present + wired (mayssam-ai-stack.sh models-serve)"
 
 models_console_diagnose() {
   local serve="$AI_STACK/installer/lib/models-serve.sh"
   local proxy="$AI_STACK/installer/lib/models_proxy.py"
   local html="$AI_STACK/doc/MODELS.html"
-  local vz="$AI_STACK/vz-ai-stack.sh"
+  local vz="$AI_STACK/mayssam-ai-stack.sh"
   local yml="$AI_STACK/installer/models.yml"
   local missing=""
 
@@ -44,7 +44,7 @@ models_console_diagnose() {
 
   # Wired into dispatch? (lib present but unreachable verb is the regression we guard.)
   if [[ -f "$vz" ]] && ! grep -qE 'models-serve\)[[:space:]]*cmd_models_serve' "$vz"; then
-    echo "installer/lib/models-serve.sh exists but 'models-serve' is not wired into vz-ai-stack.sh dispatch."
+    echo "installer/lib/models-serve.sh exists but 'models-serve' is not wired into mayssam-ai-stack.sh dispatch."
     return 1
   fi
 
@@ -96,7 +96,7 @@ models_console_fix() {
   warn "Model & Agent Console is incomplete. Expected, on branch feat/model-console (or main once merged):"
   warn "  • installer/lib/models-serve.sh  + installer/lib/models_proxy.py"
   warn "  • doc/MODELS.html"
-  warn "  • a 'models-serve) cmd_models_serve' dispatch line in vz-ai-stack.sh"
-  warn "Serve it with:  vz-ai-stack.sh models-serve   (run from the MAIN checkout)"
+  warn "  • a 'models-serve) cmd_models_serve' dispatch line in mayssam-ai-stack.sh"
+  warn "Serve it with:  mayssam-ai-stack.sh models-serve   (run from the MAIN checkout)"
   return 1
 }

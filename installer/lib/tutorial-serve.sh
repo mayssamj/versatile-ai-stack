@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tutorial-serve.sh — `vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]`
+# tutorial-serve.sh — `mayssam-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--revoke]`
 #
 # Serves doc/TUTORIAL.html with safe 'Try it live' demos. Mints an EPHEMERAL,
 # LOCAL-ONLY, budget-capped, short-TTL LiteLLM virtual key, then runs a loopback
@@ -67,7 +67,7 @@ while (( $# )); do
     --launch-enabled) LAUNCH_ENABLED=1 ;;
     -h|--help)
       cat <<EOF
-vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--force] [--revoke] [--launch-enabled]
+mayssam-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--force] [--revoke] [--launch-enabled]
   Serve doc/TUTORIAL.html + a loopback proxy for safe 'Try it live' demos.
   Mints an ephemeral, budget-capped LiteLLM key allowlisted to your wired models
   (auto-revoked on exit).
@@ -78,7 +78,7 @@ vz-ai-stack.sh tutorial-serve [--port N] [--ttl 30m] [--force] [--revoke] [--lau
               FOREIGN holder is reported and left alone. (Manual: lsof -ti tcp:8899 | xargs kill)
   --revoke    revoke a lingering tutorial key and exit
   --launch-enabled  EXPERIMENTAL (default OFF): enable the page's "Launch a service"
-              buttons — they idempotently run \`vz-ai-stack.sh start <svc>\` for a small
+              buttons — they idempotently run \`mayssam-ai-stack.sh start <svc>\` for a small
               allowlist of watchable web UIs (openwebui, phoenix, autofyn, claw3d,
               chatdev, aitown). Loopback-only. Run from the MAIN checkout: 'start'
               refuses to run from a git worktree.
@@ -144,7 +144,7 @@ ensure_port_free() {
     else
       err "Port $port is already in use by PID $pid — not a tutorial-serve process:"
       err "  $cmd"
-      err "Re-run with --force to kill it and rebind, or pick another: vz-ai-stack.sh tutorial-serve --port <N>"
+      err "Re-run with --force to kill it and rebind, or pick another: mayssam-ai-stack.sh tutorial-serve --port <N>"
       exit 1
     fi
   done
@@ -166,7 +166,7 @@ ensure_port_free() {
   exit 1
 }
 
-[[ -n "$MASTER" ]] || { err "LITELLM_MASTER_KEY missing from .env — run 'vz-ai-stack.sh install 01' first."; exit 1; }
+[[ -n "$MASTER" ]] || { err "LITELLM_MASTER_KEY missing from .env — run 'mayssam-ai-stack.sh install 01' first."; exit 1; }
 curl -sf --max-time 5 "$LITELLM/health/readiness" >/dev/null 2>&1 || litellm_master_curl -sf --max-time 5 "$LITELLM/v1/models" >/dev/null 2>&1 \
   || { err "LiteLLM not reachable at $LITELLM — start it: bash $AI_STACK/bin/start-litellm.sh"; exit 1; }
 

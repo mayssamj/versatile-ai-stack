@@ -88,7 +88,7 @@ if [[ -n "$SUBNET_HITS" ]]; then
   printf '%s\n' "$SUBNET_HITS" | sed 's/^/    /' >&2
   err ""
   err "Escape hatch: AI_STACK_SUBNET=10.123.0.0/24 AI_STACK_GATEWAY=10.123.0.1 \\"
-  err "              bash vz-ai-stack.sh install 00n"
+  err "              bash mayssam-ai-stack.sh install 00n"
   exit 1
 fi
 ok "subnet $AI_STACK_SUBNET is available"
@@ -141,7 +141,7 @@ if ! ifconfig lo0 | grep -q "127.0.10.1"; then
     # CA-3: the bind was deliberately DEFERRED (no cached sudo + unattended) to avoid hanging on a
     # CyberArk EPM elevation prompt — a clean fast-fail, NOT a silent failure. Give the remedy.
     err "127.0.10.1 not bound: lo0 alias binding was DEFERRED (no cached sudo + unattended — avoided an EPM elevation hang)."
-    err "  Bind them now:  sudo bash $AI_STACK/vz-ai-stack.sh prepare-sudo   (or re-run this install interactively)."
+    err "  Bind them now:  sudo bash $AI_STACK/mayssam-ai-stack.sh prepare-sudo   (or re-run this install interactively)."
   else
     err "127.0.10.1 not bound to lo0. lo0_ensure_aliases failed silently."
   fi
@@ -184,7 +184,7 @@ if (( ${#foreigns[@]} > 0 )); then
   printf '\n'
   printf '  Run:\n'
   for svc in "${foreigns[@]}"; do
-    printf '        bash vz-ai-stack.sh adopt %s\n' "$svc"
+    printf '        bash mayssam-ai-stack.sh adopt %s\n' "$svc"
   done
   printf '\n'
   printf '  Doctor checks 14–17 will WARN (not FAIL) until adoption completes.\n'

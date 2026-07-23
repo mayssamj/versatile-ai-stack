@@ -104,6 +104,6 @@ verify_then_stamp_guard_fix() {
   warn "  • gates the stamp on the doctor's post-condition (if _mem_hermes_<key>_wired … ; else err+exit 1);"
   warn "  • KEEPS the 'not present or not Ready' else-branch that falls through to a TOP-LEVEL stamp_mark \"\$PHASE\""
   warn "    — that stamp is the OPT-IN RECORD 04f_hermes_fleet.sh reads (stamp_check 39/40/41) to wire a fleet built later."
-  warn "  Reference the sibling phase that still has the shape, and re-run: vz-ai-stack.sh test verify-then-stamp"
+  warn "  Reference the sibling phase that still has the shape, and re-run: mayssam-ai-stack.sh test verify-then-stamp"
   return 1
 }

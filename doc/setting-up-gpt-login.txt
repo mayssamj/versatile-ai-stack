@@ -1,11 +1,11 @@
 The one-liners (this is the whole thing now)
 
 # Metered (works immediately — your OPENAI_API_KEY is set):
-vz-ai-stack.sh model assign all openai-gpt-5.5          # whole fleet → GPT-5.5, max reasoning (xhigh)
-vz-ai-stack.sh model assign hermes_manager openai-gpt-5.5-pro
+mayssam-ai-stack.sh model assign all openai-gpt-5.5          # whole fleet → GPT-5.5, max reasoning (xhigh)
+mayssam-ai-stack.sh model assign hermes_manager openai-gpt-5.5-pro
 
 # Subscription (no metered cost — your bridge is already enabled):
-vz-ai-stack.sh model assign all openai-gpt-5.5-sub      # whole fleet → GPT-5.5 on your ChatGPT plan
+mayssam-ai-stack.sh model assign all openai-gpt-5.5-sub      # whole fleet → GPT-5.5 on your ChatGPT plan
 # (if the bridge ever needs re-enabling: bash ~/ai-stack/bin/start-codex-bridge.sh enable — one command)
 
 model assign accepts these valid GPT ids now: openai-gpt-5.5, openai-gpt-5.5-pro, openai-gpt-5.4 (metered) and openai-gpt-5.5-sub, openai-gpt-5.4-sub (subscription). Max thinking (reasoning_effort: xhigh) is baked into 5.5. Short how-to: doc/GPT5.md (also in models.md, TUTORIAL L6).

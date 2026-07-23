@@ -45,7 +45,7 @@ halo_drift_diagnose() {
 
 halo_drift_fix() {
   warn "bin/halo's default model diverged from HALO_MODEL_DEFAULT in 11_halo_autoreason.sh."
-  warn "  Re-sync + commit bin/halo:  vz-ai-stack.sh install 11   (regenerates bin/halo), then"
+  warn "  Re-sync + commit bin/halo:  mayssam-ai-stack.sh install 11   (regenerates bin/halo), then"
   warn "  'git add bin/halo && git commit' so the tracked wrapper matches the generator again."
   return 1
 }

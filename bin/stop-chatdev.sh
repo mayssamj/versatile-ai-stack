@@ -7,10 +7,10 @@
 # generic cmd_stop fallback (`docker stop chatdev`) stops the frontend but ORPHANS
 # chatdev-backend (it keeps running + holding RAM). Like stop-aitown.sh, we ship a dedicated
 # stop script that delegates to start-chatdev.sh's `stop` (which does `docker stop` on BOTH),
-# so there is ONE teardown path and `vz-ai-stack.sh stop chatdev` actually stops everything.
+# so there is ONE teardown path and `mayssam-ai-stack.sh stop chatdev` actually stops everything.
 #
 # Non-destructive: `docker stop` (NOT rm) — both containers + the image + the cloned repo are
-# PRESERVED; `vz-ai-stack.sh start chatdev` brings them back. Full teardown:
+# PRESERVED; `mayssam-ai-stack.sh start chatdev` brings them back. Full teardown:
 # `bash bin/start-chatdev.sh uninstall`. Idempotent: harmless on an already-stopped/absent stack.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

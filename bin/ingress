@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bin/ingress — bare-hostname host ingress control (http(s)://litellm/).
-# Thin wrapper around installer/lib/ingress.sh (same as `vz-ai-stack.sh ingress`).
+# Thin wrapper around installer/lib/ingress.sh (same as `mayssam-ai-stack.sh ingress`).
 #
 #   ingress up            generate Caddyfile + (re)start the host daemon (sudo to bind :80/:443)
 #   ingress down          stop the daemon (plist stays; 'up' restarts)

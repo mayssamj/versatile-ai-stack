@@ -10,7 +10,7 @@ rlm_install_diagnose() {
   local rlm_dir="$AI_STACK/rlm"
   # Not installed yet → skip (don't fail a stack that never ran Phase 18).
   if [[ ! -x "$rlm_dir/.venv/bin/python" ]]; then
-    echo "RLM not installed (rlm/.venv absent) — run 'vz-ai-stack.sh install 18' to add it. [skip]"
+    echo "RLM not installed (rlm/.venv absent) — run 'mayssam-ai-stack.sh install 18' to add it. [skip]"
     return 0
   fi
   "$rlm_dir/.venv/bin/python" -c 'import rlm' 2>/dev/null || { echo "rlms not importable in rlm/.venv — re-run 'install 18'"; return 1; }
@@ -27,6 +27,6 @@ rlm_install_diagnose() {
 
 rlm_install_fix() {
   warn "Re-run Phase 18 to (re)install rlms + mint the key + write bin/rlm:"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 18"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 18"
   return 1
 }

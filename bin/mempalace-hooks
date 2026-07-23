@@ -37,7 +37,7 @@ else
 fi
 
 [[ -x "$SAVE_LAUNCHER" && -x "$PRECOMPACT_LAUNCHER" ]] || {
-  echo "hook launchers missing — run 'bash vz-ai-stack.sh install 26' first." >&2
+  echo "hook launchers missing — run 'bash mayssam-ai-stack.sh install 26' first." >&2
   exit 1
 }
 

@@ -69,6 +69,6 @@ agent_fleet_diagnose() {
 
 agent_fleet_fix() {
   warn "Re-install the agent fleet across platforms (idempotent, non-clobbering):"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install agent_fleet"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install agent_fleet"
   return 1
 }

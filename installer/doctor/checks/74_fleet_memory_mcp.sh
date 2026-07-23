@@ -24,7 +24,7 @@ _fm_resolve_openshell() {
 fleet_memory_mcp_diagnose() {
   # (0) Not installed → skip-clean (opt-in Phase 39; never red-bar).
   if ! compgen -G "$AI_STACK/installer/state/phase_39*.done" >/dev/null 2>&1; then
-    echo "(fleet memory not installed — opt-in Phase 39: vz-ai-stack.sh install fleet_memory; skip)"
+    echo "(fleet memory not installed — opt-in Phase 39: mayssam-ai-stack.sh install fleet_memory; skip)"
     return 0
   fi
 
@@ -33,8 +33,8 @@ fleet_memory_mcp_diagnose() {
   # (1) claude-cli host MCPs (only if the claude CLI is present).
   if command -v claude >/dev/null 2>&1; then
     local listing; listing="$(claude mcp list 2>/dev/null)"
-    grep -q '^mempalace[: ]' <<<"$listing" || fails+=("  claude-cli MCP 'mempalace' not registered — run: vz-ai-stack.sh install fleet_memory")
-    grep -q '^docs-mcp[: ]'  <<<"$listing" || fails+=("  claude-cli MCP 'docs-mcp' not registered — run: vz-ai-stack.sh install fleet_memory")
+    grep -q '^mempalace[: ]' <<<"$listing" || fails+=("  claude-cli MCP 'mempalace' not registered — run: mayssam-ai-stack.sh install fleet_memory")
+    grep -q '^docs-mcp[: ]'  <<<"$listing" || fails+=("  claude-cli MCP 'docs-mcp' not registered — run: mayssam-ai-stack.sh install fleet_memory")
   else
     echo "  (claude CLI not on PATH — skipping the claude-cli MCP checks)"
   fi
@@ -48,7 +48,7 @@ fleet_memory_mcp_diagnose() {
     wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 </dev/null -- bash -c \
       'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "docs:" "$f" && grep -q "host.docker.internal:8765" "$f" && echo WIRED || echo MISSING' \
       2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
-    [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to doc-RAG MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install fleet_memory")
+    [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to doc-RAG MCP (got '${wired:-no-response}') — run: mayssam-ai-stack.sh install fleet_memory")
   fi
 
   # (DEEP) doc-RAG corpus actually POPULATED? A registered-but-empty docs-mcp answers
@@ -60,7 +60,7 @@ fleet_memory_mcp_diagnose() {
     body="$(curl -s --max-time 4 "$qurl" 2>/dev/null || true)"
     pts="$(printf '%s' "$body" | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["points_count"])' 2>/dev/null || true)"
     if [[ -z "$body" ]]; then
-      fails+=("  DEEP: Qdrant unreachable at $qurl — start it: vz-ai-stack.sh start qdrant")
+      fails+=("  DEEP: Qdrant unreachable at $qurl — start it: mayssam-ai-stack.sh start qdrant")
     elif [[ -z "$pts" ]]; then
       fails+=("  DEEP: ai-stack-docs collection absent at Qdrant (doc-RAG returns nothing) — populate: cd $AI_STACK/ingestor && python ingest.py")
     elif [[ "$pts" == "0" ]]; then
@@ -79,7 +79,7 @@ fleet_memory_mcp_diagnose() {
 
 fleet_memory_mcp_fix() {
   warn "Fleet memory not fully wired for claude-cli. Wire MemPalace recall + doc-RAG search:"
-  warn "    vz-ai-stack.sh install fleet_memory"
+  warn "    mayssam-ai-stack.sh install fleet_memory"
   warn "Enable MemPalace auto-capture (opt-in, changes live behavior):"
   warn "    bin/mempalace-hooks install --apply"
   return 1

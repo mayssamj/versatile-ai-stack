@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test_doctor_err_trap_exit.sh — offline unit + e2e test for the ERR-trap-on-leaf-dispatch fix in
-# vz-ai-stack.sh. Commands whose non-zero exit is a normal DIAGNOSTIC/QUERY RESULT (doctor: checks
+# mayssam-ai-stack.sh. Commands whose non-zero exit is a normal DIAGNOSTIC/QUERY RESULT (doctor: checks
 # failed 1/2; verify: probes failed; test: smoke failed; url/ingress/... : bad input) are dispatched
 # through the diag_exit() helper. Under the top-level `set -Eeuo pipefail` + ERR trap, the OLD bare /
 # `|| return $?` dispatch made a normal non-zero print a spurious "✗ ERR line N: ... (exit=1)" that
@@ -11,8 +11,8 @@
 # Run: bash installer/tests/test_doctor_err_trap_exit.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VZ="$HERE/../../vz-ai-stack.sh"
-[[ -f "$VZ" ]] || { echo "  [skip] vz-ai-stack.sh not found at $VZ"; exit 0; }
+VZ="$HERE/../../mayssam-ai-stack.sh"
+[[ -f "$VZ" ]] || { echo "  [skip] mayssam-ai-stack.sh not found at $VZ"; exit 0; }
 
 # Pull the REAL diag_exit definition (no copy = no drift). It is a one-liner; assert it looks
 # balanced (ends in `}`) so a future multi-line refactor fails loudly HERE with a clear message
@@ -26,7 +26,7 @@ PASS=0; FAIL=0
 
 # unit_case <label> <callee-def> <call-args> <want-exit>
 # Defines <callee>, then runs it via the REAL diag_exit under the SAME shell posture as
-# vz-ai-stack.sh (set -Eeuo pipefail + inherit_errexit/nullglob + the ERR trap). Asserts no
+# mayssam-ai-stack.sh (set -Eeuo pipefail + inherit_errexit/nullglob + the ERR trap). Asserts no
 # spurious ERR line AND that the exit code is preserved exactly.
 unit_case() {
   local label="$1" callee="$2" call="$3" want="$4" out
@@ -93,7 +93,7 @@ fi
 # catches it for ALL 10 commands without a slow live run (the `url` e2e below proves the pattern end-to-end).
 wiring_ok=1
 for fn in cmd_doctor cmd_verify cmd_test cmd_embedding cmd_status cmd_model cmd_fleet cmd_docker_engine cmd_ingress cmd_url; do
-  grep -qF "diag_exit ${fn} " "$VZ" || { echo "  FAIL wiring: '${fn}' is not routed via diag_exit in vz-ai-stack.sh"; wiring_ok=0; }
+  grep -qF "diag_exit ${fn} " "$VZ" || { echo "  FAIL wiring: '${fn}' is not routed via diag_exit in mayssam-ai-stack.sh"; wiring_ok=0; }
 done
 if (( wiring_ok )); then PASS=$((PASS+1)); echo "  ok   wiring: all 10 diagnostic/query branches dispatch through diag_exit"
 else FAIL=$((FAIL+1)); fi

@@ -7,7 +7,7 @@ docker_engine_selection_diagnose() {
   source "$AI_STACK/installer/lib/docker-engine.sh"
   local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
   if [[ -z "$sel" ]]; then
-    echo "AI_STACK_DOCKER_ENGINE not set (run: vz-ai-stack.sh docker-engine select)"; return 1
+    echo "AI_STACK_DOCKER_ENGINE not set (run: mayssam-ai-stack.sh docker-engine select)"; return 1
   fi
   if ! _engine_valid "$sel"; then
     echo "AI_STACK_DOCKER_ENGINE='$sel' is not a valid id (want: $ENGINE_IDS)"; return 1

@@ -53,7 +53,7 @@ per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
   `disable-model-invocation: true` where the platform supports it.
 
 ## Install (via ai-stack)
-- **Hermes** — `vz-ai-stack.sh install agent_fleet` rebuilds the `hermes-fleet-v1` fleet to these 9 roles
+- **Hermes** — `mayssam-ai-stack.sh install agent_fleet` rebuilds the `hermes-fleet-v1` fleet to these 9 roles
   (one credential-isolated profile per role; models from `installer/models.yml`, routed through LiteLLM).
 - **Pi** — phase-1 personas uploaded into the `pi-v1` sandbox; switch with `bin/pi-as <role>`.
 - **Claude Code** — the manager installs as the **main agent** (a clobber-safe `~/.claude/CLAUDE.md` @-import of
@@ -62,7 +62,7 @@ per gate prevent infinite loops. See `skills/team-protocol/SKILL.md`.
   roles + 7 skills are copied into `~/.claude/{agents,skills}/` (global).
 
 ## Review & edit (Fleet Studio)
-Open **`vz-ai-stack.sh fleet-studio`** (serves `doc/FLEET.html` on `127.0.0.1`) to review and edit every
+Open **`mayssam-ai-stack.sh fleet-studio`** (serves `doc/FLEET.html` on `127.0.0.1`) to review and edit every
 file here — all 9 personas × 3 frameworks, the shared skill pack, and these docs — live on disk via the
 browser's File System Access API. Chrome/Edge get read+write; Safari/Firefox open read-only. Saves go
 straight to the real files (`agent-profiles/` is git-tracked, so git is your undo).

@@ -1,11 +1,11 @@
 # bootstrap.sh — one-shot remediation steps run automatically at the end of
-# `bash vz-ai-stack.sh` (no args) so the user doesn't have to chain subcommands.
+# `bash mayssam-ai-stack.sh` (no args) so the user doesn't have to chain subcommands.
 #
 # Conservative-mode contract is preserved: every destructive action prompts
 # Y/n before running. Default answers favor "do the right thing." You can
 # decline any step and pick it up later via the matching subcommand.
 #
-# Sourced by vz-ai-stack.sh after all phases complete. Must not source anything
+# Sourced by mayssam-ai-stack.sh after all phases complete. Must not source anything
 # else — common.sh, env.sh, docker.sh, prompt.sh, adopt are already loaded.
 
 [[ -z "${AI_STACK:-}" ]] && { echo "bootstrap.sh: AI_STACK unset" >&2; exit 2; }
@@ -42,7 +42,7 @@ bootstrap_adopt_foreigns() {
     if confirm "Adopt '$svc' now?" Y; then
       bash "$AI_STACK/installer/lib/adopt.sh" "$svc" || warn "adopt $svc returned non-zero; continuing."
     else
-      warn "Skipped: $svc remains on old networking. Run 'vz-ai-stack.sh adopt $svc' when ready."
+      warn "Skipped: $svc remains on old networking. Run 'mayssam-ai-stack.sh adopt $svc' when ready."
     fi
   done
 }
@@ -70,7 +70,7 @@ bootstrap_recreate_honcho_if_drifted() {
     (cd "$AI_STACK/honcho" && docker compose down 2>&1 | tail -5)
     bash "$AI_STACK/installer/phases/03_honcho.sh" || warn "Phase 03 returned non-zero; continuing."
   else
-    warn "Skipped. Run 'vz-ai-stack.sh install 03' to migrate honcho when ready."
+    warn "Skipped. Run 'mayssam-ai-stack.sh install 03' to migrate honcho when ready."
   fi
 }
 
@@ -105,7 +105,7 @@ EOF
   local pasted
   pasted="$(secret_input "PHOENIX_API_KEY:")"
   if [[ -z "$pasted" ]]; then
-    warn "Skipped. Add PHOENIX_API_KEY=<key> to .env later, then run 'vz-ai-stack.sh apply-restarts'."
+    warn "Skipped. Add PHOENIX_API_KEY=<key> to .env later, then run 'mayssam-ai-stack.sh apply-restarts'."
     return 0
   fi
   set_env PHOENIX_API_KEY "$pasted"
@@ -165,7 +165,7 @@ bootstrap_drain_restarts() {
       fi
     fi
   else
-    warn "Skipped. Run 'vz-ai-stack.sh apply-restarts' when ready."
+    warn "Skipped. Run 'mayssam-ai-stack.sh apply-restarts' when ready."
   fi
 }
 

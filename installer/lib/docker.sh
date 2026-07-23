@@ -1,5 +1,5 @@
 # docker.sh — managed docker run helpers.
-# Sourced by vz-ai-stack.sh after common.sh + env.sh.
+# Sourced by mayssam-ai-stack.sh after common.sh + env.sh.
 #
 # Every managed container is launched with three discipline rules:
 #   1. Flag order is FIXED: --name, then the --label×3, then --restart, then any
@@ -16,7 +16,7 @@
 #        ai-stack.managed=true       (this installer owns it)
 #        ai-stack.phase=<NN>         (which phase installed it)
 #        ai-stack.partial=true       (cleared after smoke test passes)
-#      vz-ai-stack.sh gc cleans partial=true orphans.
+#      mayssam-ai-stack.sh gc cleans partial=true orphans.
 
 [[ -z "${AI_STACK:-}" ]] && { echo "docker.sh: AI_STACK unset" >&2; exit 2; }
 
@@ -127,7 +127,7 @@ docker_run_managed() {
 # --label flag (verified: `docker update --help` lists none), so the old
 # `docker update --label-add "ai-stack.partial=false" ... || true` was a SILENT
 # NO-OP for EVERY managed container — the ai-stack.partial=true label set at
-# creation never cleared, so `vz-ai-stack.sh gc` classified the entire healthy
+# creation never cleared, so `mayssam-ai-stack.sh gc` classified the entire healthy
 # running stack as "partial orphans" and offered to `docker rm -f` all of it.
 # (2026-07-05 takeover fix.)
 #
@@ -203,7 +203,7 @@ recreate_guard() {
     fi
     # Foreign container — never silently destroy something we don't own.
     warn "Container '$name' already exists and is NOT managed by ai-stack."
-    warn "Adopt it (vz-ai-stack.sh adopt $name) or replace: bash bin/start-${name}.sh --recreate"
+    warn "Adopt it (mayssam-ai-stack.sh adopt $name) or replace: bash bin/start-${name}.sh --recreate"
     return 1
   fi
   # Container absent → the caller is about to `docker run` a fresh partial=true one.
@@ -344,7 +344,7 @@ probe_host_docker_internal() {
 }
 
 # Source-time DOCKER_HOST export so STANDALONE bin/start-*.sh (which source this
-# file but NOT vz-ai-stack.sh) talk to the SELECTED engine, not the ambient socket.
+# file but NOT mayssam-ai-stack.sh) talk to the SELECTED engine, not the ambient socket.
 # Idempotent + no-op when AI_STACK_DOCKER_ENGINE is empty/unset.
 if declare -F engine_socket >/dev/null 2>&1 && declare -F _engine_valid >/dev/null 2>&1; then
   _ds_eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"

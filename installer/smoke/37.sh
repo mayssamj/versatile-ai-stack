@@ -16,14 +16,14 @@ source "$AI_STACK/installer/lib/env.sh"
 hdr "Smoke 37 — Concordia (GABM sim: 2 entities + Game Master -> LiteLLM)"
 
 VENV="$AI_STACK/concordia/.venv"
-[[ -x "$VENV/bin/python" ]] || { err "concordia venv missing — run: vz-ai-stack.sh install 37"; exit 1; }
+[[ -x "$VENV/bin/python" ]] || { err "concordia venv missing — run: mayssam-ai-stack.sh install 37"; exit 1; }
 "$VENV/bin/python" -c "import concordia" >/dev/null 2>&1 && ok "import concordia OK" \
   || { err "import concordia failed in the venv"; exit 1; }
 "$VENV/bin/python" -c "import sentence_transformers" >/dev/null 2>&1 && ok "import sentence_transformers OK" \
   || { err "import sentence_transformers failed (embedder missing)"; exit 1; }
-[[ -x "$AI_STACK/bin/concordia" ]] || { err "bin/concordia wrapper missing — run: vz-ai-stack.sh install 37"; exit 1; }
+[[ -x "$AI_STACK/bin/concordia" ]] || { err "bin/concordia wrapper missing — run: mayssam-ai-stack.sh install 37"; exit 1; }
 SIM="$AI_STACK/concordia/sims/smoke_sim.py"
-[[ -f "$SIM" ]] || { err "seeded sim missing ($SIM) — re-run: vz-ai-stack.sh install 37"; exit 1; }
+[[ -f "$SIM" ]] || { err "seeded sim missing ($SIM) — re-run: mayssam-ai-stack.sh install 37"; exit 1; }
 
 KEY="$(get_env CONCORDIA_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "CONCORDIA_LITELLM_KEY absent from .env"; exit 1; }

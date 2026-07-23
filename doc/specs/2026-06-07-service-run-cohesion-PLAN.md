@@ -18,12 +18,12 @@ Parallelism is by strict **file ownership**. Each file has exactly ONE owning wo
 - `.services.<svc>.type` — drives behavior (daemon-with-script | brew-service | non-daemon).
 - `.services.<svc>.open_url` — OPTIONAL absolute URL; present ⇒ UI ⇒ browser-open eligible.
 - `.services.<svc>.alias` / `.host_port` — fallback for the "Endpoint:" report line.
-Helpers (live in `vz-ai-stack.sh`, owned by WS-A): `_report_started <svc>` (prints URL/Endpoint + `Stop:` line), `_browser_open <url>` (gated: macOS `open`/Linux `xdg-open`, interactive TTY, not `NO_BROWSER`/CI, only on fresh start), `_ensure_setup <svc>` (prompt-then-install per Decision 1). Start scripts exit 0 idempotently and print their own logs; the authoritative reach line + browser-open come from `cmd_start`.
+Helpers (live in `mayssam-ai-stack.sh`, owned by WS-A): `_report_started <svc>` (prints URL/Endpoint + `Stop:` line), `_browser_open <url>` (gated: macOS `open`/Linux `xdg-open`, interactive TTY, not `NO_BROWSER`/CI, only on fresh start), `_ensure_setup <svc>` (prompt-then-install per Decision 1). Start scripts exit 0 idempotently and print their own logs; the authoritative reach line + browser-open come from `cmd_start`.
 
 ---
 
 ## PHASE 1 — CODE (4 agents, parallel, file-disjoint)
-- **WS-A — `vz-ai-stack.sh` ONLY** (backend-engineer/strongest): add `run` alias (is_subcommand + dispatch case + reverse-form); rewrite `cmd_start` → drop `exec`, type-aware dispatch, `_report_started`, `_browser_open`, `_ensure_setup`; honest non-daemon messages; update `usage`/inline help. MUST preserve exit codes + not break the 17 existing start scripts.
+- **WS-A — `mayssam-ai-stack.sh` ONLY** (backend-engineer/strongest): add `run` alias (is_subcommand + dispatch case + reverse-form); rewrite `cmd_start` → drop `exec`, type-aware dispatch, `_report_started`, `_browser_open`, `_ensure_setup`; honest non-daemon messages; update `usage`/inline help. MUST preserve exit codes + not break the 17 existing start scripts.
 - **WS-B — `bin/start-lmstudio.sh` (NEW) + `installer/phases/25_lmstudio.sh`** (backend-engineer): create the guarded server-only start script (Darwin→app→lms CLI→idempotent→`lms server start -p 1234 --bind 0.0.0.0`→wait→CPU warning); strip `LMS_AUTOSTART`-as-run-path from phase 25, point its "server down" note to `start lmstudio`.
 - **WS-C — `bin/start-claw3d.sh` + `bin/start-claw3d-bridge.sh` + `installer/phases/19_claw3d.sh`** (backend-engineer): `start-claw3d.sh` starts the bridge first + health-gates `/health` before the UI, aborts if bridge unhealthy; phase 19 delegates its launch to `start claw3d` (no duplicated launch logic).
 - **WS-D — `services.yml` ONLY** (backend-engineer): add `open_url` to UI services (claw3d 4310, openwebui, phoenix, falkordb-ui, qdrant /dashboard, deerflow 2026, autofyn, paperclip, hermes_workspace, unsloth); ensure each service has a correct `type`; update the lmstudio/claw3d `help` blocks to the new run contract.
@@ -55,6 +55,6 @@ Full doctor pass; final `bash -n`; commit (one focused commit, or split code/doc
 
 ## Concurrency / safety notes
 - Phase 1: 4 agents in parallel (A,B,C,D) — disjoint files. Phase 3: 5 agents in parallel (DS-1..5) — disjoint files. Reviews/audits are read-only (any number parallel).
-- The ONLY shared-file hazard is `vz-ai-stack.sh` (WS-A) and `services.yml` (WS-D) — each single-owned; doc agents must NOT touch either.
+- The ONLY shared-file hazard is `mayssam-ai-stack.sh` (WS-A) and `services.yml` (WS-D) — each single-owned; doc agents must NOT touch either.
 - If an agent needs a field not in the contract, it asks the orchestrator (do not invent schema).
 - Verification is non-negotiable between phases; never advance a gate on an unverified phase.

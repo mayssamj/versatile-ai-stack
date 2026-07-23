@@ -10,7 +10,7 @@
 # via the engine's host.docker.internal mapping, gated by a token in .env). Read-only:
 # it only reads the graph + source under $AI_STACK; no writes, no LLM, no egress.
 #
-# node-bg service: pid recorded at $STATE_DIR/understand.pid so `vz-ai-stack.sh stop
+# node-bg service: pid recorded at $STATE_DIR/understand.pid so `mayssam-ai-stack.sh stop
 # understand` (cmd_stop's pidfile fallback) tears it down. `start understand` is
 # idempotent (already-healthy → report + exit 0).
 set -Eeuo pipefail
@@ -42,14 +42,14 @@ _alive() {
 _health() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://$HOSTB:$PORT/healthz" 2>/dev/null | grep -q '^200$'; }
 
 if [[ ! -f "$SHIM" ]]; then
-  err "understand-mcp shim missing ($SHIM) — run 'vz-ai-stack.sh install understand'."
+  err "understand-mcp shim missing ($SHIM) — run 'mayssam-ai-stack.sh install understand'."
   exit 1
 fi
 if [[ ! -x "$(command -v node)" ]]; then err "node not found on PATH"; exit 1; fi
 
 if _alive && _health; then
   ok "understand-mcp already running (pid $(cat "$PIDFILE")) on http://$HOSTB:$PORT/mcp"
-  note "Stop: vz-ai-stack.sh stop understand"
+  note "Stop: mayssam-ai-stack.sh stop understand"
   exit 0
 fi
 # Clean a stale pidfile / half-up process.
@@ -59,7 +59,7 @@ rm -f "$PIDFILE"
 log "Starting understand-mcp (http) on $HOSTB:$PORT …"
 # Fail closed: the fleet reaches this over host.docker.internal, so an unauthenticated
 # server is a real exposure. The server refuses --http without a token; surface it here.
-[[ -n "$TOKEN" ]] || { err "UNDERSTAND_MCP_TOKEN not set in .env — refusing to start (re-run 'vz-ai-stack.sh install understand' to mint one)."; exit 1; }
+[[ -n "$TOKEN" ]] || { err "UNDERSTAND_MCP_TOKEN not set in .env — refusing to start (re-run 'mayssam-ai-stack.sh install understand' to mint one)."; exit 1; }
 
 UNDERSTAND_PLUGIN_ROOT="$PLUGIN_ROOT" \
 UNDERSTAND_GRAPH_ROOT="$AI_STACK" \
@@ -73,7 +73,7 @@ for _ in $(seq 1 25); do _health && break; sleep 0.2; done
 if _health; then
   ok "understand-mcp up: http://$HOSTB:$PORT/mcp  (graph from $AI_STACK/.understand-anything/)"
   note "Fleet reaches it at http://host.docker.internal:$PORT/mcp (wired per-profile by Phase 30)."
-  note "Stop: vz-ai-stack.sh stop understand    Logs: $LOGFILE"
+  note "Stop: mayssam-ai-stack.sh stop understand    Logs: $LOGFILE"
 else
   err "understand-mcp did not become healthy on :$PORT — see $LOGFILE"
   tail -5 "$LOGFILE" 2>/dev/null || true

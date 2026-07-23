@@ -57,7 +57,7 @@ Phase **28**, **opt-in**, fail-isolated **leaf** — NOT in the core `install al
 - `services.yml` — one entry, **`network: host`** (host process, not a container → doctor check 16 does not apply; no bridge-exempt label needed), with a `help:` block.
 - `installer/lib/aliases.tsv` — open_url / doc entry for `127.0.0.1:25808`.
 - LiteLLM virtual-key mint (scoped) — following the Phase 04f mint pattern but a distinct, minimal scope.
-- `vz-ai-stack.sh` — start/stop/help dispatch + add Phase 28 to the opt-in order/resolution.
+- `mayssam-ai-stack.sh` — start/stop/help dispatch + add Phase 28 to the opt-in order/resolution.
 - `doc/TUTORIAL.md` (+ regen `TUTORIAL.html`, `--check` drift guard green) — one AionUi lesson.
 - `doc/EXPLORE.html` — SERVICES array entry + the hardcoded count(s).
 - Doc sweep — services 41→42, doctor count (auto-bumps, dynamic; sweep human-readable prose only), opt-in phase count. **Exact current counts verified by file-count at impl, not trusting prose.**
@@ -96,9 +96,9 @@ Run BEFORE building the corresponding plank; any failure auto-defers that plank 
 
 ## 10. Acceptance criteria (testable) & DoD
 
-- **AC-1:** `vz-ai-stack.sh install 28` is idempotent and, on success, leaves the cask installed and (if c ships) `aionui-web` healthy. Smoke `installer/smoke/28.sh` asserts: cask present (`brew list --cask aionui`); the AionUi LiteLLM virtual key exists in `/key/list`; the key performs a **real 1-token chat completion** against `http://127.0.0.1:4000/v1` (the actual AionUi→LiteLLM path); (if c) `:25808` returns `200`; `build_tutorial_html.py --check` exits 0. Stamp is written only AFTER smoke passes.
-- **AC-2:** `vz-ai-stack.sh doctor` is green from **main** — the new `NN_aionui.sh` passes (green advisory when AionUi is absent/disabled; red only when enabled-and-unhealthy). Doctor count reflects the new check (verified by file-count).
-- **AC-3:** `vz-ai-stack.sh help aionui` returns the what/why/usage/config; `start aionui` / `stop aionui` work as a single funnel (opens the WebUI URL gated on health).
+- **AC-1:** `mayssam-ai-stack.sh install 28` is idempotent and, on success, leaves the cask installed and (if c ships) `aionui-web` healthy. Smoke `installer/smoke/28.sh` asserts: cask present (`brew list --cask aionui`); the AionUi LiteLLM virtual key exists in `/key/list`; the key performs a **real 1-token chat completion** against `http://127.0.0.1:4000/v1` (the actual AionUi→LiteLLM path); (if c) `:25808` returns `200`; `build_tutorial_html.py --check` exits 0. Stamp is written only AFTER smoke passes.
+- **AC-2:** `mayssam-ai-stack.sh doctor` is green from **main** — the new `NN_aionui.sh` passes (green advisory when AionUi is absent/disabled; red only when enabled-and-unhealthy). Doctor count reflects the new check (verified by file-count).
+- **AC-3:** `mayssam-ai-stack.sh help aionui` returns the what/why/usage/config; `start aionui` / `stop aionui` work as a single funnel (opens the WebUI URL gated on health).
 - **AC-4 (live E2E, SOUL §5):** From a browser at `http://127.0.0.1:25808` (and/or the desktop app), add the LiteLLM Custom provider with the minted key and **get a reply from a stack model**; **and** (if the bridge ships) drive **one real turn through a Hermes fleet role over ACP** and get a coherent answer. Verified from the app, not a green log.
 - **AC-5 (security):** no `--yolo` on host; the minted key is scoped-minimal and not the master/fleet key; `aionui-web` binds loopback only; admin password never printed/logged.
 - **AC-6 (docs cohesion):** tutorial lesson present + `--check` green; EXPLORE.html + all count-bearing docs swept and consistent (file-count verified); CHANGELOG updated.

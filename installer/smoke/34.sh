@@ -16,12 +16,12 @@ source "$AI_STACK/installer/lib/env.sh"
 hdr "Smoke 34 — OASIS (CAMEL multi-agent swarm -> LiteLLM)"
 
 VENV="$AI_STACK/oasis/.venv"
-[[ -x "$VENV/bin/python" ]] || { err "oasis venv missing — run: vz-ai-stack.sh install 34"; exit 1; }
+[[ -x "$VENV/bin/python" ]] || { err "oasis venv missing — run: mayssam-ai-stack.sh install 34"; exit 1; }
 "$VENV/bin/python" -c "import oasis" >/dev/null 2>&1 && ok "import oasis OK" \
   || { err "import oasis failed in the venv"; exit 1; }
-[[ -x "$AI_STACK/bin/oasis" ]] || { err "bin/oasis wrapper missing — run: vz-ai-stack.sh install 34"; exit 1; }
+[[ -x "$AI_STACK/bin/oasis" ]] || { err "bin/oasis wrapper missing — run: mayssam-ai-stack.sh install 34"; exit 1; }
 SIM="$AI_STACK/oasis/sims/smoke_sim.py"
-[[ -f "$SIM" ]] || { err "seeded sim missing ($SIM) — re-run: vz-ai-stack.sh install 34"; exit 1; }
+[[ -f "$SIM" ]] || { err "seeded sim missing ($SIM) — re-run: mayssam-ai-stack.sh install 34"; exit 1; }
 
 KEY="$(get_env OASIS_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "OASIS_LITELLM_KEY absent from .env"; exit 1; }

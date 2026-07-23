@@ -3,7 +3,7 @@
 # `start paperclip` brings up BOTH the node daemon (paperclip.pid) and the alias
 # relay (paperclip-relay.pid); the generic cmd_stop pidfile fallback would only
 # stop the daemon, orphaning the relay. This script tears down both so the
-# advertised `Stop: vz-ai-stack.sh stop paperclip` is truthful. Idempotent.
+# advertised `Stop: mayssam-ai-stack.sh stop paperclip` is truthful. Idempotent.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"

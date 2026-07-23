@@ -19,10 +19,10 @@
 #   (macOS) — survives a restart; nothing of ours to seed.
 #
 # FUNNEL INTEGRATION
-#   `vz-ai-stack.sh start agentscope-studio` invokes this with NO args, so the
+#   `mayssam-ai-stack.sh start agentscope-studio` invokes this with NO args, so the
 #   no-arg default is `install` (ensure the launchd daemon + health-gate,
 #   idempotent) — NOT a foreground exec. The launchd job itself calls `run`.
-#   `vz-ai-stack.sh stop agentscope-studio` → this script's `stop`.
+#   `mayssam-ai-stack.sh stop agentscope-studio` → this script's `stop`.
 #
 # SECURITY (IMPORTANT — differs from aionui)
 #   as_studio's `host:'localhost'` config default is INERT: the server actually
@@ -127,7 +127,7 @@ _stop() {
 }
 
 _do_install() {
-  [[ -n "$AS_STUDIO_BIN" ]] || { echo "as_studio not found — enable Studio: AGENTSCOPE_STUDIO=1 bash $AI_STACK/vz-ai-stack.sh install 33 (installs npm @agentscope/studio)" >&2; exit 1; }
+  [[ -n "$AS_STUDIO_BIN" ]] || { echo "as_studio not found — enable Studio: AGENTSCOPE_STUDIO=1 bash $AI_STACK/mayssam-ai-stack.sh install 33 (installs npm @agentscope/studio)" >&2; exit 1; }
   # Resolve the node bin dir NOW (full PATH) so the launchd daemon can find BOTH as_studio
   # AND `node` (as_studio is a `#!/usr/bin/env node` script). node/npm may live at a
   # non-standard prefix (e.g. ~/.openagents/nodejs/bin), which the plist's minimal PATH
@@ -190,7 +190,7 @@ case "${1:-install}" in
 esac
 
 # --- foreground server (launchd entrypoint) -----------------------------------
-[[ -n "$AS_STUDIO_BIN" ]] || { echo "as_studio not found — enable Studio: AGENTSCOPE_STUDIO=1 bash $AI_STACK/vz-ai-stack.sh install 33" >&2; exit 1; }
+[[ -n "$AS_STUDIO_BIN" ]] || { echo "as_studio not found — enable Studio: AGENTSCOPE_STUDIO=1 bash $AI_STACK/mayssam-ai-stack.sh install 33" >&2; exit 1; }
 # Port via env (as_studio reads PORT for the UI + OTEL_GRPC_PORT for the OTLP gRPC
 # receiver). Headless-safe: non-interactive, it auto-bumps a busy port and the
 # browser auto-open no-ops. NO flag exists to force a loopback bind (see SECURITY).

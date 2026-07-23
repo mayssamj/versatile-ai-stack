@@ -21,7 +21,7 @@ honcho_mcp_diagnose() {
   # (0) Not installed → skip-clean (Phase 40 declined via HONCHO_MEMORY_OPT_IN=0, or the stack
   # predates the 2026-07-16 default-on flip).
   if ! compgen -G "$AI_STACK/installer/state/phase_40*.done" >/dev/null 2>&1; then
-    echo "(honcho memory not installed — Phase 40 is default-on under 'install all --include-optionals'; this stack declined it (HONCHO_MEMORY_OPT_IN=0) or predates it. Wire it: vz-ai-stack.sh install honcho_mcp; skip)"
+    echo "(honcho memory not installed — Phase 40 is default-on under 'install all --include-optionals'; this stack declined it (HONCHO_MEMORY_OPT_IN=0) or predates it. Wire it: mayssam-ai-stack.sh install honcho_mcp; skip)"
     return 0
   fi
 
@@ -35,21 +35,21 @@ honcho_mcp_diagnose() {
   grep -qE '^[[:space:]]*honcho_memory:' "$gen"  2>/dev/null && fails+=("  SECURITY: raw honcho_memory (:8000) egress is BACK in installer/phases/04_openshell.sh — it must stay retired")
   grep -qE '^[[:space:]]*honcho_memory:' "$fpol" 2>/dev/null && fails+=("  SECURITY: raw honcho_memory (:8000) egress is BACK in hermes-fleet-v1.yaml — must stay retired")
   grep -qE '^[[:space:]]*honcho_memory:' "$ppol" 2>/dev/null && fails+=("  SECURITY: raw honcho_memory (:8000) egress is BACK in pi-v1.yaml — must stay retired")
-  grep -qE '^[[:space:]]*honcho_mcp:' "$fpol" 2>/dev/null || fails+=("  honcho_mcp (:7082) shim egress MISSING from hermes-fleet-v1.yaml — re-run 'vz-ai-stack.sh install 04'")
+  grep -qE '^[[:space:]]*honcho_mcp:' "$fpol" 2>/dev/null || fails+=("  honcho_mcp (:7082) shim egress MISSING from hermes-fleet-v1.yaml — re-run 'mayssam-ai-stack.sh install 04'")
   # PORT-based guard (name-independent): a renamed stanza pointing at :8000 must not slip past
   # the name grep above — assert NO sandbox-policy endpoint targets port 8000 (raw honcho REST).
   grep -qE '^[[:space:]]*port:[[:space:]]*8000\b' "$fpol" "$ppol" 2>/dev/null && fails+=("  SECURITY: a sandbox-policy endpoint targets port 8000 (raw honcho REST) — must stay retired regardless of the stanza name")
 
   # (2) claude-cli registration (if the claude CLI is present).
   if command -v claude >/dev/null 2>&1; then
-    claude mcp list 2>/dev/null | grep -q '^honcho[: ]' || fails+=("  claude-cli MCP 'honcho' not registered — run: vz-ai-stack.sh install honcho_mcp")
+    claude mcp list 2>/dev/null | grep -q '^honcho[: ]' || fails+=("  claude-cli MCP 'honcho' not registered — run: mayssam-ai-stack.sh install honcho_mcp")
   fi
 
   # (3) shim health (the fleet's http daemon). /healthz also reports honcho reachability.
   local port; port="$(get_env HONCHO_MCP_PORT '7082')"
   local hz; hz="$(curl -s --max-time 3 "http://127.0.0.1:$port/healthz" 2>/dev/null || true)"
   if [[ -z "$hz" ]]; then
-    fails+=("  honcho-mcp shim not answering on 127.0.0.1:$port — start it: vz-ai-stack.sh start honcho_mcp")
+    fails+=("  honcho-mcp shim not answering on 127.0.0.1:$port — start it: mayssam-ai-stack.sh start honcho_mcp")
   elif ! grep -q '"honcho":true' <<<"$hz"; then
     echo "  (shim up but Honcho backend unreachable per /healthz — check honcho is running)"
   fi
@@ -68,7 +68,7 @@ honcho_mcp_diagnose() {
     wired="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 </dev/null -- bash -c \
       'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "honcho:" "$f" && grep -q "host.docker.internal:$1" "$f" && echo WIRED || echo MISSING' \
       _ "$port" 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
-    [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to honcho MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install honcho_mcp")
+    [[ "$wired" == "WIRED" ]] || fails+=("  hermes_manager profile NOT wired to honcho MCP (got '${wired:-no-response}') — run: mayssam-ai-stack.sh install honcho_mcp")
   fi
 
   # (5) LIVE negative probe (slow / --all): the running fleet sandbox must be DENIED raw
@@ -83,7 +83,7 @@ honcho_mcp_diagnose() {
       if grep -q 'policy_denied' <<<"$body" || grep -qE '__C_(000|403|502|503|522)$' <<<"$body"; then
         : # denied at the network layer — good
       else
-        fails+=("  LIVE-SECURITY: hermes-fleet-v1 can still REACH raw honcho:8000 (egress NOT denied — Phase 40's live policy-apply likely failed). Re-apply: vz-ai-stack.sh install 04")
+        fails+=("  LIVE-SECURITY: hermes-fleet-v1 can still REACH raw honcho:8000 (egress NOT denied — Phase 40's live policy-apply likely failed). Re-apply: mayssam-ai-stack.sh install 04")
       fi
     fi
   else
@@ -99,7 +99,7 @@ honcho_mcp_diagnose() {
 
 honcho_mcp_fix() {
   warn "Honcho memory MCP not fully wired, or a SECURITY regression (raw :8000 egress back) was found."
-  warn "Install / re-assert:  vz-ai-stack.sh install honcho_mcp"
+  warn "Install / re-assert:  mayssam-ai-stack.sh install honcho_mcp"
   warn "If honcho_memory (:8000) reappeared in a policy, revert it (it MUST stay retired) + 'install 04'."
   return 1
 }

@@ -2,7 +2,7 @@
 
 You are the **orchestrator** for a multi-agent build session. Your deliverable is a single, idempotent, self-doctoring installation system that bootstraps a complete personal multi-agent AI stack on a MacBook Pro M4 24 GB, then verifies and heals itself end-to-end.
 
-**Your principal (the human you're working for) is Mayssam.** He has worked through this stack with another Claude over many iterations, hit many landmines, and is tired of being the copy-paste-and-debug loop. Your job is to make him no longer that loop. He runs `bash vz-ai-stack.sh` and the system installs, validates, and heals itself. He answers prompts when needed. He never copies a docker command.
+**Your principal (the human you're working for) is Mayssam.** He has worked through this stack with another Claude over many iterations, hit many landmines, and is tired of being the copy-paste-and-debug loop. Your job is to make him no longer that loop. He runs `bash mayssam-ai-stack.sh` and the system installs, validates, and heals itself. He answers prompts when needed. He never copies a docker command.
 
 This brief is long because the problem is real. Read it all before you start. Then re-read sections relevant to whichever phase you're working on.
 
@@ -71,26 +71,26 @@ You will not do this. Specifically:
 A single command Mayssam can run:
 
 ```bash
-bash ~/ai-stack/vz-ai-stack.sh
+bash ~/ai-stack/mayssam-ai-stack.sh
 ```
 
 That:
 
 1. **Installs** the full stack (all 25 phases — see §4) interactively, prompting only for things it genuinely can't know (API keys, model preferences, whether to enable optional services).
 2. **Validates** each phase end-to-end as it goes (real curl health checks, real inference tests, real trace verification — not just "container started").
-3. **Heals** broken installs via `bash vz-ai-stack.sh doctor` — detects drift between declared and actual state, diagnoses the failure, applies the fix.
+3. **Heals** broken installs via `bash mayssam-ai-stack.sh doctor` — detects drift between declared and actual state, diagnoses the failure, applies the fix.
 4. **Is idempotent** — re-running it on a healthy stack is a no-op (or surfaces a single "everything looks good" message). Re-running it on a partially-broken stack fixes what's broken without disturbing what's working.
 
 ### 2.2 Subcommands
 
-- `vz-ai-stack.sh` (no args) → interactive top-to-bottom install with a phase menu, resumes from last incomplete phase
-- `vz-ai-stack.sh install <phase>` → install a specific phase (e.g. `01h` for Phoenix)
-- `vz-ai-stack.sh doctor` → full health check + auto-fix; reports what was fixed
-- `vz-ai-stack.sh doctor <service>` → diagnose one service
-- `vz-ai-stack.sh status` → tabular service status (declared vs actual, like `kubectl get pods` but for this stack)
-- `vz-ai-stack.sh logs <service>` → tail recent logs from a service (avoids the user remembering `docker logs <name>`)
-- `vz-ai-stack.sh reset --confirm` → DANGEROUS, wipes all state, requires explicit confirmation
-- `vz-ai-stack.sh test <phase>` → run the validation suite for a phase without reinstalling
+- `mayssam-ai-stack.sh` (no args) → interactive top-to-bottom install with a phase menu, resumes from last incomplete phase
+- `mayssam-ai-stack.sh install <phase>` → install a specific phase (e.g. `01h` for Phoenix)
+- `mayssam-ai-stack.sh doctor` → full health check + auto-fix; reports what was fixed
+- `mayssam-ai-stack.sh doctor <service>` → diagnose one service
+- `mayssam-ai-stack.sh status` → tabular service status (declared vs actual, like `kubectl get pods` but for this stack)
+- `mayssam-ai-stack.sh logs <service>` → tail recent logs from a service (avoids the user remembering `docker logs <name>`)
+- `mayssam-ai-stack.sh reset --confirm` → DANGEROUS, wipes all state, requires explicit confirmation
+- `mayssam-ai-stack.sh test <phase>` → run the validation suite for a phase without reinstalling
 
 ### 2.3 Architecture of the installer itself
 
@@ -98,7 +98,7 @@ Not a monolithic 3000-line bash script. Use this structure:
 
 ```
 ~/ai-stack/
-├── vz-ai-stack.sh                    # entry point, dispatches subcommands
+├── mayssam-ai-stack.sh                    # entry point, dispatches subcommands
 ├── installer/
 │   ├── lib/
 │   │   ├── common.sh             # logging, color, error handling, idempotency helpers
@@ -457,13 +457,13 @@ When something fails, the installer must say:
 1. What it was trying to do
 2. What failed (the actual error, not just "an error occurred")
 3. The likely cause (from the doctor's classification)
-4. The suggested next step (run `vz-ai-stack.sh doctor <service>`, edit a specific file, etc.)
-5. How to resume after fixing (`vz-ai-stack.sh install <phase>` will resume from this phase)
+4. The suggested next step (run `mayssam-ai-stack.sh doctor <service>`, edit a specific file, etc.)
+5. How to resume after fixing (`mayssam-ai-stack.sh install <phase>` will resume from this phase)
 
 ### 7.4 The "doctor" subcommand specifically
 
 ```bash
-$ bash vz-ai-stack.sh doctor
+$ bash mayssam-ai-stack.sh doctor
 Running diagnostic checks...
 
 [✓] OrbStack running
@@ -509,7 +509,7 @@ Before any code:
 4. **Spawn the three reviewer subagents** with their role descriptions (§3.1). Verify each understands their role by asking each "what's your job, in your own words?"
 5. **Run the first decision through the cycle**: file/directory structure for the installer. Propose the structure from §2.3 to all three. Collect feedback. Debate. Decide.
 6. **Build incrementally, phase by phase**, starting with Phase 00. Each phase: design → review cycle → write code → run code in sandbox where possible → smoke test → document in CHANGELOG → next phase.
-7. **Before declaring "done"**: actually run `bash vz-ai-stack.sh` end-to-end in your sandbox (or as close as you can get) and verify it works for at least the first 3 phases. Report what you couldn't verify (sandbox limitations) so Mayssam knows where to be careful.
+7. **Before declaring "done"**: actually run `bash mayssam-ai-stack.sh` end-to-end in your sandbox (or as close as you can get) and verify it works for at least the first 3 phases. Report what you couldn't verify (sandbox limitations) so Mayssam knows where to be careful.
 
 ---
 

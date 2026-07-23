@@ -64,7 +64,7 @@ docker_engine_consistency_fix() {
   engine_pin "$sel" || return 1
   warn "Re-pinned gateway.env + DOCKER_HOST to '$sel'."
   warn "If managed containers are stranded in ANOTHER engine, this does NOT move them:"
-  warn "  - re-pin to where they live (vz-ai-stack.sh docker-engine set <that-engine>), OR"
+  warn "  - re-pin to where they live (mayssam-ai-stack.sh docker-engine set <that-engine>), OR"
   warn "  - guided recreate on the selected engine (re-run the relevant install phase)."
   warn "Never auto-destroyed (conservative recreate_guard philosophy)."
   return 0

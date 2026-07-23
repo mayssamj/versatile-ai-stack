@@ -36,7 +36,7 @@
 # concurrently per step). On the M4/24GB box realistic sims are a handful of entities for
 # a few steps; a 2-entity/2-step sim is ~6 min on a cloud-sub model. Stated in services.yml.
 #
-# Standalone: bash vz-ai-stack.sh install 37   (alias: concordia)
+# Standalone: bash mayssam-ai-stack.sh install 37   (alias: concordia)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -90,7 +90,7 @@ worktree_guard "install concordia"
 hdr "Phase 37 — Concordia (DeepMind generative agent-based modeling / GABM)"
 
 # --- Preconditions ---
-command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/vz-ai-stack.sh install 14"; exit 1; }
+command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/mayssam-ai-stack.sh install 14"; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -102,7 +102,7 @@ if   curl -sf --max-time 4 "$CC_LLM_HOST/health/liveliness" >/dev/null 2>&1; the
 elif curl -sf --max-time 4 "$CC_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then CC_LLM_BASE="$CC_LLM_FALLBACK"
 elif litellm_master_curl -sf --max-time 4 "$CC_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then CC_LLM_BASE="$CC_LLM_FALLBACK"
 fi
-[[ -n "$CC_LLM_BASE" ]] || { err "LiteLLM not reachable at $CC_LLM_HOST or $CC_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+[[ -n "$CC_LLM_BASE" ]] || { err "LiteLLM not reachable at $CC_LLM_HOST or $CC_LLM_FALLBACK — run 'mayssam-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $CC_LLM_BASE"
 
 # --- 1. Venv (Python 3.12) + install gdm-concordia + sentence-transformers ---
@@ -194,9 +194,9 @@ set -Eeuo pipefail
 AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 _cc_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
 PY="\$AI_STACK/concordia/.venv/bin/python"
-[[ -x "\$PY" ]] || { echo "concordia venv missing — run 'bash vz-ai-stack.sh install 37'" >&2; exit 1; }
+[[ -x "\$PY" ]] || { echo "concordia venv missing — run 'bash mayssam-ai-stack.sh install 37'" >&2; exit 1; }
 _key="\$(_cc_get_env CONCORDIA_LITELLM_KEY)"
-[[ -n "\$_key" ]] || { echo "CONCORDIA_LITELLM_KEY absent from .env — run 'bash vz-ai-stack.sh install 37'" >&2; exit 1; }
+[[ -n "\$_key" ]] || { echo "CONCORDIA_LITELLM_KEY absent from .env — run 'bash mayssam-ai-stack.sh install 37'" >&2; exit 1; }
 export CONCORDIA_LITELLM_KEY="\$_key"
 export OPENAI_API_KEY="\$_key"
 export OPENAI_BASE_URL="http://127.0.0.1:4000/v1"
@@ -329,9 +329,9 @@ GI
 # NOT do unsolicited inference (mechanism-audit #2 + the operator's no-unsolicited-
 # inference stance). The venv, scoped key, wrapper and seeded sim are already
 # re-asserted above; stamp and move on. The full verified smoke still runs on the
-# install path (and via `vz-ai-stack.sh test 37`).
+# install path (and via `mayssam-ai-stack.sh test 37`).
 if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
-  note "upgrade re-assert: skipping the live Concordia GABM smoke (no unsolicited metered inference on 'upgrade'). Run 'vz-ai-stack.sh install 37' for the full verified smoke."
+  note "upgrade re-assert: skipping the live Concordia GABM smoke (no unsolicited metered inference on 'upgrade'). Run 'mayssam-ai-stack.sh install 37' for the full verified smoke."
 else
 log "Smoke: scoped key → LiteLLM chat completion…"
 _cc_key="$(get_env CONCORDIA_LITELLM_KEY '')"
@@ -351,12 +351,12 @@ fi
 
 stamp_mark "$PHASE"
 if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
-  record "phase 37 re-asserted on upgrade (venv + sentence-transformers + scoped key + bin/concordia + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 37' to verify)"
+  record "phase 37 re-asserted on upgrade (venv + sentence-transformers + scoped key + bin/concordia + sim seeded; live smoke SKIPPED — run 'mayssam-ai-stack.sh install 37' to verify)"
 else
   record "phase 37 complete: Concordia venv (py3.12) + sentence-transformers + scoped key + bin/concordia + GABM-verified smoke sim"
 fi
 ok "Phase 37 — Concordia — complete"
-note "Prove the sim:    vz-ai-stack.sh test 37     # a 1-step GABM sim runs via LiteLLM"
+note "Prove the sim:    mayssam-ai-stack.sh test 37     # a 1-step GABM sim runs via LiteLLM"
 note "Run the demo:     bin/concordia concordia/sims/smoke_sim.py"
 note "Watch it:         Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Write your own:   concordia/sims/<your_sim>.py  then  bin/concordia concordia/sims/<your_sim>.py"

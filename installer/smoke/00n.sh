@@ -8,7 +8,7 @@
 #
 # This is a thin wrapper around Phase 00·V's probes — Phase 00·V exists for
 # the install-time flow (decides whether to proceed); 00n.sh exists for the
-# `vz-ai-stack.sh test 00n` flow (operator runs it on demand to gate a release).
+# `mayssam-ai-stack.sh test 00n` flow (operator runs it on demand to gate a release).
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"

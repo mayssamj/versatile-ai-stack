@@ -70,7 +70,7 @@ body="$(curl -s --max-time 10 http://workspace:3000/api/sessions 2>/dev/null | h
 if [[ "$code" == "200" ]] && printf '%s' "$body" | grep -q '"sessions"'; then
   ok "dashboard DOWN → /api/sessions = 200 (graceful: $body) — hardening holds"
 else
-  err "dashboard DOWN → /api/sessions = HTTP $code (body: $body) — the hardened guard did NOT hold (a 500 means the unpatched base is running; re-run 'vz-ai-stack.sh install 05')"
+  err "dashboard DOWN → /api/sessions = HTTP $code (body: $body) — the hardened guard did NOT hold (a 500 means the unpatched base is running; re-run 'mayssam-ai-stack.sh install 05')"
   fail=1
 fi
 

@@ -26,7 +26,7 @@
 # proves the phases still IMPLEMENT it.
 #
 # Runs clean under BOTH /opt/homebrew/bin/bash (5) and /bin/bash (3.2); no bash-4 features.
-#   bash installer/smoke/verify-then-stamp.sh      (or: vz-ai-stack.sh test verify-then-stamp)
+#   bash installer/smoke/verify-then-stamp.sh      (or: mayssam-ai-stack.sh test verify-then-stamp)
 set -Eeuo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

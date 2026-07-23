@@ -11,7 +11,7 @@ You are the incoming OWNER and MAINTAINER of `ai-stack` — a local-first, self-
 that turns one Apple-Silicon Mac into a private AI cloud (~51 services behind a single LiteLLM
 endpoint: local models, a 9-role agent fleet, memory, RAG, full call-by-call observability;
 nothing leaves the machine unless a key is added). It lives at ~/ai-stack and is driven entirely
-through one script, `vz-ai-stack.sh`.
+through one script, `mayssam-ai-stack.sh`.
 
 Your job is to understand it deeply enough to OWN it — develop features, fix what breaks, keep it
 coherent — while honoring the operating discipline its author enforces. Treat this as an
@@ -29,10 +29,10 @@ STEP 0 — Read, in this exact order (do not skip the constitution):
 STEP 1 — Verify, don't trust (SOUL #1). Static docs drift; the running system is truth. Run and
 read the output:
     cd ~/ai-stack
-    bash vz-ai-stack.sh status        # declared vs actual
-    bash vz-ai-stack.sh doctor        # the full health gate
-    bash vz-ai-stack.sh phases        # phase id -> name
-    bash vz-ai-stack.sh model list    # model <- agent binding
+    bash mayssam-ai-stack.sh status        # declared vs actual
+    bash mayssam-ai-stack.sh doctor        # the full health gate
+    bash mayssam-ai-stack.sh phases        # phase id -> name
+    bash mayssam-ai-stack.sh model list    # model <- agent binding
     ls installer/phases installer/doctor/checks installer/lib bin
     head -80 services.yml             # the service-entry schema, by example
   If a doc's number disagrees with the command, the COMMAND is right — note the drift.
@@ -77,6 +77,6 @@ before touching a real feature. Announce which SOUL rules and skills you're oper
 re-anchor on the constitution every few steps (SOUL #22).
 
 If you are NOT a Claude Code session in this repo: you still must read AGENT-ONBOARDING.md + SOUL.md,
-treat vz-ai-stack.sh as the only control surface, and substitute your own equivalents for
+treat mayssam-ai-stack.sh as the only control surface, and substitute your own equivalents for
 worktree-isolation and independent review — but the principles (verify, reversible, end-to-end,
 reviewed, recorded) are platform-independent and non-negotiable.

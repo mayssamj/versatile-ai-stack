@@ -3,7 +3,7 @@
 # `start claw3d` brings up BOTH the UI (claw3d.pid) and the bridge
 # (claw3d-bridge.pid); the generic cmd_stop pidfile fallback would only stop the
 # UI, orphaning the bridge. This script (cmd_stop prefers bin/stop-<svc>.sh) tears
-# down both, so the advertised `Stop: vz-ai-stack.sh stop claw3d` is truthful.
+# down both, so the advertised `Stop: mayssam-ai-stack.sh stop claw3d` is truthful.
 # Idempotent: missing/dead pidfiles are a clean no-op.
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

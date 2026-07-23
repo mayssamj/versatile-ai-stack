@@ -9,7 +9,7 @@
 # mapping, gated by HONCHO_MCP_TOKEN in .env. Once Phase 40 retires the raw honcho:8000
 # sandbox egress, THIS shim is the only in-sandbox path to Honcho.
 #
-# node-bg service: pid at $STATE_DIR/honcho_mcp.pid so `vz-ai-stack.sh stop honcho_mcp`
+# node-bg service: pid at $STATE_DIR/honcho_mcp.pid so `mayssam-ai-stack.sh stop honcho_mcp`
 # (cmd_stop's pidfile fallback) tears it down. `start honcho_mcp` is idempotent
 # (already-healthy → report + exit 0).
 set -Eeuo pipefail
@@ -41,18 +41,18 @@ _alive() {
 _health() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://$HOSTB:$PORT/healthz" 2>/dev/null | grep -q '^200$'; }
 
 if [[ ! -f "$SHIM" ]]; then
-  err "honcho-mcp shim missing ($SHIM) — run 'vz-ai-stack.sh install honcho_mcp'."
+  err "honcho-mcp shim missing ($SHIM) — run 'mayssam-ai-stack.sh install honcho_mcp'."
   exit 1
 fi
 if [[ ! -d "$AI_STACK/honcho-mcp/node_modules/@modelcontextprotocol/sdk" ]]; then
-  err "honcho-mcp deps missing — run 'vz-ai-stack.sh install honcho_mcp' (npm install)."
+  err "honcho-mcp deps missing — run 'mayssam-ai-stack.sh install honcho_mcp' (npm install)."
   exit 1
 fi
 command -v node >/dev/null 2>&1 || { err "node not found on PATH"; exit 1; }
 
 if _alive && _health; then
   ok "honcho-mcp already running (pid $(cat "$PIDFILE")) on http://$HOSTB:$PORT/mcp"
-  note "Stop: vz-ai-stack.sh stop honcho_mcp"
+  note "Stop: mayssam-ai-stack.sh stop honcho_mcp"
   exit 0
 fi
 if _alive; then kill "$(cat "$PIDFILE")" 2>/dev/null || true; sleep 1; fi
@@ -60,7 +60,7 @@ rm -f "$PIDFILE"
 
 # Fail closed: the fleet reaches this over host.docker.internal, so an unauthenticated
 # server is a real exposure. The shim refuses --http without a token; surface it here.
-[[ -n "$TOKEN" ]] || { err "HONCHO_MCP_TOKEN not set in .env — refusing to start (re-run 'vz-ai-stack.sh install honcho_mcp' to mint one)."; exit 1; }
+[[ -n "$TOKEN" ]] || { err "HONCHO_MCP_TOKEN not set in .env — refusing to start (re-run 'mayssam-ai-stack.sh install honcho_mcp' to mint one)."; exit 1; }
 
 log "Starting honcho-mcp (http) on $HOSTB:$PORT → $HONCHO_BASE_URL (workspace $HONCHO_WORKSPACE_ID) …"
 HONCHO_MCP_TOKEN="$TOKEN" \
@@ -76,7 +76,7 @@ for _ in $(seq 1 25); do _health && break; sleep 0.2; done
 if _health; then
   ok "honcho-mcp up: http://$HOSTB:$PORT/mcp"
   note "Fleet reaches it at http://host.docker.internal:$PORT/mcp (wired per-profile by Phase 40)."
-  note "Stop: vz-ai-stack.sh stop honcho_mcp    Logs: $LOGFILE"
+  note "Stop: mayssam-ai-stack.sh stop honcho_mcp    Logs: $LOGFILE"
 else
   err "honcho-mcp did not become healthy on :$PORT — see $LOGFILE"
   tail -5 "$LOGFILE" 2>/dev/null || true

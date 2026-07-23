@@ -132,7 +132,7 @@ network_ensure_ai_stack() {
     # a host route. Re-run with details so the user can pick an alt subnet.
     err "docker network create ai-stack failed."
     err "Likely cause: subnet $AI_STACK_SUBNET overlaps an existing docker network or host route."
-    err "Escape hatch: AI_STACK_SUBNET=10.123.0.0/24 AI_STACK_GATEWAY=10.123.0.1 bash vz-ai-stack.sh install 00n"
+    err "Escape hatch: AI_STACK_SUBNET=10.123.0.0/24 AI_STACK_GATEWAY=10.123.0.1 bash mayssam-ai-stack.sh install 00n"
     err ""
     err "Existing docker networks (for reference):"
     docker network ls --format '  {{.Name}}\t{{.Driver}}\t{{.Scope}}' 2>&1 | sed 's/^/    /' >&2 || true
@@ -209,7 +209,7 @@ lo0_ensure_aliases() {
   # actionable exit) instead of hanging on an EPM sudo prompt.
   if (( EUID != 0 )) && ! sudo -n true 2>/dev/null && [[ ! -t 0 ]]; then
     warn "loopback aliases need sudo but none is cached and this is unattended (no tty) — DEFERRING ${#missing[@]} alias(es) so an EPM elevation prompt can't hang the install."
-    note "Bind them later:  sudo bash vz-ai-stack.sh prepare-sudo   (or re-run interactively)."
+    note "Bind them later:  sudo bash mayssam-ai-stack.sh prepare-sudo   (or re-run interactively)."
     return 0
   fi
   log "Binding ${#missing[@]} loopback aliases to lo0 (sudo required)..."
@@ -296,7 +296,7 @@ XML_FOOTER
   if (( EUID != 0 )) && ! sudo -n true 2>/dev/null; then
     rm -f "$tmp"; trap - EXIT
     warn "loopback persistence plist needs sudo to (re)install; sudo unavailable non-interactively."
-    note "Run 'sudo bash vz-ai-stack.sh prepare-sudo' to persist lo0 aliases across reboot (does not affect this session)."
+    note "Run 'sudo bash mayssam-ai-stack.sh prepare-sudo' to persist lo0 aliases across reboot (does not affect this session)."
     return 0
   fi
   # When EUID is already 0 (called from prepare-sudo), don't double-sudo —

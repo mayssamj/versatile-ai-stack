@@ -49,7 +49,7 @@ hostname_alias_coverage_diagnose() {
 hostname_alias_coverage_fix() {
   warn "A services.yml open_url uses a bare hostname with no aliases.tsv row. Either:"
   warn "  • add the row to installer/lib/aliases.tsv (alias<TAB>127.0.10.x<TAB>http<TAB>host_port<TAB>ctr_port<TAB>phase<TAB>key)"
-  warn "    then run 'sudo vz-ai-stack.sh prepare-sudo' (+ 'ingress reload' for the port-free URL), or"
+  warn "    then run 'sudo mayssam-ai-stack.sh prepare-sudo' (+ 'ingress reload' for the port-free URL), or"
   warn "  • change the open_url back to http://localhost:PORT if the service is intentionally alias-free."
   return 1
 }

@@ -95,7 +95,7 @@ configure_hermes_mcp_sourcegraph() {
   local osh="$1" sb="$2"
   if ! _sg_token_present; then
     note "Sourcegraph MCP: token absent ($SG_TOKEN_FILE) — skipping fleet wiring."
-    note "  Install + wire it with:  vz-ai-stack.sh install sourcegraph"
+    note "  Install + wire it with:  mayssam-ai-stack.sh install sourcegraph"
     return 0
   fi
   log "Wiring Hermes fleet -> Sourcegraph MCP (http://host.docker.internal:7080/.api/mcp)…"
@@ -157,7 +157,7 @@ WIRE
     # Surface any per-profile failures for diagnosis (non-fatal).
     grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
     if grep -q '^FAIL ' <<<"$out"; then
-      warn "Sourcegraph MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install 04f')"
+      warn "Sourcegraph MCP: $summary profiles (some failed — re-run 'mayssam-ai-stack.sh install 04f')"
     else
       ok "Sourcegraph MCP: $summary profiles wired"
     fi
@@ -181,7 +181,7 @@ configure_hermes_mcp_understand() {
   local token; token="$(get_env UNDERSTAND_MCP_TOKEN '')"
   if [[ -z "$token" ]]; then
     note "Understand MCP: UNDERSTAND_MCP_TOKEN absent from .env — skipping fleet wiring."
-    note "  Install + wire it with:  vz-ai-stack.sh install understand"
+    note "  Install + wire it with:  mayssam-ai-stack.sh install understand"
     return 0
   fi
   local url="http://host.docker.internal:${port}/mcp"
@@ -240,7 +240,7 @@ WIRE
   if [[ -n "$summary" ]]; then
     grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
     if grep -q '^FAIL ' <<<"$out"; then
-      warn "Understand MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install 04f')"
+      warn "Understand MCP: $summary profiles (some failed — re-run 'mayssam-ai-stack.sh install 04f')"
     else
       ok "Understand MCP: $summary profiles wired"
     fi
@@ -317,7 +317,7 @@ WIRE
   if [[ -n "$summary" ]]; then
     grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
     if grep -q '^FAIL ' <<<"$out"; then
-      warn "doc-RAG MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install fleet_memory')"
+      warn "doc-RAG MCP: $summary profiles (some failed — re-run 'mayssam-ai-stack.sh install fleet_memory')"
     else
       ok "doc-RAG MCP: $summary profiles wired"
     fi
@@ -341,7 +341,7 @@ configure_hermes_mcp_honcho() {
   local token; token="$(get_env HONCHO_MCP_TOKEN '')"
   if [[ -z "$token" ]]; then
     note "Honcho MCP: HONCHO_MCP_TOKEN absent from .env — skipping fleet wiring."
-    note "  Install + wire it with:  vz-ai-stack.sh install honcho_mcp"
+    note "  Install + wire it with:  mayssam-ai-stack.sh install honcho_mcp"
     return 0
   fi
   local url="http://host.docker.internal:${port}/mcp"
@@ -400,7 +400,7 @@ WIRE
   if [[ -n "$summary" ]]; then
     grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
     if grep -q '^FAIL ' <<<"$out"; then
-      warn "Honcho MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install honcho_mcp')"
+      warn "Honcho MCP: $summary profiles (some failed — re-run 'mayssam-ai-stack.sh install honcho_mcp')"
     else
       ok "Honcho MCP: $summary profiles wired"
     fi
@@ -423,7 +423,7 @@ configure_hermes_mcp_falkordb() {
   local token; token="$(get_env FALKORDB_MCP_TOKEN '')"
   if [[ -z "$token" ]]; then
     note "FalkorDB MCP: FALKORDB_MCP_TOKEN absent from .env — skipping fleet wiring."
-    note "  Install + wire it with:  vz-ai-stack.sh install falkordb_mcp"
+    note "  Install + wire it with:  mayssam-ai-stack.sh install falkordb_mcp"
     return 0
   fi
   local url="http://host.docker.internal:${port}/mcp"
@@ -479,7 +479,7 @@ WIRE
   if [[ -n "$summary" ]]; then
     grep -E '^FAIL ' <<<"$out" | sed 's/^/  ⚠ /' >&2 || true
     if grep -q '^FAIL ' <<<"$out"; then
-      warn "FalkorDB MCP: $summary profiles (some failed — re-run 'vz-ai-stack.sh install falkordb_mcp')"
+      warn "FalkorDB MCP: $summary profiles (some failed — re-run 'mayssam-ai-stack.sh install falkordb_mcp')"
     else
       ok "FalkorDB MCP: $summary profiles wired"
     fi

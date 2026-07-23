@@ -9,7 +9,7 @@ set -uo pipefail
 # declare -A needs bash 4+. Under macOS's stock bash 3.2 the suite would abort mid-run at the
 # assoc-array lines yet EXIT 0 (a set -u expansion abort skips the final `(( FAIL == 0 ))` gate,
 # and the RESULT line never prints) — a vacuous pass of exactly the class this suite guards
-# against. Fail LOUDLY instead. (vz-ai-stack.sh re-execs under brew bash 5; standalone runs don't.)
+# against. Fail LOUDLY instead. (mayssam-ai-stack.sh re-execs under brew bash 5; standalone runs don't.)
 (( BASH_VERSINFO[0] >= 4 )) || { echo "FAIL: this suite needs bash >= 4 (got $BASH_VERSION)"; exit 2; }
 DOC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../doctor/doctor.sh"
 PASS=0; FAIL=0; ok(){ PASS=$((PASS+1)); echo "  ok   $1"; }; bad(){ FAIL=$((FAIL+1)); echo "  FAIL $1"; }

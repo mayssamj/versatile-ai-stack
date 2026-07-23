@@ -2,7 +2,7 @@
 # Phase 28 — AionUi (OPT-IN; desktop + WebUI Cowork workspace over your stack).
 #
 # NOT in `install all` — a desktop GUI app + a 61MB WebUI server is a deliberate
-# opt-in (run: `vz-ai-stack.sh install aionui`). What this phase installs:
+# opt-in (run: `mayssam-ai-stack.sh install aionui`). What this phase installs:
 #   (a) the AionUi desktop app           — `brew install --cask aionui`
 #   (b) LiteLLM wiring                    — a scoped virtual key; you paste it +
 #       http://127.0.0.1:4000/v1 into AionUi Settings → Models → Custom (UI-driven,
@@ -66,7 +66,7 @@ LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 # /v1/models fallback so a bad/expired master key reads as a key error at the mint step below,
 # not a misleading "LiteLLM not reachable" here.
 if ! curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1; then
-  err "LiteLLM not reachable at http://litellm:4000 — run 'vz-ai-stack.sh start litellm'."
+  err "LiteLLM not reachable at http://litellm:4000 — run 'mayssam-ai-stack.sh start litellm'."
   exit 1
 fi
 
@@ -188,5 +188,5 @@ note "   API Key:   \$(grep ^AIONUI_LITELLM_KEY= $AI_STACK/.env | cut -d= -f2-)"
 note "   Models:    claude-opus-sub-xhigh, local, …"
 note "Hermes bridge: AionUi auto-detects 'hermes' (host) — point it at LiteLLM with"
 note "   'hermes model' (base URL http://127.0.0.1:4000/v1 + the key above), then pick it in AionUi."
-note "Manage: vz-ai-stack.sh start aionui | stop aionui | help aionui | doctor aionui"
-note "Uninstall: vz-ai-stack.sh stop aionui; bash $AI_STACK/bin/start-aionui.sh uninstall; brew uninstall --cask aionui; rm -rf ~/.local/share/aionui-web ~/.aionui-web"
+note "Manage: mayssam-ai-stack.sh start aionui | stop aionui | help aionui | doctor aionui"
+note "Uninstall: mayssam-ai-stack.sh stop aionui; bash $AI_STACK/bin/start-aionui.sh uninstall; brew uninstall --cask aionui; rm -rf ~/.local/share/aionui-web ~/.aionui-web"

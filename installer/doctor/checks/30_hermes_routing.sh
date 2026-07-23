@@ -28,7 +28,7 @@ hermes_routing_diagnose() {
   state="$("$osh" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
     | awk 'NR>1 && $1=="hermes-fleet-v1" {print $NF; exit}')"
   if [[ "$state" != "Ready" ]]; then
-    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'vz-ai-stack.sh install 04'"
+    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'mayssam-ai-stack.sh install 04'"
     return 1
   fi
   # Inspect the rendered profile config WITHOUT printing it (it holds the key).
@@ -95,7 +95,7 @@ except Exception: sys.exit(0)
 print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models") for x in m)) else "\n".join(m))' 2>/dev/null || true)"
     if [[ -n "$kmodels" ]] && ! grep -qxF '__wildcard__' <<<"$kmodels" && ! grep -qxF "$bound" <<<"$kmodels"; then
       echo "HERMES_LITELLM_KEY does NOT cover the bound cloud model '$bound' (key is local-scoped) — gateway DMs would 403 server-side"
-      echo "  Heal: vz-ai-stack.sh install 04f  (now reconciles the key to the bound models)"
+      echo "  Heal: mayssam-ai-stack.sh install 04f  (now reconciles the key to the bound models)"
       return 1
     fi
   fi
@@ -104,6 +104,6 @@ print("__wildcard__" if (not m or any(x in ("all-proxy-models","all-team-models"
 
 hermes_routing_fix() {
   warn "Re-run Phase 04f to (re)mint the Hermes key + configure profile routing:"
-  warn "    bash $AI_STACK/vz-ai-stack.sh install 04f"
+  warn "    bash $AI_STACK/mayssam-ai-stack.sh install 04f"
   return 1
 }

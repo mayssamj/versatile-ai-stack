@@ -285,7 +285,7 @@ cell_C2() {
   [[ "$SKIP_LOCAL_EMBED" == 1 ]] && { record_cell "$id" "$name" SKIP "FLEET_MEM_E2E_SKIP_LOCAL_EMBED=1 (mempalace uses on-device minilm)"; return 0; }
   [[ -n "$CLAUDE_BIN" ]] || { record_cell "$id" "$name" SKIP "claude CLI not found on PATH"; return 0; }
   local cs=0; claude_server mempalace || cs=$?
-  [[ $cs -eq 2 ]] && { record_cell "$id" "$name" SKIP "mempalace not registered (run: vz-ai-stack.sh install fleet_memory)"; return 0; }
+  [[ $cs -eq 2 ]] && { record_cell "$id" "$name" SKIP "mempalace not registered (run: mayssam-ai-stack.sh install fleet_memory)"; return 0; }
   [[ $cs -eq 1 ]] && { record_cell "$id" "$name" SKIP "mempalace registered but not Connected in 'claude mcp list'"; return 0; }
   [[ -n "$SDK_ESM" && -n "$NODE_BIN" ]] || { record_cell "$id" "$name" SKIP "node MCP SDK unavailable (honcho-mcp/node_modules missing)"; return 0; }
   local wrap; wrap="$(mempalace_wrapper)"
@@ -381,8 +381,8 @@ cell_C3() {
   local id="C3" name="doc-RAG (:8765 search_documents)"
   [[ -n "$CLAUDE_BIN" ]] || { record_cell "$id" "$name" SKIP "claude CLI not found on PATH"; return 0; }
   local cs=0; claude_server docs-mcp || cs=$?
-  [[ $cs -eq 2 ]] && { record_cell "$id" "$name" SKIP "docs-mcp not registered (run: vz-ai-stack.sh install fleet_memory)"; return 0; }
-  [[ "$(http_code http://localhost:8765/mcp 4)" == "000" ]] && { record_cell "$id" "$name" SKIP "docs-mcp not running (vz-ai-stack.sh start docs_mcp)"; return 0; }
+  [[ $cs -eq 2 ]] && { record_cell "$id" "$name" SKIP "docs-mcp not registered (run: mayssam-ai-stack.sh install fleet_memory)"; return 0; }
+  [[ "$(http_code http://localhost:8765/mcp 4)" == "000" ]] && { record_cell "$id" "$name" SKIP "docs-mcp not running (mayssam-ai-stack.sh start docs_mcp)"; return 0; }
   local pts; pts="$(qdrant_points)"
   [[ "$pts" == "MISSING" || "$pts" == "0" ]] && { record_cell "$id" "$name" SKIP "corpus empty (populate: cd ingestor && python ingest.py)"; return 0; }
   [[ -n "$SDK_ESM" && -n "$NODE_BIN" ]] || { record_cell "$id" "$name" SKIP "node MCP SDK unavailable (honcho-mcp/node_modules missing)"; return 0; }
@@ -472,9 +472,9 @@ print("FAIL|honcho search ran but the just-written marker was not recalled")
 cell_C4() {
   local id="C4" name="honcho (stdio remember->search)"
   local hbin="$AI_STACK/honcho-mcp/bin.mjs"; [[ -f "$hbin" ]] || hbin="$MAIN_CO/honcho-mcp/bin.mjs"
-  [[ -f "$hbin" ]] || { record_cell "$id" "$name" SKIP "honcho-mcp shim not installed (run: vz-ai-stack.sh install honcho_mcp)"; return 0; }
+  [[ -f "$hbin" ]] || { record_cell "$id" "$name" SKIP "honcho-mcp shim not installed (run: mayssam-ai-stack.sh install honcho_mcp)"; return 0; }
   local hbase; hbase="$(honcho_base)"
-  [[ -n "$hbase" ]] || { record_cell "$id" "$name" SKIP "honcho REST unreachable on :8000 (vz-ai-stack.sh start honcho)"; return 0; }
+  [[ -n "$hbase" ]] || { record_cell "$id" "$name" SKIP "honcho REST unreachable on :8000 (mayssam-ai-stack.sh start honcho)"; return 0; }
   honcho_stdio_cell "$id" "$name" "$hbin" "$hbase"
 }
 
@@ -490,7 +490,7 @@ cell_C4() {
 cell_C5() {
   local id="C5" name="falkordb (stdio remember->recall)"
   local fbin="$AI_STACK/falkordb-mcp/bin.mjs"; [[ -f "$fbin" ]] || fbin="$MAIN_CO/falkordb-mcp/bin.mjs"
-  [[ -f "$fbin" ]] || { record_cell "$id" "$name" SKIP "falkordb-mcp shim not installed (run: vz-ai-stack.sh install falkordb_mcp)"; return 0; }
+  [[ -f "$fbin" ]] || { record_cell "$id" "$name" SKIP "falkordb-mcp shim not installed (run: mayssam-ai-stack.sh install falkordb_mcp)"; return 0; }
   [[ -n "$SDK_ESM" && -n "$NODE_BIN" ]] || { record_cell "$id" "$name" SKIP "node MCP SDK unavailable (honcho-mcp/node_modules missing)"; return 0; }
   local furl; furl="$(get_env FALKORDB_URL 'redis://falkordb:6379')"
   local subj="acceptance-subj-$MARKER" obj="acceptance-obj-$MARKER"
@@ -548,8 +548,8 @@ cell_H1() {
   local id="H1" name="hermes doc-RAG (sandbox -> :8765)"
   local osh; osh="$(resolve_openshell)"
   [[ -n "$osh" ]] || { record_cell "$id" "$name" SKIP "openshell CLI not found"; return 0; }
-  fleet_ready "$osh" || { record_cell "$id" "$name" SKIP "hermes-fleet-v1 sandbox not Ready (vz-ai-stack.sh install 04)"; return 0; }
-  [[ "$(http_code http://localhost:8765/mcp 4)" == "000" ]] && { record_cell "$id" "$name" SKIP "docs-mcp not running (vz-ai-stack.sh start docs_mcp)"; return 0; }
+  fleet_ready "$osh" || { record_cell "$id" "$name" SKIP "hermes-fleet-v1 sandbox not Ready (mayssam-ai-stack.sh install 04)"; return 0; }
+  [[ "$(http_code http://localhost:8765/mcp 4)" == "000" ]] && { record_cell "$id" "$name" SKIP "docs-mcp not running (mayssam-ai-stack.sh start docs_mcp)"; return 0; }
   local pts; pts="$(qdrant_points)"
   [[ "$pts" == "MISSING" || "$pts" == "0" ]] && { record_cell "$id" "$name" SKIP "corpus empty (populate: cd ingestor && python ingest.py)"; return 0; }
 
@@ -596,8 +596,8 @@ cell_H2() {
   local id="H2" name="hermes honcho (sandbox -> :7082)"
   local osh; osh="$(resolve_openshell)"
   [[ -n "$osh" ]] || { record_cell "$id" "$name" SKIP "openshell CLI not found"; return 0; }
-  fleet_ready "$osh" || { record_cell "$id" "$name" SKIP "hermes-fleet-v1 sandbox not Ready (vz-ai-stack.sh install 04)"; return 0; }
-  [[ "$(http_code http://localhost:7082/healthz 3)" == "000" ]] && { record_cell "$id" "$name" SKIP "honcho-mcp http shim not running on :7082 (Phase 40 — vz-ai-stack.sh install 40)"; return 0; }
+  fleet_ready "$osh" || { record_cell "$id" "$name" SKIP "hermes-fleet-v1 sandbox not Ready (mayssam-ai-stack.sh install 04)"; return 0; }
+  [[ "$(http_code http://localhost:7082/healthz 3)" == "000" ]] && { record_cell "$id" "$name" SKIP "honcho-mcp http shim not running on :7082 (Phase 40 — mayssam-ai-stack.sh install 40)"; return 0; }
   local token; token="$(get_env HONCHO_MCP_TOKEN '')"
   [[ -n "$token" ]] || { record_cell "$id" "$name" SKIP "HONCHO_MCP_TOKEN absent from .env (Phase 40 mints it)"; return 0; }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke for resolve_phase_script's strategy #4 (vz-ai-stack.sh): a name shown in
+# Smoke for resolve_phase_script's strategy #4 (mayssam-ai-stack.sh): a name shown in
 # `status` (services.yml) that is a sub-component installed BY a differently-named
 # phase (docs_ingestor -> 06_documents, litellm_guardrails_* -> 04g_security,
 # claw3d_bridge -> 19_claw3d …) must be DIRECTLY installable — while a name that is
@@ -13,7 +13,7 @@
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
-STACK="$AI_STACK/vz-ai-stack.sh"
+STACK="$AI_STACK/mayssam-ai-stack.sh"
 NOTE="resolving there"   # the strategy-4 (service -> phase) stderr marker
 
 hdr "Smoke install-resolve — service-name -> owning-phase (read-only --plan)"

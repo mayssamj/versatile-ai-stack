@@ -3,9 +3,9 @@
 **Date:** 2026-06-03 · **Branch:** `worktree-service-help`
 
 ## Goal
-`vz-ai-stack.sh help <service>` prints, for any stack service: **what it is**, **how
+`mayssam-ai-stack.sh help <service>` prints, for any stack service: **what it is**, **how
 it's configured (and where)**, and **how to use it / what it's for**.
-`vz-ai-stack.sh help services` lists every service that has a help entry.
+`mayssam-ai-stack.sh help services` lists every service that has a help entry.
 
 ## Decisions (approved)
 - **Help prose lives in `services.yml`** as a per-service `help:` block (authored;
@@ -38,7 +38,7 @@ services:
 ## Components
 - `installer/lib/help.sh` — library (render + list + regen), sourced by the
   entrypoint, mirroring `installer/lib/models.sh` structure & house style.
-- `vz-ai-stack.sh` — new `help)` dispatch → `cmd_help`.
+- `mayssam-ai-stack.sh` — new `help)` dispatch → `cmd_help`.
 - `services.yml` — `help:` blocks (data).
 
 ## Commands

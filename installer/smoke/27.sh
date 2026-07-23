@@ -13,8 +13,8 @@ source "$AI_STACK/installer/lib/env.sh"
 hdr "Smoke 27 — Sourcegraph fleet MCP (real keyword_search)"
 
 TOKEN_FILE="$HOME/.sourcegraph-local/sg-token"
-[[ -s "$TOKEN_FILE" ]] || { err "no SG token at $TOKEN_FILE — run: vz-ai-stack.sh install sourcegraph"; exit 1; }
-docker ps --format '{{.Names}}' | grep -qx sourcegraph || { err "sourcegraph container not running — vz-ai-stack.sh start sourcegraph"; exit 1; }
+[[ -s "$TOKEN_FILE" ]] || { err "no SG token at $TOKEN_FILE — run: mayssam-ai-stack.sh install sourcegraph"; exit 1; }
+docker ps --format '{{.Names}}' | grep -qx sourcegraph || { err "sourcegraph container not running — mayssam-ai-stack.sh start sourcegraph"; exit 1; }
 
 _osh() { if [[ -x /opt/homebrew/bin/openshell ]]; then echo /opt/homebrew/bin/openshell; else command -v openshell || echo ""; fi; }
 OSH="$(_osh)"; [[ -n "$OSH" ]] || { err "openshell CLI not found"; exit 1; }
@@ -31,7 +31,7 @@ ok "SG MCP alive + token valid (HTTP 200)"
 # 2. Sandbox must be Ready.
 "$OSH" sandbox list 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' \
   | awk 'NR>1 && $1=="hermes-fleet-v1" && $NF=="Ready"{ok=1} END{exit !ok}' \
-  || { err "hermes-fleet-v1 sandbox not Ready — vz-ai-stack.sh install 04"; exit 1; }
+  || { err "hermes-fleet-v1 sandbox not Ready — mayssam-ai-stack.sh install 04"; exit 1; }
 
 # 3. REAL keyword_search from INSIDE the sandbox (the fleet path), asserting a hit.
 probe="$(mktemp /tmp/sg-smoke-XXXX.py)"; trap 'rm -f "$probe"' EXIT
@@ -46,7 +46,7 @@ async def main():
         async with ClientSession(r,w) as s:
             await s.initialize()
             tools=await s.list_tools()
-            res=await s.call_tool("keyword_search", {"query":"repo:versatile-ai-stack LiteLLM"})
+            res=await s.call_tool("keyword_search", {"query":"repo:mayssam-versatile-ai-stack LiteLLM"})
             txt="".join(getattr(c,"text","") for c in res.content)
             files=re.findall(r'"file":"([^"]+)"', txt)
             print(f"TOOLS={len(tools.tools)} MATCHES={len(files)}")
@@ -69,6 +69,6 @@ if grep -qE 'TOOLS=[1-9][0-9]* MATCHES=[1-9]' <<<"$out"; then
   ok "Smoke 27 PASS — fleet reached SG MCP and keyword_search returned matches"
 else
   err "Smoke 27 FAIL — expected >=1 tool and >=1 match; got: $out"
-  err "(If 'policy_denied': re-apply the sourcegraph_mcp policy — vz-ai-stack.sh install 04)"
+  err "(If 'policy_denied': re-apply the sourcegraph_mcp policy — mayssam-ai-stack.sh install 04)"
   exit 1
 fi

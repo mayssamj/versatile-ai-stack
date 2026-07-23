@@ -7,7 +7,7 @@
 # untouched. NOT in install_all_phase_order (opt-in). Needs a host Caddy (brew)
 # and sudo to bind <1024 (a root LaunchDaemon).
 #
-# Standalone: bash vz-ai-stack.sh install 31   (or:  vz-ai-stack.sh install ingress)
+# Standalone: bash mayssam-ai-stack.sh install 31   (or:  mayssam-ai-stack.sh install ingress)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -37,7 +37,7 @@ if ! command -v caddy >/dev/null 2>&1; then
   fi
 fi
 if ! command -v caddy >/dev/null 2>&1; then
-  warn "caddy not on PATH — install it ('brew install caddy'), then re-run 'vz-ai-stack.sh install ingress'."
+  warn "caddy not on PATH — install it ('brew install caddy'), then re-run 'mayssam-ai-stack.sh install ingress'."
   ok   "Phase 31 — skipped (caddy unavailable); not stamped — re-run later."
   exit 0
 fi
@@ -50,11 +50,11 @@ if launchctl print "system/$INGRESS_LABEL" >/dev/null 2>&1; then
   stamp_mark "$PHASE"
   record "phase 31 complete: bare-hostname ingress (caddy, com.ai-stack.ingress daemon)"
   ok "Phase 31 — bare-hostname host ingress — complete"
-  note "Browse:  http://litellm/   https://litellm/   (run 'vz-ai-stack.sh ingress trust' once for trusted https)"
+  note "Browse:  http://litellm/   https://litellm/   (run 'mayssam-ai-stack.sh ingress trust' once for trusted https)"
   note "name:port and container traffic are unchanged — this only ADDS the port-free host form."
 else
   warn "ingress daemon not loaded yet (binding :80/:443 needs sudo)."
-  note "Finish with:  sudo bash vz-ai-stack.sh ingress up"
+  note "Finish with:  sudo bash mayssam-ai-stack.sh ingress up"
   ok   "Phase 31 — ran (Caddyfile generated); daemon not loaded, not stamped."
 fi
 exit 0

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 39 — Fleet Memory (OPT-IN; wire the memory subsystems to fleet consumers).
 #
-# NOT in `install all` — install by name:  vz-ai-stack.sh install fleet_memory
+# NOT in `install all` — install by name:  mayssam-ai-stack.sh install fleet_memory
 # (auto-opt-in: any phase file outside install_all_phase_order is opt-in; resolvable
 # by name via *_fleet_memory.sh — `memory` alone is already the alt_memory alias).
 #
@@ -84,8 +84,8 @@ if [[ -x "$HOME/.local/bin/mempalace-mcp" ]] || command -v mempalace-mcp >/dev/n
     warn "bin/mempalace-mcp wrapper missing — expected at $MEMPALACE_MCP_WRAPPER (re-checkout the branch)."
   fi
 else
-  note "MemPalace not installed (no mempalace-mcp binary) — install it first: vz-ai-stack.sh install 26"
-  note "  then re-run: vz-ai-stack.sh install fleet_memory"
+  note "MemPalace not installed (no mempalace-mcp binary) — install it first: mayssam-ai-stack.sh install 26"
+  note "  then re-run: mayssam-ai-stack.sh install fleet_memory"
 fi
 
 # 2. claude-cli · doc-RAG search (docs-mcp HTTP on the host loopback) ----------------
@@ -124,7 +124,7 @@ if sandbox_ready "$OSH_BIN" "$HERMES_SB"; then
   else
     err "Hermes fleet doc-RAG wiring did NOT land — hermes_manager profile is missing 'docs:' / 'host.docker.internal:${DOCS_MCP_PORT}'. NOT stamping Phase 39."
     err "  Inspect: openshell sandbox exec -n $HERMES_SB -- cat ~/.hermes/profiles/hermes_manager/config.yaml"
-    err "  Then re-run: vz-ai-stack.sh install fleet_memory"
+    err "  Then re-run: mayssam-ai-stack.sh install fleet_memory"
     exit 1
   fi
 else

@@ -25,7 +25,7 @@ hdr "Phase 02 — storage plane"
 # --- FalkorDB ---
 if container_running falkordb; then
   if container_managed falkordb; then ok "falkordb already running (managed)"
-  else warn "falkordb is FOREIGN; run 'vz-ai-stack.sh adopt falkordb'"
+  else warn "falkordb is FOREIGN; run 'mayssam-ai-stack.sh adopt falkordb'"
   fi
 else
   bash "$AI_STACK/bin/start-falkordb.sh"
@@ -34,7 +34,7 @@ fi
 # --- Qdrant ---
 if container_running qdrant; then
   if container_managed qdrant; then ok "qdrant already running (managed)"
-  else warn "qdrant is FOREIGN; run 'vz-ai-stack.sh adopt qdrant'"
+  else warn "qdrant is FOREIGN; run 'mayssam-ai-stack.sh adopt qdrant'"
   fi
 else
   bash "$AI_STACK/bin/start-qdrant.sh"

@@ -356,7 +356,7 @@ print_inference_hint() {
   cli="$(lms_cli 2>/dev/null || true)"; [[ -n "$cli" ]] || cli="$HOME/.lmstudio/bin/lms"
   printf '\nInference runtimes (activate at least one — local models route through LiteLLM :4000):\n'
   printf '  Ollama    [%s]  default = local (nemotron-3-nano:4b).  start: brew services start ollama\n' "$ol"
-  printf '  LM Studio [%s]  opt-in MLX = local-nemotron3-nano-4b-mlx.  start: vz-ai-stack.sh start lmstudio\n' "$lm"
+  printf '  LM Studio [%s]  opt-in MLX = local-nemotron3-nano-4b-mlx.  start: mayssam-ai-stack.sh start lmstudio\n' "$lm"
   if [[ "$lm" == "down" ]]; then
     printf '            (LM Studio-bound agents fall back to the ollama default until it is up)\n'
   fi

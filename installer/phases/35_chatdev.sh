@@ -30,7 +30,7 @@
 # master; default model local; calls traced in Phoenix. Reversible: the start
 # script's uninstall + image rmi + rm -rf chatdev/ + unstamp.
 #
-# Standalone: bash vz-ai-stack.sh install 35   (alias: chatdev)
+# Standalone: bash mayssam-ai-stack.sh install 35   (alias: chatdev)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -102,7 +102,7 @@ _node_major="${_node_ver%%.*}"
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
 
-network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash vz-ai-stack.sh install 00n"; exit 1; }
+network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash mayssam-ai-stack.sh install 00n"; exit 1; }
 
 # Resolve a reachable LiteLLM base ONCE (container alias first, host loopback fallback)
 # so the mint + smoke calls don't hard-depend on /etc/hosts ordering (§24 council, 2026-06-23).
@@ -111,7 +111,7 @@ if   curl -sf --max-time 4 "$CD_LLM_HOST/health/liveliness" >/dev/null 2>&1; the
 elif curl -sf --max-time 4 "$CD_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then CD_LLM_BASE="$CD_LLM_FALLBACK"
 elif litellm_master_curl -sf --max-time 4 "$CD_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then CD_LLM_BASE="$CD_LLM_FALLBACK"
 fi
-[[ -n "$CD_LLM_BASE" ]] || { err "LiteLLM not reachable at $CD_LLM_HOST or $CD_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+[[ -n "$CD_LLM_BASE" ]] || { err "LiteLLM not reachable at $CD_LLM_HOST or $CD_LLM_FALLBACK — run 'mayssam-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $CD_LLM_BASE"
 
 # --- 1. Clone ChatDev 2.0 (default branch = the web app) ---------------------
@@ -334,8 +334,8 @@ record "phase 35 complete: ChatDev image + backend(:$BE_PORT)+frontend(:$FE_HOST
 ok "Phase 35 — ChatDev — complete"
 note "Open the web app:  open http://chatdev:$FE_HOST_PORT     (or http://$FE_IP:$FE_HOST_PORT)"
 note "Backend API:       http://$FE_IP:$BE_PORT/docs"
-note "Prove the swarm:   vz-ai-stack.sh test 35   # headless 1-agent workflow → LiteLLM"
+note "Prove the swarm:   mayssam-ai-stack.sh test 35   # headless 1-agent workflow → LiteLLM"
 note "Watch it:          Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Model:             default is claude-opus-sub-xhigh. Cheap on-box: set a workflow YAML node's name: to local"
-note "Manage:            vz-ai-stack.sh start chatdev | stop chatdev | help chatdev | doctor chatdev"
+note "Manage:            mayssam-ai-stack.sh start chatdev | stop chatdev | help chatdev | doctor chatdev"
 note "Reversible:        bash $AI_STACK/bin/start-chatdev.sh uninstall; docker rmi $IMAGE; rm -rf $CD_DIR; rm -f $AI_STACK/installer/state/phase_${PHASE}.done"

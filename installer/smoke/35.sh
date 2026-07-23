@@ -35,13 +35,13 @@ BE_PORT="${CHATDEV_BACKEND_PORT:-6400}"
 # phase never writes there) and silently return the default, hiding the binding path.
 
 # 1. Both containers exist + the backend is the one we run the workflow in.
-container_running "$BE_NAME" || { err "$BE_NAME not running — run: vz-ai-stack.sh start chatdev"; exit 1; }
+container_running "$BE_NAME" || { err "$BE_NAME not running — run: mayssam-ai-stack.sh start chatdev"; exit 1; }
 ok "$BE_NAME container running"
 
 # 2. Frontend serves 200 (the web app is up).
 code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://$FE_IP:$FE_HOST_PORT/" 2>/dev/null || true)"
 [[ "$code" == "200" ]] && ok "frontend serves HTTP 200 on http://$FE_IP:$FE_HOST_PORT" \
-  || { err "frontend not serving 200 on :$FE_HOST_PORT (got $code) — 'vz-ai-stack.sh start chatdev'; logs: docker logs $NAME"; exit 1; }
+  || { err "frontend not serving 200 on :$FE_HOST_PORT (got $code) — 'mayssam-ai-stack.sh start chatdev'; logs: docker logs $NAME"; exit 1; }
 
 # 3. The scoped key lists models through LiteLLM (a stale/revoked key returns 200 +
 #    empty data[], so require a real "id"). Probed from the HOST against the loopback.

@@ -1,6 +1,6 @@
 # Doctor — checks reference
 
-`bash vz-ai-stack.sh doctor` runs all 84 checks and, when one fails, prints the
+`bash mayssam-ai-stack.sh doctor` runs all 84 checks and, when one fails, prints the
 failure detail plus remediation. This doc lists every check, what it asserts,
 when it fails, and what the fix does.
 
@@ -44,7 +44,7 @@ normal. Checks 19–22 do not degrade — they assert kernel/filesystem
 invariants that hold regardless of foreign-container state.
 
 For pre-install verification (before the first phase has run), use
-`bash vz-ai-stack.sh verify` instead — it runs Phase 00·V's 6 probes
+`bash mayssam-ai-stack.sh verify` instead — it runs Phase 00·V's 6 probes
 (see [INSTALL.md § verify](INSTALL.md#install-sh-verify)).
 
 The doctor reports an `exit 1` if any check failed and was not auto-fixed.
@@ -157,7 +157,7 @@ Adding a new failure mode = adding a new file. No central registry. See
 
 The engine registry (`installer/lib/docker-engine.sh`) is the single source of
 truth for per-engine sockets/probes. Pick or change the engine with
-`vz-ai-stack.sh docker-engine select` / `set <id>` (or the global `--engine <id>`
+`mayssam-ai-stack.sh docker-engine select` / `set <id>` (or the global `--engine <id>`
 flag); inspect it with `docker-engine status`. See [PREREQUISITES.md](PREREQUISITES.md)
 for the engine matrix.
 
@@ -424,7 +424,7 @@ side). 17 + 20 together cover both directions of the routing chain.
 |---|---|
 | Asserts | For every container on the `ai-stack` network, spawn a transient alpine probe and confirm `getent hosts <name>` resolves every other container's bare name. Apps talk to each other by bare name (e.g. LiteLLM → `http://phoenix-otlp:4317`); a silent failure here means OTel traces vanish without an error log. |
 | Fails when | Docker's embedded DNS regressed (rare but does happen after OrbStack updates), a managed container was started without `--network ai-stack`, or the `ai-stack` network was torn down and recreated while containers were still running. Skips gracefully when the network doesn't exist yet (legitimate pre-install state — check 14 covers the network-must-exist invariant post-install). |
-| Auto-fix | None automated — Docker manages its own DNS resolver. Suggested steps: `docker info \| grep -i dns`, `orb restart`, or `bash vz-ai-stack.sh reset --confirm hard` to recreate the network. |
+| Auto-fix | None automated — Docker manages its own DNS resolver. Suggested steps: `docker info \| grep -i dns`, `orb restart`, or `bash mayssam-ai-stack.sh reset --confirm hard` to recreate the network. |
 
 ---
 
@@ -448,7 +448,7 @@ that protects against a regression.
 |---|---|
 | Asserts | (1) The `unsloth` CLI shim is resolvable (either on `$PATH` or at `~/.local/bin/unsloth`). (2) `installer/state/unsloth.pid` exists and points at a live PID. (3) Port `:8898` is bound. (4) `curl http://127.0.0.1:8898/api/health` returns a JSON body containing `"status":"healthy"`. |
 | Fails when | The official `curl|sh` installer never ran (CLI missing), the studio daemon died (pid alive but port unbound, or pid stale), or the studio is mid-startup (first launch downloads PyTorch + pre-caches a helper GGUF — can take 2–5 min). |
-| Auto-fix | Calls `bin/start-unsloth.sh` (no sudo). The script is idempotent — re-running is safe. If the CLI itself is missing, surfaces `bash vz-ai-stack.sh install 14` as the manual fix (Phase 14 runs the official installer). |
+| Auto-fix | Calls `bin/start-unsloth.sh` (no sudo). The script is idempotent — re-running is safe. If the CLI itself is missing, surfaces `bash mayssam-ai-stack.sh install 14` as the manual fix (Phase 14 runs the official installer). |
 
 This check is the per-process twin of check 17 (which probes `http://unsloth:8898/` via the alias). 23 catches the daemon-dead case where the alias resolves but the daemon isn't there to answer.
 
@@ -460,7 +460,7 @@ This check is the per-process twin of check 17 (which probes `http://unsloth:889
 |---|---|
 | Asserts | The `openshell` CLI resolves AND `openshell sandbox list` shows `pi-v1` in state `Ready`. Also prints the sha256 prefix of the on-disk `openshell/policies/pi-v1.yaml` as an informational marker so you can spot policy drift between what's on disk and what the sandbox loaded. |
 | Fails when | Phase 15 hasn't run, the sandbox was deleted (`openshell sandbox delete pi-v1`), the gateway is down (cannot enumerate sandboxes), or the sandbox is in a transient state (`Provisioning`, `Failed`, etc.). |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 15` — Phase 15 is idempotent and re-creates the sandbox if missing, applies the policy, and re-mints `PI_LITELLM_KEY` if invalid. |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 15` — Phase 15 is idempotent and re-creates the sandbox if missing, applies the policy, and re-mints `PI_LITELLM_KEY` if invalid. |
 
 ANSI-strip note: `openshell sandbox list` emits color codes around the state column; the check pipes through `sed 's/\x1b\[[0-9;]*m//g'` before matching `Ready`. Don't change the awk pattern without preserving the strip.
 
@@ -472,7 +472,7 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 |---|---|
 | Asserts | From inside the `pi-v1` sandbox, the allowlisted destinations respond with any HTTP code that is NOT a proxy-deny: `host.docker.internal:4000` (LiteLLM) and `:8765` (docs-mcp) ALWAYS; plus `:7082` (honcho-mcp shim) and `:7083` (falkordb-mcp shim) **only when that opt-in shim is actually listening on the host** (Phase 40/41 — the egress stanza is additive, so a box without the shim must not false-fail). The OpenShell egress proxy emits HTTP 403 with body `{"error":"policy_denied"}` when refusing; the check greps that signature to distinguish "destination reached" from "destination denied". By default only positive probes run (~6–8s). With `OPENSHELL_DOCTOR_SLOW=1` (or `DOCTOR_ALL=1`) it also runs 10 negative probes against denied destinations — those must all return the `policy_denied` signature. It additionally asserts `pi-memory-tools.ts` (slice 2b) is present in `/sandbox/.pi/extensions/` — the egress is only useful if the extension that consumes it is installed. |
 | Fails when | An allowlisted host returns `policy_denied` (policy file edited but not re-applied — the common case; sandbox restarted with a stale policy; LiteLLM lost its 127.0.0.1:4000 dual-bind). In slow mode: a denied destination returns something OTHER than `policy_denied` — a policy leak (e.g. raw Honcho `:8000` or raw FalkorDB `:6379` became reachable). Or the memory extension is missing from the sandbox. |
-| Auto-fix | Surfaces `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` for the apply case, `bash vz-ai-stack.sh install 15` for a missing extension, and CHANGELOG 2026-05-29 (host.docker.internal dual-bind) for the LiteLLM case. |
+| Auto-fix | Surfaces `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` for the apply case, `bash mayssam-ai-stack.sh install 15` for a missing extension, and CHANGELOG 2026-05-29 (host.docker.internal dual-bind) for the LiteLLM case. |
 
 **The deliberate asymmetry this check proves** (slice 3 + 2b, §24): the RAW datastores stay DENIED — `:8000` Honcho (whose REST API runs `AUTH_USE_AUTH=false`) and `:6379` FalkorDB — while their **token-gated shim ports** (`:7082`, `:7083`) are ALLOWED. Pi reaches turn/graph memory ONLY through the shims, which require a Bearer token that `bin/pi` injects; a token-less pi simply gets fewer tools.
 
@@ -486,7 +486,7 @@ ANSI-strip note: `openshell sandbox list` emits color codes around the state col
 |---|---|
 | Asserts | (1) `PI_LITELLM_KEY` is present in `.env`. (2) `GET http://litellm:4000/v1/models` with the virtual key returns exactly the canonical superset `local,local,local-heavy,local,local,local` (sorted) — every scoped key is minted against this fixed superset so `model assign`/`sync` can re-point Pi without re-minting. (3) `POST /v1/chat/completions` with `model=claude-opus` returns a body containing the case-insensitive substring `"key not allowed"`. The substring match (rather than the full message) makes the check resilient to LiteLLM's wording across minor versions. |
 | Fails when | Phase 15 never minted the key (LiteLLM has no Postgres DB; `LITELLM_MASTER_KEY` rotation; .env got nuked). The allowlist itself was changed via LiteLLM's `/key/update`. The virtual key path was bypassed by changing Pi's extension to use the master key directly. |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 15` — Phase 15 detects an invalid key via the same `/v1/models` probe and re-mints. |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 15` — Phase 15 detects an invalid key via the same `/v1/models` probe and re-mints. |
 
 Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check WARN-skips with a pointer to check 11 + Phase 01 rather than fail-cascading.
 
@@ -498,7 +498,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | (1) The vendored Lumen binary exists at `$AI_STACK/vendor/lumen/lumen-0.0.41-darwin-arm64` and is executable. (2) The binary's `version` subcommand reports exactly `0.0.41` (catches tampering / wrong-binary swap; the SHA256 check in Phase 16 already happens at download time). (3) The `bin/lumen` wrapper script exists. (4) `ollama list` includes `ordis/jina-embeddings-v2-base-code` (the embedding backend Lumen needs to function). |
 | Fails when | Phase 16 never ran (binary missing), an upstream Lumen version is pinned and you bumped without updating the SHA256/version constants, somebody deleted `bin/lumen`, or `ollama list` doesn't show the embedding model (manual `ollama rm` or fresh Ollama install since Phase 16). |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 16` — Phase 16 is idempotent and re-creates everything (binary + wrapper + embed-model pull). |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 16` — Phase 16 is idempotent and re-creates everything (binary + wrapper + embed-model pull). |
 
 **What this check does NOT prove.** That any index has been built. Lumen's index lives at `~/.local/share/lumen/<hash>/` keyed by `(project_path, embed_model, binary_version)` and is user-state, not install-state — `bin/lumen index <path>` builds one on demand. The doctor doesn't care which repos you've indexed.
 
@@ -512,7 +512,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | (1) `deer-flow/config.yaml` has at least one uncommented `- name:` entry inside the `models:` block. (2) `deer-flow/docker/docker-compose.yaml` surfaces `LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` to the gateway's `environment:` block. Skipped cleanly if `deer-flow/` doesn't exist (Phase 10 not selected). |
 | Fails when | DeerFlow was seeded from the upstream `config.example.yaml` without injection — the `models:` block contains only commented examples, which YAML parses as `None`, which fails Pydantic's `list[ModelConfig]` validator inside `app/gateway/app.py:lifespan`. The 4 uvicorn workers crash on every restart, re-import LangChain + LangGraph + DeerFlow (the expensive part), validate, fail, crash again. Result: ~340% CPU continuously, even while idle, because Python is literally re-importing LangGraph in a hot loop. The compose env-passthrough catch is separate: without `LITELLM_MASTER_KEY` in the gateway container, `$LITELLM_MASTER_KEY` in `config.yaml` resolves to the empty string at startup, which LiteLLM rejects with 401 on the first request (silent if you never make one, but explicit if you do). |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 10` — Phase 10 is idempotent and re-applies all three patches (config.yaml, docker-compose.yaml, deer-flow/.env) on every run. |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 10` — Phase 10 is idempotent and re-applies all three patches (config.yaml, docker-compose.yaml, deer-flow/.env) on every run. |
 
 **Why `host.docker.internal:4000` and not `litellm:4000`.** The deer-flow Docker network and the ai-stack network are separate. Dual-network membership would work but adds coupling; the simpler path is to dial back to the host's LiteLLM via `host.docker.internal:host-gateway` (already wired in the upstream compose `extra_hosts`).
 
@@ -526,7 +526,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | (1) `ace/.git` exists (clone present). (2) `ace/.venv/bin/python` is executable (uv sync succeeded). (3) `bin/ace` wrapper exists + is executable. (4) `ace/.env` exists and has `OPENAI_BASE_URL=http://litellm:4000/v1` so calls route through LiteLLM (free Phoenix tracing). (5) `ACE_LITELLM_KEY` from `.env` is non-empty AND accepted by LiteLLM's `/v1/models`. Skipped cleanly when `ace/` doesn't exist (Phase 17 not selected). |
 | Fails when | Phase 17 never ran (clone missing), `uv sync` drift left the venv stale, somebody deleted `bin/ace`, `.env` was hand-edited away from the LiteLLM base URL (so ACE would silently call `api.openai.com` instead), or the virtual key was revoked from LiteLLM's DB. |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 17` — Phase 17 is idempotent: re-uses the clone, re-runs `uv sync` (no-op if locked), re-mints the virtual key only if the existing one is rejected. |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 17` — Phase 17 is idempotent: re-uses the clone, re-runs `uv sync` (no-op if locked), re-mints the virtual key only if the existing one is rejected. |
 
 **What this check does NOT prove.** That any eval has been run. Playbooks live under `ace/results/` and are user-state, not install-state. `bin/ace --help` lists the eval surface.
 
@@ -540,7 +540,7 @@ Pre-condition: if LiteLLM itself is down (`/health/readiness` fails), this check
 |---|---|
 | Asserts | The representative `hermes_manager` profile config has `model.provider=custom:litellm` and `providers.litellm.base_url=http://host.docker.internal:4000` (the per-profile LiteLLM routing wired by Phase 04·F), AND `HERMES_LITELLM_KEY` is accepted by LiteLLM. |
 | Fails when | Phase 04·F never ran, the profile config was reverted to a non-LiteLLM provider, `host.docker.internal:4000` is unreachable, or `HERMES_LITELLM_KEY` was revoked/rotated so LiteLLM rejects it. |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 04f` — Phase 04·F is idempotent: it re-mints `HERMES_LITELLM_KEY`, re-adds the `litellm_proxy` endpoint to the hermes policy, and re-sets the per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url,api_key,model}`. |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 04f` — Phase 04·F is idempotent: it re-mints `HERMES_LITELLM_KEY`, re-adds the `litellm_proxy` endpoint to the hermes policy, and re-sets the per-profile `model.default` + `model.provider=custom:litellm` + `providers.litellm.{base_url,api_key,model}`. |
 
 hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `llm.openai_api_base` / `llm.openai_api_key` config was a dead no-op (and raised a `ValueError`), so Hermes silently never reached local models. The fix routes via the `custom:litellm` provider against `http://host.docker.internal:4000/v1`. Verified: a real `hermes --profile hermes_manager -m local -z` returned `PONG`.
 
@@ -552,7 +552,7 @@ hermes-agent v0.15.2 has no `llm.*` config namespace — the old `llm.model` / `
 |---|---|
 | Asserts | `rlm/.venv` imports `rlm`, `rlm/run_rlm.py` + `bin/rlm` exist, `rlm/.env` sets `OPENAI_BASE_URL=http://litellm:4000/v1`, and `RLM_LITELLM_KEY` is accepted by LiteLLM. |
 | Fails when | Phase 18 never ran, the venv/wrapper is missing, `rlm/.env` doesn't route to LiteLLM, or `RLM_LITELLM_KEY` was revoked/rotated. |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 18` (idempotent: reinstalls `rlms`, re-mints the key, regenerates `rlm/.env` + `bin/rlm`). |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 18` (idempotent: reinstalls `rlms`, re-mints the key, regenerates `rlm/.env` + `bin/rlm`). |
 
 Skips cleanly (passes) when RLM was never installed (`rlm/.venv` absent) — it's optional experimental tooling. RLM's REPL runs model-generated code in a **Docker sandbox** by default (`bin/rlm`); `--env local` would run it on the host.
 
@@ -564,7 +564,7 @@ Skips cleanly (passes) when RLM was never installed (`rlm/.venv` absent) — it'
 |---|---|
 | Asserts | the bridge (`claw3d-bridge/bridge.py`, `:7780`) serves `/health` + `/state` with ≥1 agent, and the claw3d UI (`:4310`) responds. |
 | Fails when | the bridge or UI isn't serving, or `/state` lists no agents. |
-| Auto-fix | restarts both: `bash bin/start-claw3d-bridge.sh && bash bin/start-claw3d.sh` (or re-run `vz-ai-stack.sh install 19`). |
+| Auto-fix | restarts both: `bash bin/start-claw3d-bridge.sh && bash bin/start-claw3d.sh` (or re-run `mayssam-ai-stack.sh install 19`). |
 
 Skips cleanly (passes) when claw3d was never installed (`claw3d/node_modules` absent). Does NOT exercise the agents (that needs the OpenShell relay) — only the bridge contract + UI liveness.
 
@@ -576,7 +576,7 @@ Skips cleanly (passes) when claw3d was never installed (`claw3d/node_modules` ab
 |---|---|
 | Asserts | the native hermes gateway is running INSIDE `hermes-fleet-v1` (via `hermes gateway status`) and `TELEGRAM_BOT_TOKEN` is present in the sandbox's `~/.hermes/.env`. |
 | Fails when | the gateway isn't running, the token isn't configured in the sandbox, or the gateway log shows a genuine auth error (`unauthorized`/`invalid token`/`401`). |
-| Auto-fix | restarts the gateway: `bash bin/start-hermes-telegram.sh` (or re-run `vz-ai-stack.sh install 20`). |
+| Auto-fix | restarts the gateway: `bash bin/start-hermes-telegram.sh` (or re-run `mayssam-ai-stack.sh install 20`). |
 
 Skips cleanly (passes) when `HERMES_TELEGRAM_BOT_TOKEN` isn't set — the gateway is an optional add-on. Makes **no external Telegram API call** and never prints the token. Two benign patterns are deliberately NOT treated as failures: the transient `409 conflict` after `run --replace` (Telegram holds the prior long-poll ~50s; self-heals) and the allowlist warning "*All unauthorized users will be denied*" (the secure-by-default lock, not an auth error). A passing check may still note "**running but LOCKED**" — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the allowlist.
 
@@ -602,7 +602,7 @@ These checks pass-as-skip when the tool isn't installed (the tools are opt-in, n
 |---|---|
 | Asserts | No OpenShell sandbox (`hermes-fleet-v1`, `pi-v1`) is in a live "expired-token storm" — i.e. recent container logs show no `ExpiredSignature` / reconnect-storm signature and `RestartCount` isn't climbing. Also reports whether the (warn-only-by-default) watchdog (`com.ai-stack.openshell-watchdog` launchd job) is installed and loaded. |
 | Fails when | A sandbox's short-lived gateway token has expired (~8h uptime) and the in-sandbox agent is retrying its log-push gRPC with no backoff — hundreds of reconnects/second, ~36% CPU per sandbox, container restart-looping. The signature is unambiguous: the sandbox is already dead. |
-| Auto-fix | None auto-applied here. The watchdog is **WARN-ONLY by default** (it halts the CPU burn and raises an alert; it does NOT delete/recreate the sandbox — that would discard in-sandbox state). Manual: `bash bin/openshell-watchdog.sh run` (detect now; recreates only if you opt in with `AI_STACK_WATCHDOG_RECREATE=1`), or recreate the affected phase (`vz-ai-stack.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
+| Auto-fix | None auto-applied here. The watchdog is **WARN-ONLY by default** (it halts the CPU burn and raises an alert; it does NOT delete/recreate the sandbox — that would discard in-sandbox state). Manual: `bash bin/openshell-watchdog.sh run` (detect now; recreates only if you opt in with `AI_STACK_WATCHDOG_RECREATE=1`), or recreate the affected phase (`mayssam-ai-stack.sh install 04` / `install 15`). **A gateway restart does NOT refresh the token — only RECREATING the sandbox mints a fresh one.** |
 
 Skips cleanly (passes) when OpenShell / its sandboxes aren't present. The standing
 backstop is the launchd watchdog installed by Phase 04 (`bin/openshell-watchdog.sh
@@ -621,11 +621,11 @@ confirms the watchdog is loaded. See
 |---|---|
 | Asserts | `installer/models.yml` is valid; every model declared in `models.yml` is present in `litellm/config.yaml` and a master-key chat_ping returns 200 (an `lmstudio` model is **advisory-yellow** — never red — when LM Studio's server on `:1234` is down); every declared **`effort:` round-trips into the rendered route** (`extra_body.effort` for `meridian`, `reasoning_effort` for `openai`/`codex-bridge` — see below); no rendered-vs-declared **DRIFT** across every agent surface (the 9 Hermes profiles, Pi, DeerFlow, ACE, RLM); and each scoped virtual key's allowlist covers its agent's effective model plus the canonical superset. |
 | Fails when | A `models.yml` model is missing from `config.yaml`, a non-lmstudio model fails its chat_ping, a declared `effort:` is absent from or differs in the rendered route, an agent's rendered config drifts from the declared (availability-gated) model, or a scoped key's allowlist doesn't cover its agent's effective model. |
-| Auto-fix | `bash vz-ai-stack.sh model sync`. |
+| Auto-fix | `bash mayssam-ai-stack.sh model sync`. |
 
 WARN-skips (does not fail) when LiteLLM is down or the Hermes OpenShell sandbox
 isn't Ready — both are required to verify bindings end-to-end. See
-[models.md](models.md) for the full `vz-ai-stack.sh model` workflow.
+[models.md](models.md) for the full `mayssam-ai-stack.sh model` workflow.
 
 **The effort round-trip.** A `models.yml` `effort:` reaches the route in a runtime-specific
 shape: `litellm_params.extra_body.effort` for `meridian` (LiteLLM merges `extra_body` into the
@@ -638,7 +638,7 @@ notices.
 The check asserts **two layers**, because they fail independently:
 
 1. **The file** (`litellm/config.yaml`) — what LiteLLM will serve after its next restart.
-   Remedy: **`bash vz-ai-stack.sh model sync`**. Note this is *not* `install inference` —
+   Remedy: **`bash mayssam-ai-stack.sh model sync`**. Note this is *not* `install inference` —
    Phase 01 self-gates on its own stamp and exits before it would ever re-register.
 2. **The running proxy** (`GET /model/info`, static route metadata — no inference, no
    cold-start) — what it serves *right now*. LiteLLM reads config at **boot**, and Phase 01
@@ -688,7 +688,7 @@ for the Meridian setup.
 |---|---|
 | Asserts | The watchdog (`bin/openshell-watchdog.sh`) has not left a pending alert at `installer/state/openshell-watchdog.alert`. The watchdog writes this marker when it detects an expired-token storm (default = **warn-only**, sandbox NOT deleted) or when an opt-in auto-recreate failed. |
 | Fails when | A storm alert is present (a sandbox hit the expired-token storm and the watchdog halted the burn but left the sandbox for you to recreate when ready), or an opt-in `AI_STACK_WATCHDOG_RECREATE=1` recreate failed. |
-| Auto-fix | None auto-applied — recreation discards in-sandbox state, so it stays a deliberate human action. Heal the flagged sandbox(es) (`vz-ai-stack.sh install 04 04f 15 20 38 04h`), then `rm installer/state/openshell-watchdog.alert` (or it clears on a verified auto-recreate). |
+| Auto-fix | None auto-applied — recreation discards in-sandbox state, so it stays a deliberate human action. Heal the flagged sandbox(es) (`mayssam-ai-stack.sh install 04 04f 15 20 38 04h`), then `rm installer/state/openshell-watchdog.alert` (or it clears on a verified auto-recreate). |
 
 This check is the loud, visible backstop ensuring a watchdog event can never be
 silent again.
@@ -702,7 +702,7 @@ silent again.
 | Asserts | When Phase 26 has run, the `mempalace` tool is installed (PyPI uv-tool env), the `bin/mempalace` wrapper + the `bin/mempalace-hook-*` launchers exist, the palace config is present, and — if `MEMPALACE_LITELLM_KEY` is set (the optional refiner LLM) — that key is accepted by LiteLLM's `/v1/models`. Embeddings are on-device (CoreML); there is nothing to probe for them. |
 | Fails when | Phase 26 ran but the tool/wrapper/hook-launchers/palace config are missing, or `MEMPALACE_LITELLM_KEY` is set but rejected by LiteLLM. |
 | Green-skip | Phase 26 hasn't run yet (a stack predating mempalace joining `install all`, or a partial/resumed install) — the check passes-as-skip so doctor stays green. |
-| Auto-fix | Surfaces `bash vz-ai-stack.sh install 26` — Phase 26 is idempotent (re-uses the uv-tool env, re-writes the wrapper + hook launchers, re-validates the refiner key). |
+| Auto-fix | Surfaces `bash mayssam-ai-stack.sh install 26` — Phase 26 is idempotent (re-uses the uv-tool env, re-writes the wrapper + hook launchers, re-validates the refiner key). |
 
 **Backend note.** MemPalace runs on local on-device **ChromaDB** (MemPalace 3.3.5
 hardcodes `ChromaBackend`). A Qdrant backend adapter is staged at
@@ -731,7 +731,7 @@ This check is **always-on** (unlike the opt-in service checks 34–38 + 44 + 49�
 |---|---|
 | Asserts | The 9-role fleet is byte-identical where it must be across the `claude-code`, `pi`, and `hermes` frameworks: every shared skill, the Tier-1 universal operating-principles block, and each role's body match across all three. Wraps `installer/lib/check_fleet_parity.sh`. |
 | Fails when | A skill, the Tier-1 block, or a role body drifted between frameworks (someone hand-edited a derived copy instead of the source, or `install 04h` wasn't re-run after a source edit). |
-| Auto-fix | None directly — re-run `bash vz-ai-stack.sh install 04h` to regenerate the derived `pi/` + `claude-code/` copies from the canonical `agent-profiles/` sources, then re-run doctor. |
+| Auto-fix | None directly — re-run `bash mayssam-ai-stack.sh install 04h` to regenerate the derived `pi/` + `claude-code/` copies from the canonical `agent-profiles/` sources, then re-run doctor. |
 
 This check is **always-on**: the fleet source→derived sync model is a hard invariant, so any drift surfaces here regardless of which framework you run.
 
@@ -757,7 +757,7 @@ compare" by design, so the silent-pass there is intentional.
 |---|---|
 | Asserts | `AI_STACK_DOCKER_ENGINE` is set, is a valid id (`orbstack` \| `docker-desktop` \| `colima` \| `podman`), and the selected engine is still installed on the host. |
 | Fails when | The var is empty (selection never ran — fresh box, or `.env` nuked), names an unknown id, or names an engine that has since been uninstalled. |
-| Auto-fix | Runs the interactive selector (`engine_select`) → `engine_ensure` (install-if-missing + start) → `engine_pin`. Non-interactively, set it first with `vz-ai-stack.sh docker-engine set <id>` (or `--engine <id>`). |
+| Auto-fix | Runs the interactive selector (`engine_select`) → `engine_ensure` (install-if-missing + start) → `engine_pin`. Non-interactively, set it first with `mayssam-ai-stack.sh docker-engine set <id>` (or `--engine <id>`). |
 
 This is the foundational engine check: 47 (consistency) pass-as-skips until 48 is
 green, so fix 48 first. See [PREREQUISITES.md](PREREQUISITES.md) for the engine matrix
@@ -767,25 +767,25 @@ and the `docker-engine` subcommand.
 
 ## 49 · Sourcegraph fleet MCP wired (opt-in)
 
-Graceful by design — skip-clean (pass) when Sourcegraph isn't installed (no `~/.sourcegraph-local/sg-token`), so it never red-bars a stack that didn't opt into code search. When SG IS installed it checks, fast: the `sourcegraph_mcp` network-policy stanza is present in `openshell/policies/hermes-fleet-v1.yaml` (drift guard — the 04_openshell.sh heredoc regenerates that file, and a stanza-less copy would silently drop fleet→SG reachability on the next `install 04`), and — if a Hermes fleet sandbox is Ready — that `hermes_manager` actually carries the `mcp_servers.sourcegraph` stanza (fleet wired). With `--all` / `OPENSHELL_DOCTOR_SLOW=1` it adds a LIVE probe: the sandbox can reach SG through the landlock (not `policy_denied`) and SG's MCP `initialize` returns HTTP 200 with the token. It never uses `hermes mcp test` (verified buggy against this SG — its probe sends a malformed `Accept` and 400s). Fix: `vz-ai-stack.sh install sourcegraph` (deploy + bootstrap + wire), or `install 04f` (wire an existing fleet), or `install 04` (re-apply the policy stanza if the LIVE policy lacks it).
+Graceful by design — skip-clean (pass) when Sourcegraph isn't installed (no `~/.sourcegraph-local/sg-token`), so it never red-bars a stack that didn't opt into code search. When SG IS installed it checks, fast: the `sourcegraph_mcp` network-policy stanza is present in `openshell/policies/hermes-fleet-v1.yaml` (drift guard — the 04_openshell.sh heredoc regenerates that file, and a stanza-less copy would silently drop fleet→SG reachability on the next `install 04`), and — if a Hermes fleet sandbox is Ready — that `hermes_manager` actually carries the `mcp_servers.sourcegraph` stanza (fleet wired). With `--all` / `OPENSHELL_DOCTOR_SLOW=1` it adds a LIVE probe: the sandbox can reach SG through the landlock (not `policy_denied`) and SG's MCP `initialize` returns HTTP 200 with the token. It never uses `hermes mcp test` (verified buggy against this SG — its probe sends a malformed `Accept` and 400s). Fix: `mayssam-ai-stack.sh install sourcegraph` (deploy + bootstrap + wire), or `install 04f` (wire an existing fleet), or `install 04` (re-apply the policy stanza if the LIVE policy lacks it).
 
 ---
 
 ## 50 · AionUi WebUI healthy + LiteLLM key valid (opt-in)
 
-Graceful by design — skip-clean (pass) when AionUi's Phase 28 hasn't run (no `installer/state/phase_28*.done` stamp), so it never red-bars a stack that didn't opt into the AionUi Cowork workspace. When installed it checks: the `aionui` desktop cask is present; the prebuilt `aionui-web` binary exists; the WebUI daemon serves HTTP 200 on the loopback `:25808`; and the minted `AIONUI_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware so a down key-store reads as "heal the DB", not "bad key"). Fix: `vz-ai-stack.sh start aionui` or `install 28` (both idempotent).
+Graceful by design — skip-clean (pass) when AionUi's Phase 28 hasn't run (no `installer/state/phase_28*.done` stamp), so it never red-bars a stack that didn't opt into the AionUi Cowork workspace. When installed it checks: the `aionui` desktop cask is present; the prebuilt `aionui-web` binary exists; the WebUI daemon serves HTTP 200 on the loopback `:25808`; and the minted `AIONUI_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware so a down key-store reads as "heal the DB", not "bad key"). Fix: `mayssam-ai-stack.sh start aionui` or `install 28` (both idempotent).
 
 ---
 
 ## 51 · OpenWork daemon healthy + LiteLLM key valid (opt-in)
 
-Graceful by design — skip-clean (pass) when OpenWork's Phase 29 hasn't run (no `installer/state/phase_29*.done` stamp), so it never red-bars a stack that didn't opt into the OpenWork Cowork workspace. When installed it checks: the `openwork` orchestrator binary resolves on PATH / npm-global and `--version` runs; the seeded `~/.openwork-stack/opencode.json` exists; the headless daemon serves HTTP 200 on the loopback `:8787/health`; and the minted `OPENWORK_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware). Fix: `vz-ai-stack.sh start openwork` or `install 29` (both idempotent). First start downloads the OpenCode sidecars — give it a minute before re-checking.
+Graceful by design — skip-clean (pass) when OpenWork's Phase 29 hasn't run (no `installer/state/phase_29*.done` stamp), so it never red-bars a stack that didn't opt into the OpenWork Cowork workspace. When installed it checks: the `openwork` orchestrator binary resolves on PATH / npm-global and `--version` runs; the seeded `~/.openwork-stack/opencode.json` exists; the headless daemon serves HTTP 200 on the loopback `:8787/health`; and the minted `OPENWORK_LITELLM_KEY` validates against LiteLLM `/v1/models` (gated on LiteLLM reachable + 503-aware). Fix: `mayssam-ai-stack.sh start openwork` or `install 29` (both idempotent). First start downloads the OpenCode sidecars — give it a minute before re-checking.
 
 ---
 
 ## 52 · understand-mcp answers a real graph query (opt-in)
 
-Graceful by design — skip-clean (pass) when Understand-Anything's Phase 30 hasn't run (no `installer/state/phase_30*.done` stamp), so it never red-bars a stack that didn't opt into codebase knowledge graphs. When installed it verifies the plugin core is built (`~/.understand-anything-plugin/packages/core/dist`) and the `understand-mcp` shim deps are present. If a knowledge graph is committed (`.understand-anything/knowledge-graph.json`) it runs a TRUE end-to-end query — `project_summary` through the real `@understand-anything/core` code path — and surfaces graph staleness (graph commit vs HEAD) plus the http daemon's health on `:7081`. If no graph is committed yet it passes with an actionable note (run `/understand .` from the MAIN checkout and commit the graph) rather than red-barring. Fix: `vz-ai-stack.sh install understand` (rebuilds the plugin core + shim, re-registers the stdio MCP, restarts the daemon).
+Graceful by design — skip-clean (pass) when Understand-Anything's Phase 30 hasn't run (no `installer/state/phase_30*.done` stamp), so it never red-bars a stack that didn't opt into codebase knowledge graphs. When installed it verifies the plugin core is built (`~/.understand-anything-plugin/packages/core/dist`) and the `understand-mcp` shim deps are present. If a knowledge graph is committed (`.understand-anything/knowledge-graph.json`) it runs a TRUE end-to-end query — `project_summary` through the real `@understand-anything/core` code path — and surfaces graph staleness (graph commit vs HEAD) plus the http daemon's health on `:7081`. If no graph is committed yet it passes with an actionable note (run `/understand .` from the MAIN checkout and commit the graph) rather than red-barring. Fix: `mayssam-ai-stack.sh install understand` (rebuilds the plugin core + shim, re-registers the stdio MCP, restarts the daemon).
 
 ---
 
@@ -800,7 +800,7 @@ The census/liveness axis — distinct from check 12 (ownership: foreign/adopt) a
 | Auto-fix | **None** (conservative). A crash-loop almost always needs a real fix (e.g. a bind-mounted source drifted behind its image) — auto-restarting would re-mask the failure. Surfaces `docker logs <name> --tail 50` / `docker restart <name>` guidance, and reminds you to use `docker ps -a` (an OOM-killed container exits and vanishes from plain `docker ps`). |
 | Scope | Covers containers that EXIST but are broken. Does **not** yet assert a full expected-set (a service that never started at all) — stated follow-up. |
 
-Smoke: `vz-ai-stack.sh test 53` — 10 cases covering every census signal + every broken state (exited/restarting/unhealthy) + negatives (healthy, starting-grace, foreign, openshell).
+Smoke: `mayssam-ai-stack.sh test 53` — 10 cases covering every census signal + every broken state (exited/restarting/unhealthy) + negatives (healthy, starting-grace, foreign, openshell).
 
 ---
 
@@ -815,7 +815,7 @@ Two gaps no other check covered. The gateway is a **host launchd process, not a 
 | Auto-fix | **None — by design.** The remediation for the untrusted-tap case is `brew trust nvidia/openshell`, which tells Homebrew to load and **execute** that tap's arbitrary Ruby — a security-posture change (team-protocol §5). It must be a human decision, never auto-healed. The diagnose detail prints the exact command (and the brew-independent `launchctl bootstrap` fallback for a down gateway). |
 | Note | This is the check behind the install-time warning users asked about: the warning is informational (the gateway can still be up), but it means brew-managed lifecycle is off. Run `brew trust nvidia/openshell` to restore it, then this check goes green. |
 
-Smoke: `vz-ai-stack.sh test 54` — 8 hermetic cases (stubs `port_listening`/`brew`): not-installed skip, up+manageable green, up+untrusted red, up+no-service red, down+untrusted red, down+manageable red, up+brew-absent red, up+stopped green.
+Smoke: `mayssam-ai-stack.sh test 54` — 8 hermetic cases (stubs `port_listening`/`brew`): not-installed skip, up+manageable green, up+untrusted red, up+no-service red, down+untrusted red, down+manageable red, up+brew-absent red, up+stopped green.
 
 ---
 
@@ -840,43 +840,43 @@ genuinely broken. See [models.md](models.md) for setup + the full risk disclosur
 
 ## 56 · Bare-hostname ingress http(s)://name/ (opt-in, Phase 31)
 
-Graceful by design — a no-op [skip] when the host-native Caddy isn't installed (no `caddy` binary) OR its launchd daemon isn't loaded (`system/com.ai-stack.ingress`), so it never red-bars a stack that didn't opt into port-free `http(s)://litellm/`. When the daemon IS loaded the user opted in, so a broken bind is a real regression: it proves there is **no OrbStack `*:80` collapse** by asserting two services answer on their **own** socket IP — it `curl`s `litellm` resolved to `127.0.10.1` and `phoenix` resolved to `127.0.10.2` and checks `%{local_ip}` matches the expected per-service IP (which holds even if the upstream container is down — a 502 still connects to the right IP). Makes **no external network calls** (loopback only). Fails when the per-IP isolation is gone (`ingress :80 not isolated per-IP (litellm->…, phoenix->…; expected 127.0.10.1 / 127.0.10.2)`). Fix: `vz-ai-stack.sh ingress up` (bring up / repair the ingress), then `vz-ai-stack.sh ingress trust` to trust the local CA for `https://`.
+Graceful by design — a no-op [skip] when the host-native Caddy isn't installed (no `caddy` binary) OR its launchd daemon isn't loaded (`system/com.ai-stack.ingress`), so it never red-bars a stack that didn't opt into port-free `http(s)://litellm/`. When the daemon IS loaded the user opted in, so a broken bind is a real regression: it proves there is **no OrbStack `*:80` collapse** by asserting two services answer on their **own** socket IP — it `curl`s `litellm` resolved to `127.0.10.1` and `phoenix` resolved to `127.0.10.2` and checks `%{local_ip}` matches the expected per-service IP (which holds even if the upstream container is down — a 502 still connects to the right IP). Makes **no external network calls** (loopback only). Fails when the per-IP isolation is gone (`ingress :80 not isolated per-IP (litellm->…, phoenix->…; expected 127.0.10.1 / 127.0.10.2)`). Fix: `mayssam-ai-stack.sh ingress up` (bring up / repair the ingress), then `mayssam-ai-stack.sh ingress trust` to trust the local CA for `https://`.
 
 ---
 
 ## 57 · MetaGPT venv + scoped LiteLLM key (opt-in, Phase 32)
 
-Graceful by design — pass-as-skip when MetaGPT's Phase 32 hasn't run (no `installer/state/phase_32*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv multi-agent software-company sim. When installed it requires: the venv with the `metagpt` entrypoint (`metagpt/.venv/bin/metagpt`), `import metagpt` succeeding in that venv, the `bin/metagpt` wrapper, and the scoped `METAGPT_LITELLM_KEY` actually listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so the check requires a real `"id"`). A down key-store DB is reported as "heal the DB (check 05a)", **not** "re-mint" — re-minting against a dead DB just fails (`LiteLLM key-store DB is DOWN — heal it …; do NOT re-mint`). Fix: `vz-ai-stack.sh install 32` (rebuild venv + re-mint scoped key + refresh `bin/metagpt`).
+Graceful by design — pass-as-skip when MetaGPT's Phase 32 hasn't run (no `installer/state/phase_32*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv multi-agent software-company sim. When installed it requires: the venv with the `metagpt` entrypoint (`metagpt/.venv/bin/metagpt`), `import metagpt` succeeding in that venv, the `bin/metagpt` wrapper, and the scoped `METAGPT_LITELLM_KEY` actually listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so the check requires a real `"id"`). A down key-store DB is reported as "heal the DB (check 05a)", **not** "re-mint" — re-minting against a dead DB just fails (`LiteLLM key-store DB is DOWN — heal it …; do NOT re-mint`). Fix: `mayssam-ai-stack.sh install 32` (rebuild venv + re-mint scoped key + refresh `bin/metagpt`).
 
 ---
 
 ## 58 · AgentScope venv + scoped LiteLLM key (opt-in, Phase 33)
 
-Graceful by design — pass-as-skip when AgentScope's Phase 33 hasn't run (no `installer/state/phase_33*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv multi-agent simulation framework. When installed it requires: the venv (`agentscope/.venv/bin/python`), `import agentscope` succeeding in that venv, the `bin/agentscope` wrapper, and the scoped `AGENTSCOPE_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint". The optional **Studio web GUI** (host `:5275`) is probed **only when enabled** — keyed off the launchd plist `~/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist` (written by Phase 33 only with `AGENTSCOPE_STUDIO=1`, removed on uninstall — NOT the `.env` flag, which is an install-time input); lib-only stacks have no plist, skip the probe, and pass. When Studio is on it must return HTTP 200 on `http://127.0.0.1:5275/` or the check fails (`Studio GUI … returned HTTP <code>`). Fix: `vz-ai-stack.sh install 33` (rebuild venv + re-mint scoped key + refresh `bin/agentscope`), and `bash bin/start-agentscope-studio.sh install` to (re)start the Studio daemon when it's enabled.
+Graceful by design — pass-as-skip when AgentScope's Phase 33 hasn't run (no `installer/state/phase_33*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv multi-agent simulation framework. When installed it requires: the venv (`agentscope/.venv/bin/python`), `import agentscope` succeeding in that venv, the `bin/agentscope` wrapper, and the scoped `AGENTSCOPE_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint". The optional **Studio web GUI** (host `:5275`) is probed **only when enabled** — keyed off the launchd plist `~/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist` (written by Phase 33 only with `AGENTSCOPE_STUDIO=1`, removed on uninstall — NOT the `.env` flag, which is an install-time input); lib-only stacks have no plist, skip the probe, and pass. When Studio is on it must return HTTP 200 on `http://127.0.0.1:5275/` or the check fails (`Studio GUI … returned HTTP <code>`). Fix: `mayssam-ai-stack.sh install 33` (rebuild venv + re-mint scoped key + refresh `bin/agentscope`), and `bash bin/start-agentscope-studio.sh install` to (re)start the Studio daemon when it's enabled.
 
 ---
 
 ## 59 · OASIS venv + scoped LiteLLM key (opt-in, Phase 34)
 
-Graceful by design — pass-as-skip when OASIS's Phase 34 hasn't run (no `installer/state/phase_34*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv large-scale social-agent swarm sim. When installed it requires: the venv (`oasis/.venv/bin/python`), `import oasis` succeeding in that venv, the `bin/oasis` wrapper, and the scoped `OASIS_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `vz-ai-stack.sh install 34` (rebuild venv + re-mint scoped key + refresh `bin/oasis`); prove the swarm with `vz-ai-stack.sh test 34`.
+Graceful by design — pass-as-skip when OASIS's Phase 34 hasn't run (no `installer/state/phase_34*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv large-scale social-agent swarm sim. When installed it requires: the venv (`oasis/.venv/bin/python`), `import oasis` succeeding in that venv, the `bin/oasis` wrapper, and the scoped `OASIS_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `mayssam-ai-stack.sh install 34` (rebuild venv + re-mint scoped key + refresh `bin/oasis`); prove the swarm with `mayssam-ai-stack.sh test 34`.
 
 ---
 
 ## 60 · ChatDev web app on :5274 + scoped LiteLLM key (opt-in, Phase 35)
 
-Graceful by design — pass-as-skip when ChatDev's Phase 35 hasn't run (no `installer/state/phase_35*.done` stamp), so it never red-bars a stack that didn't opt into the containerized multi-agent software-company web app (Vue frontend `:5274` + FastAPI backend `:6400`, both on the `ai-stack` bridge). When installed it requires, in order: the derived image `ai-stack/chatdev:local` built, both the `chatdev-backend` and `chatdev` (frontend) containers running, the frontend serving HTTP 200 at `http://127.0.10.18:5274/` (explicit `^200$` grep — not the `http_ok` helper, which has the documented `000`-concat false-healthy bug), and the scoped `CHATDEV_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A 503 `no_db_connection` reads as "heal the DB (check 05a)", **not** "re-mint"; if LiteLLM is simply unreachable it says so rather than blaming the key. Fix: `vz-ai-stack.sh start chatdev` (idempotent (re)build + (re)start) or `vz-ai-stack.sh install 35`; prove the swarm with `vz-ai-stack.sh test 35`.
+Graceful by design — pass-as-skip when ChatDev's Phase 35 hasn't run (no `installer/state/phase_35*.done` stamp), so it never red-bars a stack that didn't opt into the containerized multi-agent software-company web app (Vue frontend `:5274` + FastAPI backend `:6400`, both on the `ai-stack` bridge). When installed it requires, in order: the derived image `ai-stack/chatdev:local` built, both the `chatdev-backend` and `chatdev` (frontend) containers running, the frontend serving HTTP 200 at `http://127.0.10.18:5274/` (explicit `^200$` grep — not the `http_ok` helper, which has the documented `000`-concat false-healthy bug), and the scoped `CHATDEV_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`). A 503 `no_db_connection` reads as "heal the DB (check 05a)", **not** "re-mint"; if LiteLLM is simply unreachable it says so rather than blaming the key. Fix: `mayssam-ai-stack.sh start chatdev` (idempotent (re)build + (re)start) or `mayssam-ai-stack.sh install 35`; prove the swarm with `mayssam-ai-stack.sh test 35`.
 
 ---
 
 ## 61 · AI Town compose stack + frontend :5273 + scoped LiteLLM key (opt-in, Phase 36)
 
-Graceful by design — pass-as-skip when AI Town's Phase 36 hasn't run (no `installer/state/phase_36*.done` stamp), so it never red-bars a stack that didn't opt into the watchable virtual-town agent sim (a self-contained Convex **docker-compose** project `aitown`: backend + frontend + dashboard). **Liveness-only** (per the no-cold-start rule): it never cold-starts or blocks on a slow Vite build; it only red-bars when the phase stamp exists and the stack is genuinely down/broken or the key is bad. When installed it requires: `ai-town/docker-compose.yml` present, the docker daemon reachable, all 3 compose members running (`docker compose -p aitown ps --status running` ≥ 3), the frontend serving HTTP 200 at `http://127.0.10.19:5273/` (explicit `^200$` grep — not `http_ok`), and the scoped `AITOWN_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`; loopback `127.0.0.1:4000` is probed first, falling back to the `litellm:4000` alias). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint". Note: AI Town's containers are bridge-exempt (no `ai-stack` bridge / managed-as-docker-run signal), so check 53's container-liveness census sees them only via the `project: aitown` compose signal. Fix: `vz-ai-stack.sh start aitown` (bring the compose stack up — first build is heavy) or `vz-ai-stack.sh install 36`; prove the wiring with `vz-ai-stack.sh test 36`.
+Graceful by design — pass-as-skip when AI Town's Phase 36 hasn't run (no `installer/state/phase_36*.done` stamp), so it never red-bars a stack that didn't opt into the watchable virtual-town agent sim (a self-contained Convex **docker-compose** project `aitown`: backend + frontend + dashboard). **Liveness-only** (per the no-cold-start rule): it never cold-starts or blocks on a slow Vite build; it only red-bars when the phase stamp exists and the stack is genuinely down/broken or the key is bad. When installed it requires: `ai-town/docker-compose.yml` present, the docker daemon reachable, all 3 compose members running (`docker compose -p aitown ps --status running` ≥ 3), the frontend serving HTTP 200 at `http://127.0.10.19:5273/` (explicit `^200$` grep — not `http_ok`), and the scoped `AITOWN_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`; loopback `127.0.0.1:4000` is probed first, falling back to the `litellm:4000` alias). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint". Note: AI Town's containers are bridge-exempt (no `ai-stack` bridge / managed-as-docker-run signal), so check 53's container-liveness census sees them only via the `project: aitown` compose signal. Fix: `mayssam-ai-stack.sh start aitown` (bring the compose stack up — first build is heavy) or `mayssam-ai-stack.sh install 36`; prove the wiring with `mayssam-ai-stack.sh test 36`.
 
 ---
 
 ## 62 · bin/audit.sh in sync with its 04g generator heredoc (core)
 
-`bin/audit.sh` is GENERATED by a `cat > bin/audit.sh <<'EOF' … EOF` heredoc in `installer/phases/04g_security.sh` — the two must stay byte-identical, because a fix applied to one but not the other silently ships a stale security smoke test (and a later `install 04g` would clobber any hand-edit to `bin/audit.sh`). This check extracts the heredoc body and diffs it against the committed `bin/audit.sh`, failing on drift. Pure file comparison — no external calls. Pass-as-skip if either file is missing. Fails when (a) the heredoc can't be located in `04g_security.sh` (the generator changed shape — update this check), or (b) the extracted body and `bin/audit.sh` differ (`bin/audit.sh DRIFTED from its 04g_security.sh generator heredoc`). Fix: apply the intended change to **both** (keep them byte-identical), or re-run `vz-ai-stack.sh install 04g` to regenerate `bin/audit.sh` from the heredoc (this DISCARDS any hand-edit to `bin/audit.sh`).
+`bin/audit.sh` is GENERATED by a `cat > bin/audit.sh <<'EOF' … EOF` heredoc in `installer/phases/04g_security.sh` — the two must stay byte-identical, because a fix applied to one but not the other silently ships a stale security smoke test (and a later `install 04g` would clobber any hand-edit to `bin/audit.sh`). This check extracts the heredoc body and diffs it against the committed `bin/audit.sh`, failing on drift. Pure file comparison — no external calls. Pass-as-skip if either file is missing. Fails when (a) the heredoc can't be located in `04g_security.sh` (the generator changed shape — update this check), or (b) the extracted body and `bin/audit.sh` differ (`bin/audit.sh DRIFTED from its 04g_security.sh generator heredoc`). Fix: apply the intended change to **both** (keep them byte-identical), or re-run `mayssam-ai-stack.sh install 04g` to regenerate `bin/audit.sh` from the heredoc (this DISCARDS any hand-edit to `bin/audit.sh`).
 
 ---
 
@@ -888,19 +888,19 @@ The routine-doctor version of `bin/audit.sh` check 1: asserts no running contain
 
 ## 64 · services.yml hostname open_urls have aliases.tsv rows (core)
 
-Asserts every `services.yml` service whose `open_url` is a bare hostname (e.g. `http://deerflow:2026`) has a matching `installer/lib/aliases.tsv` row — the row that drives `/etc/hosts`, the `lo0` alias, and the Caddy ingress. `localhost`/IP `open_url`s are exempt (they need no alias). Guards the deerflow-class gap where a service gains a hostname `open_url` but no alias row, so the URL never resolves. Fails when a bare-hostname `open_url` has no corresponding `aliases.tsv` row. Fix: add the missing row to `installer/lib/aliases.tsv` (then `sudo vz-ai-stack.sh prepare-sudo` to activate the `/etc/hosts` + `lo0` alias), or point the service's `open_url` at `localhost`/an IP if it intentionally has no hostname.
+Asserts every `services.yml` service whose `open_url` is a bare hostname (e.g. `http://deerflow:2026`) has a matching `installer/lib/aliases.tsv` row — the row that drives `/etc/hosts`, the `lo0` alias, and the Caddy ingress. `localhost`/IP `open_url`s are exempt (they need no alias). Guards the deerflow-class gap where a service gains a hostname `open_url` but no alias row, so the URL never resolves. Fails when a bare-hostname `open_url` has no corresponding `aliases.tsv` row. Fix: add the missing row to `installer/lib/aliases.tsv` (then `sudo mayssam-ai-stack.sh prepare-sudo` to activate the `/etc/hosts` + `lo0` alias), or point the service's `open_url` at `localhost`/an IP if it intentionally has no hostname.
 
 ---
 
 ## 65 · Model & Agent Console (models-serve) present + wired (core)
 
-Asserts the `models-serve` web console (the Model & Agent Console) is present and wired so `vz-ai-stack.sh models-serve` will actually boot: `installer/lib/models-serve.sh` + `installer/lib/models_proxy.py` + `doc/MODELS.html` all exist, the proxy compiles as valid Python, `models-serve` is wired into `vz-ai-stack.sh` dispatch (lib present but unreachable verb is the regression this guards), and `installer/models.yml` parses (fail-closed — the console reads the catalog through the `model` CLI). Pure file/parse — NO cold-start, network, or container calls; deep model↔agent binding and allowlist correctness stay owned by check 40 (`models_binding`), not duplicated here. ADVISORY (WARN, never red): every `models.yml` model declaring a `key_env` should have that env var set in `.env` — a missing vendor key is surfaced as a red dot in the console and means that route 401s at call time, worth flagging but not a stack fault (a keyless local-only box is legitimate). Fails when a console file is missing, the proxy has a syntax error, `models-serve` isn't dispatched, or `models.yml` doesn't parse. Fix: restore the missing piece on branch `feat/model-console` (or `main` once merged), then serve it with `vz-ai-stack.sh models-serve` from the MAIN checkout.
+Asserts the `models-serve` web console (the Model & Agent Console) is present and wired so `mayssam-ai-stack.sh models-serve` will actually boot: `installer/lib/models-serve.sh` + `installer/lib/models_proxy.py` + `doc/MODELS.html` all exist, the proxy compiles as valid Python, `models-serve` is wired into `mayssam-ai-stack.sh` dispatch (lib present but unreachable verb is the regression this guards), and `installer/models.yml` parses (fail-closed — the console reads the catalog through the `model` CLI). Pure file/parse — NO cold-start, network, or container calls; deep model↔agent binding and allowlist correctness stay owned by check 40 (`models_binding`), not duplicated here. ADVISORY (WARN, never red): every `models.yml` model declaring a `key_env` should have that env var set in `.env` — a missing vendor key is surfaced as a red dot in the console and means that route 401s at call time, worth flagging but not a stack fault (a keyless local-only box is legitimate). Fails when a console file is missing, the proxy has a syntax error, `models-serve` isn't dispatched, or `models.yml` doesn't parse. Fix: restore the missing piece on branch `feat/model-console` (or `main` once merged), then serve it with `mayssam-ai-stack.sh models-serve` from the MAIN checkout.
 
 ---
 
 ## 66 · Concordia venv + scoped LiteLLM key (opt-in, Phase 37)
 
-Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `installer/state/phase_37*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv generative-agent-based-modeling (GABM) sim. When installed it requires: the venv (`concordia/.venv/bin/python`), both `import concordia` and `import sentence_transformers` succeeding in that venv (the latter is Concordia's mandatory associative-memory embedder), the `bin/concordia` wrapper, and the scoped `CONCORDIA_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`), plus an allow-list assertion that the key permits the model Concordia is bound to (`models.yml` `.assignments.concordia`, else the default `claude-sonnet-sub-high`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `vz-ai-stack.sh install 37` (rebuild venv + re-mint scoped key + refresh `bin/concordia`); prove the sim with `vz-ai-stack.sh test 37`.
+Graceful by design — pass-as-skip when Concordia's Phase 37 hasn't run (no `installer/state/phase_37*.done` stamp), so it never red-bars a stack that didn't opt into the host-venv generative-agent-based-modeling (GABM) sim. When installed it requires: the venv (`concordia/.venv/bin/python`), both `import concordia` and `import sentence_transformers` succeeding in that venv (the latter is Concordia's mandatory associative-memory embedder), the `bin/concordia` wrapper, and the scoped `CONCORDIA_LITELLM_KEY` listing models against LiteLLM `/v1/models` (a stale/revoked key returns `200` + empty `data[]`, so it requires a real `"id"`), plus an allow-list assertion that the key permits the model Concordia is bound to (`models.yml` `.assignments.concordia`, else the default `claude-sonnet-sub-high`). A down key-store DB reads as "heal the DB (check 05a)", **not** "re-mint" (re-minting against a dead DB fails). Fix: `mayssam-ai-stack.sh install 37` (rebuild venv + re-mint scoped key + refresh `bin/concordia`); prove the sim with `mayssam-ai-stack.sh test 37`.
 
 ---
 
@@ -934,7 +934,7 @@ Skips cleanly (passes) when the workspace isn't installed or isn't on the netns 
 |---|---|
 | Asserts | when Phase 39 (`install fleet_memory`) is installed: (a) if the `claude` CLI is present, the host Claude session has BOTH memory MCPs registered (user scope) — `mempalace` (verbatim recall via the `bin/mempalace-mcp` env-injecting wrapper) and `docs-mcp` (doc-RAG `search_documents` on :8765); (b) if a `hermes-fleet-v1` sandbox is Ready, a representative fleet profile carries `mcp_servers.docs` → `host.docker.internal:8765` (fleet doc-RAG wired). |
 | Fails when | a claude-cli MCP is missing from `claude mcp list`, or the fleet profile lacks the `docs` MCP server, after Phase 39 has stamped. With `FLEET_MEMORY_DEEP_CHECK=1` it additionally fails when Qdrant is unreachable or the `ai-stack-docs` collection holds **0 points** — a registered-but-empty docs-mcp answers every query with nothing. |
-| Auto-fix | none (reports the command): `vz-ai-stack.sh install fleet_memory`; populate doc-RAG with `cd ingestor && python ingest.py`. |
+| Auto-fix | none (reports the command): `mayssam-ai-stack.sh install fleet_memory`; populate doc-RAG with `cd ingestor && python ingest.py`. |
 
 Skips cleanly (passes) when Phase 39 isn't installed (opt-in); the claude-cli sub-check is skipped when the `claude` CLI isn't on PATH, and the hermes sub-check when no fleet sandbox is Ready. Static by default (wiring only); the corpus-population probe is opt-in behind `FLEET_MEMORY_DEEP_CHECK=1` so routine runs never touch Qdrant.
 
@@ -946,7 +946,7 @@ Skips cleanly (passes) when Phase 39 isn't installed (opt-in); the claude-cli su
 |---|---|
 | Asserts | when Phase 40 (`install honcho_mcp`) is installed: **(a) SECURITY DRIFT-GUARD** — the raw auth-off `honcho_memory` (:8000) egress is GONE from the `04_openshell.sh` generator AND both committed policies (`hermes-fleet-v1.yaml`, `pi-v1.yaml`), and the `honcho_mcp` (:7082) shim stanza is PRESENT in the fleet policy; **(b)** if the `claude` CLI is present, the host session has the `honcho` stdio MCP registered; **(c)** the http shim answers on `127.0.0.1:7082/healthz`; **(d)** if a `hermes-fleet-v1` sandbox is Ready, `hermes_manager` carries the honcho MCP wired to `host.docker.internal:7082`. |
 | Fails when | the raw `honcho_memory` (:8000) egress **REAPPEARS** in the generator or a policy (a regression re-opens the auth-off hole to sandboxed agents), or the `honcho_mcp` shim stanza is missing from the fleet policy, or the claude-cli `honcho` MCP is unregistered, or the shim isn't answering on :7082, or the fleet profile isn't wired — after Phase 40 has stamped. |
-| Auto-fix | **advisory** (print-only — no prompt; prints the command): `vz-ai-stack.sh install honcho_mcp`; if a policy regained `honcho_memory` (:8000), revert it (it MUST stay retired) + `install 04`. |
+| Auto-fix | **advisory** (print-only — no prompt; prints the command): `mayssam-ai-stack.sh install honcho_mcp`; if a policy regained `honcho_memory` (:8000), revert it (it MUST stay retired) + `install 04`. |
 
 Skips cleanly (passes) when Phase 40 isn't installed — no `phase_40*.done` stamp, i.e. the stack declined honcho memory with `HONCHO_MEMORY_OPT_IN=0` or predates the phase — so it never red-bars a stack without honcho memory. (Phase 40 is default-on under `install all --include-optionals` as of 2026-07-16; its decline path deliberately stamps nothing, which is exactly what keeps this skip-clean honest.) The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but Honcho backend unreachable per `/healthz`" state is a NOTE, not a failure. The centerpiece is the always-on **security drift-guard**: the raw :8000 egress must stay retired so the token-gated shim remains the only in-sandbox path to Honcho.
 
@@ -958,7 +958,7 @@ Skips cleanly (passes) when Phase 40 isn't installed — no `phase_40*.done` sta
 |---|---|
 | Asserts | when Phase 41 (`install falkordb_mcp`) is installed: **(a) DRIFT-GUARD** — the `falkordb_mcp` (:7083) shim egress is PRESENT in the fleet policy (`hermes-fleet-v1.yaml`) AND **no** sandbox policy (`hermes-fleet-v1.yaml`, `pi-v1.yaml`) targets the raw `falkordb` :6379 endpoint; **(b)** if the `claude` CLI is present, the host session has the `falkordb` stdio MCP registered; **(c)** the http shim answers on `127.0.0.1:7083/healthz`; **(d)** if a `hermes-fleet-v1` sandbox is Ready, `hermes_manager` carries the FalkorDB MCP wired to `host.docker.internal:7083`. |
 | Fails when | the `falkordb_mcp` shim egress is missing from the fleet policy, or a sandbox policy targets raw `falkordb` :6379 (sandboxes must reach the graph ONLY via the token-gated :7083 shim), or the claude-cli `falkordb` MCP is unregistered, or the shim isn't answering on :7083, or the fleet profile isn't wired — after Phase 41 has stamped. |
-| Auto-fix | none (reports the command): `vz-ai-stack.sh install falkordb_mcp`; if a policy gained a raw `falkordb` :6379 endpoint, revert it (it MUST stay denied) + `install 04`. |
+| Auto-fix | none (reports the command): `mayssam-ai-stack.sh install falkordb_mcp`; if a policy gained a raw `falkordb` :6379 endpoint, revert it (it MUST stay denied) + `install 04`. |
 
 Skips cleanly (passes) when Phase 41 isn't installed (opt-in — no `phase_41*.done` stamp), so it never red-bars a stack that didn't opt into graph memory. The claude-cli sub-check is skipped when the `claude` CLI isn't on PATH; the fleet sub-check when no `hermes-fleet-v1` sandbox is Ready. A "shim up but FalkorDB backend unreachable per `/healthz`" state is a NOTE, not a failure. **Unlike check 75 (honcho) there is NO retired-egress to assert — slice 4 is purely additive** (FalkorDB was never fleet-reachable) — but the always-on **"no raw :6379 sandbox egress" guard** keeps it that way, so the shim stays the only in-sandbox path to the graph.
 
@@ -988,7 +988,7 @@ Stamp semantics: an **entirely unstamped** collection is **SKIP-CLEAN** (it pre-
 |---|---|
 | Asserts | a STATIC source-shape guard (cf. check 62 `audit_drift`) — for each of phases `39_fleet_memory.sh` / `40_honcho_mcp.sh` / `41_falkordb_mcp.sh`, the verify-then-stamp SHAPE tokens are still present WITHOUT running the stack: (1) an `if sandbox_ready …` wiring-branch gate (only a Ready fleet is wired); (2) an `if _mem_hermes_<key>_wired …` POST-CONDITION gate (verify before stamp); (3) a `NOT stamping Phase` failure path followed by an `exit` before the skip-note (a wiring that did not land must NOT stamp); (4) a `not present or not Ready` genuine-skip else-branch — the opt-in RECORD that arms `04f_hermes_fleet.sh`'s `stamp_check 39/40/41` so a fleet built LATER still gets wired; (5) a TOP-LEVEL `stamp_mark "$PHASE"` fall-through that BOTH the verified AND the genuine-skip path reach; (6) ORDER — the skip-note precedes that stamp with no `exit` short-circuiting the skip path before it. Checks SHAPE, not byte-identity (the three phases legitimately differ). Pure file reads — no external calls, no cold-start. |
 | Fails when | a fleet-memory phase lost the stamp gate or the no-sandbox-still-stamps invariant: a missing shape token, an `exit` between the genuine-skip note and the fall-through stamp (a no-sandbox run would no longer stamp — opt-in-survives-rebuild broken), or a `NOT stamping Phase` failure branch with no `exit` before the skip note (a wiring that did not land would fall through and STILL stamp — the exact 2026-07-16 incident). |
-| Fix | print-only advice (NOT FIX_CAPABLE): restore the verify-then-stamp shape by referencing the sibling phase that still has it, then re-run `vz-ai-stack.sh test verify-then-stamp` (the companion runtime test that pins the contract). |
+| Fix | print-only advice (NOT FIX_CAPABLE): restore the verify-then-stamp shape by referencing the sibling phase that still has it, then re-run `mayssam-ai-stack.sh test verify-then-stamp` (the companion runtime test that pins the contract). |
 
 Skips cleanly (returns 0) when none of phases 39/40/41 is present — a genuine skip, never a red-bar. Companion: `installer/smoke/verify-then-stamp.sh` pins the CONTRACT (real helpers + real stamp → right outcome); THIS check pins that the phases still IMPLEMENT it.
 
@@ -1026,7 +1026,7 @@ Skips cleanly (returns 0) when `11_halo_autoreason.sh` or `bin/halo` is absent �
 | Fails when | the committed `config.yaml` is off-canonical (e.g. a hand-edit reintroduced a 4-space indent), so the next `model sync` / `install` re-serializes it and dirties git with a comment/whitespace-only diff (zero model_list change). Fixed once at `bfc6944` and REGRESSED five days later when `fb41ce3` hand-edited the tracked artifact back to a non-canonical indent — re-commit alone cannot survive that class, so this guard makes it caught instead of silent. |
 | Fix | print-only advice (NOT FIX_CAPABLE): re-canonicalize with `yq -i '.' litellm/config.yaml` and commit it. |
 
-Skips cleanly (returns 0) when `litellm/config.yaml` is absent (install 01 seeds it) or `yq` is not on PATH (run `vz-ai-stack.sh deps`) — a genuine skip, never a red-bar. Guards the same "tracked generated artifact re-dirties on install" class as check 80.
+Skips cleanly (returns 0) when `litellm/config.yaml` is absent (install 01 seeds it) or `yq` is not on PATH (run `mayssam-ai-stack.sh deps`) — a genuine skip, never a red-bar. Guards the same "tracked generated artifact re-dirties on install" class as check 80.
 
 ---
 
@@ -1036,7 +1036,7 @@ Skips cleanly (returns 0) when `litellm/config.yaml` is absent (install 01 seeds
 |---|---|
 | Asserts | at most 5 DANGLING ANONYMOUS docker volumes exist on the selected engine (`docker volume ls --filter dangling=true --filter label=com.docker.volume.anonymous`). Anonymous volumes are minted by single-path `-v /path` mask-guards (chatdev / ai-town `node_modules`), image `VOLUME` directives, and the OpenShell supervisor's sandbox homes (the gateway strips `--label`, so those carry no ai-stack label). Since the §24 2026-07-20 hygiene round every ai-stack `docker rm` sink passes `-v` and `reset hard/nuke` diff-sweeps its own orphans — so a growing census here means a NEW leak, or another project's debris on this shared engine. Read-only; no external calls. |
 | Fails when | more than 5 dangling anonymous volumes have accumulated (the pre-fix steady state was 20 ≈ 1.5 GB). |
-| Fix | print-only advice (NOT FIX_CAPABLE — removal is NON-recoverable and stays operator-gated): review the itemized, HOST-WIDE list with `vz-ai-stack.sh cleanup --docker` (dry-run: size + age per volume), then reclaim with `cleanup --docker --yes` (each volume is tar-backed-up to `data/volume-backups/cleanup-<ts>/` first, fail-closed). |
+| Fix | print-only advice (NOT FIX_CAPABLE — removal is NON-recoverable and stays operator-gated): review the itemized, HOST-WIDE list with `mayssam-ai-stack.sh cleanup --docker` (dry-run: size + age per volume), then reclaim with `cleanup --docker --yes` (each volume is tar-backed-up to `data/volume-backups/cleanup-<ts>/` first, fail-closed). |
 
 Skips cleanly (returns 0) when the docker engine is not reachable — a stopped engine must never red-bar an advisory hygiene census (same idiom as check 63).
 
@@ -1054,7 +1054,7 @@ Skips cleanly (returns 0) when the docker engine is not reachable — a stopped 
 
 ## Exit codes
 
-`bash vz-ai-stack.sh doctor` exit codes:
+`bash mayssam-ai-stack.sh doctor` exit codes:
 
 | Code | Meaning |
 |---|---|

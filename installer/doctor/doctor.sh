@@ -158,7 +158,7 @@ for __check in "${CHECKS[@]}"; do
           ok   "    fixed (verified)."
           fixed=$((fixed+1))
         else
-          err "    fix ran but the check still fails — see the detail above; a queued restart (vz-ai-stack.sh apply-restarts) or a manual step may be needed."
+          err "    fix ran but the check still fails — see the detail above; a queued restart (mayssam-ai-stack.sh apply-restarts) or a manual step may be needed."
         fi
       fi
     fi
@@ -170,7 +170,7 @@ done
 # filter in a CI/pre-push gate passed green forever. Fail loud + non-zero instead.
 # (2026-07-05 takeover fix.)
 if [[ -n "$FILTER" ]] && (( passed + failed == 0 )); then
-  err "doctor: filter '$FILTER' matched no checks (skipped all $skipped). Check the name, or run 'vz-ai-stack.sh doctor' with no filter."
+  err "doctor: filter '$FILTER' matched no checks (skipped all $skipped). Check the name, or run 'mayssam-ai-stack.sh doctor' with no filter."
   exit 2
 fi
 

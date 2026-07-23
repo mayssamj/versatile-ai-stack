@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # stop-lmstudio.sh — guarded, idempotent server-only stop for LM Studio.
 #
-# Symmetric counterpart to start-lmstudio.sh. `vz-ai-stack.sh stop lmstudio`
+# Symmetric counterpart to start-lmstudio.sh. `mayssam-ai-stack.sh stop lmstudio`
 # routes here (cmd_stop prefers bin/stop-<svc>.sh). LM Studio has no PID file and
 # is not a container/brew service, so the generic cmd_stop fallbacks don't cover
 # it — this script backs the `Stop:` line that cmd_start advertises.

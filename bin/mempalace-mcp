@@ -19,7 +19,7 @@ MP_BIN="$HOME/.local/bin/mempalace-mcp"
 if [[ ! -x "$MP_BIN" || "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]]; then
   MP_BIN="$(command -v mempalace-mcp 2>/dev/null || true)"
 fi
-[[ -n "$MP_BIN" && -x "$MP_BIN" && ! "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]] || { echo "mempalace-mcp tool not found (only the wrapper is on PATH) — run 'bash vz-ai-stack.sh install 26'" >&2; exit 1; }
+[[ -n "$MP_BIN" && -x "$MP_BIN" && ! "$MP_BIN" -ef "${BASH_SOURCE[0]}" ]] || { echo "mempalace-mcp tool not found (only the wrapper is on PATH) — run 'bash mayssam-ai-stack.sh install 26'" >&2; exit 1; }
 
 _key="$(_mp_get_env MEMPALACE_LITELLM_KEY)"
 export MEMPALACE_EMBEDDING_MODEL="${MEMPALACE_EMBEDDING_MODEL:-minilm}"

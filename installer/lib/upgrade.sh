@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# upgrade.sh — `vz-ai-stack.sh upgrade <service|all> [--dry-run]`.
+# upgrade.sh — `mayssam-ai-stack.sh upgrade <service|all> [--dry-run]`.
 #
 # Generic, type-dispatched upgrade verb. For each enabled service it pulls/
 # rebuilds the new artifact, recreates via the canonical path, then re-verifies
@@ -8,7 +8,7 @@
 # match zero checks → vacuous green; litellm over-matches a Pi check).
 #
 # Hard rules (this file owns the install lock, so it must never deadlock):
-#   - NEVER shell back to `vz-ai-stack.sh install <phase>` (re-acquires the lock →
+#   - NEVER shell back to `mayssam-ai-stack.sh install <phase>` (re-acquires the lock →
 #     exit 3). Docker recreate goes through the lock-free
 #     `bin/start-<svc>.sh --recreate`; phase re-asserts run the phase SCRIPT
 #     directly via `bash installer/phases/<id>_*.sh` (no lock_acquire in any).
@@ -27,14 +27,14 @@
 #     flag — a routine upgrade never does unsolicited metered/local inference.
 #   - Registers NO doctor checks → the doctor invariant is untouched.
 #
-# This runs as its OWN process (vz-ai-stack.sh dispatches `"$BASH" upgrade.sh "$@"`),
+# This runs as its OWN process (mayssam-ai-stack.sh dispatches `"$BASH" upgrade.sh "$@"`),
 # so the lock's EXIT/INT/TERM trap (common.sh) cleanly removes LOCKDIR on exit.
 
 # bash 5+ required (inherit_errexit + assoc arrays). Self-gate: if invoked under macOS's
 # stock 3.2 — a stripped-PATH cron `bash upgrade.sh`, or any bare-`bash` dispatch — re-
 # exec under brew-bash BEFORE `shopt -s inherit_errexit` below would abort on it. Makes
 # the script robust regardless of caller AND guarantees $BASH (used for our OWN sub-
-# dispatches below) is the bash-5 path. Mirrors the vz-ai-stack.sh gate.
+# dispatches below) is the bash-5 path. Mirrors the mayssam-ai-stack.sh gate.
 if (( BASH_VERSINFO[0] < 5 )); then
   for _c in /opt/homebrew/bin/bash /usr/local/bin/bash; do
     [[ -x "$_c" ]] && exec "$_c" "$0" "$@"
@@ -51,7 +51,7 @@ export AI_STACK
 LIB="$AI_STACK/installer/lib"
 
 # Source only side-effect-free libs. NEVER status.sh (prints the table at top
-# level) or vz-ai-stack.sh (runs main() on source).
+# level) or mayssam-ai-stack.sh (runs main() on source).
 source "$LIB/common.sh"
 source "$LIB/env.sh"
 source "$LIB/docker.sh"
@@ -77,17 +77,17 @@ CHECK_STATUS=""; CHECK_CUR=""; CHECK_AVAIL=""   # set by check_one
 # --- usage -------------------------------------------------------------------
 upgrade_usage() {
   cat <<'EOF'
-vz-ai-stack.sh upgrade <service|all> [--dry-run]   upgrade a service (or all enabled)
-vz-ai-stack.sh upgrade hermes                      GROUP: upgrade EVERY hermes surface to latest
+mayssam-ai-stack.sh upgrade <service|all> [--dry-run]   upgrade a service (or all enabled)
+mayssam-ai-stack.sh upgrade hermes                      GROUP: upgrade EVERY hermes surface to latest
                                                    (fleet pip + workspace UI image + Telegram/Slack gateways)
-vz-ai-stack.sh upgrade --check [service|all|hermes] READ-ONLY: show which have an update available
-vz-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY services VERIFIED behind: docker/
+mayssam-ai-stack.sh upgrade --check [service|all|hermes] READ-ONLY: show which have an update available
+mayssam-ai-stack.sh upgrade --outdated [--dry-run]      upgrade ONLY services VERIFIED behind: docker/
                                                    compose/brew currency + every service with a
                                                    declared upgrade: oracle (npm/pip/uv-tool/uv-reqs/brew/git/
                                                    sandbox-pip) — pins are never swept
-vz-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
+mayssam-ai-stack.sh upgrade --check --all               include non-checkable (manual) services too
                                                    (--all has NO effect with --outdated)
-vz-ai-stack.sh upgrade --check --json              machine-readable availability report
+mayssam-ai-stack.sh upgrade --check --json              machine-readable availability report
 
   Type-dispatched (services.yml): docker→pull+recreate, compose→pull+up,
   brew→brew upgrade, openshell→in-sandbox update + phase re-assert. Every other
@@ -120,7 +120,7 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   --dry-run    print the per-service plan (current→new) and change nothing.
   --no-check   skip the pre-upgrade version report (faster / offline).
   Set AI_STACK_ASSUME_YES=1 to auto-accept the version-pinned re-pull prompt.
-  See installed vs available anytime:  vz-ai-stack.sh status --versions
+  See installed vs available anytime:  mayssam-ai-stack.sh status --versions
 
   --outdated applies only updates we can VERIFY you are behind on (a version
   oracle said so); `upgrade all` exhaustively re-asserts/upgrades every enabled
@@ -129,10 +129,10 @@ vz-ai-stack.sh upgrade --check --json              machine-readable availability
   no-oracle-yet, and currency-unconfirmed.
 
   Typical flow:
-    vz-ai-stack.sh upgrade --check        # see what's available
-    vz-ai-stack.sh upgrade --outdated     # pull the docker/compose/brew images that moved
-    vz-ai-stack.sh upgrade all            # exhaustive: also the fleet pip + host globals
-    vz-ai-stack.sh upgrade openwebui      # or upgrade selectively from the list
+    mayssam-ai-stack.sh upgrade --check        # see what's available
+    mayssam-ai-stack.sh upgrade --outdated     # pull the docker/compose/brew images that moved
+    mayssam-ai-stack.sh upgrade all            # exhaustive: also the fleet pip + host globals
+    mayssam-ai-stack.sh upgrade openwebui      # or upgrade selectively from the list
 EOF
 }
 
@@ -457,8 +457,8 @@ print_check_report() {
   if (( ${#outdated[@]} )); then
     ok "${#outdated[@]} update(s) available: ${outdated[*]}"
     if (( PREFLIGHT == 0 )); then
-      note "Upgrade all of them:   vz-ai-stack.sh upgrade --outdated"
-      note "Or selectively:        vz-ai-stack.sh upgrade <service>   (e.g. vz-ai-stack.sh upgrade ${outdated[0]})"
+      note "Upgrade all of them:   mayssam-ai-stack.sh upgrade --outdated"
+      note "Or selectively:        mayssam-ai-stack.sh upgrade <service>   (e.g. mayssam-ai-stack.sh upgrade ${outdated[0]})"
     fi
   fi
   # Honest all-clear: only claim currency when NOTHING is outdated AND nothing was
@@ -805,7 +805,7 @@ up_compose() {
         if (( can_build )); then
           note "PLAN $svc compose: would: (cd $dir && docker build -t $ws_img --build-arg WS_BASE=$ws_base -f $ws_ctx/$ws_df $ws_ctx) then docker compose pull --ignore-buildable && docker compose up -d"
         else
-          note "PLAN $svc compose: override has no resolved hardened-image build config — would SKIP rebuild (run 'vz-ai-stack.sh install 05'), then (cd $dir && docker compose pull --ignore-buildable && docker compose up -d)"
+          note "PLAN $svc compose: override has no resolved hardened-image build config — would SKIP rebuild (run 'mayssam-ai-stack.sh install 05'), then (cd $dir && docker compose pull --ignore-buildable && docker compose up -d)"
         fi
         RESULT="planned"; return 0
       fi
@@ -816,15 +816,15 @@ up_compose() {
           # still bring the stack up, but flag the failed refresh so the summary is honest.
           # NOTE: by design upgrade does NOT mutate the override here — `install 05` owns
           # the self-healing build-config revert; we just route the user to it.
-          warn "$svc: hardened image rebuild FAILED — running the existing local image; re-run 'vz-ai-stack.sh install 05' to repair"
+          warn "$svc: hardened image rebuild FAILED — running the existing local image; re-run 'mayssam-ai-stack.sh install 05' to repair"
           # Surface a degrade-time `up -d` failure (e.g. image never built locally) —
           # do NOT swallow it; RESULT stays FAILED either way.
           ( cd "$dir" && docker compose pull --ignore-buildable && docker compose up -d ) \
-            || warn "$svc: degrade 'up -d' also failed — containers may be DOWN; re-run 'vz-ai-stack.sh install 05'"
+            || warn "$svc: degrade 'up -d' also failed — containers may be DOWN; re-run 'mayssam-ai-stack.sh install 05'"
           RESULT=FAILED; return 0
         fi
       else
-        warn "$svc: override lacks a resolved hardened-image build config — skipping rebuild (re-run 'vz-ai-stack.sh install 05'); pulling peers + up -d only. If the hardened image was never built or was GC'd, 'up -d' will fail until install 05 rebuilds it."
+        warn "$svc: override lacks a resolved hardened-image build config — skipping rebuild (re-run 'mayssam-ai-stack.sh install 05'); pulling peers + up -d only. If the hardened image was never built or was GC'd, 'up -d' will fail until install 05 rebuilds it."
       fi
       if ( cd "$dir" && docker compose pull --ignore-buildable && docker compose up -d ); then RESULT="upgraded"; else RESULT=FAILED; fi
       ;;
@@ -894,7 +894,7 @@ up_brew() {
       # model 500s and a loopback health probe can't see it. Surface it as FAILED,
       # not a warn behind a green row (council finding #3).
       if ! _dep_ollama_patch_env; then
-        err "$svc: OLLAMA_HOST=0.0.0.0 re-assert FAILED — in-container local-* models will 500. Fix: 'lsof -nP -iTCP:11434' (want *:11434), then 'vz-ai-stack.sh doctor ollama_models'"
+        err "$svc: OLLAMA_HOST=0.0.0.0 re-assert FAILED — in-container local-* models will 500. Fix: 'lsof -nP -iTCP:11434' (want *:11434), then 'mayssam-ai-stack.sh doctor ollama_models'"
         RESULT=FAILED; return 0
       fi
     else
@@ -944,7 +944,7 @@ up_openshell() {
   # sandbox on a box that never opted in. Core always-installed services
   # (openshell / hermes_*) carry their stamp, so they are never skipped.
   if [[ "$phase" != "-" && -n "$phase" ]] && declare -f stamp_check >/dev/null 2>&1 && ! stamp_check "$phase"; then
-    note "$svc: phase $phase not installed on this host (no stamp) — skipping ('upgrade' not 'install'; run 'vz-ai-stack.sh install $phase')"
+    note "$svc: phase $phase not installed on this host (no stamp) — skipping ('upgrade' not 'install'; run 'mayssam-ai-stack.sh install $phase')"
     RESULT="skipped (not installed)"; return 0
   fi
 
@@ -1089,7 +1089,7 @@ up_openshell() {
 #   - DO-LESS: the opt-in sim phases (33/34/37) SKIP their live model
 #     smoke + embedder pre-fetch (no unsolicited metered inference / local-model
 #     load on a routine `upgrade`), re-assert config, and stamp.
-# CAVEAT: `AI_STACK_UPGRADE=1 vz-ai-stack.sh install 33` therefore skips the smoke
+# CAVEAT: `AI_STACK_UPGRADE=1 mayssam-ai-stack.sh install 33` therefore skips the smoke
 # too — the flag means the mode, not the entrypoint. Use a plain `install` (or
 # `test <phase>`) for the full verified smoke.
 up_phase_rerun() {
@@ -1108,7 +1108,7 @@ up_phase_rerun() {
   # (An installed service's stamp is present → the phase runs and short-circuits
   # on its own precheck, so no smoke fires there either.)
   if declare -f stamp_check >/dev/null 2>&1 && ! stamp_check "$phase"; then
-    note "$svc: phase $phase is not installed on this host (no stamp) — skipping (this is 'upgrade', not 'install'; run 'vz-ai-stack.sh install $phase' to install it)"
+    note "$svc: phase $phase is not installed on this host (no stamp) — skipping (this is 'upgrade', not 'install'; run 'mayssam-ai-stack.sh install $phase' to install it)"
     RESULT="skipped (not installed)"; return 0
   fi
   if (( DRY )); then
@@ -1211,7 +1211,7 @@ up_uv_reqs() {
   command -v uv >/dev/null 2>&1 || { warn "$svc: uv not on PATH — skipping"; RESULT="skipped (no uv)"; return 0; }
   fp_before="$(_iv_uvreqs "$svc")"
   if ! _vz_bounded "${AI_STACK_BUILD_TIMEOUT:-600}" uv pip install --python "$py" -r "$rf" "${upargs[@]}" 2>&1 | tail -3; then
-    err "$svc: scoped requirements upgrade failed — the venv may be PARTIALLY newer; daemon left on its old imports. Retry: 'vz-ai-stack.sh upgrade $svc'"
+    err "$svc: scoped requirements upgrade failed — the venv may be PARTIALLY newer; daemon left on its old imports. Retry: 'mayssam-ai-stack.sh upgrade $svc'"
     RESULT=FAILED; return 0
   fi
   fp_after="$(_iv_uvreqs "$svc")"
@@ -1536,7 +1536,7 @@ up_manual_note() {
   phase="$(svc_phase "$svc")"
   STRATEGY=manual
   if [[ "$phase" != "-" ]]; then
-    note "$svc: no separately-upgradable artifact; re-run 'vz-ai-stack.sh install $phase' to re-assert config"
+    note "$svc: no separately-upgradable artifact; re-run 'mayssam-ai-stack.sh install $phase' to re-assert config"
   else
     note "$svc: no separately-upgradable artifact and no resolvable phase; verify manually"
   fi
@@ -1659,7 +1659,7 @@ upgrade_main() {
   # operator believing --all widened the sweep. The exhaustive "everything" motion is
   # `upgrade all` (a target), not the `--all` flag.
   if (( ALL_ROWS && OUTDATED )); then
-    warn "--all has no effect with --outdated (it only affects a bare '--check' listing); --outdated already scans every enabled service. Did you mean 'vz-ai-stack.sh upgrade all'?"
+    warn "--all has no effect with --outdated (it only affects a bare '--check' listing); --outdated already scans every enabled service. Did you mean 'mayssam-ai-stack.sh upgrade all'?"
   fi
 
   # Docker-info guard: only blocks docker/compose handlers, not brew/openshell.
@@ -1742,14 +1742,14 @@ upgrade_main() {
     # outdated, so the old disclosure (gated on targets==0) effectively never printed
     # and a green summary implied a coverage it never had (audit F3). Honest buckets:
     if (( ${#pinned_held[@]} )); then
-      note "${#pinned_held[@]} pinned service(s) held at their declared versions — never auto-swept: ${pinned_held[*]} (run 'vz-ai-stack.sh upgrade <svc>' to print a pin's exact bump path)."
+      note "${#pinned_held[@]} pinned service(s) held at their declared versions — never auto-swept: ${pinned_held[*]} (run 'mayssam-ai-stack.sh upgrade <svc>' to print a pin's exact bump path)."
     fi
     if (( ${#config_svcs[@]} )); then
       note "${#config_svcs[@]} config-only service(s) — nothing independently versioned (they version with the stack repo or their owning service): ${config_svcs[*]}"
     fi
     if (( ${#skipped_manual[@]} )); then
       note "${#skipped_manual[@]} service(s) with a real artifact but no version oracle yet — NOT swept: ${skipped_manual[*]}"
-      note "  → in-sandbox surfaces upgrade for real via 'vz-ai-stack.sh upgrade hermes' (or 'upgrade all', which also covers the host globals meridian/claude-code); for the rest 'vz-ai-stack.sh help <svc>' names the manual path."
+      note "  → in-sandbox surfaces upgrade for real via 'mayssam-ai-stack.sh upgrade hermes' (or 'upgrade all', which also covers the host globals meridian/claude-code); for the rest 'mayssam-ai-stack.sh help <svc>' names the manual path."
     fi
     if (( ${#unconfirmed[@]} )); then
       warn "${#unconfirmed[@]} service(s) with currency NOT confirmed (registry/proxy/brew upstream unreachable, uninstalled, or locally-built) — NOT upgraded by --outdated: ${unconfirmed[*]}. Re-check when the upstream is reachable, or 'upgrade <svc>' to rebuild/pull explicitly."

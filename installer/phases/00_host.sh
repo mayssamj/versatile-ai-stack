@@ -64,7 +64,7 @@ fi
 
 # --- host dependencies: core CLI tools + OrbStack/Docker (verified actions) ---
 # Centralized in installer/lib/deps.sh so the SAME check->install->verify logic
-# backs preflight, this phase, and `vz-ai-stack.sh deps`. Each ensures only what
+# backs preflight, this phase, and `mayssam-ai-stack.sh deps`. Each ensures only what
 # is missing, then re-verifies — no assumptions. Ollama (install + cross-container
 # env-patch + start + model pulls) is ensured in Phase 01 so that step stays one
 # coherent unit. See doc/PREREQUISITES.md for the full map.
@@ -81,7 +81,7 @@ mkdir -p "$AI_STACK"/{bin,litellm,data/phoenix,data/falkor,data/qdrant,data/honc
 
 # --- .env baseline ---
 # Single source of truth lives in installer/lib/env.sh::env_ensure_baseline
-# (shared with `vz-ai-stack.sh setup`): ensures the file @ 0600, sets non-secret
+# (shared with `mayssam-ai-stack.sh setup`): ensures the file @ 0600, sets non-secret
 # service-URL defaults, migrates stale host.docker.internal values (queues a
 # litellm restart via queue_restart, loaded in this phase), and auto-generates
 # LITELLM_MASTER_KEY + PHOENIX_SECRET. Cloud API keys are intentionally left

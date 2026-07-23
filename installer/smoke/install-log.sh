@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # smoke/install-log.sh — regression test for change 3 (2026-07-16 incident follow-up):
-# the INSTALL-RUN LOGGING in vz-ai-stack.sh (install_log_start / install_log_drain /
+# the INSTALL-RUN LOGGING in mayssam-ai-stack.sh (install_log_start / install_log_drain /
 # install_on_exit + the optfail-persistence block). OFFLINE/hermetic: no real installer,
 # no stack, no network, no models, throwaway STATE_DIR — never the real installer/state/.
 #
@@ -15,19 +15,19 @@
 #   B. a BARE `wait TEE_PID` HANGS FOREVER when a phase left a daemon holding the inherited
 #      pipe. Hence the watchdog-bounded wait.  -> assertion 6.
 #
-# The functions under test are EXTRACTED from vz-ai-stack.sh at run time (sed by function
+# The functions under test are EXTRACTED from mayssam-ai-stack.sh at run time (sed by function
 # block) rather than hand-copied, so this test tracks the SHIPPED code. Point VZ_SRC at a
 # mutated copy to prove an assertion fails when the fix is broken (see MUTATION notes).
 #
 # STDIN/TTY (assertion 5) is tested through a real pty via the `script -q /dev/null` trick —
 # without a pty you cannot honestly assert `-t 0` survives the redirect.
 #
-# Reachable from the CLI:  vz-ai-stack.sh test install-log   (falls through to this file).
+# Reachable from the CLI:  mayssam-ai-stack.sh test install-log   (falls through to this file).
 #   bash installer/smoke/install-log.sh
 set -Eeuo pipefail
 export AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
-VZ_SRC="${VZ_SRC:-$AI_STACK/vz-ai-stack.sh}"
+VZ_SRC="${VZ_SRC:-$AI_STACK/mayssam-ai-stack.sh}"
 
 hdr "Smoke install-log — install-run logging (tee/drain/on_exit + optfail persist) (hermetic)"
 fail() { err "Smoke install-log FAIL — $*"; exit 1; }

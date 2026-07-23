@@ -55,14 +55,14 @@ _af_bounded() { local s="$1" p w=0; shift; "$@" & p=$!
 autofyn_agent_diagnose() {
   [[ -f "$AF_DIR_AGENT/docker-compose.yml" ]] || { echo "autofyn not installed — skip"; return 0; }
   local d ov st; d="$(_af_agent_docker)"; ov="$AF_DIR_AGENT/docker-compose.override.yml"; st="$(_af_agent_state)"
-  [[ -n "$st" ]] || { echo "autofyn-agent container absent — run 'vz-ai-stack.sh install 07'"; return 1; }
+  [[ -n "$st" ]] || { echo "autofyn-agent container absent — run 'mayssam-ai-stack.sh install 07'"; return 1; }
   if _af_agent_ok "$st"; then echo "  (running, ${st#*|})"; return 0; fi
   # Agent down. Decide whether to self-heal (and why), or bail so we don't fight the watchdog.
   local reason
   if ! _af_override_ok "$ov"; then
     _af_write_override "$ov"; reason="applied the PYTHONSAFEPATH override + restarted (was the /workspace shadow ImportError)"
   elif _af_failmarked; then
-    echo "autofyn-agent halted by the watchdog (crash-looping DESPITE the PYTHONSAFEPATH fix → a DIFFERENT failure, NOT the /workspace shadow; a Python <3.11 image would also do this). Inspect: docker logs autofyn-agent — then 'vz-ai-stack.sh install 07', or clear the alert + restart."
+    echo "autofyn-agent halted by the watchdog (crash-looping DESPITE the PYTHONSAFEPATH fix → a DIFFERENT failure, NOT the /workspace shadow; a Python <3.11 image would also do this). Inspect: docker logs autofyn-agent — then 'mayssam-ai-stack.sh install 07', or clear the alert + restart."
     return 1
   else
     reason="restarted the down agent (override already applied)"

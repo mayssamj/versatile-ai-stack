@@ -26,7 +26,7 @@
 # for a host LLM server; restrict via a firewall or LM Studio's network toggle if
 # you're on an untrusted network.
 #
-# Standalone:  bash vz-ai-stack.sh install 25   (or:  vz-ai-stack.sh install lmstudio)
+# Standalone:  bash mayssam-ai-stack.sh install 25   (or:  mayssam-ai-stack.sh install lmstudio)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -95,7 +95,7 @@ if ! _app_present; then
   fi
 fi
 if ! _app_present; then
-  warn "LM Studio.app not present and brew install didn't land it. Install it from https://lmstudio.ai then re-run 'vz-ai-stack.sh install lmstudio'. (non-fatal)"
+  warn "LM Studio.app not present and brew install didn't land it. Install it from https://lmstudio.ai then re-run 'mayssam-ai-stack.sh install lmstudio'. (non-fatal)"
   exit 0
 fi
 LMS="$(_lms)"
@@ -115,7 +115,7 @@ if ! _server_up; then
   if [[ "${LMS_AUTOSTART:-}" == "1" ]]; then
     # LMS_AUTOSTART=1 is an INSTALL-TIME one-shot convenience only — not the
     # documented run path. The canonical way to start the server is:
-    #   vz-ai-stack.sh start lmstudio
+    #   mayssam-ai-stack.sh start lmstudio
     warn "LMS_AUTOSTART=1 — starting LM Studio server (install-time convenience). Its desktop app idle-spins ~0.8 core; quit it when done (lms server stop + quit the app)."
     log "Starting LM Studio server on 0.0.0.0:${LMS_PORT}..."
     "$LMS" server start -p "$LMS_PORT" --bind 0.0.0.0 2>&1 | tail -3 || true
@@ -129,8 +129,8 @@ if ! _server_up; then
     # (and the big-MLX auto-load below) is what swap-thrash-locked the Mac
     # 2026-06-01. The user starts LM Studio deliberately via `start lmstudio`.
     note "LM Studio server not running — server start is OPT-IN (its app idle-spins CPU; big MLX models need lots of RAM)."
-    note "To start the server now and use MLX models, run:  vz-ai-stack.sh start lmstudio"
-    note "Then re-run install to wire the assigned model:   vz-ai-stack.sh install lmstudio"
+    note "To start the server now and use MLX models, run:  mayssam-ai-stack.sh start lmstudio"
+    note "Then re-run install to wire the assigned model:   mayssam-ai-stack.sh install lmstudio"
     note "(LMS_AUTOSTART=1 is still accepted as an install-time one-shot if needed.)"
     exit 0
   fi
@@ -189,10 +189,10 @@ if [[ "${LMS_LOAD_LFM2:-0}" != "1" ]]; then
     for _ in $(seq 1 30); do curl -s -o /dev/null --max-time 2 http://litellm:4000/health/liveliness 2>/dev/null && break; sleep 2; done
     ok "LiteLLM reloaded — assigned MLX model(s) now servable"
   elif (( _lms_assigned )); then
-    note "Assigned MLX model(s) are already registered or not loadable right now — no LiteLLM restart needed; run 'vz-ai-stack.sh model sync' once they load."
+    note "Assigned MLX model(s) are already registered or not loadable right now — no LiteLLM restart needed; run 'mayssam-ai-stack.sh model sync' once they load."
   else
     note "No agent is assigned an LM Studio MLX model — nothing loaded (LM Studio does NOT auto-load a model)."
-    note "Assign one, then re-run:  vz-ai-stack.sh model assign <agent> local-nemotron3-nano-4b-mlx"
+    note "Assign one, then re-run:  mayssam-ai-stack.sh model assign <agent> local-nemotron3-nano-4b-mlx"
   fi
   note "LFM2.5 demo is opt-in: set LMS_LOAD_LFM2=1 to download + load it (~5GB)."
   stamp_mark "$PHASE"
@@ -210,7 +210,7 @@ fi
 _weights_present() { ls "$MLX_DIR"/*.safetensors >/dev/null 2>&1; }
 if ! _weights_present; then
   if ! command -v uv >/dev/null 2>&1 && ! command -v uvx >/dev/null 2>&1; then
-    warn "uv/uvx not on PATH — needed to fetch $MLX_REPO from HF. Run 'vz-ai-stack.sh install 14' (ships uv), then re-run. (non-fatal)"
+    warn "uv/uvx not on PATH — needed to fetch $MLX_REPO from HF. Run 'mayssam-ai-stack.sh install 14' (ships uv), then re-run. (non-fatal)"
     exit 0
   fi
   log "Downloading $MLX_REPO from HF into LM Studio's models dir (~5GB)..."

@@ -59,7 +59,7 @@ ollama_models_fix() {
   # then gate the call on the function being defined so a load failure is surfaced, not silent.
   declare -f _dep_ollama_patch_env >/dev/null 2>&1 || source "$AI_STACK/installer/lib/deps.sh" 2>/dev/null || true
   if declare -f _dep_ollama_patch_env >/dev/null 2>&1; then
-    _dep_ollama_patch_env || warn "ollama: OLLAMA_HOST re-assert failed — check 'lsof -nP -iTCP:11434' (want *:11434), then re-run 'vz-ai-stack.sh doctor ollama_models'"
+    _dep_ollama_patch_env || warn "ollama: OLLAMA_HOST re-assert failed — check 'lsof -nP -iTCP:11434' (want *:11434), then re-run 'mayssam-ai-stack.sh doctor ollama_models'"
   else
     warn "ollama: could not load deps.sh to re-assert OLLAMA_HOST — check 'lsof -nP -iTCP:11434' (want *:11434)"
   fi

@@ -54,6 +54,6 @@ container_dns_in_network_fix() {
   warn "  1. Check Docker daemon: docker info | grep -i dns"
   warn "  2. Restart OrbStack: orb restart"
   warn "  3. Remove + recreate ai-stack network:"
-  warn "     bash vz-ai-stack.sh reset --confirm hard (preserves data)"
+  warn "     bash mayssam-ai-stack.sh reset --confirm hard (preserves data)"
   return 1
 }

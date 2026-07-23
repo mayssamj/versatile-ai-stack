@@ -19,7 +19,7 @@
 # inference serializes, so a realistic on-box swarm is dozens of agents on a small
 # model, or route to a cloud model (metered). Stated in services.yml + the tutorial.
 #
-# Standalone: bash vz-ai-stack.sh install 34   (alias: oasis)
+# Standalone: bash mayssam-ai-stack.sh install 34   (alias: oasis)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -69,7 +69,7 @@ worktree_guard "install oasis"
 hdr "Phase 34 — OASIS (large-scale social-agent swarm simulation)"
 
 # --- Preconditions ---
-command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/vz-ai-stack.sh install 14"; exit 1; }
+command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/mayssam-ai-stack.sh install 14"; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -84,7 +84,7 @@ if   curl -sf --max-time 4 "$OA_LLM_HOST/health/liveliness" >/dev/null 2>&1; the
 elif curl -sf --max-time 4 "$OA_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
 elif litellm_master_curl -sf --max-time 4 "$OA_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then OA_LLM_BASE="$OA_LLM_FALLBACK"
 fi
-[[ -n "$OA_LLM_BASE" ]] || { err "LiteLLM not reachable at $OA_LLM_HOST or $OA_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+[[ -n "$OA_LLM_BASE" ]] || { err "LiteLLM not reachable at $OA_LLM_HOST or $OA_LLM_FALLBACK — run 'mayssam-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $OA_LLM_BASE"
 
 # --- 1. Venv (Python 3.11) + install camel-oasis ---
@@ -153,9 +153,9 @@ AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 # last-wins on duplicate .env keys (matches installer/lib/env.sh get_env semantics)
 _oa_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
 PY="\$AI_STACK/oasis/.venv/bin/python"
-[[ -x "\$PY" ]] || { echo "oasis venv missing — run 'bash vz-ai-stack.sh install 34'" >&2; exit 1; }
+[[ -x "\$PY" ]] || { echo "oasis venv missing — run 'bash mayssam-ai-stack.sh install 34'" >&2; exit 1; }
 _key="\$(_oa_get_env OASIS_LITELLM_KEY)"
-[[ -n "\$_key" ]] || { echo "OASIS_LITELLM_KEY absent from .env — run 'bash vz-ai-stack.sh install 34'" >&2; exit 1; }
+[[ -n "\$_key" ]] || { echo "OASIS_LITELLM_KEY absent from .env — run 'bash mayssam-ai-stack.sh install 34'" >&2; exit 1; }
 export OASIS_LITELLM_KEY="\$_key"
 export OPENAI_API_KEY="\$_key"
 export OPENAI_BASE_URL="http://127.0.0.1:4000/v1"
@@ -245,9 +245,9 @@ GI
 # upgrade must NOT do unsolicited inference (mechanism-audit #2 + the operator's
 # no-unsolicited-inference stance). The venv, scoped key, wrapper and seeded sim
 # are already re-asserted above; stamp and move on. The full verified smoke still
-# runs on the install path (and via `vz-ai-stack.sh test 34`).
+# runs on the install path (and via `mayssam-ai-stack.sh test 34`).
 if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
-  note "upgrade re-assert: skipping the live OASIS/CAMEL smoke (no unsolicited metered inference on 'upgrade'). Run 'vz-ai-stack.sh install 34' for the full verified smoke."
+  note "upgrade re-assert: skipping the live OASIS/CAMEL smoke (no unsolicited metered inference on 'upgrade'). Run 'mayssam-ai-stack.sh install 34' for the full verified smoke."
 else
 log "Smoke: scoped key → LiteLLM chat completion…"
 _oa_key="$(get_env OASIS_LITELLM_KEY '')"
@@ -267,12 +267,12 @@ fi
 
 stamp_mark "$PHASE"
 if [[ "${AI_STACK_UPGRADE:-0}" == 1 ]]; then
-  record "phase 34 re-asserted on upgrade (venv + scoped key + bin/oasis + sim seeded; live smoke SKIPPED — run 'vz-ai-stack.sh install 34' to verify)"
+  record "phase 34 re-asserted on upgrade (venv + scoped key + bin/oasis + sim seeded; live smoke SKIPPED — run 'mayssam-ai-stack.sh install 34' to verify)"
 else
   record "phase 34 complete: OASIS venv (py3.11) + scoped key + bin/oasis + CAMEL-verified smoke sim"
 fi
 ok "Phase 34 — OASIS — complete"
-note "Prove the swarm:  vz-ai-stack.sh test 34     # 3 CAMEL agents reply via LiteLLM"
+note "Prove the swarm:  mayssam-ai-stack.sh test 34     # 3 CAMEL agents reply via LiteLLM"
 note "Run the demo:     bin/oasis oasis/sims/smoke_sim.py"
 note "Watch it:         Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Write your own:   oasis/sims/<your_sim>.py  then  bin/oasis oasis/sims/<your_sim>.py"

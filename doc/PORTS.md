@@ -34,7 +34,7 @@ uses Docker's embedded DNS on the `ai-stack` bridge network so the same
 alias works from inside any joined container.
 
 **`prepare-sudo` installs the whole contract — it is the ONE sudo step.**
-`sudo bash vz-ai-stack.sh prepare-sudo` writes the managed `/etc/hosts` block
+`sudo bash mayssam-ai-stack.sh prepare-sudo` writes the managed `/etc/hosts` block
 (`hosts_ensure_block`), binds each `127.0.10.x` to `lo0`
 (`lo0_ensure_aliases`), installs the launchd persistence plist
 (`lo0_install_persistence_plist`) so the binds survive reboot, and
@@ -154,7 +154,7 @@ section) and is never committed to the public repo, so its `127.0.10.x`
 IPs are assigned per machine (typically `.21`+). The live alias set on any
 given box = the shared table above **plus** whatever that box's
 `aliases.local.tsv` adds. This doc only enumerates the shared table; run
-`vz-ai-stack.sh ingress list` to see the effective merged set on your box.
+`mayssam-ai-stack.sh ingress list` to see the effective merged set on your box.
 
 ### Brew host service with no alias row — `ollama`
 
@@ -176,7 +176,7 @@ resolution order.
 
 ## The bare-hostname ingress (Phase 31)
 
-An **opt-in** host ingress (`vz-ai-stack.sh ingress up`) adds port-free
+An **opt-in** host ingress (`mayssam-ai-stack.sh ingress up`) adds port-free
 Mac-browser URLs `http://litellm/` + `https://litellm/` on top of the
 `name:port` scheme, via a **host-native Caddy** process that binds each
 service's OWN `127.0.10.x:80/:443`. Because it's a host process (not a
@@ -206,8 +206,8 @@ posture (and flags any `0.0.0.0` host-bind). `ingress trust` installs the
 local Caddy root CA so `https://name/` is trusted (needed for
 secure-context UIs like `fleet-studio`).
 
-**Activate / teardown:** `sudo vz-ai-stack.sh prepare-sudo` (picks up new
-rows, including `aliases.local.tsv`) **then** `sudo vz-ai-stack.sh ingress
+**Activate / teardown:** `sudo mayssam-ai-stack.sh prepare-sudo` (picks up new
+rows, including `aliases.local.tsv`) **then** `sudo mayssam-ai-stack.sh ingress
 reload`. Phase 31 owns the ingress; doctor check 56 guards hostname
 coverage. Spec: `doc/specs/2026-06-21-bare-hostname-ingress.md`.
 
@@ -232,7 +232,7 @@ Detail:
 - **claw3d UI (`:4310`)** and **claw3d-bridge (`:7780`)** both run with
   `network: host` (Phase 19). The bridge routes chat across every
   isolated agent; because it is auth-less it must stay on loopback. Run it
-  with `vz-ai-stack.sh start claw3d` (health-gated composite — starts the
+  with `mayssam-ai-stack.sh start claw3d` (health-gated composite — starts the
   bridge, waits for its `/health`, then the UI, then opens the browser at
   `http://localhost:4310`).
 - **understand-mcp (`:7081`)** — Phase 30 (opt-in) `understand`. A
@@ -241,7 +241,7 @@ Detail:
   at `host.docker.internal:7081` (token-gated by `UNDERSTAND_MCP_TOKEN`,
   same mechanism as Sourcegraph). Host Claude Code / Pi use the **stdio**
   entrypoint instead. The interactive browser graph is a separate
-  foreground serve: `vz-ai-stack.sh understand-dashboard` (Vite, ephemeral
+  foreground serve: `mayssam-ai-stack.sh understand-dashboard` (Vite, ephemeral
   port). Not a container / not on the `ai-stack` bridge.
 - **honcho-mcp (`:7082`)** — Phase 40 (default-on under `install all --include-optionals`;
   decline with `HONCHO_MEMORY_OPT_IN=0`) `honcho_mcp`. A host-loopback
@@ -267,8 +267,8 @@ Detail:
   host and LiteLLM dials it from inside its container via
   `http://host.docker.internal:1234`. It is a 2nd local runtime behind
   LiteLLM; Ollama stays the default. There is no `lo0` alias because the
-  caller is a container, not the Mac. Start with `vz-ai-stack.sh start
-  lmstudio`; stop with `vz-ai-stack.sh stop lmstudio`.
+  caller is a container, not the Mac. Start with `mayssam-ai-stack.sh start
+  lmstudio`; stop with `mayssam-ai-stack.sh stop lmstudio`.
 
 ### On-demand host viewers (no alias by design; `localhost:PORT`)
 
@@ -338,9 +338,9 @@ These appear in `services.yml` but have no alias because they have no listener:
 | `oasis`                       | 34    | cli-only         | social-sim framework via LiteLLM (`bin/oasis`)         |
 | `concordia`                   | 37    | cli-only         | DeepMind GABM sim via LiteLLM (`bin/concordia`)        |
 
-> **`setup` / `deps` are CLI subcommands, not services.** `vz-ai-stack.sh setup`
+> **`setup` / `deps` are CLI subcommands, not services.** `mayssam-ai-stack.sh setup`
 > (`installer/lib/setup.sh`, interactive `.env`/API-key bootstrap) and
-> `vz-ai-stack.sh deps` (`installer/lib/deps.sh`, host-dependency bootstrap) listen
+> `mayssam-ai-stack.sh deps` (`installer/lib/deps.sh`, host-dependency bootstrap) listen
 > on nothing and have no alias — they run, mutate `.env` / the host, and exit.
 
 **Container-internal ports that are NOT published to host** (live in the docker network only):
@@ -510,7 +510,7 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 - **Listens**: **DUAL-bound** — `127.0.0.1:7080` (host + the sandbox's `host.docker.internal:7080` path, gated by the `sourcegraph_mcp` network policy) AND `127.0.10.20:7080` (the `sourcegraph` lo0 alias). Loopback-only, never `0.0.0.0`. Reach it at `http://localhost:7080` or `http://sourcegraph:7080` (+ port-free `http://sourcegraph/` via `ingress up`).
 - **Image**: `sourcegraph/server:6.12.5040` (the LAST single-container tag; amd64-emulated on Apple Silicon).
 - **MCP**: native MCP server (12 tools) at `http://localhost:7080/.api/mcp`; every Hermes fleet profile is wired to it.
-- **Requires**: `sudo vz-ai-stack.sh prepare-sudo` (for the `127.0.10.20` lo0 alias; a pre-flight guard errors clearly if missing).
+- **Requires**: `sudo mayssam-ai-stack.sh prepare-sudo` (for the `127.0.10.20` lo0 alias; a pre-flight guard errors clearly if missing).
 - **Auth**: `SOURCEGRAPH_ADMIN_PASSWORD` bootstraps the admin + a `user:all` token.
 - **Healthcheck**: `curl -s http://localhost:7080/`
 - **Source**: `services.yml` (`sourcegraph`), `bin/start-sourcegraph.sh`, `installer/phases/27_sourcegraph.sh`, `installer/lib/aliases.tsv`
@@ -532,7 +532,7 @@ The compose stack publishes one host port via the alias scheme and keeps three s
 ### `understand` / `understand-mcp` (node-bg) — Phase 30 (opt-in)
 
 - **Listens**: `127.0.0.1:7081` — the `understand-mcp` HTTP server (`bin/start-understand.sh`). The Hermes fleet containers dial it at `host.docker.internal:7081` (token-gated by `UNDERSTAND_MCP_TOKEN`). Host Claude Code / Pi use the **stdio** entrypoint (no port). NOT aliased (reached from containers via host-gateway, same pattern as lmstudio). Not on the ai-stack bridge.
-- **Dashboard**: `vz-ai-stack.sh understand-dashboard` (separate foreground Vite serve, ephemeral port).
+- **Dashboard**: `mayssam-ai-stack.sh understand-dashboard` (separate foreground Vite serve, ephemeral port).
 - **Healthcheck**: `curl -s http://127.0.0.1:7081/healthz`
 - **Source**: `services.yml` (`understand`), `bin/start-understand.sh`, `installer/phases/30_understand.sh`
 
@@ -687,7 +687,7 @@ docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'
 docker inspect <name> --format '{{json .HostConfig.PortBindings}}' | jq
 
 # The effective merged alias set on THIS machine (shared + aliases.local.tsv):
-vz-ai-stack.sh ingress list
+mayssam-ai-stack.sh ingress list
 ```
 
 Spot-check that bound-to-127.0.10.x / 127.0.0.1 holds (no `0.0.0.0` leak from a container):

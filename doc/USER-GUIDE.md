@@ -2,7 +2,7 @@
 
 A practical, comprehensive tour of every component in `~/ai-stack` for the
 **first-time-in-this-stack** reader. This is the doc you read after
-`vz-ai-stack.sh` finishes — it tells you what each tool does, when to reach
+`mayssam-ai-stack.sh` finishes — it tells you what each tool does, when to reach
 for it, and the literal command to type.
 
 **Audience.** Senior engineer who has installed the stack but hasn't used
@@ -17,7 +17,7 @@ a Claude session asked to operate the stack.
 - §2 **Service catalog** — every component with an example you can copy-paste
 - §3 Multi-service recipes — canonical workflows
 - §4 Profile guide — which services come up for `fleet`, `coding`, `research`, `paranoid`
-- §5 Daily cheatsheet (verified against `bin/` and `vz-ai-stack.sh`)
+- §5 Daily cheatsheet (verified against `bin/` and `mayssam-ai-stack.sh`)
 - §6 Triage — when something breaks
 
 **Conventions in this doc:**
@@ -31,10 +31,10 @@ a Claude session asked to operate the stack.
 
 ```bash
 # 1. Confirm the stack is healthy. Target: 66/66 ✓
-bash ~/ai-stack/vz-ai-stack.sh doctor
+bash ~/ai-stack/mayssam-ai-stack.sh doctor
 
 # 2. See declared vs actual state.
-bash ~/ai-stack/vz-ai-stack.sh status
+bash ~/ai-stack/mayssam-ai-stack.sh status
 
 # 3. Pull current secrets into your shell (don't echo).
 source ~/ai-stack/.env
@@ -44,14 +44,14 @@ If `doctor` reports anything failed and the auto-fix prompt won't fix it, jump t
 
 ### Missing an API key? `setup` (alias `keys`)
 
-`vz-ai-stack.sh setup` is the interactive `.env` / API-key bootstrap. It first ensures
+`mayssam-ai-stack.sh setup` is the interactive `.env` / API-key bootstrap. It first ensures
 the non-interactive baseline secrets (so a **local-only / Claude-subscription** user
 needs ZERO keys and can skip every prompt), then offers each optional external secret —
 cloud-LLM keys (Anthropic/OpenAI/OpenRouter/Google), Helicone, GitHub, Blaxel, Telegram.
 Every prompt is skippable; values are written atomically (0600) and never echoed.
 
 ```bash
-bash ~/ai-stack/vz-ai-stack.sh setup        # or: keys
+bash ~/ai-stack/mayssam-ai-stack.sh setup        # or: keys
 ```
 
 Any first `install` (all or a single `install <phase>`) ensures the `.env` baseline as its
@@ -171,7 +171,7 @@ curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
 LiteLLM exposes the same model name no matter what's behind it. The **three
 canonical local models** are declared per-agent in `installer/models.yml`
 (the single source of truth for model↔agent binding) and rendered by
-`vz-ai-stack.sh model {list,assign,sync,superset}` — see [models.md](models.md) and
+`mayssam-ai-stack.sh model {list,assign,sync,superset}` — see [models.md](models.md) and
 §2.16 below. The canonical three, plus the cloud routes:
 
 | Name                | Backend                                       | Size   | When to use                                  |
@@ -198,11 +198,11 @@ there is no separate heavy local model). The opt-in LM Studio slugs
 (`local-nemotron3-nano-4b-mlx` = the same model on Apple MLX, and the
 `local-lfm2-mlx` LFM2.5 demo) are wired only by the opt-in Phase 25
 (`install lmstudio`) and are never auto-pulled. For new work, prefer the canonical names — they're what
-`vz-ai-stack.sh model assign/sync` manages, and `local` is the zero-config
+`mayssam-ai-stack.sh model assign/sync` manages, and `local` is the zero-config
 default for any "try it" example.
 
 **Try this (comparison).** (`local` requires LM Studio running with the
-model loaded — start it + `vz-ai-stack.sh model sync`, or it falls back to `local`.)
+model loaded — start it + `mayssam-ai-stack.sh model sync`, or it falls back to `local`.)
 
 ```bash
 source ~/ai-stack/.env
@@ -227,23 +227,23 @@ from it (deep dive: [models.md](models.md)).
 
 | Command | What it does |
 |---------|--------------|
-| `vz-ai-stack.sh model list` | live agent matrix (ASSIGNED / LITELLM / SERVED / KEY-OK / DRIFT / EFFECTIVE) |
-| `vz-ai-stack.sh model list --json` | machine-readable matrix |
-| `vz-ai-stack.sh model assign <agent> <model>` | re-point one agent, then sync it |
-| `vz-ai-stack.sh model assign all <model>` | blanket-assign EVERY agent to one model (prints before→after, backs up `models.yml` to `.bak`), then syncs |
-| `vz-ai-stack.sh model sync [agent]` | reconcile everything (or one agent) |
-| `vz-ai-stack.sh model sync --dry-run` | preview the plan + config diff, write nothing |
-| `vz-ai-stack.sh model discover` | READ-ONLY LM Studio library catalog (server may be down) |
-| `vz-ai-stack.sh model add <slug> [as <name>]` | declare an LM Studio library model, then sync |
-| `vz-ai-stack.sh model superset` | print the derived scoped-key allowlist |
+| `mayssam-ai-stack.sh model list` | live agent matrix (ASSIGNED / LITELLM / SERVED / KEY-OK / DRIFT / EFFECTIVE) |
+| `mayssam-ai-stack.sh model list --json` | machine-readable matrix |
+| `mayssam-ai-stack.sh model assign <agent> <model>` | re-point one agent, then sync it |
+| `mayssam-ai-stack.sh model assign all <model>` | blanket-assign EVERY agent to one model (prints before→after, backs up `models.yml` to `.bak`), then syncs |
+| `mayssam-ai-stack.sh model sync [agent]` | reconcile everything (or one agent) |
+| `mayssam-ai-stack.sh model sync --dry-run` | preview the plan + config diff, write nothing |
+| `mayssam-ai-stack.sh model discover` | READ-ONLY LM Studio library catalog (server may be down) |
+| `mayssam-ai-stack.sh model add <slug> [as <name>]` | declare an LM Studio library model, then sync |
+| `mayssam-ai-stack.sh model superset` | print the derived scoped-key allowlist |
 
 #### When LM Studio is off
 
 LM Studio-bound agents (`local-nemotron3-nano-4b-mlx`)
 **availability-gate to `local`** and are recorded as *pending* in the
 installer state file. To promote them: start LM Studio
-(`vz-ai-stack.sh start lmstudio`), assign + load the model, then re-run
-`vz-ai-stack.sh model sync`. See
+(`mayssam-ai-stack.sh start lmstudio`), assign + load the model, then re-run
+`mayssam-ai-stack.sh model sync`. See
 [models.md → Per-agent selection pipeline](models.md#per-agent-selection-pipeline).
 
 #### Chatting / coding on your Claude subscription (no API key)
@@ -260,12 +260,12 @@ reuses your Claude Code OAuth (auto-refreshed) and runs the agent loop in
 npm install -g @rynfar/meridian      # one-time
 claude login                         # if not already logged in (OAuth → Keychain)
 bash ~/ai-stack/bin/start-meridian.sh install   # launchd: always-on + seeds thinking
-vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload config so the *-sub-* models appear
+mayssam-ai-stack.sh stop litellm && mayssam-ai-stack.sh start litellm   # reload config so the *-sub-* models appear
 ```
 
 Open `http://openwebui:8080`, refresh — the default model is
 **`claude-opus-sub-max`**. No Open WebUI Function/pipe, no API key. Manage
-with `start-meridian.sh status|restart|uninstall`; `vz-ai-stack.sh doctor` check 41
+with `start-meridian.sh status|restart|uninstall`; `mayssam-ai-stack.sh doctor` check 41
 reports health. The subscription models run **claude-opus-4-8** /
 **claude-sonnet-4-6**, pinned by `MERIDIAN_DEFAULT_OPUS_MODEL` /
 `MERIDIAN_DEFAULT_SONNET_MODEL` in `start-meridian.sh`. ⚠️ This pin is REQUIRED:
@@ -511,7 +511,7 @@ lets a new session "wake up" with that context. CLI + MCP, no daemon, no port.
 Embeddings run **LOCAL on-device** via CoreML (default `all-MiniLM-L6-v2`, 384-dim;
 `embeddinggemma` multilingual is opt-in). There are **NO cloud embeddings**. An
 optional refiner LLM can route through LiteLLM (`MEMPALACE_LITELLM_KEY`) → Phoenix.
-It is part of `install all` (also installable by name with `vz-ai-stack.sh install 26`).
+It is part of `install all` (also installable by name with `mayssam-ai-stack.sh install 26`).
 Install is **PyPI-only** (the `mempalace.tech` domain is a malware squat — never
 install from it). Storage is local on-device ChromaDB (a Qdrant backend adapter is
 staged at `mempalace/backend-qdrant/` but not live — MemPalace 3.3.5 hardcodes
@@ -527,7 +527,7 @@ cross-agent facts; MemPalace is the verbatim-transcript complement.
 ```bash
 # 1. Installed by `install all`; also installable on its own. First run downloads
 #    the ~80MB on-device embedding model — retry if it times out.
-bash ~/ai-stack/vz-ai-stack.sh install 26
+bash ~/ai-stack/mayssam-ai-stack.sh install 26
 
 # 2. Prime a fresh session with prior context.
 bash ~/ai-stack/bin/mempalace wake-up
@@ -599,7 +599,7 @@ openshell sandbox exec -n hermes-fleet-v1 -- /bin/sh -c 'whoami; uname -srm'
 **The roster (and the model each is bound to).** The fleet is a **9-role
 software-engineering team** that runs a spec→deploy pipeline. Each profile's
 default model is declared in `installer/models.yml` under `assignments:` and
-rendered into the soul file by `vz-ai-stack.sh model sync`. All nine
+rendered into the soul file by `mayssam-ai-stack.sh model sync`. All nine
 authenticate to LiteLLM with the shared `HERMES_LITELLM_KEY` virtual key
 (allowlisted to the canonical model superset) and route to a **Claude
 subscription via Meridian**. The bindings as shipped (platform policy
@@ -625,15 +625,15 @@ can't dispatch others; the other 8 roles install as subagents at
 `~/.claude/agents/`, global).
 All three share the keystone **team-protocol**
 skill — definition-of-done, typed handoffs, the review-gate pipeline,
-escalation, and a global turn budget. Install via `vz-ai-stack.sh install
+escalation, and a global turn budget. Install via `mayssam-ai-stack.sh install
 agent_fleet` (phase 04h / 04f).
 
 **Availability-gating.** All nine profiles route to a Claude subscription
-through the Meridian host daemon. If Meridian is down, `vz-ai-stack.sh model
+through the Meridian host daemon. If Meridian is down, `mayssam-ai-stack.sh model
 sync` renders every profile against the default (`local`) and warns — so
 the fleet still works, just on the lighter local model. Bring Meridian up
-(`bin/start-meridian.sh`), then re-run `vz-ai-stack.sh model sync`. To re-point
-any profile permanently, use `vz-ai-stack.sh model assign <profile> <model>`
+(`bin/start-meridian.sh`), then re-run `mayssam-ai-stack.sh model sync`. To re-point
+any profile permanently, use `mayssam-ai-stack.sh model assign <profile> <model>`
 (§2.16).
 
 **When.** Whenever the workload is multi-step and benefits from a specialist persona. Quick one-off chat? Use `local` via Open WebUI. Multi-turn task with tool calls? Dispatch a Hermes profile.
@@ -750,7 +750,7 @@ curl -s -X POST http://llm-guard:8000/scan \
 
 # 3. Toggle on/off in LiteLLM's config (manual flip — no shortcut command).
 yq -i '.litellm_settings.callbacks |= unique + ["llm_guard"]' ~/ai-stack/litellm/config.yaml
-vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload config
+mayssam-ai-stack.sh stop litellm && mayssam-ai-stack.sh start litellm   # reload config
 ```
 
 **Combine with.** Both LiteLLM guardrails (in-process); Recipe 9 (paranoid mode).
@@ -916,7 +916,7 @@ curl -s -X POST http://docs-mcp:8765/tools/list_collections \
   -d '{}' | jq
 ```
 
-**Daemon note.** Start `docs-mcp` with `vz-ai-stack.sh start docs_mcp`. The alias is permanently in `/etc/hosts` (Phase 06 reserves it) — connection-refused from curl means "daemon down, `start` it again", not "DNS broken".
+**Daemon note.** Start `docs-mcp` with `mayssam-ai-stack.sh start docs_mcp`. The alias is permanently in `/etc/hosts` (Phase 06 reserves it) — connection-refused from curl means "daemon down, `start` it again", not "DNS broken".
 
 **Combine with.** `docs_ingestor` (the writer), `qdrant` (the index), `openwebui` (RAG tool consumer), `pi` (its sandbox allowlists `docs-mcp:8765`).
 
@@ -969,7 +969,7 @@ curl -s "http://honcho:8000/v3/workspaces/default/peers/autofyn-main/search?quer
 
 ```bash
 # 1. Start (it's auto-started by Phase 08, but you can start it any time — opens the UI).
-bash ~/ai-stack/vz-ai-stack.sh start paperclip
+bash ~/ai-stack/mayssam-ai-stack.sh start paperclip
 
 # 2. Open.
 open http://paperclip:3100
@@ -1047,7 +1047,7 @@ bash ~/ai-stack/bin/pi-kill
 
 # 6. Tear down the entire sandbox (rare — destroys state).
 openshell sandbox delete pi-v1
-# Re-create with: bash ~/ai-stack/vz-ai-stack.sh install 15
+# Re-create with: bash ~/ai-stack/mayssam-ai-stack.sh install 15
 ```
 
 **Phoenix trace pattern.** Pi's chat calls land in Phoenix because LiteLLM's `arize_phoenix` callback fires regardless of which virtual key authenticated. Filter by `model=local` (or `model=local` when availability-gated) + timestamp window to find Pi's session. No per-key Phoenix project isolation (deferred, see CHANGELOG 2026-05-29).
@@ -1070,11 +1070,11 @@ The historical failure mode (still useful to know): `deer-flow/config.yaml` ship
 
 **What Phase 10 patches:**
 
-- `deer-flow/config.yaml`: rendered by `vz-ai-stack.sh model sync` from `models.yml` (DeerFlow is assigned `claude-opus-sub-max`, availability-gated back to `local` when Meridian is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
+- `deer-flow/config.yaml`: rendered by `mayssam-ai-stack.sh model sync` from `models.yml` (DeerFlow is assigned `claude-opus-sub-max`, availability-gated back to `local` when Meridian is down), pointing at `http://host.docker.internal:4000/v1` with `api_key: $LITELLM_MASTER_KEY`. DeerFlow uses the master key (no scoped allowlist).
 - `deer-flow/docker/docker-compose.yaml`: adds `- LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}` to the gateway's `environment:` block so the substitution resolves inside the container.
 - `deer-flow/.env`: mirrors `LITELLM_MASTER_KEY` from `~/ai-stack/.env` (mode 0600) so `scripts/deploy.sh`'s `env_file:` lookup picks it up.
 
-All three are guarded by marker comments — re-running Phase 10 is a no-op. `bash vz-ai-stack.sh doctor` check 28 verifies the patches are still in place.
+All three are guarded by marker comments — re-running Phase 10 is a no-op. `bash mayssam-ai-stack.sh doctor` check 28 verifies the patches are still in place.
 
 **Stop / start (post-install).** Phase 10 already brought it up. To free the ~520 MB later, or to restart after a stop:
 
@@ -1275,7 +1275,7 @@ bl delete echo
 
 ```bash
 # 1. Confirm install (doctor check 27 covers Lumen; check 28 covers DeerFlow).
-bash ~/ai-stack/vz-ai-stack.sh doctor lumen
+bash ~/ai-stack/mayssam-ai-stack.sh doctor lumen
 
 # 2. List built indexes (no `lumen index list` subcommand — indexes are
 #    hash-named directories under ~/.local/share/lumen/).
@@ -1392,7 +1392,7 @@ EOF
 
 ```bash
 # 1. Confirm install (doctor check 31 covers RLM).
-bash ~/ai-stack/vz-ai-stack.sh doctor
+bash ~/ai-stack/mayssam-ai-stack.sh doctor
 
 # 2. Run the wrapper (routes via LiteLLM + RLM_LITELLM_KEY; REPL runs in
 #    a python:3.11-slim docker sandbox).
@@ -1410,11 +1410,11 @@ python ~/ai-stack/rlm/run_rlm.py --help
 
 ### §2.16 Model management — assign declaratively, enable the big MLX models
 
-#### `vz-ai-stack.sh model` (declarative model↔agent binding)
+#### `mayssam-ai-stack.sh model` (declarative model↔agent binding)
 
 **What.** `installer/models.yml` is the single source of truth for which model
 each agent runs. You never hand-edit soul files or scoped-key allowlists — you
-edit the binding and let `vz-ai-stack.sh model sync` reconcile everything. The
+edit the binding and let `mayssam-ai-stack.sh model sync` reconcile everything. The
 canonical local aliases (`local`, `local-heavy`, `local-nemotron3-nano-4b`) and the
 per-agent `assignments:` live there; see [models.md](models.md) for the full
 contract.
@@ -1430,34 +1430,34 @@ profiles to actually use their assigned Claude model instead of the gated
 ```bash
 # 1. READ-ONLY catalog + live matrix. Shows what's DECLARED in models.yml vs
 #    what LiteLLM ACTUALLY serves right now (so you can see availability-gating).
-bash ~/ai-stack/vz-ai-stack.sh model list
-bash ~/ai-stack/vz-ai-stack.sh model list --json | jq '.assignments'
+bash ~/ai-stack/mayssam-ai-stack.sh model list
+bash ~/ai-stack/mayssam-ai-stack.sh model list --json | jq '.assignments'
 
 # 2. Re-point ONE agent. This edits models.yml (yq -i) and syncs just that agent.
 #    Example: drop the ml-engineer to a local model to save subscription budget.
-bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer local
+bash ~/ai-stack/mayssam-ai-stack.sh model assign hermes_ml_engineer local
 #    …and put it back to its subscription model later:
-bash ~/ai-stack/vz-ai-stack.sh model assign hermes_ml_engineer claude-opus-sub-max
+bash ~/ai-stack/mayssam-ai-stack.sh model assign hermes_ml_engineer claude-opus-sub-max
 
 # 3. RECONCILE everything from models.yml. Crash-safe 6-phase pass:
 #    validate → register model_list (ADD-ONLY) → restart LiteLLM ONCE if the
 #    model list changed → widen scoped-key allowlists to the superset →
 #    render every agent's soul/config. Opt-in: `install all` does NOT run this.
-bash ~/ai-stack/vz-ai-stack.sh model sync
+bash ~/ai-stack/mayssam-ai-stack.sh model sync
 
 #    Preview without touching anything, or skip the LiteLLM restart:
-bash ~/ai-stack/vz-ai-stack.sh model sync --dry-run
-bash ~/ai-stack/vz-ai-stack.sh model sync --no-restart
+bash ~/ai-stack/mayssam-ai-stack.sh model sync --dry-run
+bash ~/ai-stack/mayssam-ai-stack.sh model sync --no-restart
 
 #    Sync just one agent:
-bash ~/ai-stack/vz-ai-stack.sh model sync hermes_backend_engineer
+bash ~/ai-stack/mayssam-ai-stack.sh model sync hermes_backend_engineer
 
 # 4. Print the canonical scoped-key allowlist superset. Every scoped virtual key
 #    (HERMES_LITELLM_KEY, PI_LITELLM_KEY, ACE_LITELLM_KEY, RLM_LITELLM_KEY) is
 #    minted against this DERIVED sorted-unique superset (union of legacy names +
 #    every models.yml key), so `model assign`/`add` never needs a key re-mint.
-bash ~/ai-stack/vz-ai-stack.sh model superset
-bash ~/ai-stack/vz-ai-stack.sh model superset --json
+bash ~/ai-stack/mayssam-ai-stack.sh model superset
+bash ~/ai-stack/mayssam-ai-stack.sh model superset --json
 ```
 
 **Availability-gating, restated.** If an agent is assigned an `lmstudio` model
@@ -1490,11 +1490,11 @@ profiles, Pi's default `local`, or DeerFlow's `local`.
 #    ASSIGNMENT-DRIVEN: it wires ONLY the MLX models assigned to an agent in
 #    models.yml (it does NOT auto-load otherwise). Ollama stays the default.
 #    (The legacy local-lfm2-mlx demo is opt-in only: prefix `LMS_LOAD_LFM2=1`.)
-bash ~/ai-stack/vz-ai-stack.sh install lmstudio        # or: install 25
+bash ~/ai-stack/mayssam-ai-stack.sh install lmstudio        # or: install 25
 
 # 1b. Start the LM Studio server (the run path — idempotent, macOS/app-guarded).
 #     Warns it idle-spins ~0.8 core; no model auto-loads (assign one + model sync).
-bash ~/ai-stack/vz-ai-stack.sh start lmstudio          # or: stop lmstudio to bring it down
+bash ~/ai-stack/mayssam-ai-stack.sh start lmstudio          # or: stop lmstudio to bring it down
 
 # 2. In the LM Studio app: load the model you want served.
 #      - Nemotron 3 Nano 4B MLX     → serves as local-nemotron3-nano-4b-mlx
@@ -1504,13 +1504,13 @@ curl -s http://localhost:1234/v1/models | jq '.data[].id'
 
 # 3. Reconcile so LiteLLM registers the now-servable model and the
 #    big-MLX-bound agents stop falling back to local.
-bash ~/ai-stack/vz-ai-stack.sh model sync
+bash ~/ai-stack/mayssam-ai-stack.sh model sync
 
 # 4. Verify LiteLLM now serves it and the binding took.
 source ~/ai-stack/.env
 curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   http://litellm:4000/v1/models | jq '.data[].id' | grep qwen
-bash ~/ai-stack/vz-ai-stack.sh model list              # assigned == effective now
+bash ~/ai-stack/mayssam-ai-stack.sh model list              # assigned == effective now
 ```
 
 **Quitting cleanly.** LM Studio idle-spins ~0.8 of a CPU core, so quit it when
@@ -1518,7 +1518,7 @@ you're done with the big models — the gated agents drop back to `local`
 automatically. (`mlx_lm.server` is a lighter alternative if you only need the
 server, not the app.)
 
-**Combine with.** `vz-ai-stack.sh model` (§2.16 above — `model sync` is the step
+**Combine with.** `mayssam-ai-stack.sh model` (§2.16 above — `model sync` is the step
 that makes the newly-loaded model take effect), `hermes_fleet` / `pi` /
 `deerflow` (the agents that benefit), `ollama` (still the default runtime for
 `local` + embeddings).
@@ -1533,7 +1533,7 @@ The catalog above tells you what each piece does. The recipes here show you cano
 
 **What you'll build.** Drop a PDF on disk, sweep it into Qdrant via Docling + LlamaIndex, then query it from Open WebUI via the `docs-mcp` MCP server.
 
-**Prereqs.** `stack status` shows green: `ollama`, `litellm`, `qdrant`, `openwebui`. The host-side `docs_ingestor` venv exists at `~/ai-stack/ingestor/.venv` (Phase 06). Start the `docs-mcp` daemon with `vz-ai-stack.sh start docs_mcp`.
+**Prereqs.** `stack status` shows green: `ollama`, `litellm`, `qdrant`, `openwebui`. The host-side `docs_ingestor` venv exists at `~/ai-stack/ingestor/.venv` (Phase 06). Start the `docs-mcp` daemon with `mayssam-ai-stack.sh start docs_mcp`.
 
 **Steps.**
 
@@ -1553,7 +1553,7 @@ curl -s http://qdrant:6333/collections/ai-stack-docs | jq '.result.points_count'
 # 4. Start (or confirm) docs-mcp. The alias is permanently in /etc/hosts
 #    (Phase 06 reserves it), so connection-refused means "daemon down,
 #    `start` it again". start is idempotent.
-bash ~/ai-stack/vz-ai-stack.sh start docs_mcp
+bash ~/ai-stack/mayssam-ai-stack.sh start docs_mcp
 curl -s http://docs-mcp:8765/health
 
 # 5. Wire docs-mcp into Open WebUI as a tool:
@@ -1776,11 +1776,11 @@ for s in "${PARANOID_DISABLE[@]}"; do yq -i ".services.$s.enabled = false" ~/ai-
 # Apply changes. (No batch — stop the disabled ones one by one; `stop` is idempotent
 # and knows each service's teardown: docker stop, compose down, or PID-file kill.)
 for s in openwebui autofyn phoenix deerflow paperclip docs_mcp; do
-  vz-ai-stack.sh stop "$s" 2>/dev/null
+  mayssam-ai-stack.sh stop "$s" 2>/dev/null
 done
 
 # Ensure llm_guard is up.
-vz-ai-stack.sh start llm_guard
+mayssam-ai-stack.sh start llm_guard
 
 # Now use the stack via curl only.
 source ~/ai-stack/.env
@@ -1831,7 +1831,7 @@ $EDITOR ~/ai-stack/litellm/config.yaml
 #     litellm_params:
 #       model: ollama_chat/local-tuned
 #       api_base: http://ollama:11434
-vz-ai-stack.sh stop litellm && vz-ai-stack.sh start litellm   # reload the new config
+mayssam-ai-stack.sh stop litellm && mayssam-ai-stack.sh start litellm   # reload the new config
 ```
 
 **You'll see this in Phoenix.** A/B by sending the same prompt to `local` (the base) and `local-tuned`; the eval pipeline from Recipe 4 scores the difference.
@@ -2054,7 +2054,7 @@ Per-repo indexing keeps signal high — Lumen ranks results by cosine similarity
 
 Profiles are intent-aware presets: one command (would-be — see ⚠ below) flips multiple services so the stack matches the workload.
 
-**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `vz-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | deps | setup (keys) | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | cleanup | upgrade | embedding | docker-engine | ingress | worktree | tutorial-serve | models-serve | fleet-studio | reset | start (enable) | stop (disable) | prepare-sudo`. Any verb takes per-command help via `<command> --help` or `help <command>`; bare `help` / `--help` prints the full list. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
+**⚠ Not implemented:** `stack profile <name>` and `stack apply` do NOT exist in `mayssam-ai-stack.sh`. The dispatcher implements: `install | test | phases | status | help | deps | setup (keys) | model | fleet | doctor | verify | adopt | apply-restarts | logs | history | gc | cleanup | upgrade | embedding | docker-engine | ingress | worktree | tutorial-serve | models-serve | fleet-studio | reset | start (enable) | stop (disable) | prepare-sudo`. Any verb takes per-command help via `<command> --help` or `help <command>`; bare `help` / `--help` prints the full list. (`stack enable <svc>` / `stack disable <svc>` are aliases for `start` / `stop` — they bring a single service up/down, but there is no profile-level apply.) To apply a profile today, flip the YAML by hand using the patterns below. (Future work: a `stack profile` wrapper around these yq + bin/start scripts.)
 
 ### `fleet` — multi-agent everyday
 
@@ -2098,78 +2098,78 @@ done
 
 ## §5. Daily cheatsheet
 
-Verified against `vz-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shortcuts that don't exist are flagged.
+Verified against `mayssam-ai-stack.sh` and `bin/` as of 2026-05-29. Aspirational shortcuts that don't exist are flagged.
 
 ```bash
 # Health + state
-bash ~/ai-stack/vz-ai-stack.sh doctor                 # 70 health checks + auto-fix offers
-bash ~/ai-stack/vz-ai-stack.sh status                 # declared vs actual table
-bash ~/ai-stack/vz-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
+bash ~/ai-stack/mayssam-ai-stack.sh doctor                 # 70 health checks + auto-fix offers
+bash ~/ai-stack/mayssam-ai-stack.sh status                 # declared vs actual table
+bash ~/ai-stack/mayssam-ai-stack.sh verify                 # phase 00·V pre-install runtime probes
 
 # Per-service help (what / how-it's-configured / usage)
-bash ~/ai-stack/vz-ai-stack.sh help services          # list services that have help prose
-bash ~/ai-stack/vz-ai-stack.sh help <service>         # what it is + live config + how to use
-bash ~/ai-stack/vz-ai-stack.sh help regen [<svc>]     # refresh prose from the live codebase
+bash ~/ai-stack/mayssam-ai-stack.sh help services          # list services that have help prose
+bash ~/ai-stack/mayssam-ai-stack.sh help <service>         # what it is + live config + how to use
+bash ~/ai-stack/mayssam-ai-stack.sh help regen [<svc>]     # refresh prose from the live codebase
                                                       #   (--apply writes · --check CI gate · --model <m>)
 
 # Models (declarative model↔agent binding — see §2.16)
-bash ~/ai-stack/vz-ai-stack.sh model list             # catalog + live declared-vs-served matrix
-bash ~/ai-stack/vz-ai-stack.sh model assign <agent> <model>   # re-point one agent (yq -i + sync)
-bash ~/ai-stack/vz-ai-stack.sh model assign all <model>       # blanket-assign EVERY agent (before→after + .bak), then sync
-bash ~/ai-stack/vz-ai-stack.sh model sync             # reconcile everything from models.yml (opt-in)
-bash ~/ai-stack/vz-ai-stack.sh model superset         # canonical scoped-key allowlist superset
+bash ~/ai-stack/mayssam-ai-stack.sh model list             # catalog + live declared-vs-served matrix
+bash ~/ai-stack/mayssam-ai-stack.sh model assign <agent> <model>   # re-point one agent (yq -i + sync)
+bash ~/ai-stack/mayssam-ai-stack.sh model assign all <model>       # blanket-assign EVERY agent (before→after + .bak), then sync
+bash ~/ai-stack/mayssam-ai-stack.sh model sync             # reconcile everything from models.yml (opt-in)
+bash ~/ai-stack/mayssam-ai-stack.sh model superset         # canonical scoped-key allowlist superset
 
 # Model & Agent Console (the web UI over the `model` CLI — run from the MAIN checkout)
-bash ~/ai-stack/vz-ai-stack.sh models-serve           # serve doc/MODELS.html: view the model catalog
+bash ~/ai-stack/mayssam-ai-stack.sh models-serve           # serve doc/MODELS.html: view the model catalog
                                                       #   + agent→model bindings, and add/edit/remove models,
                                                       #   re-assign or park/disable agents, and add OpenRouter
                                                       #   routes — each change is staged, shown as a models.yml
                                                       #   + config.yaml diff, then applied (timestamped backups).
                                                       #   Apply may restart the live LiteLLM.
-bash ~/ai-stack/vz-ai-stack.sh models-serve --port N  # bind a specific port
-bash ~/ai-stack/vz-ai-stack.sh models-serve --read-only  # view + diff only — no apply
-bash ~/ai-stack/vz-ai-stack.sh models-serve --revoke  # tear down the ephemeral proxy key and exit
+bash ~/ai-stack/mayssam-ai-stack.sh models-serve --port N  # bind a specific port
+bash ~/ai-stack/mayssam-ai-stack.sh models-serve --read-only  # view + diff only — no apply
+bash ~/ai-stack/mayssam-ai-stack.sh models-serve --revoke  # tear down the ephemeral proxy key and exit
 
 # Slow-mode doctor (includes 9 negative network probes for pi-v1)
-OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/vz-ai-stack.sh doctor
+OPENSHELL_DOCTOR_SLOW=1 bash ~/ai-stack/mayssam-ai-stack.sh doctor
 
 # First-run bootstrap (canonical order: deps → setup → prepare-sudo → install all → doctor)
-bash ~/ai-stack/vz-ai-stack.sh deps                   # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama)
-bash ~/ai-stack/vz-ai-stack.sh deps --check           # read-only: report the host-dep map, CI exit code, install nothing
-bash ~/ai-stack/vz-ai-stack.sh setup                  # interactive .env / API-key bootstrap (alias: keys); all skippable
-bash ~/ai-stack/vz-ai-stack.sh install all --dry-run  # preview ONLY: host-deps + ordered phases (done vs would-run); alias --plan
+bash ~/ai-stack/mayssam-ai-stack.sh deps                   # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama)
+bash ~/ai-stack/mayssam-ai-stack.sh deps --check           # read-only: report the host-dep map, CI exit code, install nothing
+bash ~/ai-stack/mayssam-ai-stack.sh setup                  # interactive .env / API-key bootstrap (alias: keys); all skippable
+bash ~/ai-stack/mayssam-ai-stack.sh install all --dry-run  # preview ONLY: host-deps + ordered phases (done vs would-run); alias --plan
 
 # Per-command help (any verb)
-bash ~/ai-stack/vz-ai-stack.sh install --help         # focused usage for one command (== help install)
-bash ~/ai-stack/vz-ai-stack.sh help                   # full command list (== --help)
+bash ~/ai-stack/mayssam-ai-stack.sh install --help         # focused usage for one command (== help install)
+bash ~/ai-stack/mayssam-ai-stack.sh help                   # full command list (== --help)
 
 # Install / re-run one phase
-bash ~/ai-stack/vz-ai-stack.sh install 15             # idempotent; safe to re-run
-bash ~/ai-stack/vz-ai-stack.sh test 01                # smoke-test phase 01 only
+bash ~/ai-stack/mayssam-ai-stack.sh install 15             # idempotent; safe to re-run
+bash ~/ai-stack/mayssam-ai-stack.sh test 01                # smoke-test phase 01 only
 
 # Logs
-bash ~/ai-stack/vz-ai-stack.sh logs litellm -f
+bash ~/ai-stack/mayssam-ai-stack.sh logs litellm -f
 docker logs -f phoenix
 tail -f ~/ai-stack/installer/state/unsloth.log
 
 # Run / stop any service — ONE uniform path (alias: `run`; reverse-form `<svc> start` also works).
 # `start` prints the URL/Endpoint + the Stop line and opens UIs in the browser; it's idempotent.
-bash ~/ai-stack/vz-ai-stack.sh start litellm                 # bring it up + print reach line
-bash ~/ai-stack/vz-ai-stack.sh stop litellm && \
-  bash ~/ai-stack/vz-ai-stack.sh start litellm               # reload config (stop+start)
-bash ~/ai-stack/vz-ai-stack.sh start phoenix
-bash ~/ai-stack/vz-ai-stack.sh start honcho
-bash ~/ai-stack/vz-ai-stack.sh start qdrant
-bash ~/ai-stack/vz-ai-stack.sh start falkordb
-bash ~/ai-stack/vz-ai-stack.sh start openwebui
-bash ~/ai-stack/vz-ai-stack.sh start hermes_workspace
-bash ~/ai-stack/vz-ai-stack.sh start autofyn
-bash ~/ai-stack/vz-ai-stack.sh start paperclip
-bash ~/ai-stack/vz-ai-stack.sh start docs_mcp
-bash ~/ai-stack/vz-ai-stack.sh start llm_guard
-bash ~/ai-stack/vz-ai-stack.sh start unsloth
-bash ~/ai-stack/vz-ai-stack.sh start claw3d              # health-gated composite (bridge→UI→open :4310)
-bash ~/ai-stack/vz-ai-stack.sh start lmstudio            # opt-in LM Studio server (macOS/app-guarded)
+bash ~/ai-stack/mayssam-ai-stack.sh start litellm                 # bring it up + print reach line
+bash ~/ai-stack/mayssam-ai-stack.sh stop litellm && \
+  bash ~/ai-stack/mayssam-ai-stack.sh start litellm               # reload config (stop+start)
+bash ~/ai-stack/mayssam-ai-stack.sh start phoenix
+bash ~/ai-stack/mayssam-ai-stack.sh start honcho
+bash ~/ai-stack/mayssam-ai-stack.sh start qdrant
+bash ~/ai-stack/mayssam-ai-stack.sh start falkordb
+bash ~/ai-stack/mayssam-ai-stack.sh start openwebui
+bash ~/ai-stack/mayssam-ai-stack.sh start hermes_workspace
+bash ~/ai-stack/mayssam-ai-stack.sh start autofyn
+bash ~/ai-stack/mayssam-ai-stack.sh start paperclip
+bash ~/ai-stack/mayssam-ai-stack.sh start docs_mcp
+bash ~/ai-stack/mayssam-ai-stack.sh start llm_guard
+bash ~/ai-stack/mayssam-ai-stack.sh start unsloth
+bash ~/ai-stack/mayssam-ai-stack.sh start claw3d              # health-gated composite (bridge→UI→open :4310)
+bash ~/ai-stack/mayssam-ai-stack.sh start lmstudio            # opt-in LM Studio server (macOS/app-guarded)
 
 # Sandboxed coding (Pi)
 bash ~/ai-stack/bin/pi                            # launch Pi inside pi-v1
@@ -2196,38 +2196,38 @@ cp ~/Downloads/X.pdf ~/ai-stack/ingestor/inbox/
 cd ~/ai-stack/ingestor && source .venv/bin/activate && python ingest.py
 
 # Sudo (one-time host config; idempotent)
-sudo bash ~/ai-stack/vz-ai-stack.sh prepare-sudo
+sudo bash ~/ai-stack/mayssam-ai-stack.sh prepare-sudo
 
 # Container adoption (when something's running outside our control)
-bash ~/ai-stack/vz-ai-stack.sh adopt litellm
+bash ~/ai-stack/mayssam-ai-stack.sh adopt litellm
 
 # Apply queued restarts (e.g., after .env change)
-bash ~/ai-stack/vz-ai-stack.sh apply-restarts
+bash ~/ai-stack/mayssam-ai-stack.sh apply-restarts
 
 # Historical CHANGELOG view (consolidated)
-bash ~/ai-stack/vz-ai-stack.sh history
+bash ~/ai-stack/mayssam-ai-stack.sh history
 
 # Cleanup partial container orphans
-bash ~/ai-stack/vz-ai-stack.sh gc
+bash ~/ai-stack/mayssam-ai-stack.sh gc
 
 # Reclaim disk — delete REGENERABLE artifacts (node_modules / .venv / build caches; --docker opt-in).
 # DRY-RUN by default (shows what it would remove + total); add --yes to actually delete. Only deletes a
 # dir if it is git-ignored, pattern-matched, AND has zero tracked files under it; data/ + worktrees are
 # hard-excluded; it SKIPS any dir a live service is using. Scope flags: --node/--venv/--caches/--docker/--all.
-bash ~/ai-stack/vz-ai-stack.sh cleanup            # preview (safe)
-bash ~/ai-stack/vz-ai-stack.sh cleanup --yes      # delete the regenerable artifacts
+bash ~/ai-stack/mayssam-ai-stack.sh cleanup            # preview (safe)
+bash ~/ai-stack/mayssam-ai-stack.sh cleanup --yes      # delete the regenerable artifacts
 
 # Resets (destructive; require --confirm)
-bash ~/ai-stack/vz-ai-stack.sh reset --confirm soft   # state + bin/  (keeps .env)
-bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard   # + managed containers + data + OpenShell
+bash ~/ai-stack/mayssam-ai-stack.sh reset --confirm soft   # state + bin/  (keeps .env)
+bash ~/ai-stack/mayssam-ai-stack.sh reset --confirm hard   # + managed containers + data + OpenShell
                                                   #   sandboxes + all compose projects
                                                   #   (deerflow/autofyn/hermes-workspace) and
                                                   #   their volumes (incl honcho_redis-data).
                                                   #   Preserves: ollama+models, docker images,
                                                   #   .env, /etc/hosts block.
-bash ~/ai-stack/vz-ai-stack.sh reset --confirm nuke   # everything (re-download all)
+bash ~/ai-stack/mayssam-ai-stack.sh reset --confirm nuke   # everything (re-download all)
 # Add --yes (or -y, or AI_STACK_ASSUME_YES=1) to skip the interactive prompt:
-bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
+bash ~/ai-stack/mayssam-ai-stack.sh reset --confirm hard --yes
 ```
 
 **⚠ These DO NOT exist** (use the workarounds shown):
@@ -2235,8 +2235,8 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 | You'd type | But it doesn't dispatch. Use:                                 |
 |------------|---------------------------------------------------------------|
 | `stack profile <name>` | Manual yq + bin/start scripts (see §4)            |
-| `stack apply`          | Re-run `vz-ai-stack.sh install <phase>` for the changed phase     |
-| `stack restart <svc>`  | `vz-ai-stack.sh stop <svc> && vz-ai-stack.sh start <svc>` (idempotent) |
+| `stack apply`          | Re-run `mayssam-ai-stack.sh install <phase>` for the changed phase     |
+| `stack restart <svc>`  | `mayssam-ai-stack.sh stop <svc> && mayssam-ai-stack.sh start <svc>` (idempotent) |
 
 ---
 
@@ -2244,13 +2244,13 @@ bash ~/ai-stack/vz-ai-stack.sh reset --confirm hard --yes
 
 **Doctor first.** Always.
 ```bash
-bash ~/ai-stack/vz-ai-stack.sh doctor
+bash ~/ai-stack/mayssam-ai-stack.sh doctor
 ```
 The check number in the failure line maps 1:1 to a section in [DOCTOR.md](DOCTOR.md). Read that section first — it tells you what auto-fix will try and what to do if it doesn't work.
 
 **Then logs.**
 ```bash
-bash ~/ai-stack/vz-ai-stack.sh logs <svc> -f       # for managed containers
+bash ~/ai-stack/mayssam-ai-stack.sh logs <svc> -f       # for managed containers
 tail -f ~/ai-stack/installer/state/<svc>.log   # for host bg processes
 docker logs <container>                         # raw container logs
 ```
@@ -2263,22 +2263,22 @@ We tend to document gotchas as we ship them. If the symptom rings a bell, it's p
 
 **Then TROUBLESHOOTING.md.** Less common issues (OrbStack `*:80` wildcard, host-gateway DNS, foreign container adoption, etc.).
 
-**Or hand it to a coding agent.** [TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) is a paste-ready prompt: copy the body below the `---` as the first message to Claude Code / Cursor / Codex / Aider running in `~/ai-stack`, then describe what broke. It gives the agent this ladder, the ground-truth commands, and the hard limits it must not cross on your machine (never a bare `vz-ai-stack.sh`, no `.env` rewrites, no secrets in the transcript, no model pulls). A red `doctor` and a failed `install` both print the pointer. Not to be confused with [ONBOARDING-PROMPT.md](ONBOARDING-PROMPT.md), which onboards an agent as the project's maintainer.
+**Or hand it to a coding agent.** [TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) is a paste-ready prompt: copy the body below the `---` as the first message to Claude Code / Cursor / Codex / Aider running in `~/ai-stack`, then describe what broke. It gives the agent this ladder, the ground-truth commands, and the hard limits it must not cross on your machine (never a bare `mayssam-ai-stack.sh`, no `.env` rewrites, no secrets in the transcript, no model pulls). A red `doctor` and a failed `install` both print the pointer. Not to be confused with [ONBOARDING-PROMPT.md](ONBOARDING-PROMPT.md), which onboards an agent as the project's maintainer.
 
 **Common scenarios mapped to checks/services:**
 
 | Symptom | First check | Then |
 |---|---|---|
-| `curl http://litellm:4000` → connection refused | Doctor 11, 14 | `docker ps | grep litellm`; `vz-ai-stack.sh start litellm` |
+| `curl http://litellm:4000` → connection refused | Doctor 11, 14 | `docker ps | grep litellm`; `mayssam-ai-stack.sh start litellm` |
 | `curl http://litellm:4000` → 401 | Doctor 26 | `source .env`; verify `LITELLM_MASTER_KEY` not stale |
 | Phoenix has no traces | Doctor 6, 9, 13 | LiteLLM env: `PHOENIX_API_KEY`, `PHOENIX_COLLECTOR_HTTP_ENDPOINT` |
 | Ollama 403 from inside container | Phase 00 plist | Reset Ollama: `OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=*` then `brew services restart ollama` |
 | Open WebUI shows "model not found" | LiteLLM config | `curl http://litellm:4000/v1/models`; restart Open WebUI |
-| `bin/pi` says "PI_LITELLM_KEY missing" | Doctor 26 | Re-run `bash vz-ai-stack.sh install 15` (re-mints) |
+| `bin/pi` says "PI_LITELLM_KEY missing" | Doctor 26 | Re-run `bash mayssam-ai-stack.sh install 15` (re-mints) |
 | Pi can reach forbidden destination | Doctor 25 | `openshell policy set pi-v1 --policy openshell/policies/pi-v1.yaml --wait` |
-| `openshell sandbox list` → empty | Doctor 24 | `bash vz-ai-stack.sh install 04` then `install 15` |
+| `openshell sandbox list` → empty | Doctor 24 | `bash mayssam-ai-stack.sh install 04` then `install 15` |
 | Sandbox network policy not enforcing | Doctor 25 (slow mode) | `OPENSHELL_DOCTOR_SLOW=1 stack doctor` |
-| docs-mcp returns nothing | Phase 06 | `vz-ai-stack.sh start docs_mcp`; verify `curl docs-mcp:8765/health` |
+| docs-mcp returns nothing | Phase 06 | `mayssam-ai-stack.sh start docs_mcp`; verify `curl docs-mcp:8765/health` |
 | Fan is on, idle CPU high | DeerFlow probably | See §2.10 — disable DeerFlow when not researching |
 
 ---

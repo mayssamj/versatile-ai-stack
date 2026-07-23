@@ -71,7 +71,7 @@ mkdir -p "$SG_DIR/config" "$SG_DIR/data"
 SG_BIND_IP=127.0.10.20
 if ! ifconfig lo0 2>/dev/null | grep -oE '127\.0\.10\.[0-9]+' | grep -qxF "$SG_BIND_IP"; then
   err "lo0 alias $SG_BIND_IP (sourcegraph) is missing — the container dual-binds it loopback-only and won't start without it."
-  err "Run once:  sudo $AI_STACK/vz-ai-stack.sh prepare-sudo"
+  err "Run once:  sudo $AI_STACK/mayssam-ai-stack.sh prepare-sudo"
   exit 1
 fi
 docker run -d \

@@ -22,22 +22,22 @@ agentscope_diagnose() {
   fi
 
   local venv="$AI_STACK/agentscope/.venv"
-  [[ -x "$venv/bin/python" ]] || { echo "agentscope venv missing ($venv) — re-run 'vz-ai-stack.sh install 33'"; return 1; }
-  "$venv/bin/python" -c "import agentscope" >/dev/null 2>&1 || { echo "import agentscope failed in the venv — re-run 'vz-ai-stack.sh install 33'"; return 1; }
-  [[ -x "$AI_STACK/bin/agentscope" ]] || { echo "bin/agentscope wrapper missing — re-run 'vz-ai-stack.sh install 33'"; return 1; }
+  [[ -x "$venv/bin/python" ]] || { echo "agentscope venv missing ($venv) — re-run 'mayssam-ai-stack.sh install 33'"; return 1; }
+  "$venv/bin/python" -c "import agentscope" >/dev/null 2>&1 || { echo "import agentscope failed in the venv — re-run 'mayssam-ai-stack.sh install 33'"; return 1; }
+  [[ -x "$AI_STACK/bin/agentscope" ]] || { echo "bin/agentscope wrapper missing — re-run 'mayssam-ai-stack.sh install 33'"; return 1; }
 
   local key; key="$(get_env AGENTSCOPE_LITELLM_KEY '')"
-  [[ -n "$key" ]] || { echo "AGENTSCOPE_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 33'"; return 1; }
+  [[ -n "$key" ]] || { echo "AGENTSCOPE_LITELLM_KEY missing from .env — re-run 'mayssam-ai-stack.sh install 33'"; return 1; }
   local models
   models="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
   printf '%s' "$models" | grep -q '"id"' \
     || models="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
-      echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint"
+      echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'mayssam-ai-stack.sh doctor keystore'); do NOT re-mint"
       return 1
     fi
-    echo "AGENTSCOPE_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'vz-ai-stack.sh install 33'"
+    echo "AGENTSCOPE_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'mayssam-ai-stack.sh install 33'"
     return 1
   fi
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
@@ -69,12 +69,12 @@ agentscope_diagnose() {
     return 1
   fi
 
-  echo "AgentScope ready (venv + import + scoped key lists models); prove the swarm: vz-ai-stack.sh test 33"
+  echo "AgentScope ready (venv + import + scoped key lists models); prove the swarm: mayssam-ai-stack.sh test 33"
   return 0
 }
 
 agentscope_fix() {
-  echo "vz-ai-stack.sh install 33   # rebuild venv + re-mint scoped key + refresh bin/agentscope"
+  echo "mayssam-ai-stack.sh install 33   # rebuild venv + re-mint scoped key + refresh bin/agentscope"
   if [[ -f "$HOME/Library/LaunchAgents/com.ai-stack.agentscope-studio.plist" ]]; then
     echo "bash bin/start-agentscope-studio.sh install   # (re)start the Studio GUI daemon (:5275)"
   fi

@@ -21,7 +21,7 @@
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SS_CLI="$AI_STACK/skillspector/.venv/bin/skillspector"
-[[ -x "$SS_CLI" ]] || { echo "SkillSpector not installed — run 'bash vz-ai-stack.sh install 23'" >&2; exit 1; }
+[[ -x "$SS_CLI" ]] || { echo "SkillSpector not installed — run 'bash mayssam-ai-stack.sh install 23'" >&2; exit 1; }
 
 # --no-llm is a `scan` subcommand flag, NOT a global one — injecting it on
 # `--help`, `version`, etc. errors on a strict CLI. So only inject when the first

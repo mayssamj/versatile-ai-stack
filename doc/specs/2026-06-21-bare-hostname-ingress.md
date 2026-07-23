@@ -145,7 +145,7 @@ alias-free) — **explicitly excluded**; the generator must emit **no** site for
 | Concern | File | Notes |
 |---|---|---|
 | Generator + control lib | `installer/lib/ingress.sh` (new) | `aliases_load`-driven Caddyfile gen; up/down/trust/untrust/status; dual-mode (run-direct + sourced), mirroring `installer/lib/docker-engine.sh` |
-| CLI | `vz-ai-stack.sh ingress <up\|down\|trust\|untrust\|status>` + `bin/ingress` | **NOT** `start/stop` — those are `services.yml`-allowlisted (`vz-ai-stack.sh:725`); a host daemon doesn't fit. Mirror the `docker-engine` subcommand shape. |
+| CLI | `mayssam-ai-stack.sh ingress <up\|down\|trust\|untrust\|status>` + `bin/ingress` | **NOT** `start/stop` — those are `services.yml`-allowlisted (`mayssam-ai-stack.sh:725`); a host daemon doesn't fit. Mirror the `docker-engine` subcommand shape. |
 | Root daemon | `/Library/LaunchDaemons/com.ai-stack.ingress.plist` | see lifecycle below — **diverges** from the one-shot loopback plist |
 | Generation hook | `installer/phases/00n_networking.sh` | may **generate** the Caddyfile (cheap, no daemon) after lo0 binds; must **not** bootstrap the daemon |
 | Opt-in phase | new `NN_ingress.sh` (own phase) | NOT in `install_all_phase_order()`; opt-in like other extras; daemon (re)started here AFTER service phases, via `ingress up` |
@@ -190,7 +190,7 @@ and scoped to the **user login keychain** (not the machine-wide System keychain)
 trust anchor to the current user and avoids a machine-wide cert-minting surface.
 
 - **Default install does NOT install the CA.** `ingress up` works; `https://`
-  warns until `vz-ai-stack.sh ingress trust`.
+  warns until `mayssam-ai-stack.sh ingress trust`.
 - `ingress untrust` removes it; `reset … nuke` calls it. Fully reversible.
 
 ## 7. Doctor check (`56_bare_hostname_ingress.sh`)
@@ -206,7 +206,7 @@ trust anchor to the current user and avoids a machine-wide cert-minting surface.
    must be `127.0.10.1`, and the phoenix probe `127.0.10.2` — distinct IPs prove
    no `*:80` collapse regardless of upstream health.
 3. `https://litellm/` returns 200 with `--cacert <caddy root>` (or trusted).
-`fix` → `vz-ai-stack.sh ingress up` (+ `ingress trust` hint).
+`fix` → `mayssam-ai-stack.sh ingress up` (+ `ingress trust` hint).
 
 ## 8. Gating milestones (run BEFORE building)
 
@@ -326,7 +326,7 @@ fail. Sources: chromium cert_verify_proc.cc; Caddy automatic-https docs.
 **Concrete names / wiring (supersedes §5 placeholders):**
 - Opt-in phase = **`installer/phases/31_ingress.sh`** (31 = next free; 30 is max).
   NOT in `install_all_phase_order()`. Reachable via `install ingress` / `install
-  31` (suffix resolver, `vz-ai-stack.sh:621`). Installs caddy itself
+  31` (suffix resolver, `mayssam-ai-stack.sh:621`). Installs caddy itself
   (portless-shaped soft-fail when brew/caddy absent) — NOT via `deps.sh`.
 - Doctor check = next free prefix **`56_bare_hostname_ingress.sh`** (56 files
   today, max index 55 (codex); `56_` is free); registered registry-free via the
@@ -335,7 +335,7 @@ fail. Sources: chromium cert_verify_proc.cc; Caddy automatic-https docs.
 - CLI: `bin/ingress` = lumen-style `exec bash "$AI_STACK/installer/lib/ingress.sh" "$@"`;
   `cmd_ingress()` = docker-engine-style `bash …/ingress.sh "$@"`. (The two
   precedents differ — docker-engine has no `bin/` wrapper.) Wire **three**
-  `vz-ai-stack.sh` sites: recognized-subcommands (~319), dispatch `case` (~1189),
+  `mayssam-ai-stack.sh` sites: recognized-subcommands (~319), dispatch `case` (~1189),
   help block (~244).
 - Single generator **`ingress_generate_caddyfile`** (cmp-before-write,
   `aliases_load`-driven). `00n_networking.sh` calls it **only when

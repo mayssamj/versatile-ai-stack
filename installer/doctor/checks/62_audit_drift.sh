@@ -29,7 +29,7 @@ audit_drift_diagnose() {
 
 audit_drift_fix() {
   warn "bin/audit.sh and the 04g_security.sh heredoc diverged. Apply the intended change to BOTH"
-  warn "  (they must be byte-identical), or re-run 'vz-ai-stack.sh install 04g' to regenerate"
+  warn "  (they must be byte-identical), or re-run 'mayssam-ai-stack.sh install 04g' to regenerate"
   warn "  bin/audit.sh from the 04g heredoc (this DISCARDS any hand-edit to bin/audit.sh)."
   return 1
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 30 — Understand-Anything (OPT-IN; cross-runtime codebase knowledge graphs).
 #
-# NOT in `install all` — install by name: `vz-ai-stack.sh install understand`.
+# NOT in `install all` — install by name: `mayssam-ai-stack.sh install understand`.
 # Architecture = "generate centrally, consume everywhere" (spec:
 # docs/superpowers/specs/2026-06-21-understand-anything-phase29-design.md, §24-vetted):
 #   GENERATE  /understand (Claude Code or Pi) writes .understand-anything/
@@ -21,7 +21,7 @@
 #   6. start the http daemon (bin/start-understand.sh) + wire the Hermes fleet (gated)
 #   7. smoke-gate (offline shim test) → stamp
 #
-# Rollback: claude mcp remove -s user understand-anything ; vz-ai-stack.sh stop
+# Rollback: claude mcp remove -s user understand-anything ; mayssam-ai-stack.sh stop
 #   understand ; rm -rf understand-mcp/node_modules ; stamp_clear 29 ; (un-wire
 #   profiles: `hermes config unset mcp_servers.understand` per profile).
 set -Eeuo pipefail
@@ -77,9 +77,9 @@ fi
 worktree_guard "install understand"
 
 # 1. prechecks ----------------------------------------------------------------------
-command -v node >/dev/null 2>&1 || { err "Node not found. Run 'vz-ai-stack.sh deps' (installs node@22)."; exit 1; }
-case "$(node --version)" in v2[2-9].*|v[3-9][0-9].*) : ;; *) err "Node ≥22 required (have $(node --version)). Run 'vz-ai-stack.sh deps'."; exit 1 ;; esac
-command -v pnpm >/dev/null 2>&1 || { err "pnpm not found. Run 'vz-ai-stack.sh deps' (installs pnpm)."; exit 1; }
+command -v node >/dev/null 2>&1 || { err "Node not found. Run 'mayssam-ai-stack.sh deps' (installs node@22)."; exit 1; }
+case "$(node --version)" in v2[2-9].*|v[3-9][0-9].*) : ;; *) err "Node ≥22 required (have $(node --version)). Run 'mayssam-ai-stack.sh deps'."; exit 1 ;; esac
+command -v pnpm >/dev/null 2>&1 || { err "pnpm not found. Run 'mayssam-ai-stack.sh deps' (installs pnpm)."; exit 1; }
 
 # 2. plugin root + stable symlink ---------------------------------------------------
 PLUGIN_ROOT="$(resolve_plugin_root)" || { err "Understand-Anything plugin not found. Install it in Claude Code first: /plugin marketplace add Egonex-AI/Understand-Anything"; exit 1; }
@@ -172,6 +172,6 @@ echo
 note "Generate the graph (from the MAIN checkout):  cd $AI_STACK && /understand ."
 note "Then commit .understand-anything/knowledge-graph.json (the shared artifact)."
 note "Query: in Claude Code use the 'understand-anything' MCP tools (graph_search, read_node_source, …)."
-note "Fleet E2E proof:  vz-ai-stack.sh test understand"
-note "Dashboard:        vz-ai-stack.sh understand-dashboard"
+note "Fleet E2E proof:  mayssam-ai-stack.sh test understand"
+note "Dashboard:        mayssam-ai-stack.sh understand-dashboard"
 note "Docs:             doc/UNDERSTAND.md"

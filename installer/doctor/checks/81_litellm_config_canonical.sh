@@ -21,7 +21,7 @@ CHECK_TITLE[config_canonical]="litellm/config.yaml committed in yq-canonical for
 config_canonical_diagnose() {
   local cfg="$AI_STACK/litellm/config.yaml"
   [[ -f "$cfg" ]] || { echo "litellm/config.yaml absent — nothing to check (install 01 seeds it). [skip]"; return 0; }
-  command -v yq >/dev/null 2>&1 || { echo "yq not on PATH — cannot verify canonical form (run 'vz-ai-stack.sh deps'). [skip]"; return 0; }
+  command -v yq >/dev/null 2>&1 || { echo "yq not on PATH — cannot verify canonical form (run 'mayssam-ai-stack.sh deps'). [skip]"; return 0; }
 
   # Must be VALID yaml first (a malformed file would make `yq '.'` error, not "drift").
   if ! yq -e '.model_list[0]' "$cfg" >/dev/null 2>&1; then

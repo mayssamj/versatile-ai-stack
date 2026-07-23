@@ -34,13 +34,13 @@ resolve_openshell() {
 }
 
 OSH="$(resolve_openshell)"
-[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash vz-ai-stack.sh install 04' first." >&2; exit 1; }
+[[ -n "$OSH" ]] || { echo "openshell CLI not found — run 'bash mayssam-ai-stack.sh install 04' first." >&2; exit 1; }
 
 # pi-v1 sandbox must be Ready. Matching folded into awk END with NO early exit:
 # `awk {..; exit} | grep -q` SIGPIPEs `sandbox list` under pipefail → flaky
 # "not Ready" on a Ready sandbox (the check-78/80 EPIPE class).
 if ! "$OSH" sandbox list 2>/dev/null | awk 'NR>1 && $1=="pi-v1" && !seen{seen=1; ok=($NF ~ /Ready/)} END{exit ok?0:1}'; then
-  echo "pi-v1 sandbox not Ready — run 'bash vz-ai-stack.sh install 15' first." >&2
+  echo "pi-v1 sandbox not Ready — run 'bash mayssam-ai-stack.sh install 15' first." >&2
   exit 1
 fi
 
@@ -62,7 +62,7 @@ fi
 HONCHO_MCP_TOKEN="${HONCHO_MCP_TOKEN:-}"
 FALKORDB_MCP_TOKEN="${FALKORDB_MCP_TOKEN:-}"
 if [[ -z "${PI_LITELLM_KEY:-}" ]]; then
-  echo "PI_LITELLM_KEY missing from .env — re-run 'bash vz-ai-stack.sh install 15' to mint it." >&2
+  echo "PI_LITELLM_KEY missing from .env — re-run 'bash mayssam-ai-stack.sh install 15' to mint it." >&2
   exit 1
 fi
 

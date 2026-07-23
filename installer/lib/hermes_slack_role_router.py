@@ -1241,7 +1241,7 @@ async def run_socket_mode() -> None:
         except Exception as lazy_exc:
             raise SystemExit(
                 "Slack dependencies are missing and lazy install failed. "
-                "Re-run `vz-ai-stack.sh install 38` after network access is available."
+                "Re-run `mayssam-ai-stack.sh install 38` after network access is available."
             ) from lazy_exc
 
     bot_token = os.environ.get("SLACK_BOT_TOKEN", "").strip()

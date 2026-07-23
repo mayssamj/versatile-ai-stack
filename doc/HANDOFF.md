@@ -12,9 +12,9 @@
 
 | For… | Run (from the MAIN checkout) |
 |---|---|
-| Is it healthy? (source of truth) | `bash vz-ai-stack.sh doctor` |
-| Declared vs actual, per service | `bash vz-ai-stack.sh status` |
-| Phases / model↔agent bindings | `bash vz-ai-stack.sh phases` · `model list` |
+| Is it healthy? (source of truth) | `bash mayssam-ai-stack.sh doctor` |
+| Declared vs actual, per service | `bash mayssam-ai-stack.sh status` |
+| Phases / model↔agent bindings | `bash mayssam-ai-stack.sh phases` · `model list` |
 | Recovery from a known failure mode | **[`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)** |
 | Full history + the *why* behind every change | **[`../CHANGELOG.md`](../CHANGELOG.md)** (newest at top) |
 
@@ -24,7 +24,7 @@
 
 | Property | Value |
 |---|---|
-| Stack root / entry | `~/ai-stack` · `bash vz-ai-stack.sh` (alias `bin/stack`) |
+| Stack root / entry | `~/ai-stack` · `bash mayssam-ai-stack.sh` (alias `bin/stack`) |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x |
 | Scale | **51** services · **68** doctor checks · **46** phases (29 core / 17 opt-in) — `doctor`/`phases` are authoritative |
 | Platform default model | `claude-opus-sub-max` (fleet + unassigned agents); the opt-in sims + HALO stay on `claude-opus-sub-xhigh` (lighter for many-agent runs); `default: local` is the keyless last-resort net. **No model SILENTLY uses a local one** — a cloud/Meridian outage surfaces a visible 503. |

@@ -40,7 +40,7 @@ let _core = null;
 export async function loadCore() {
   if (_core) return _core;
   const root = resolvePluginRoot();
-  if (!root) throw new Error("understand-anything plugin not found (set UNDERSTAND_PLUGIN_ROOT or run `vz-ai-stack.sh install understand`)");
+  if (!root) throw new Error("understand-anything plugin not found (set UNDERSTAND_PLUGIN_ROOT or run `mayssam-ai-stack.sh install understand`)");
   const entry = pathToFileURL(join(root, "packages", "core", "dist", "index.js")).href;
   _core = await import(entry);
   return _core;

@@ -9,11 +9,11 @@ service-by-service tour see [STACK-GUIDE.md](STACK-GUIDE.md); for recipes see
 **Haven't installed yet?** The canonical first-run order is:
 
 ```bash
-bash vz-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama); --check = read-only
-bash vz-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
-sudo bash vz-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
-bash vz-ai-stack.sh install all       # the 29 core phases (offers `setup` on first run if you skipped it)
-bash vz-ai-stack.sh doctor            # 84 checks — target all green
+bash mayssam-ai-stack.sh deps              # bootstrap host deps (brew, yq/jq/node, OrbStack, Ollama); --check = read-only
+bash mayssam-ai-stack.sh setup             # (optional) enter API keys — all skippable; local + Claude-sub need none
+sudo bash mayssam-ai-stack.sh prepare-sudo # one-time /etc/hosts + DNS flush (the only sudo step)
+bash mayssam-ai-stack.sh install all       # the 29 core phases (offers `setup` on first run if you skipped it)
+bash mayssam-ai-stack.sh doctor            # 84 checks — target all green
 ```
 
 A plain `install all` runs `deps` for you and offers `setup` on a first run, so on a
@@ -24,7 +24,7 @@ form. Preview without changing anything: `install all --dry-run` (alias `--plan`
 
 ## 1. The `stack` command (everything goes through it)
 
-`bin/stack` is a thin wrapper around `vz-ai-stack.sh`. Put `bin/` on your PATH once:
+`bin/stack` is a thin wrapper around `mayssam-ai-stack.sh`. Put `bin/` on your PATH once:
 
 ```bash
 echo 'export PATH="$HOME/ai-stack/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
@@ -92,7 +92,7 @@ host-gateway / routing). See [TROUBLESHOOTING.md § Connection refused](TROUBLES
 ## 3. The agents you can talk to
 
 All agents call local models through LiteLLM. Which model each agent uses is
-**declared per-agent** in `installer/models.yml` and rendered by `vz-ai-stack.sh model
+**declared per-agent** in `installer/models.yml` and rendered by `mayssam-ai-stack.sh model
 sync` (see [models.md](models.md)). Unassigned agents now render the primary `claude-opus-sub-max`, gated to
 `local` (nemotron-3-nano:4b — the always-on Ollama fallback) when Meridian is down; the coder profiles + Pi use `local`
 and the reasoning-heavy profiles + DeerFlow use `local` (both LM Studio MLX,
@@ -212,7 +212,7 @@ Full write-ups: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
   sandboxed Pi, Phoenix evals).
 - **What each tool is** → [COMPONENTS.md](COMPONENTS.md) (index) / [STACK-GUIDE.md](STACK-GUIDE.md) (tour).
 - **Day-to-day commands** → [OPERATIONS.md](OPERATIONS.md).
-- **Which model each agent uses** → [models.md](models.md) (`vz-ai-stack.sh model` binding).
+- **Which model each agent uses** → [models.md](models.md) (`mayssam-ai-stack.sh model` binding).
 - **Something's broken** → [DOCTOR.md](DOCTOR.md) then [TROUBLESHOOTING.md](TROUBLESHOOTING.md) —
   and if you'd rather hand it to a coding agent than debug it yourself,
   [TROUBLESHOOTING-PROMPT.md](TROUBLESHOOTING-PROMPT.md) is a paste-ready prompt that

@@ -311,7 +311,7 @@ Three things this shows:
 ## 5. Model ↔ agent binding and availability-gating
 
 How a per-agent model assignment becomes a live route. `models.yml` is
-the canonical source of truth for the binding; `vz-ai-stack.sh model sync`
+the canonical source of truth for the binding; `mayssam-ai-stack.sh model sync`
 reconciles it into LiteLLM and re-renders each agent. The interesting
 wrinkle is **availability-gating**: if an agent is assigned an
 LM Studio (MLX) model but LiteLLM isn't currently serving it (LM Studio
@@ -334,7 +334,7 @@ flowchart TB
   MY --> Q36
   MY --> QC
 
-  Sync["vz-ai-stack.sh model sync"]
+  Sync["mayssam-ai-stack.sh model sync"]
   MY --> Sync
 
   Sync --> P1["P1 register model_list (ADD-ONLY)"]
@@ -376,7 +376,7 @@ Notes:
   (ADD-ONLY), and LiteLLM is restarted at most once.
 - Because every scoped key (`HERMES_LITELLM_KEY`, `PI_LITELLM_KEY`,
   `ACE_LITELLM_KEY`, `RLM_LITELLM_KEY`) is minted against the DERIVED
-  `model superset` (`vz-ai-stack.sh model superset` — a sorted-unique union,
+  `model superset` (`mayssam-ai-stack.sh model superset` — a sorted-unique union,
   not a hardcoded list), `model assign <agent> <model>` (or `model assign all
   <model>` for every agent) re-points agents without ever re-minting a key.
 - The four diagrams below (§5a–§5e) zoom into this pipeline: §5a the
@@ -484,7 +484,7 @@ only `sync` touches LiteLLM.
 sequenceDiagram
   autonumber
   participant U as You
-  participant M as vz-ai-stack.sh model
+  participant M as mayssam-ai-stack.sh model
   participant LMS as LM Studio library (lms ls --json)
   participant YML as installer/models.yml
   participant CFG as litellm/config.yaml

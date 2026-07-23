@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_upgrade_exit_and_coverage.sh — §24 audit fixes for `vz-ai-stack.sh upgrade`
+# test_upgrade_exit_and_coverage.sh — §24 audit fixes for `mayssam-ai-stack.sh upgrade`
 # (2026-07-14). Static mirror of upgrade.sh (it self-runs upgrade_main on load and
 # cannot be sourced in isolation — same reason as test_upgrade_honesty.sh) PLUS
 # behavioral logic tables for the parts that are decidable without a live run.
@@ -77,7 +77,7 @@ grep -qF 'rev="$(reverify "$svc" "$STRATEGY" "$RESULT")"' "$UPG" && ok "reverify
 [[ "$(yq -r '.services.litellm.upgrade.method // "-"' "$ROOT/services.yml")" == "-" ]] && ok "litellm upgrade block stays metadata-only (no method - dispatch untouched)" || bad "litellm gained an upgrade.method - dispatch behavior changed"
 
 echo "== honest exit-1 must not trip the top-level ERR trap (spurious '✗ ERR' noise) =="
-grep -qE 'upgrade\)[[:space:]]+diag_exit cmd_upgrade "\$@"' "$ROOT/vz-ai-stack.sh" && ok "upgrade dispatched via diag_exit (F1 exit-1 is a RESULT, not a script fault)" || bad "upgrade dispatch not routed through diag_exit - honest failures print spurious ERR-trap noise"
+grep -qE 'upgrade\)[[:space:]]+diag_exit cmd_upgrade "\$@"' "$ROOT/mayssam-ai-stack.sh" && ok "upgrade dispatched via diag_exit (F1 exit-1 is a RESULT, not a script fault)" || bad "upgrade dispatch not routed through diag_exit - honest failures print spurious ERR-trap noise"
 
 echo "== F1 (behavioral): drive the REAL decision line extracted from upgrade.sh =="
 # QA finding: a hand-copied decide() mirror can never fail. Extract the ACTUAL if…fi that
@@ -654,7 +654,7 @@ grep -qF 'health/readiness' "$ROOT/installer/smoke/01.sh" && ok "smoke 01 probes
 [[ "$(yq -r '.services.docs_mcp.upgrade.method' "$ROOT/services.yml" 2>/dev/null)" == "uv-reqs" ]] && ok "docs_mcp → uv-reqs block" || bad "docs_mcp block missing"
 [[ "$(yq -r '.services.blaxel_cli.upgrade.tap' "$ROOT/services.yml" 2>/dev/null)" == "blaxel-ai/blaxel" ]] && ok "blaxel_cli declares tap consent" || bad "blaxel tap key missing"
 [[ "$(yq -r '.services.openshell.upgrade.formula' "$ROOT/services.yml" 2>/dev/null)" == "openshell" ]] && ok "openshell → brew formula block" || bad "openshell block missing"
-grep -q 'AI_STACK_UPGRADE' "$ROOT/vz-ai-stack.sh" && bad "run_phase/install path sets AI_STACK_UPGRADE (must stay upgrade-only)" || ok "install path never sets AI_STACK_UPGRADE (gate edits provably inert on 'install')"
+grep -q 'AI_STACK_UPGRADE' "$ROOT/mayssam-ai-stack.sh" && bad "run_phase/install path sets AI_STACK_UPGRADE (must stay upgrade-only)" || ok "install path never sets AI_STACK_UPGRADE (gate edits provably inert on 'install')"
 
 echo "== v3.4 (stateful guard): presave + rolling snapshot before new-image recreate =="
 _gf2="$(mktemp)"; sed -n '/^_stateful_preupgrade_guard() {/,/^}/p' "$UPG" > "$_gf2"

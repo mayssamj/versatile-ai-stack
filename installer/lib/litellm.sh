@@ -61,7 +61,7 @@ litellm_wait_ready() {
   # the key via curl --config (STDIN) below, never on the command line.
   local key; key="$(get_env LITELLM_MASTER_KEY)"
   if [[ -z "$key" ]]; then
-    err "LITELLM_MASTER_KEY is empty — run 'vz-ai-stack.sh install 00' (or 'setup') to generate it before starting LiteLLM"
+    err "LITELLM_MASTER_KEY is empty — run 'mayssam-ai-stack.sh install 00' (or 'setup') to generate it before starting LiteLLM"
     return 2
   fi
   # Capture-then-grep: curl streams the (large) /v1/models body, so a direct
@@ -130,7 +130,7 @@ litellm_diagnose() (
   if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
     warn "postgres    : :5432 reachable (server up)"
   else
-    warn "postgres    : :5432 NOT reachable — start Honcho: bash $AI_STACK/vz-ai-stack.sh install 03"
+    warn "postgres    : :5432 NOT reachable — start Honcho: bash $AI_STACK/mayssam-ai-stack.sh install 03"
   fi
   # Server-reachable != database-present. A MISSING 'litellm' DB (Honcho's pg only
   # creates 'postgres') makes Prisma block uvicorn startup → /v1/models times out.
@@ -156,7 +156,7 @@ litellm_diagnose() (
   # reaches the terminal/stderr — a tee'd install log would otherwise persist it.
   docker logs litellm --tail 20 2>&1 | sed -E 's/sk-[A-Za-z0-9_-]+/[REDACTED]/g; s/^/    /'
   warn "─────────────────────────────────────────────────────────────────"
-  warn "Most common fix: bash $AI_STACK/bin/start-litellm.sh --recreate   then re-run: bash $AI_STACK/vz-ai-stack.sh install 01"
+  warn "Most common fix: bash $AI_STACK/bin/start-litellm.sh --recreate   then re-run: bash $AI_STACK/mayssam-ai-stack.sh install 01"
   return 0
 )
 

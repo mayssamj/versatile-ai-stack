@@ -54,7 +54,7 @@ unsloth_studio_diagnose() {
 unsloth_studio_fix() {
   if [[ -z "$(_unsloth_resolve_cli)" ]]; then
     warn "unsloth CLI missing. Re-run phase 14 to install:"
-    warn "    bash $AI_STACK/vz-ai-stack.sh install 14"
+    warn "    bash $AI_STACK/mayssam-ai-stack.sh install 14"
     return 1
   fi
   if [[ -x "$AI_STACK/bin/start-unsloth.sh" ]]; then

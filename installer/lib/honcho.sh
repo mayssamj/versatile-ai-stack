@@ -135,7 +135,7 @@ honcho_ensure_embedding_env() {
     if ( cd "$hdir" && docker compose run --rm --no-deps -e EMBEDDING_VECTOR_DIMENSIONS="$dim" --entrypoint /app/.venv/bin/python api scripts/configure_embeddings.py --yes >/dev/null 2>&1 ); then
       ok "honcho pgvector schema reconciled $cur -> $dim."; reconciled=1; altered=1
     else
-      warn "configure_embeddings.py REFUSED to reconcile $cur -> $dim — honcho holds non-null embeddings at dim=$cur. Honcho is LEFT at its working dim=$cur (assignment '$mkey' NOT applied; doctor check 77 will flag it). To migrate: HONCHO_EMBED_FORCE_REINDEX=1 vz-ai-stack.sh install honcho_mcp (clears the regenerable derived embeddings)."
+      warn "configure_embeddings.py REFUSED to reconcile $cur -> $dim — honcho holds non-null embeddings at dim=$cur. Honcho is LEFT at its working dim=$cur (assignment '$mkey' NOT applied; doctor check 77 will flag it). To migrate: HONCHO_EMBED_FORCE_REINDEX=1 mayssam-ai-stack.sh install honcho_mcp (clears the regenerable derived embeddings)."
     fi
   fi
 

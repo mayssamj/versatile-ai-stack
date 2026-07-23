@@ -18,7 +18,7 @@
 #     local (+ *-sub fallbacks). Calls show up in Phoenix (ai-stack) for free.
 #   * Reversible: rm -rf metagpt/.venv + unstamp; workspace (sim output) is DATA.
 #
-# Standalone: bash vz-ai-stack.sh install 32   (alias: metagpt)
+# Standalone: bash mayssam-ai-stack.sh install 32   (alias: metagpt)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -79,7 +79,7 @@ worktree_guard "install metagpt"
 hdr "Phase 32 — MetaGPT (multi-agent software-company simulation)"
 
 # --- Preconditions ---
-command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/vz-ai-stack.sh install 14"; exit 1; }
+command -v uv >/dev/null 2>&1 || { err "uv not on PATH (Phase 14 installs it): bash $AI_STACK/mayssam-ai-stack.sh install 14"; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -94,7 +94,7 @@ if   curl -sf --max-time 4 "$MG_LLM_HOST/health/liveliness" >/dev/null 2>&1; the
 elif curl -sf --max-time 4 "$MG_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then MG_LLM_BASE="$MG_LLM_FALLBACK"
 elif litellm_master_curl -sf --max-time 4 "$MG_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then MG_LLM_BASE="$MG_LLM_FALLBACK"
 fi
-[[ -n "$MG_LLM_BASE" ]] || { err "LiteLLM not reachable at $MG_LLM_HOST or $MG_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+[[ -n "$MG_LLM_BASE" ]] || { err "LiteLLM not reachable at $MG_LLM_HOST or $MG_LLM_FALLBACK — run 'mayssam-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $MG_LLM_BASE"
 
 # --- 1. Venv (Python 3.11 — host 3.14 is too new for MetaGPT) + install ---
@@ -174,9 +174,9 @@ AI_STACK="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 # last-wins on duplicate .env keys (matches installer/lib/env.sh get_env semantics)
 _mg_get_env() { grep -E "^\$1=" "\$AI_STACK/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
 PY="\$AI_STACK/metagpt/.venv/bin/metagpt"
-[[ -x "\$PY" ]] || { echo "metagpt venv missing — run 'bash vz-ai-stack.sh install 32'" >&2; exit 1; }
+[[ -x "\$PY" ]] || { echo "metagpt venv missing — run 'bash mayssam-ai-stack.sh install 32'" >&2; exit 1; }
 _key="\$(_mg_get_env METAGPT_LITELLM_KEY)"
-[[ -n "\$_key" ]] || { echo "METAGPT_LITELLM_KEY absent from .env — run 'bash vz-ai-stack.sh install 32'" >&2; exit 1; }
+[[ -n "\$_key" ]] || { echo "METAGPT_LITELLM_KEY absent from .env — run 'bash mayssam-ai-stack.sh install 32'" >&2; exit 1; }
 _model="\${METAGPT_MODEL:-$MG_MODEL}"
 # config2.yaml: MetaGPT's LLM contract. Written fresh from .env (0600, in \$HOME).
 mkdir -p "\$HOME/.metagpt"
@@ -221,7 +221,7 @@ ok "scoped key reaches $MG_MODEL through LiteLLM (HTTP 200)"
 stamp_mark "$PHASE"
 record "phase 32 complete: MetaGPT venv (py3.11) + scoped key + bin/metagpt wrapper"
 ok "Phase 32 — MetaGPT — complete"
-note "Prove the wrapper: vz-ai-stack.sh test 32     # runs bin/metagpt end-to-end"
+note "Prove the wrapper: mayssam-ai-stack.sh test 32     # runs bin/metagpt end-to-end"
 note "Run a swarm:   bin/metagpt \"create a CLI 2048 game in python\"   # output → metagpt/workspace/"
 note "Watch it:      Phoenix → http://phoenix:6006 (project ai-stack) traces every agent's LLM call"
 note "Model:         default is claude-opus-sub-xhigh. Cheap on-box: METAGPT_MODEL=local bin/metagpt \"…\""

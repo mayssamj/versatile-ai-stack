@@ -18,7 +18,7 @@ HONCHO_DIR="$AI_STACK/honcho"
 }
 
 warn "Honcho's stack also hosts the Postgres LiteLLM depends on (virtual-key store)."
-warn "Stopping honcho takes LiteLLM's key store offline — restart with 'vz-ai-stack.sh start honcho'."
+warn "Stopping honcho takes LiteLLM's key store offline — restart with 'mayssam-ai-stack.sh start honcho'."
 
 cd "$HONCHO_DIR" || { err "cannot cd to $HONCHO_DIR"; exit 1; }
 # Include the override (ai-stack network wiring) so `down` matches `up`.

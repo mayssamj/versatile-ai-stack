@@ -12,7 +12,7 @@
 # reach SG through the landlock (not policy_denied) AND SG's MCP endpoint is alive
 # with a valid token. It NEVER uses `hermes mcp test` (verified buggy vs SG — its
 # probe sends a bad Accept and 400s); the real keyword_search E2E lives in the
-# smoke test (installer/smoke/27.sh → `vz-ai-stack.sh test sourcegraph`).
+# smoke test (installer/smoke/27.sh → `mayssam-ai-stack.sh test sourcegraph`).
 CHECKS+=(sourcegraph_mcp)
 CHECK_TITLE[sourcegraph_mcp]="Sourcegraph fleet MCP (opt-in): policy stanza + fleet wiring (skip-clean when SG absent)"
 
@@ -45,7 +45,7 @@ sourcegraph_mcp_diagnose() {
 
   # (2) Container installed-but-stopped → soft note, still pass (start it).
   if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx sourcegraph; then
-    echo "  (SG token present but container stopped — run: vz-ai-stack.sh start sourcegraph)"
+    echo "  (SG token present but container stopped — run: mayssam-ai-stack.sh start sourcegraph)"
   fi
 
   local osh; osh="$(_sg_mcp_resolve_openshell)"
@@ -63,7 +63,7 @@ sourcegraph_mcp_diagnose() {
       'f="$HOME/.hermes/profiles/hermes_manager/config.yaml"; [[ -f "$f" ]] && grep -q "sourcegraph:" "$f" && grep -q "host.docker.internal:7080" "$f" && echo WIRED || echo MISSING' \
       2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
     if [[ "$wired" != "WIRED" ]]; then
-      fails+=("  hermes_manager profile is NOT wired to Sourcegraph MCP (got '${wired:-no-response}') — run: vz-ai-stack.sh install 04f")
+      fails+=("  hermes_manager profile is NOT wired to Sourcegraph MCP (got '${wired:-no-response}') — run: mayssam-ai-stack.sh install 04f")
     fi
   else
     echo "  (no Hermes fleet sandbox Ready — nothing to wire yet)"
@@ -76,7 +76,7 @@ sourcegraph_mcp_diagnose() {
       body="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 15 </dev/null -- \
         curl -s --connect-timeout 3 --max-time 6 -w '\n__C_%{http_code}' http://host.docker.internal:7080/ 2>/dev/null || echo '__C_000')"
       if grep -q 'policy_denied' <<<"$body"; then
-        fails+=("  LIVE: sandbox→SG is policy_denied (sourcegraph_mcp not in the LIVE applied policy — re-run: vz-ai-stack.sh install 04, or install 27 re-applies it)")
+        fails+=("  LIVE: sandbox→SG is policy_denied (sourcegraph_mcp not in the LIVE applied policy — re-run: mayssam-ai-stack.sh install 04, or install 27 re-applies it)")
       fi
     fi
     # SG MCP liveness + token validity (host side; never prints the token).
@@ -99,10 +99,10 @@ sourcegraph_mcp_diagnose() {
 
 sourcegraph_mcp_fix() {
   warn "Sourcegraph fleet MCP not fully wired. To deploy + bootstrap + wire in one step:"
-  warn "    vz-ai-stack.sh install sourcegraph"
+  warn "    mayssam-ai-stack.sh install sourcegraph"
   warn "If SG is already up and only the fleet needs (re)wiring:"
-  warn "    vz-ai-stack.sh install 04f"
+  warn "    mayssam-ai-stack.sh install 04f"
   warn "If the LIVE policy lacks the stanza (sandbox→SG policy_denied), re-apply it:"
-  warn "    vz-ai-stack.sh install 04        # regenerates + applies the sourcegraph_mcp stanza"
+  warn "    mayssam-ai-stack.sh install 04        # regenerates + applies the sourcegraph_mcp stanza"
   return 1
 }

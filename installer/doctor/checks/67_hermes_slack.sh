@@ -41,7 +41,7 @@ hermes_slack_diagnose() {
   local state
   state="$("$osh" sandbox get hermes-fleet-v1 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*Phase:/ {print $2; exit}')"
   if [[ "$state" != "Ready" ]]; then
-    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'vz-ai-stack.sh install 04'"
+    echo "sandbox hermes-fleet-v1 not Ready (state='${state:-absent}') — run 'mayssam-ai-stack.sh install 04'"
     return 1
   fi
 
@@ -51,7 +51,7 @@ hermes_slack_diagnose() {
     bash -c 'grep -q "^SLACK_BOT_TOKEN=." "$HOME/.hermes/.env" 2>/dev/null && grep -q "^SLACK_APP_TOKEN=." "$HOME/.hermes/.env" 2>/dev/null && echo YES || echo NO' \
     2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
   if [[ "$has" == "NO" ]]; then
-    echo "gateway up but SLACK_BOT_TOKEN/SLACK_APP_TOKEN not both in sandbox ~/.hermes/.env — re-run 'vz-ai-stack.sh install 38'"
+    echo "gateway up but SLACK_BOT_TOKEN/SLACK_APP_TOKEN not both in sandbox ~/.hermes/.env — re-run 'mayssam-ai-stack.sh install 38'"
     return 1
   fi
 
@@ -63,7 +63,7 @@ hermes_slack_diagnose() {
       bash -c 'pid="$(cat /sandbox/.hermes-slack-role-router.pid 2>/dev/null || true)"; [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo YES || echo NO' \
       2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '[:space:]')"
     if [[ "$alive" != "YES" ]]; then
-      echo "Slack role router is not running — start: bash $AI_STACK/bin/start-hermes-slack.sh (or 'vz-ai-stack.sh install 38')"
+      echo "Slack role router is not running — start: bash $AI_STACK/bin/start-hermes-slack.sh (or 'mayssam-ai-stack.sh install 38')"
       return 1
     fi
     routerlog="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 20 -- bash -c 'tail -120 /sandbox/.hermes-slack-role-router.log 2>/dev/null' 2>&1 | LC_ALL=C sed $'s/\x1b\\[[0-9;]*m//g')"
@@ -114,7 +114,7 @@ PY
   local status
   status="$("$osh" sandbox exec -n hermes-fleet-v1 --no-tty --timeout 25 -- hermes gateway status 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g')"
   if ! grep -qi 'running' <<<"$status"; then
-    echo "gateway not running in sandbox — start: bash $AI_STACK/bin/start-hermes-slack.sh (or 'vz-ai-stack.sh install 38')"
+    echo "gateway not running in sandbox — start: bash $AI_STACK/bin/start-hermes-slack.sh (or 'mayssam-ai-stack.sh install 38')"
     return 1
   fi
 
@@ -127,7 +127,7 @@ PY
   # Fatal = the TOKEN itself is bad. A missing OAuth scope is NOT failed here (the bot
   # still works for DMs); the install/start path surfaces the needed scope as a warning.
   if grep -qiE 'invalid_auth|token_revoked|token_expired|account_inactive|not_allowed_token_type' <<<"$slacklog"; then
-    echo "gateway log shows a Slack token/auth error — a token may be revoked or malformed (re-run 'vz-ai-stack.sh install 38')"
+    echo "gateway log shows a Slack token/auth error — a token may be revoked or malformed (re-run 'mayssam-ai-stack.sh install 38')"
     return 1
   fi
   # Blocked egress = the landlock denied a SLACK host (scope to slack/wss).

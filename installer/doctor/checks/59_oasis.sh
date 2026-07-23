@@ -19,22 +19,22 @@ oasis_diagnose() {
   fi
 
   local venv="$AI_STACK/oasis/.venv"
-  [[ -x "$venv/bin/python" ]] || { echo "oasis venv missing ($venv) — re-run 'vz-ai-stack.sh install 34'"; return 1; }
-  "$venv/bin/python" -c "import oasis" >/dev/null 2>&1 || { echo "import oasis failed in the venv — re-run 'vz-ai-stack.sh install 34'"; return 1; }
-  [[ -x "$AI_STACK/bin/oasis" ]] || { echo "bin/oasis wrapper missing — re-run 'vz-ai-stack.sh install 34'"; return 1; }
+  [[ -x "$venv/bin/python" ]] || { echo "oasis venv missing ($venv) — re-run 'mayssam-ai-stack.sh install 34'"; return 1; }
+  "$venv/bin/python" -c "import oasis" >/dev/null 2>&1 || { echo "import oasis failed in the venv — re-run 'mayssam-ai-stack.sh install 34'"; return 1; }
+  [[ -x "$AI_STACK/bin/oasis" ]] || { echo "bin/oasis wrapper missing — re-run 'mayssam-ai-stack.sh install 34'"; return 1; }
 
   local key; key="$(get_env OASIS_LITELLM_KEY '')"
-  [[ -n "$key" ]] || { echo "OASIS_LITELLM_KEY missing from .env — re-run 'vz-ai-stack.sh install 34'"; return 1; }
+  [[ -n "$key" ]] || { echo "OASIS_LITELLM_KEY missing from .env — re-run 'mayssam-ai-stack.sh install 34'"; return 1; }
   local models
   models="$(litellm_scoped_curl "$key" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
   printf '%s' "$models" | grep -q '"id"' \
     || models="$(litellm_scoped_curl "$key" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
   if ! printf '%s' "$models" | grep -q '"id"'; then
     if declare -F litellm_db_down >/dev/null 2>&1 && litellm_db_down; then
-      echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'vz-ai-stack.sh doctor keystore'); do NOT re-mint"
+      echo "LiteLLM key-store DB is DOWN — heal it (see check 05a / 'mayssam-ai-stack.sh doctor keystore'); do NOT re-mint"
       return 1
     fi
-    echo "OASIS_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'vz-ai-stack.sh install 34'"
+    echo "OASIS_LITELLM_KEY rejected by LiteLLM (no models) — re-mint via 'mayssam-ai-stack.sh install 34'"
     return 1
   fi
   # Allow-list drift assertion (shared helper — see _doctor_assert_key_allowlist in
@@ -43,10 +43,10 @@ oasis_diagnose() {
   # local). Non-fatal on yq-absent / wildcard / empty / unparseable / LiteLLM-down;
   # FAILs (with its own message) only on a genuine stale-key miss.
   _doctor_assert_key_allowlist "$key" OASIS_LITELLM_KEY oasis "the model OASIS calls" 34 || return 1
-  echo "OASIS ready (venv + import + scoped key lists models); prove the swarm: vz-ai-stack.sh test 34"
+  echo "OASIS ready (venv + import + scoped key lists models); prove the swarm: mayssam-ai-stack.sh test 34"
   return 0
 }
 
 oasis_fix() {
-  echo "vz-ai-stack.sh install 34   # rebuild venv + re-mint scoped key + refresh bin/oasis"
+  echo "mayssam-ai-stack.sh install 34   # rebuild venv + re-mint scoped key + refresh bin/oasis"
 }

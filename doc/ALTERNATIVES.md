@@ -503,7 +503,7 @@ When evaluating any swap, ask the same four questions:
    freely. OTel traces swap freely. Bespoke protocols (LangChain Tools
    vs MCP) do not.
 4. **What does it cost in operator effort?** This stack is one
-   `bash vz-ai-stack.sh` away from working. A tool that needs a Kubernetes
+   `bash mayssam-ai-stack.sh` away from working. A tool that needs a Kubernetes
    cluster or its own DBA is not a peer alternative for a personal
    laptop stack.
 

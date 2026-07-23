@@ -39,13 +39,13 @@ hdr "Smoke 36 — AI Town (Convex compose stack → LiteLLM)"
 
 # 0. installed?
 [[ -f "$AT_DIR/docker-compose.yml" && -f "$AT_DIR/docker-compose.override.yml" ]] \
-  || { err "AI Town not installed (missing $AT_DIR/docker-compose*.yml) — run: vz-ai-stack.sh install 36"; exit 1; }
+  || { err "AI Town not installed (missing $AT_DIR/docker-compose*.yml) — run: mayssam-ai-stack.sh install 36"; exit 1; }
 docker info >/dev/null 2>&1 || { err "docker daemon not reachable"; exit 1; }
 
 # 1. compose stack up (≥3 running)
 _running="$( (cd "$AT_DIR" && docker compose -p "$AT_PROJECT" ps --status running -q 2>/dev/null | grep -c .) || true)"
 [[ "${_running:-0}" -ge 3 ]] && ok "compose stack up ($_running/3 members running, project $AT_PROJECT)" \
-  || { err "compose stack not fully up (only ${_running:-0}/3) — 'vz-ai-stack.sh start aitown'"; exit 1; }
+  || { err "compose stack not fully up (only ${_running:-0}/3) — 'mayssam-ai-stack.sh start aitown'"; exit 1; }
 
 # 2. frontend serves 200 (loopback alias)
 code="$(curl -sL -o /dev/null -w '%{http_code}' --max-time 8 "http://$AT_IP:$AT_FE_PORT/" 2>/dev/null || true)"
@@ -57,7 +57,7 @@ KEY="$(get_env AITOWN_LITELLM_KEY '')"
 [[ -n "$KEY" ]] || { err "AITOWN_LITELLM_KEY absent from .env"; exit 1; }
 printf '%s' "$(litellm_scoped_curl "$KEY" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null)" | grep -q '"id"' \
   && ok "scoped key lists models via LiteLLM" \
-  || { err "AITOWN_LITELLM_KEY lists no models (stale/rejected) — re-mint: vz-ai-stack.sh install 36"; exit 1; }
+  || { err "AITOWN_LITELLM_KEY lists no models (stale/rejected) — re-mint: mayssam-ai-stack.sh install 36"; exit 1; }
 
 # Resolve the bound model (models.yml override → default).
 AT_MODEL="$AT_MODEL_DEFAULT"
@@ -85,7 +85,7 @@ if [[ "$_be_env" == "$AT_CONVEX_LLM_URL" ]]; then
 else
   _admin="$(get_env AITOWN_ADMIN_KEY '')"
   [[ -n "$_admin" ]] || { err "AITOWN_ADMIN_KEY absent from .env — cannot run the authoritative 'convex env get' wiring check. Re-run 'install 36' (step 7 mints + persists it)."; exit 1; }
-  command -v npx >/dev/null 2>&1 || { err "npx not on PATH — cannot run 'convex env get' to PROVE the town is wired. node@22 is a core dep: 'vz-ai-stack.sh deps'."; exit 1; }
+  command -v npx >/dev/null 2>&1 || { err "npx not on PATH — cannot run 'convex env get' to PROVE the town is wired. node@22 is a core dep: 'mayssam-ai-stack.sh deps'."; exit 1; }
   _cvx_get="$( (cd "$AT_DIR" && env CONVEX_SELF_HOSTED_URL="$AT_CONVEX_URL" CONVEX_SELF_HOSTED_ADMIN_KEY="$_admin" npx --yes convex env get LLM_API_URL 2>/dev/null) | tr -d '\r' || true )"  # || true: a CLI error yields the clean err below, not a cryptic set -e trap
   [[ "$_cvx_get" == "$AT_CONVEX_LLM_URL" ]] \
     && ok "Convex env LLM_API_URL=$AT_CONVEX_LLM_URL (via convex env get) — town is wired" \

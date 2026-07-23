@@ -42,7 +42,7 @@
 # NUM_MEMORIES_TO_SEARCH=1 (convex/constants.ts, default 3) and the town runs a small
 # cast on local. Route to a cloud model (metered) for a bigger/livelier town.
 #
-# Standalone: bash vz-ai-stack.sh install 36   (alias: aitown)
+# Standalone: bash mayssam-ai-stack.sh install 36   (alias: aitown)
 set -Eeuo pipefail
 AI_STACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$AI_STACK/installer/lib/common.sh"
@@ -124,14 +124,14 @@ hdr "Phase 36 — AI Town (watchable virtual-town agent sim; Convex compose stac
 # --- Preconditions -----------------------------------------------------------
 command -v docker >/dev/null 2>&1 || { err "docker not on PATH — install OrbStack/Docker (see doc/PREREQUISITES.md)"; exit 1; }
 docker info >/dev/null 2>&1        || { err "docker daemon not reachable — start your engine (OrbStack), then re-run"; exit 1; }
-command -v git >/dev/null 2>&1     || { err "git not on PATH (deps.sh tier-1): bash $AI_STACK/vz-ai-stack.sh deps"; exit 1; }
+command -v git >/dev/null 2>&1     || { err "git not on PATH (deps.sh tier-1): bash $AI_STACK/mayssam-ai-stack.sh deps"; exit 1; }
 # convex CLI runs on the HOST via npx (node@22 is a deps.sh tier-1 core formula; npm/npx
 # are relinked onto PATH). The schema push + `convex env set` happen host-side.
-command -v npx >/dev/null 2>&1     || { err "npx not on PATH — node@22 is a core dep: bash $AI_STACK/vz-ai-stack.sh deps"; exit 1; }
+command -v npx >/dev/null 2>&1     || { err "npx not on PATH — node@22 is a core dep: bash $AI_STACK/mayssam-ai-stack.sh deps"; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
-network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash $AI_STACK/vz-ai-stack.sh install 00n"; exit 1; }
+network_ensure_ai_stack || { err "ai-stack docker network missing. Run: bash $AI_STACK/mayssam-ai-stack.sh install 00n"; exit 1; }
 
 # Reachability: resolve the LiteLLM base URL ONCE — prefer the container alias
 # (litellm:4000, present after Phase 00n) but fall back to 127.0.0.1:4000 (always
@@ -142,7 +142,7 @@ if   curl -sf --max-time 4 "$AT_LLM_HOST/health/liveliness" >/dev/null 2>&1; the
 elif curl -sf --max-time 4 "$AT_LLM_FALLBACK/health/liveliness" >/dev/null 2>&1; then AT_LLM_BASE="$AT_LLM_FALLBACK"
 elif litellm_master_curl -sf --max-time 4 "$AT_LLM_FALLBACK/v1/models" >/dev/null 2>&1; then AT_LLM_BASE="$AT_LLM_FALLBACK"
 fi
-[[ -n "$AT_LLM_BASE" ]] || { err "LiteLLM not reachable at $AT_LLM_HOST or $AT_LLM_FALLBACK — run 'vz-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
+[[ -n "$AT_LLM_BASE" ]] || { err "LiteLLM not reachable at $AT_LLM_HOST or $AT_LLM_FALLBACK — run 'mayssam-ai-stack.sh start litellm' (from MAIN)."; exit 1; }
 ok "LiteLLM reachable at $AT_LLM_BASE"
 
 # host.docker.internal must resolve from inside containers — AI Town's Convex backend
@@ -387,7 +387,7 @@ ok "no 0.0.0.0 port binds in the merged config (loopback-only publish on $AT_IP 
 # The start script owns: compose up --build, loopback publish, the post-up caps
 # enforce/verify pass, and the health-poll. Running it here keeps a single funnel
 # (so `start aitown` and `install 36` do the IDENTICAL thing).
-warn "First build is HEAVY: the frontend image is Ubuntu 22.04 + Node 18 + a full npm build (several minutes, ~2-4GB RAM). On a RAM-saturated box, free memory first (close Chrome; 'vz-ai-stack.sh stop' idle services)."
+warn "First build is HEAVY: the frontend image is Ubuntu 22.04 + Node 18 + a full npm build (several minutes, ~2-4GB RAM). On a RAM-saturated box, free memory first (close Chrome; 'mayssam-ai-stack.sh stop' idle services)."
 bash "$AI_STACK/bin/start-aitown.sh" install || { err "bin/start-aitown.sh install failed — see its output (and 'docker compose -p $AT_PROJECT logs')"; exit 1; }
 
 # --- 7. Generate the Convex admin key (against the now-running backend) -------
@@ -572,7 +572,7 @@ note "Watch the town: open http://aitown:$AT_FE_HOST_PORT/   (or http://$AT_IP:$
 note "Convex dashboard (admin): http://$AT_IP:$AT_DASH_PORT/   (loopback-only)"
 note "Trace every character's LLM call: Phoenix → http://phoenix:6006 (project ai-stack)"
 note "Model: default is claude-opus-sub-xhigh. Cheap on-box: (cd $AT_DIR && npx convex env set LLM_MODEL local) then restart"
-note "Manage:    vz-ai-stack.sh start aitown | stop aitown | status | doctor aitown | test 36"
+note "Manage:    mayssam-ai-stack.sh start aitown | stop aitown | status | doctor aitown | test 36"
 note "Data:      the town world is SQLite at $AT_DATA/convex (bind-mount; survives 'down')"
 note "Teardown:  bash $AI_STACK/bin/start-aitown.sh uninstall          # 'down' — PRESERVES the world"
 note "Wipe ALL:  bash $AI_STACK/bin/start-aitown.sh uninstall --nuke   # 'down -v' + rm data (backup-first; invalidates the admin key)"

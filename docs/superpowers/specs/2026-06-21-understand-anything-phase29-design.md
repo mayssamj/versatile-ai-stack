@@ -60,7 +60,7 @@ Hermes as well."* (Hermes = the containerized agent fleet.)
    **deferred** (documented follow-up, surfaced to the user in plain language in `doc/UNDERSTAND.md`).
 3. **Hermes transport:** **HTTP MCP server on the host**, wired per Hermes profile via `lib/mcp.sh`
    (sourcegraph pattern) — gated, non-fatal, stable token, short connect-timeout.
-4. **Launcher:** both — a `vz-ai-stack.sh understand-dashboard` wrapper (runs `vite preview`,
+4. **Launcher:** both — a `mayssam-ai-stack.sh understand-dashboard` wrapper (runs `vite preview`,
    health-gated, auto-open) **and** documented native `/understand…` commands. Built **last** (human-only
    value).
 
@@ -147,7 +147,7 @@ A small Node package wrapping `@understand-anything/core`, with **two explicit e
    understand-anything`; un-wire profiles; `rm -rf understand-mcp/node_modules vendor/understand-mcp`.
 
 ### 4.3 Launcher, doctor, smoke
-- **Launcher** `vz-ai-stack.sh understand-dashboard [path]` — runs `vite preview` from the plugin root with
+- **Launcher** `mayssam-ai-stack.sh understand-dashboard [path]` — runs `vite preview` from the plugin root with
   `GRAPH_DIR=<repo>` on a **registered** loopback port (see §5), health-gated, auto-open (gated), honest
   non-daemon messaging; `stop` tears it down. (Not "any static server" — the API endpoints are Vite
   middleware.)
@@ -157,7 +157,7 @@ A small Node package wrapping `@understand-anything/core`, with **two explicit e
   (c) installed + graph present → **true E2E**: invoke `project_summary` (or `graph_search`) via the stdio
   entrypoint, assert a known field in stdout; FAIL only on a real query failure. Also surface staleness as
   a WARN (graph SHA vs HEAD). Never emit PASS without a real tool call (no `pgrep`/`curl /health` green).
-- **Smoke** `installer/smoke/29.sh` + `vz-ai-stack.sh test understand` — the credibility artifact (mirrors
+- **Smoke** `installer/smoke/29.sh` + `mayssam-ai-stack.sh test understand` — the credibility artifact (mirrors
   `smoke/27.sh`): run a real `graph_search`/`read_node_source` **from inside a Hermes profile** against the
   committed ai-stack graph over HTTP MCP and assert a recognizable ai-stack node (e.g. a LiteLLM node).
   This is what proves "usable in Hermes" rather than "wired, trust me."
@@ -197,7 +197,7 @@ A small Node package wrapping `@understand-anything/core`, with **two explicit e
    - Claude Code (stdio): `graph_search("litellm")` → a real ai-stack node.
    - Hermes profile (HTTP): the `smoke/29.sh` query returning the same.
    - `read_node_source` on a node → the actual snippet.
-4. `vz-ai-stack.sh understand-dashboard` → browser graph of ai-stack.
+4. `mayssam-ai-stack.sh understand-dashboard` → browser graph of ai-stack.
    `doc/UNDERSTAND.md` uses ai-stack itself as the worked example, including a copy-pasteable Hermes
    transcript.
 
@@ -230,7 +230,7 @@ A small Node package wrapping `@understand-anything/core`, with **two explicit e
 - Phase 29 installs idempotently from clean; re-run is a no-op; rollback documented and works.
 - `understand-mcp` answers a query from **both** stdio (Claude Code) **and** HTTP (a Hermes profile) —
   verified live; `read_node_source` returns real source to a fleet agent.
-- `smoke/29.sh` (Hermes E2E) and `vz-ai-stack.sh test understand` pass live; the transcript is in
+- `smoke/29.sh` (Hermes E2E) and `mayssam-ai-stack.sh test understand` pass live; the transcript is in
   `doc/UNDERSTAND.md`.
 - Doctor check 51 is 3-state, true E2E, WARNs on absent/stale, never false-green; live `doctor` green from
   **main**.

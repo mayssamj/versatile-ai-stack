@@ -46,7 +46,7 @@ if [[ -n "$ws_container" ]]; then
     if [[ "${sess_code:-000}" == "200" ]] && printf '%s' "$sess_body" | grep -q '"sessions"'; then
       ok "Hermes Workspace /api/sessions returns 200 with a sessions list (dashboard path live)"
     else
-      warn "Hermes Workspace /api/sessions returned HTTP ${sess_code:-000} without a sessions list — the sidebar will show 'failed to load sessions'. Expect HERMES_DASHBOARD_HOST=127.0.0.1 + network_mode:service:hermes-agent (v0.18.0 loopback+netns) in hermes-workspace/docker-compose.override.yml; re-run 'vz-ai-stack.sh install 05'."
+      warn "Hermes Workspace /api/sessions returned HTTP ${sess_code:-000} without a sessions list — the sidebar will show 'failed to load sessions'. Expect HERMES_DASHBOARD_HOST=127.0.0.1 + network_mode:service:hermes-agent (v0.18.0 loopback+netns) in hermes-workspace/docker-compose.override.yml; re-run 'mayssam-ai-stack.sh install 05'."
     fi
     # No-:latest pin guard (the root cause was two :latest images drifting out of
     # contract: agent {data} vs workspace {items}). Assert the EFFECTIVE compose
@@ -59,14 +59,14 @@ if [[ -n "$ws_container" ]]; then
       if printf '%s' "$eff" | grep -qE 'nousresearch/hermes-agent.*@sha256:'; then
         ok "hermes-agent image is digest-pinned (no :latest drift)"
       else
-        warn "hermes-agent is NOT digest-pinned in the effective compose config (:latest drift risk) — re-run 'vz-ai-stack.sh install 05'"
+        warn "hermes-agent is NOT digest-pinned in the effective compose config (:latest drift risk) — re-run 'mayssam-ai-stack.sh install 05'"
       fi
       if printf '%s' "$eff" | grep -q 'hermes-workspace:aistack-hardened'; then
         ok "hermes-workspace runs the hardened image (gateway sessions .map guard)"
       elif printf '%s' "$eff" | grep -qE 'hermes-workspace@sha256:'; then
-        warn "hermes-workspace is on the pinned base WITHOUT the hardening (a dashboard outage will 500 the sidebar) — re-run 'vz-ai-stack.sh install 05' to rebuild the hardened image"
+        warn "hermes-workspace is on the pinned base WITHOUT the hardening (a dashboard outage will 500 the sidebar) — re-run 'mayssam-ai-stack.sh install 05' to rebuild the hardened image"
       else
-        warn "hermes-workspace image is not pinned (:latest drift risk) — re-run 'vz-ai-stack.sh install 05'"
+        warn "hermes-workspace image is not pinned (:latest drift risk) — re-run 'mayssam-ai-stack.sh install 05'"
       fi
     fi
   else

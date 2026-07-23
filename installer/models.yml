@@ -1,8 +1,8 @@
 # /Users/mayssam.sayyadian/ai-stack/installer/models.yml
 # CANONICAL single source of truth for model<->agent binding.
-# Inspect:  vz-ai-stack.sh model list
-# Re-render every agent + the LiteLLM model_list (idempotent):  vz-ai-stack.sh model sync
-# Re-point one agent:  vz-ai-stack.sh model assign <agent> <model>
+# Inspect:  mayssam-ai-stack.sh model list
+# Re-render every agent + the LiteLLM model_list (idempotent):  mayssam-ai-stack.sh model sync
+# Re-point one agent:  mayssam-ai-stack.sh model assign <agent> <model>
 #
 # NAMING CONVENTION (2026-06-23): the model ALIAS is VERSION-LESS; the provider
 # version lives only in the `served`/wire id, so you can bump the underlying model
@@ -51,7 +51,7 @@ models:
   claude-sonnet-sub-high: {runtime: meridian, served: claude-sonnet-4-6, effort: high, big: false, note: "Claude subscription (Sonnet 4.6), high effort."}
   claude-sonnet-sub-max: {runtime: meridian, served: claude-sonnet-4-6, effort: max, big: false, note: "Claude subscription (Sonnet 4.6), max effort."}
   claude-sonnet-sub-ultracode: {runtime: meridian, served: claude-sonnet-4-6, effort: ultracode, big: false, note: "Claude subscription (Sonnet 4.6), ultracode effort (coding-focused, highest tier)."}
-  # OpenAI GPT-5.x — ASSIGNABLE (`vz-ai-stack.sh model assign <agent> <name>`). Two
+  # OpenAI GPT-5.x — ASSIGNABLE (`mayssam-ai-stack.sh model assign <agent> <name>`). Two
   # routes to the same models: runtime `openai` = your metered OPENAI_API_KEY;
   # runtime `codex-bridge` = your ChatGPT SUBSCRIPTION via the codex-bridge daemon
   # (bin/start-codex-bridge.sh, no metered cost). `effort` (optional) maps to OpenAI's
@@ -78,7 +78,7 @@ models:
   sakana-fugu: {runtime: openai-compat, served: fugu, api_base: 'https://api.sakana.ai/v1', key_env: SAKANA_API_KEY, rpm: 10, big: false, note: "Sakana Fugu — balanced latency. METERED (sub or Ultra PAYG)."}
   sakana-fugu-ultra: {runtime: openai-compat, served: fugu-ultra, api_base: 'https://api.sakana.ai/v1', key_env: SAKANA_API_KEY, rpm: 6, big: false, note: "Sakana Fugu Ultra — max accuracy (more agents, slower, ~1M ctx). METERED."}
 # EMBEDDING models (separate plane from the chat `models:` above — different
-# registry, validated + assigned via `vz-ai-stack.sh embedding`). `dim` is the
+# registry, validated + assigned via `mayssam-ai-stack.sh embedding`). `dim` is the
 # vector size the model emits; `kind` is text|code (a code-tuned embedder degrades
 # general prose and vice-versa). `via` is the call path: litellm (an embedding
 # route in litellm/config.yaml — `route:` names it), ollama (direct pull), or
@@ -113,7 +113,7 @@ embeddings:
 # Per-service embedder assignments. Read at install time by each owning phase
 # (06_documents / 16_lumen / 26_mempalace / bin/start-openwebui) with the phase's
 # current hardcoded value as the fallback, so a missing section never breaks a
-# phase. Re-point with `vz-ai-stack.sh embedding assign <service> <model>`.
+# phase. Re-point with `mayssam-ai-stack.sh embedding assign <service> <model>`.
 # CANONICAL TEXT-EMBEDDING DIM = 768 (operator default; §24 council 2026-07-15). Cross-queryable
 # text consumers TARGET a 768-dim embedder so cloud<->local is swap-safe at the SCHEMA level (no
 # destructive rebuild — only a re-index on a model-FAMILY change, because same dim != same vector

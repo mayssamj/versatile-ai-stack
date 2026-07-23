@@ -4,7 +4,7 @@ Source: 3-agent design council (lifecycle architect · UX-contract lead · adver
 
 ## Goal
 
-One predictable way to run **any** service. `vz-ai-stack.sh start <svc>` (and its alias `run <svc>`)
+One predictable way to run **any** service. `mayssam-ai-stack.sh start <svc>` (and its alias `run <svc>`)
 works for every service, tells the user exactly how to reach it, and **opens the browser for UI
 services**. No per-service custom incantations (`LMS_AUTOSTART`, `lms server start`, `install` used as
 "run", `bash bin/start-*.sh`). Plus a full documentation sweep, including retiring the deprecated
@@ -19,7 +19,7 @@ services**. No per-service custom incantations (`LMS_AUTOSTART`, `lms server sta
 | `stop <svc>` / `disable <svc>` | Bring it down now; idempotent. |
 | `status [<svc>]` | The map: every service's up/down + URL + the one command to flip it. |
 
-## `cmd_start` — the single funnel (vz-ai-stack.sh)
+## `cmd_start` — the single funnel (mayssam-ai-stack.sh)
 
 1. **Drop `exec`** (`exec bash "$script"` → `bash "$script"`) so post-start actions run. Preserve exit code. **Regression-test all 17 existing `bin/start-*.sh`.**
 2. Add `run|enable` (already) + **`run`** to `is_subcommand`, the dispatch `case`, and the reverse-form `case`.
@@ -28,7 +28,7 @@ services**. No per-service custom incantations (`LMS_AUTOSTART`, `lms server sta
    - brew service (ollama/openshell) → `brew services start` (existing) + existing warnings.
    - **non-daemon** (`cli-only`, `clone-only`, `pip-package`, `npm-global`, `agent-pattern`, `litellm-feature`, `litellm-virtual-key`, `paperclip-plugin`, `hermes-profiles`, sandbox `openshell`/`sandbox-daemon` agents) → print an **honest categorical message** + the correct invocation (from `services.yml` `help.usage`), exit 0. **Never** the misleading "no start script" error.
    - unknown/no script + not brew + not a known non-daemon type → the existing error.
-4. **Uniform report helper** `_report_started <svc>`: prints `URL: <url>` (or `Endpoint:` for non-UI) + `Stop: vz-ai-stack.sh stop <svc>`, computed from `services.yml` (`open_url`/`alias`/`host_port`). cmd_start calls it after a successful start (scripts keep their own logs; the authoritative reach line comes from here).
+4. **Uniform report helper** `_report_started <svc>`: prints `URL: <url>` (or `Endpoint:` for non-UI) + `Stop: mayssam-ai-stack.sh stop <svc>`, computed from `services.yml` (`open_url`/`alias`/`host_port`). cmd_start calls it after a successful start (scripts keep their own logs; the authoritative reach line comes from here).
 5. **Browser-open** `_browser_open <url>`: best-effort, **gated** — only when `open_url` set AND fresh start (not idempotent) AND macOS `open` / Linux `xdg-open` present AND interactive TTY AND not `NO_BROWSER`/CI. Always **print the URL** even when it can't open ("no browser opened — headless; open it yourself: <url>"). Flags: `--no-open`, `--open`.
 
 ## Browser URL source
@@ -39,7 +39,7 @@ New **optional `open_url:`** field in `services.yml` per UI service (explicit = 
 
 `start <svc>` checks setup prerequisites (enumerated: claw3d → `claw3d/node_modules`; lmstudio → `/Applications/LM Studio.app`). If missing:
 - **Interactive TTY** → prompt: `"<svc> isn't set up yet — set it up now? (e.g. clone+npm, ~2 min) [y/N]"`. On `y` → run the install phase, then continue to start+open. On `n`/timeout → exit with the exact command.
-- **Non-interactive / CI / NO_PROMPT** → do **not** auto-install; print `"<svc> isn't set up — run: vz-ai-stack.sh install <svc>"` and exit non-zero.
+- **Non-interactive / CI / NO_PROMPT** → do **not** auto-install; print `"<svc> isn't set up — run: mayssam-ai-stack.sh install <svc>"` and exit non-zero.
 - Enumerated only (claw3d, lmstudio) — never a generic "install anything on start" hook.
 
 ## claw3d (user decision: stays in `install all`)
@@ -52,7 +52,7 @@ New **optional `open_url:`** field in `services.yml` per UI service (explicit = 
 
 - New **`bin/start-lmstudio.sh`** — guard-gated, server-only: `uname Darwin` → `/Applications/LM Studio.app` present → `lms` CLI bootstrapped → idempotent (`lms_server_up` ⇒ exit 0) → `lms server start -p 1234 --bind 0.0.0.0` → wait ready. Prints the CPU-idle-spin warning + "no model auto-loads; assign one + `model sync`". On non-mac / app-missing → clear refusal with the right command (not "no start script").
 - `start lmstudio` routes to it.
-- Phase 25 (install) keeps config/model wiring (assignment-driven, `LMS_LOAD_LFM2` opt-in); **`LMS_AUTOSTART`-as-run-path is removed** — its "server down" note now points to `vz-ai-stack.sh start lmstudio`.
+- Phase 25 (install) keeps config/model wiring (assignment-driven, `LMS_LOAD_LFM2` opt-in); **`LMS_AUTOSTART`-as-run-path is removed** — its "server down" note now points to `mayssam-ai-stack.sh start lmstudio`.
 
 ## Documentation sweep (all levels, must be consistent)
 

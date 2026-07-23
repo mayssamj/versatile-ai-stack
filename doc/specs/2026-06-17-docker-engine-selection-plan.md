@@ -4,7 +4,7 @@
 
 **Goal:** Make Docker-engine choice (OrbStack | Docker Desktop | Colima | Podman) explicit and intentional at install time, derive one `DOCKER_HOST` for the *entire* stack (main containers AND the OpenShell gateway) from a single `.env` key `AI_STACK_DOCKER_ENGINE`, and add doctor checks that detect/fix engine mismatch, split-brain, and missing selection — never auto-destroying data.
 
-**Architecture:** A new data-driven registry module `installer/lib/docker-engine.sh` is the single source of truth for per-engine probes/sockets/add-host flags and the selection/pin/ensure functions. The selected engine is persisted to `.env`, exported as `DOCKER_HOST` centrally (right after `env.sh` loads) AND re-exported at `docker.sh` source-time (so standalone `bin/start-*.sh` runs inherit it without process-inheritance), and written into `~/.config/openshell/gateway.env`. The OpenShell durability bin scripts (checkpoint/watchdog/state-restore/token-refresh) are made engine-aware so they never operate on a different engine than the gateway. Wiring changes touch `common.sh`, `env.sh`/`docker.sh` (source-time export), `deps.sh`, `docker.sh`, `00_host.sh` preflight, `04_openshell.sh`, the openshell-* bin scripts, `vz-ai-stack.sh` (global `--engine` plumbing + new `docker-engine` subcommand). Doctor gains checks **47/48** and expands 01 + makes 02 engine-aware.
+**Architecture:** A new data-driven registry module `installer/lib/docker-engine.sh` is the single source of truth for per-engine probes/sockets/add-host flags and the selection/pin/ensure functions. The selected engine is persisted to `.env`, exported as `DOCKER_HOST` centrally (right after `env.sh` loads) AND re-exported at `docker.sh` source-time (so standalone `bin/start-*.sh` runs inherit it without process-inheritance), and written into `~/.config/openshell/gateway.env`. The OpenShell durability bin scripts (checkpoint/watchdog/state-restore/token-refresh) are made engine-aware so they never operate on a different engine than the gateway. Wiring changes touch `common.sh`, `env.sh`/`docker.sh` (source-time export), `deps.sh`, `docker.sh`, `00_host.sh` preflight, `04_openshell.sh`, the openshell-* bin scripts, `mayssam-ai-stack.sh` (global `--engine` plumbing + new `docker-engine` subcommand). Doctor gains checks **47/48** and expands 01 + makes 02 engine-aware.
 
 > **DOCTOR-COUNT BASELINE (re-baselined, see Task 0):** the live tree ALREADY has **46** check files (`ls installer/doctor/checks/*.sh | wc -l == 46`; highest is `46_agent_fleet_parity.sh`, added after the spec/memory were written — README already reads `doctor-46%2F46` / "46 checks"; `project_doctor_count.md` still says 45 and is STALE). The two new checks are therefore **`47_docker_engine_consistency.sh`** and **`48_docker_engine_selection.sh`** (NOT 46/47 — 46 is taken). Final count = **48**. Every count edit below is **46→48** (badge `46%2F46`→`48%2F48`). Task 0 re-derives the count from the live tree before any file is created.
 
@@ -36,7 +36,7 @@
 | `engine_pin <id>` | `set_env AI_STACK_DOCKER_ENGINE`, `export DOCKER_HOST=$(engine_socket id)`, rewrite gateway.env, offer `docker context use`. |
 | check files | `47_docker_engine_consistency.sh`, `48_docker_engine_selection.sh` (check names `docker_engine_consistency`, `docker_engine_selection`). 46 is the EXISTING `46_agent_fleet_parity.sh` — do NOT collide with it. |
 | `engine_write_gateway_env <id> [gw_file]` | the single gateway.env author (heredoc + idempotent grep-guard + chmod 600); returns 0 if changed, 1 if unchanged. Called by BOTH `engine_pin` and Phase 04 — no duplicated writer. |
-| `AI_STACK_ENGINE_FLAG` | env var the CLI arg-parser sets from a global `--engine <id>` argv. The ONLY translation site is the top-level parser in `vz-ai-stack.sh` (Task 11a), so `install`/`deps`/phase-04 all honor `--engine` through the single `engine_select` path. |
+| `AI_STACK_ENGINE_FLAG` | env var the CLI arg-parser sets from a global `--engine <id>` argv. The ONLY translation site is the top-level parser in `mayssam-ai-stack.sh` (Task 11a), so `install`/`deps`/phase-04 all honor `--engine` through the single `engine_select` path. |
 
 ---
 
@@ -45,10 +45,10 @@
 | File | Create/Modify | Single responsibility |
 |---|---|---|
 | `installer/lib/docker-engine.sh` | **Create** | Engine registry table + all `engine_*` functions (the single source of truth). |
-| `installer/smoke/engine.sh` | **Create** | Unit tests for the registry: socket-format, addhost gating, `engine_select` precedence (incl the running-singleton rung via a stub), NO_PROMPT priority, unknown-id rejection, failure paths, the openshell-bin engine-awareness, and the start-script add-host. Run with `bash installer/smoke/engine.sh` (matches `00n.sh`/`01.sh` idiom). NOTE: do NOT use `vz-ai-stack.sh test engine` — `cmd_test` only resolves PHASE names; there is no `engine` phase. |
+| `installer/smoke/engine.sh` | **Create** | Unit tests for the registry: socket-format, addhost gating, `engine_select` precedence (incl the running-singleton rung via a stub), NO_PROMPT priority, unknown-id rejection, failure paths, the openshell-bin engine-awareness, and the start-script add-host. Run with `bash installer/smoke/engine.sh` (matches `00n.sh`/`01.sh` idiom). NOTE: do NOT use `mayssam-ai-stack.sh test engine` — `cmd_test` only resolves PHASE names; there is no `engine` phase. |
 | `installer/lib/common.sh` | **Modify** (line 58) | Fix `ENV_FILE` to honor an override (`${ENV_FILE:-…}`) so throwaway-ENV_FILE tests work and never touch the real `.env`. |
-| `installer/lib/env.sh` OR `installer/lib/docker.sh` | **Modify** (source-time export block) | Re-export `DOCKER_HOST` from `AI_STACK_DOCKER_ENGINE` at `docker.sh` source-time so standalone `bin/start-*.sh` (which source `docker.sh` but NOT `vz-ai-stack.sh`) inherit the right socket without relying on process-inheritance. (Task 8b.) |
-| `vz-ai-stack.sh` | **Modify** (101→add export; 105 global `--engine` arg-parse → `AI_STACK_ENGINE_FLAG`; 246-248 allowlist; 581-583 handler; 1037-1040 dispatch; 170-183 usage heredoc) | Source `docker-engine.sh` + central `DOCKER_HOST` export after `env.sh`; translate a global `--engine <id>` argv into `AI_STACK_ENGINE_FLAG`; register `docker-engine` subcommand; usage prose. |
+| `installer/lib/env.sh` OR `installer/lib/docker.sh` | **Modify** (source-time export block) | Re-export `DOCKER_HOST` from `AI_STACK_DOCKER_ENGINE` at `docker.sh` source-time so standalone `bin/start-*.sh` (which source `docker.sh` but NOT `mayssam-ai-stack.sh`) inherit the right socket without relying on process-inheritance. (Task 8b.) |
+| `mayssam-ai-stack.sh` | **Modify** (101→add export; 105 global `--engine` arg-parse → `AI_STACK_ENGINE_FLAG`; 246-248 allowlist; 581-583 handler; 1037-1040 dispatch; 170-183 usage heredoc) | Source `docker-engine.sh` + central `DOCKER_HOST` export after `env.sh`; translate a global `--engine <id>` argv into `AI_STACK_ENGINE_FLAG`; register `docker-engine` subcommand; usage prose. |
 | `installer/lib/deps.sh` | **Modify** (162-177) | `ensure_orbstack` becomes a thin alias over `engine_ensure "$(engine_select)"`; `deps_report` prints selected engine + socket triple-equality (with a UNIQUE sentinel label so the test is non-tautological). |
 | `installer/lib/docker.sh` | **Modify** (source-time DOCKER_HOST export; 92-102 `docker_run_managed`; 177-185 `probe_host_docker_internal`) | Append `engine_addhost_args` for the selected engine; export `DOCKER_HOST` at source-time (Task 8b). |
 | `installer/phases/00_host.sh` | **Modify** (preflight) | Run `engine_select`+`engine_pin` BEFORE any docker use / before Phase 04, so `AI_STACK_DOCKER_ENGINE` is always set by the time any container or gateway is touched (spec Wiring: "run selection before any docker use"). (Task 8c.) |
@@ -66,10 +66,10 @@
 
 - **Q1 (value space):** `AI_STACK_DOCKER_ENGINE` stores a **logical id** (`orbstack`/…), NOT a raw URL. `engine_socket <id>` maps id→`unix://…` at export/write time. Rationale: ids are stable, sockets are user/version-specific and must be probed.
 - **Q2 (common.sh:58 clobber):** Fix `common.sh:58` to `ENV_FILE="${ENV_FILE:-$AI_STACK/.env}"` (Task 2). This is load-bearing: it makes the throwaway-ENV_FILE test pattern (MEMORY: never mutate the real `.env`) actually work, and lets `--engine`/pin honor a custom env file.
-- **Q3 (central export site):** Add the `DOCKER_HOST` export in `vz-ai-stack.sh` immediately **after** `source "$LIB/env.sh"` (line 101) and after sourcing `docker-engine.sh` — because `engine_socket` needs `get_env` (env.sh) and the registry. This is the one path every *subcommand* runs. **BUT** `vz-ai-stack.sh` is NOT in the process chain for the documented standalone path `bash bin/start-litellm.sh --recreate` (recreate_guard's own remediation, phase 01) — those scripts source `common.sh`/`env.sh`/`docker.sh` but never `vz-ai-stack.sh`, so process-inheritance does NOT reach them. Therefore the export is ALSO emitted at **`docker.sh` source-time** (Task 8b) so every `start-*.sh` that sources `docker.sh` inherits the selected socket unconditionally. (INFRA-critical finding.)
+- **Q3 (central export site):** Add the `DOCKER_HOST` export in `mayssam-ai-stack.sh` immediately **after** `source "$LIB/env.sh"` (line 101) and after sourcing `docker-engine.sh` — because `engine_socket` needs `get_env` (env.sh) and the registry. This is the one path every *subcommand* runs. **BUT** `mayssam-ai-stack.sh` is NOT in the process chain for the documented standalone path `bash bin/start-litellm.sh --recreate` (recreate_guard's own remediation, phase 01) — those scripts source `common.sh`/`env.sh`/`docker.sh` but never `mayssam-ai-stack.sh`, so process-inheritance does NOT reach them. Therefore the export is ALSO emitted at **`docker.sh` source-time** (Task 8b) so every `start-*.sh` that sources `docker.sh` inherits the selected socket unconditionally. (INFRA-critical finding.)
 - **Q4 (default seed):** Do **NOT** seed a default into `env_ensure_baseline`/`_DEFAULTS`. Keep `.env` clean for local-only users; the engine is materialized only when selection runs (`engine_pin`). The central export is a no-op when the key is empty. To stop the no-op from masking split-brain, the Phase-00 preflight (Task 8c) runs selection+pin BEFORE any docker use, so by the time a container/gateway is touched the engine is always pinned; doctor check 01's legacy ambient fallback then becomes a hard **warn** ("no engine pinned — split-brain risk"), not a silent green.
-- **Selection-before-use ordering (Q3/Q4 corollary):** the spec Wiring section requires "run selection before any docker use." A new **Task 8c** installs that hook in `installer/phases/00_host.sh` (preflight). Phase 04 is then **read-only** about selection (Task 12): it ERRORS with "run `vz-ai-stack.sh docker-engine select` first" if `AI_STACK_DOCKER_ENGINE` is unset rather than performing a hidden global pin deep inside one phase.
-- **Global `--engine` plumbing:** `--engine <id>` is the top-precedence input per spec. The ONLY argv→`AI_STACK_ENGINE_FLAG` translation site is the top-level arg parser in `vz-ai-stack.sh` (Task 11a), so `install`/`deps`/phase-04 all honor `--engine` via the single `engine_select` path. `docker-engine set <id>` is the explicit-bypass alias (still goes through `engine_pin`'s validation); everything else flows flag→env→running→prompt→priority.
+- **Selection-before-use ordering (Q3/Q4 corollary):** the spec Wiring section requires "run selection before any docker use." A new **Task 8c** installs that hook in `installer/phases/00_host.sh` (preflight). Phase 04 is then **read-only** about selection (Task 12): it ERRORS with "run `mayssam-ai-stack.sh docker-engine select` first" if `AI_STACK_DOCKER_ENGINE` is unset rather than performing a hidden global pin deep inside one phase.
+- **Global `--engine` plumbing:** `--engine <id>` is the top-precedence input per spec. The ONLY argv→`AI_STACK_ENGINE_FLAG` translation site is the top-level arg parser in `mayssam-ai-stack.sh` (Task 11a), so `install`/`deps`/phase-04 all honor `--engine` via the single `engine_select` path. `docker-engine set <id>` is the explicit-bypass alias (still goes through `engine_pin`'s validation); everything else flows flag→env→running→prompt→priority.
 - **gateway.env author (single writer):** the gateway.env heredoc + idempotent grep-guard + chmod 600 is extracted into ONE helper `engine_write_gateway_env <id> [gw_file]` in `docker-engine.sh` (Task 7), called by BOTH `engine_pin` and Phase 04 (Task 12) — no byte-for-byte duplication to drift. It returns 0-if-changed / 1-if-unchanged so Phase 04 can gate its restart.
 - **gateway.env throwaway override:** `engine_write_gateway_env` (and therefore `engine_pin` and Phase 04) honor `ENGINE_GATEWAY_ENV_FILE`. Phase 04 sets `GATEWAY_ENV_FILE` from a single overridable var that the helper also reads, so a test injecting `ENGINE_GATEWAY_ENV_FILE=$(mktemp)` NEVER clobbers the real `~/.config/openshell/gateway.env`. The MEMORY "never touch real config" rule is extended from `.env` to `gateway.env`.
 - **Split-brain (04 restart):** Phase 04 hard-blocks the `DOCKER_HOST` change when other sandboxes are `Ready` unless `OPENSHELL_FORCE_GATEWAY_RESTART=1`, reusing the **CANONICAL `lib/openshell.sh` `_others` guard** (sourced — NOT re-implemented with a weaker awk) which strips ANSI (`_osh_strip_ansi`) and self-excludes (`$1!=n`). Before the restart it **checkpoints every Ready sandbox** (`bin/openshell-checkpoint.sh`, fail-closed) in addition to the identity-backup, mirroring the fleet-durability HALT-by-default contract. Default is NOT to restart inline during an install run — surface a doctor warning that a restart is pending.
@@ -113,7 +113,7 @@ cd /Users/mayssam.sayyadian/ai-stack-wt/docker-engine
   ```
 - [ ] Confirm the runtime count agrees (derived from `${#CHECKS[@]}`):
   ```bash
-  bash vz-ai-stack.sh doctor 2>&1 | grep -iE 'doctor done|/46|46 checks' | tail -2   # EXPECT a 46-total line
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -iE 'doctor done|/46|46 checks' | tail -2   # EXPECT a 46-total line
   ```
 - [ ] Record the verified baseline. If `wc -l` returns anything OTHER than 46, STOP and re-derive every numbered reference in Tasks 14/15 and this header before proceeding (the plan was written assuming 46; if the tree has moved again, new files are `(N+1)` and `(N+2)`, count is `N+2`, badge `N%2FN`→`(N+2)%2F(N+2)`).
 - [ ] Confirm the two free ordinals: with baseline 46 the new files are **`47_docker_engine_consistency.sh`** and **`48_docker_engine_selection.sh`**, final total **48**, badge **`46%2F46`→`48%2F48`**. Verify `46` is NOT free:
@@ -183,7 +183,7 @@ cd /Users/mayssam.sayyadian/ai-stack-wt/docker-engine
   if grep -rnE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\"?\$\(engine_' \
        "$AI_STACK/installer/lib/docker-engine.sh" "$AI_STACK/installer/lib/deps.sh" \
        "$AI_STACK/installer/lib/docker.sh" "$AI_STACK/installer/phases/04_openshell.sh" \
-       "$AI_STACK/vz-ai-stack.sh" 2>/dev/null | grep -vE '\|\||;[[:space:]]*\}|\bif\b|\bfor\b'; then
+       "$AI_STACK/mayssam-ai-stack.sh" 2>/dev/null | grep -vE '\|\||;[[:space:]]*\}|\bif\b|\bfor\b'; then
     err "found a bare =\$(engine_…) assignment (must be guarded under inherit_errexit)"; exit 1
   fi
   ok "no unguarded engine_* command substitutions"
@@ -933,38 +933,38 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 8 — Central wiring: source `docker-engine.sh` + export `DOCKER_HOST` after env.sh
 
 **Files:**
-- Modify: `vz-ai-stack.sh` (after line 101)
+- Modify: `mayssam-ai-stack.sh` (after line 101)
 - Test: extend `installer/smoke/engine.sh` (assert the export against the REAL load path, not a re-implemented snippet)
 
 **Steps:**
 
-- [ ] Add a debug verb to make the test exercise the REAL `vz-ai-stack.sh` export (NOT a re-implemented snippet). Append to the dispatch (alongside Task 11's `docker-engine`): a hidden `--print-docker-host` that runs the real top-of-file export and echoes `$DOCKER_HOST`. Add the handler near the `docker-engine)` arm:
+- [ ] Add a debug verb to make the test exercise the REAL `mayssam-ai-stack.sh` export (NOT a re-implemented snippet). Append to the dispatch (alongside Task 11's `docker-engine`): a hidden `--print-docker-host` that runs the real top-of-file export and echoes `$DOCKER_HOST`. Add the handler near the `docker-engine)` arm:
   ```bash
       __print-docker-host) printf '%s\n' "DOCKER_HOST=${DOCKER_HOST:-<unset>}"; exit 0 ;;
   ```
   (Place it in the `case "$cmd"` block; it is undocumented — a test seam that runs the genuine sourced export.)
 - [ ] Add the failing assertion to `installer/smoke/engine.sh` that calls the REAL load path with a throwaway pinned `.env`:
   ```bash
-  log "central export: pinned .env → DOCKER_HOST exported by the REAL vz-ai-stack.sh load path"
+  log "central export: pinned .env → DOCKER_HOST exported by the REAL mayssam-ai-stack.sh load path"
   tmpenv="$(mktemp -t aistack-export.XXXXXX)"
   printf 'AI_STACK_DOCKER_ENGINE=orbstack\n' > "$tmpenv"
-  got="$(ENV_FILE="$tmpenv" bash "$AI_STACK/vz-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
+  got="$(ENV_FILE="$tmpenv" bash "$AI_STACK/mayssam-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
   rm -f "$tmpenv"
   grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
     || { err "central export not wired (real load path did not export DOCKER_HOST): $got"; exit 1; }
   # Empty-engine case: unset .env → export is a no-op (DOCKER_HOST stays unset/ambient).
   tmpe2="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=\n' > "$tmpe2"
-  got2="$(env -u DOCKER_HOST ENV_FILE="$tmpe2" bash "$AI_STACK/vz-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
+  got2="$(env -u DOCKER_HOST ENV_FILE="$tmpe2" bash "$AI_STACK/mayssam-ai-stack.sh" __print-docker-host 2>/dev/null || true)"
   rm -f "$tmpe2"
   grep -q 'DOCKER_HOST=<unset>' <<<"$got2" || { err "empty engine should be a no-op export: $got2"; exit 1; }
   ok "central DOCKER_HOST export wired (real path; no-op when unset)"
   ```
-  > This asserts against the genuine sourced `vz-ai-stack.sh` export via the `__print-docker-host` seam — NOT a copy of the logic. It is red until BOTH this export edit AND the `__print-docker-host` arm exist; both land in this task, so it goes red→green within Task 8 (no cross-task dependency).
+  > This asserts against the genuine sourced `mayssam-ai-stack.sh` export via the `__print-docker-host` seam — NOT a copy of the logic. It is red until BOTH this export edit AND the `__print-docker-host` arm exist; both land in this task, so it goes red→green within Task 8 (no cross-task dependency).
 - [ ] Run it — expect FAIL (no export / no seam yet):
   ```bash
   bash installer/smoke/engine.sh   # expect: "central export not wired" → exit 1
   ```
-- [ ] Edit `vz-ai-stack.sh` — insert AFTER `source "$LIB/env.sh"` (line 101) and BEFORE `source "$LIB/docker.sh"`:
+- [ ] Edit `mayssam-ai-stack.sh` — insert AFTER `source "$LIB/env.sh"` (line 101) and BEFORE `source "$LIB/docker.sh"`:
   ```bash
   source "$LIB/docker-engine.sh"
   # Central DOCKER_HOST export: derive the one socket the WHOLE stack uses from the
@@ -983,7 +983,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   ```
 - [ ] Commit:
   ```bash
-  git add vz-ai-stack.sh installer/smoke/engine.sh
+  git add mayssam-ai-stack.sh installer/smoke/engine.sh
   git commit -m "feat(engine): source docker-engine.sh + export DOCKER_HOST centrally after env.sh
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -993,7 +993,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Task 8b — `docker.sh` source-time `DOCKER_HOST` export (so standalone `bin/start-*.sh` inherit it)
 
-> **Why (INFRA-critical):** `vz-ai-stack.sh` is NOT in the process chain for `bash bin/start-litellm.sh --recreate` (recreate_guard's own remediation, phase 01) — those scripts source `common.sh`/`env.sh`/`docker.sh` directly. The Task 8 export never reaches them, so on a Docker-Desktop-present box those containers silently land on the ambient socket — the exact split-brain. Fix: re-export at `docker.sh` source-time so EVERY `start-*.sh` inherits the selected socket unconditionally.
+> **Why (INFRA-critical):** `mayssam-ai-stack.sh` is NOT in the process chain for `bash bin/start-litellm.sh --recreate` (recreate_guard's own remediation, phase 01) — those scripts source `common.sh`/`env.sh`/`docker.sh` directly. The Task 8 export never reaches them, so on a Docker-Desktop-present box those containers silently land on the ambient socket — the exact split-brain. Fix: re-export at `docker.sh` source-time so EVERY `start-*.sh` inherits the selected socket unconditionally.
 
 **Files:**
 - Modify: `installer/lib/docker.sh` (top, after it sources its deps)
@@ -1001,7 +1001,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Steps:**
 
-- [ ] Add a failing assertion to `installer/smoke/engine.sh` that proves a clean-env `start-*.sh`-style chain (common→env→docker-engine→docker, NO vz-ai-stack.sh) resolves the selected socket onto a stubbed `docker run`:
+- [ ] Add a failing assertion to `installer/smoke/engine.sh` that proves a clean-env `start-*.sh`-style chain (common→env→docker-engine→docker, NO mayssam-ai-stack.sh) resolves the selected socket onto a stubbed `docker run`:
   ```bash
   log "8b: standalone docker.sh source chain exports the selected DOCKER_HOST"
   tmpenv="$(mktemp -t aistack-8b.XXXXXX)"
@@ -1023,7 +1023,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] Edit `installer/lib/docker.sh` — add at the END of the file (after `docker.sh` has its functions and `docker-engine.sh` is available in scope). Guard so it is a no-op if `docker-engine.sh` was not sourced (don't hard-require it for callers that only want `docker_run_managed`'s other helpers):
   ```bash
   # Source-time DOCKER_HOST export so STANDALONE bin/start-*.sh (which source this
-  # file but NOT vz-ai-stack.sh) talk to the SELECTED engine, not the ambient socket.
+  # file but NOT mayssam-ai-stack.sh) talk to the SELECTED engine, not the ambient socket.
   # Idempotent + no-op when AI_STACK_DOCKER_ENGINE is empty/unset.
   if declare -F engine_socket >/dev/null 2>&1 && declare -F _engine_valid >/dev/null 2>&1; then
     _ds_eng="$(get_env AI_STACK_DOCKER_ENGINE "" 2>/dev/null || true)"
@@ -1161,7 +1161,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   # (phases 00/01, etc.). Now a thin wrapper that honors the selected engine.
   ensure_orbstack() { ensure_docker_engine "$@"; }
   ```
-  > `engine_select`/`engine_ensure`/`engine_pin` are in scope: `deps.sh` is sourced by the same `vz-ai-stack.sh` path that sources `docker-engine.sh` (Task 8). For the standalone `deps`/phase entrypoints, add `source "$AI_STACK/installer/lib/docker-engine.sh"` near the top of `deps.sh` if it is not already transitively sourced — verify with `grep -n docker-engine installer/lib/deps.sh` and add if absent.
+  > `engine_select`/`engine_ensure`/`engine_pin` are in scope: `deps.sh` is sourced by the same `mayssam-ai-stack.sh` path that sources `docker-engine.sh` (Task 8). For the standalone `deps`/phase entrypoints, add `source "$AI_STACK/installer/lib/docker-engine.sh"` near the top of `deps.sh` if it is not already transitively sourced — verify with `grep -n docker-engine installer/lib/deps.sh` and add if absent.
 - [ ] Edit `deps_report` (find it: `grep -n 'deps_report()' installer/lib/deps.sh`) to print the selected engine + socket triple-equality. Append, just before its final summary/return, this block:
   ```bash
     # --- Docker engine selection ---------------------------------------------
@@ -1174,9 +1174,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
       _gw_host="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
       note "Docker engine: $_sel ($(engine_display "$_sel"))   socket: $_sock"
       [[ "$_ctx_host" == "$_sock" ]] && ok "  CLI context socket == selected" || warn "  CLI context socket ($_ctx_host) != selected ($_sock)"
-      [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: vz-ai-stack.sh doctor (check 47)"
+      [[ "$_gw_host"  == "$_sock" ]] && ok "  gateway.env socket == selected" || warn "  gateway.env socket != selected ($_gw_host vs $_sock) — run: mayssam-ai-stack.sh doctor (check 47)"
     else
-      warn "Docker engine: not selected — run: vz-ai-stack.sh docker-engine select"
+      warn "Docker engine: not selected — run: mayssam-ai-stack.sh docker-engine select"
     fi
   ```
 - [ ] Run it — expect PASS:
@@ -1260,7 +1260,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
       "$image" \
       "${cmd_args[@]}"
   ```
-  > `engine_addhost_args`/`_engine_valid`/`get_env` are in scope when `docker.sh` is sourced by `vz-ai-stack.sh` (after docker-engine.sh, Task 8). The `declare -F` guard keeps `docker_run_managed` safe if `docker.sh` is sourced standalone without docker-engine.sh.
+  > `engine_addhost_args`/`_engine_valid`/`get_env` are in scope when `docker.sh` is sourced by `mayssam-ai-stack.sh` (after docker-engine.sh, Task 8). The `declare -F` guard keeps `docker_run_managed` safe if `docker.sh` is sourced standalone without docker-engine.sh.
 - [ ] Edit `probe_host_docker_internal` (177-185) to be engine-aware. Replace its body with:
   ```bash
   probe_host_docker_internal() {
@@ -1312,10 +1312,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Task 11a — Global `--engine <id>` argv plumbing (top-precedence input)
 
-> **Why (ARCH major):** the spec lists `--engine <id>` as the top precedence input, but `engine_select` only reads `AI_STACK_ENGINE_FLAG`. Without a single argv→env translation site, `vz-ai-stack.sh install --engine colima` has no path from argv to the flag. Wire it ONCE in the top-level parser so install/deps/phase-04/00 all honor it via the single `engine_select` path.
+> **Why (ARCH major):** the spec lists `--engine <id>` as the top precedence input, but `engine_select` only reads `AI_STACK_ENGINE_FLAG`. Without a single argv→env translation site, `mayssam-ai-stack.sh install --engine colima` has no path from argv to the flag. Wire it ONCE in the top-level parser so install/deps/phase-04/00 all honor it via the single `engine_select` path.
 
 **Files:**
-- Modify: `vz-ai-stack.sh` (top-level arg parse, ~line 105)
+- Modify: `mayssam-ai-stack.sh` (top-level arg parse, ~line 105)
 - Test: extend `installer/smoke/engine.sh`
 
 **Steps:**
@@ -1324,7 +1324,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   ```bash
   log "11a: global --engine <id> argv → AI_STACK_ENGINE_FLAG → engine_select"
   tmpenv="$(mktemp)"; printf 'AI_STACK_DOCKER_ENGINE=\n' > "$tmpenv"
-  got="$(env -u DOCKER_HOST ENV_FILE="$tmpenv" bash "$AI_STACK/vz-ai-stack.sh" --engine orbstack __print-docker-host 2>/dev/null || true)"
+  got="$(env -u DOCKER_HOST ENV_FILE="$tmpenv" bash "$AI_STACK/mayssam-ai-stack.sh" --engine orbstack __print-docker-host 2>/dev/null || true)"
   rm -f "$tmpenv"
   grep -q "DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock" <<<"$got" \
     || { err "global --engine flag not plumbed to AI_STACK_ENGINE_FLAG/engine_select: $got"; exit 1; }
@@ -1335,7 +1335,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   ```bash
   bash installer/smoke/engine.sh   # expect: "global --engine flag not plumbed" → exit 1
   ```
-- [ ] Edit `vz-ai-stack.sh` top-level arg parse (before the subcommand dispatch, ~line 105). Add a pre-scan that extracts a global `--engine <id>` / `--engine=<id>` from `"$@"`, exports `AI_STACK_ENGINE_FLAG`, and strips it from the args so the subcommand dispatch is unaffected:
+- [ ] Edit `mayssam-ai-stack.sh` top-level arg parse (before the subcommand dispatch, ~line 105). Add a pre-scan that extracts a global `--engine <id>` / `--engine=<id>` from `"$@"`, exports `AI_STACK_ENGINE_FLAG`, and strips it from the args so the subcommand dispatch is unaffected:
   ```bash
   # Global --engine <id> → AI_STACK_ENGINE_FLAG (single argv→env translation site).
   # Honored by install/deps/phase-00/04 through the one engine_select path.
@@ -1353,11 +1353,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] Run it — expect PASS:
   ```bash
   bash installer/smoke/engine.sh   # expect: "11a: global --engine argv plumbed", exit 0
-  bash vz-ai-stack.sh --engine orbstack doctor 2>&1 | tail -3   # flag accepted, doctor still runs
+  bash mayssam-ai-stack.sh --engine orbstack doctor 2>&1 | tail -3   # flag accepted, doctor still runs
   ```
 - [ ] Commit:
   ```bash
-  git add vz-ai-stack.sh installer/smoke/engine.sh
+  git add mayssam-ai-stack.sh installer/smoke/engine.sh
   git commit -m "feat(engine): global --engine <id> argv → AI_STACK_ENGINE_FLAG (single plumbing site)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1365,10 +1365,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 11 — `vz-ai-stack.sh` subcommand `docker-engine [status|select|set <id>]` + help
+## Task 11 — `mayssam-ai-stack.sh` subcommand `docker-engine [status|select|set <id>]` + help
 
 **Files:**
-- Modify: `vz-ai-stack.sh` (246-248 `is_subcommand`; ~583 handler; 1037-1040 dispatch; 170-183 usage heredoc)
+- Modify: `mayssam-ai-stack.sh` (246-248 `is_subcommand`; ~583 handler; 1037-1040 dispatch; 170-183 usage heredoc)
 - Test: extend `installer/smoke/engine.sh` (the deferred Task 8 assertion now turns green)
 
 **Steps:**
@@ -1383,30 +1383,30 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   _engine_usage() {
     cat >&2 <<'EOF'
 docker-engine — intentional Docker engine selection (orbstack|docker-desktop|colima|podman)
-  vz-ai-stack.sh docker-engine status            show selected engine, resolved socket, CLI/gateway consistency
-  vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
-  vz-ai-stack.sh docker-engine set <id>          set the engine to <id> explicitly (ensure + pin)
+  mayssam-ai-stack.sh docker-engine status            show selected engine, resolved socket, CLI/gateway consistency
+  mayssam-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
+  mayssam-ai-stack.sh docker-engine set <id>          set the engine to <id> explicitly (ensure + pin)
 EOF
   }
 
   _engine_status() {
     local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
     if [[ -z "$sel" ]]; then
-      warn "no engine selected (AI_STACK_DOCKER_ENGINE unset). Run: vz-ai-stack.sh docker-engine select"
+      warn "no engine selected (AI_STACK_DOCKER_ENGINE unset). Run: mayssam-ai-stack.sh docker-engine select"
       return 1
     fi
     _engine_valid "$sel" || { err "AI_STACK_DOCKER_ENGINE='$sel' is invalid (want: $ENGINE_IDS)"; return 1; }
     local sock; sock="$(engine_socket "$sel" 2>/dev/null || echo '?')"
     note "engine:      $sel ($(engine_display "$sel"))"
     note "DOCKER_HOST: $sock"
-    engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: vz-ai-stack.sh docker-engine select)"
+    engine_running "$sel" && ok "daemon:      reachable" || warn "daemon:      NOT reachable (run: mayssam-ai-stack.sh docker-engine select)"
     local gw; gw="$(grep -E '^DOCKER_HOST=' "$HOME/.config/openshell/gateway.env" 2>/dev/null | tail -1 | cut -d= -f2- || echo '?')"
     [[ "$gw" == "$sock" ]] && ok "gateway.env: == selected" || warn "gateway.env: $gw (!= $sock)"
     return 0
   }
 
   # Only run the CLI dispatch when executed directly (bash docker-engine.sh ...),
-  # NOT when sourced by vz-ai-stack.sh.
+  # NOT when sourced by mayssam-ai-stack.sh.
   if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     _de_main() {
       local sub="${1:-}"; shift || true
@@ -1444,7 +1444,7 @@ EOF
     _de_main "$@"
   fi
   ```
-- [ ] Add the handler in `vz-ai-stack.sh` near line 582 (after `cmd_fleet`):
+- [ ] Add the handler in `mayssam-ai-stack.sh` near line 582 (after `cmd_fleet`):
   ```bash
   cmd_docker_engine() { bash "$AI_STACK/installer/lib/docker-engine.sh" "$@"; }
   ```
@@ -1458,11 +1458,11 @@ EOF
   ```
 - [ ] Add usage prose to the `usage()` heredoc (after the `fleet destroy` block, before `doctor` at line 184), indented exactly 4 spaces:
   ```
-    vz-ai-stack.sh docker-engine status     show the selected Docker engine + resolved socket
+    mayssam-ai-stack.sh docker-engine status     show the selected Docker engine + resolved socket
                                         + CLI/gateway consistency
-    vz-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
+    mayssam-ai-stack.sh docker-engine select [--engine <id>]   (re-)select + ensure + pin the engine
                                         (orbstack|docker-desktop|colima|podman); idempotent
-    vz-ai-stack.sh docker-engine set <id>   pin the engine explicitly to <id> (ensure + pin)
+    mayssam-ai-stack.sh docker-engine set <id>   pin the engine explicitly to <id> (ensure + pin)
   ```
 - [ ] Add smoke assertions for BOTH `--engine` forms + the `help docker-engine` routing (real assertions, not eyeballed). First read `installer/lib/help.sh` to confirm how `help <verb>` dispatches (Task 15 claims no help.sh change is needed — make that claim evidence-based here):
   ```bash
@@ -1476,7 +1476,7 @@ EOF
   ok "11: both --engine forms parse"
 
   log "11: help docker-engine routes to usage (not services.yml service-help)"
-  out="$(bash "$AI_STACK/vz-ai-stack.sh" help docker-engine 2>&1 || true)"
+  out="$(bash "$AI_STACK/mayssam-ai-stack.sh" help docker-engine 2>&1 || true)"
   grep -q 'docker-engine select' <<<"$out" \
     || { err "help docker-engine did not route to docker-engine usage: $out"; exit 1; }
   ok "11: help docker-engine routes correctly"
@@ -1484,14 +1484,14 @@ EOF
 - [ ] Run it — expect PASS (the Task 8 deferred assertion + the new subcommand both green):
   ```bash
   bash installer/smoke/engine.sh                 # expect exit 0 (all assertions)
-  bash vz-ai-stack.sh docker-engine --help       # expect the 3-line usage to STDERR
-  bash vz-ai-stack.sh help docker-engine         # expect the docker-engine usage (verified by the assertion above)
+  bash mayssam-ai-stack.sh docker-engine --help       # expect the 3-line usage to STDERR
+  bash mayssam-ai-stack.sh help docker-engine         # expect the docker-engine usage (verified by the assertion above)
   ```
   > If `help docker-engine` falls through to a services.yml lookup that errors instead of routing to usage, add the routing in `installer/lib/help.sh` in THIS task (not Task 15) and update Task 15's "no help.sh change" claim accordingly. The assertion above makes the routing a hard gate.
 - [ ] Commit:
   ```bash
-  git add vz-ai-stack.sh installer/lib/docker-engine.sh installer/smoke/engine.sh
-  git commit -m "feat(engine): vz-ai-stack.sh docker-engine [status|select|set] subcommand + help
+  git add mayssam-ai-stack.sh installer/lib/docker-engine.sh installer/smoke/engine.sh
+  git commit -m "feat(engine): mayssam-ai-stack.sh docker-engine [status|select|set] subcommand + help
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   ```
@@ -1542,7 +1542,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   # Do NOT perform a hidden global pin deep inside this phase.
   _selected="$(get_env AI_STACK_DOCKER_ENGINE "")"
   if [[ -z "$_selected" ]] || ! _engine_valid "$_selected"; then
-    err "Phase 04: no Docker engine selected. Run: vz-ai-stack.sh docker-engine select first"
+    err "Phase 04: no Docker engine selected. Run: mayssam-ai-stack.sh docker-engine select first"
     exit 1
   fi
   DESIRED_DOCKER_HOST="$(engine_socket "$_selected")" || {
@@ -1572,7 +1572,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
           if [[ -n "${_others// }" && "${OPENSHELL_FORCE_GATEWAY_RESTART:-0}" != "1" ]]; then
             warn "gateway DOCKER_HOST changed but Ready sandbox(es) exist: ${_others% }"
             warn "NOT restarting (would error them ALL). A restart is PENDING — doctor will surface it."
-            warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04"
+            warn "Apply intentionally with: OPENSHELL_FORCE_GATEWAY_RESTART=1 mayssam-ai-stack.sh install 04"
           else
             warn "gateway DOCKER_HOST changed → restarting openshell (all sandboxes will re-auth)."
             # Checkpoint EVERY Ready sandbox (fail-closed) BEFORE the auth-rotating restart,
@@ -1629,7 +1629,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Task 12b — Make the OpenShell durability bin scripts engine-aware (highest data-loss path)
 
-> **Why (ARCH/INFRA critical):** `bin/openshell-checkpoint.sh`, `-state-restore.sh`, `-watchdog.sh`, `-token-refresh.sh` self-resolve `DOCKER="$(_find /opt/homebrew/bin/docker "$HOME/.orbstack/bin/docker" /usr/local/bin/docker)"` and bake the OrbStack socket into the watchdog launchd plist PATH. They run via launchd / standalone and do NOT source `vz-ai-stack.sh`, so the central export never reaches them. On a Docker-Desktop/Colima/Podman box they would operate on a DIFFERENT engine than the gateway was pinned to — split-brain in the checkpoint/restore data-loss path. (Confirmed: lines `checkpoint:41`, `state-restore:43`, `watchdog:59`, `token-refresh:59`; watchdog plist PATH at `watchdog:87`.)
+> **Why (ARCH/INFRA critical):** `bin/openshell-checkpoint.sh`, `-state-restore.sh`, `-watchdog.sh`, `-token-refresh.sh` self-resolve `DOCKER="$(_find /opt/homebrew/bin/docker "$HOME/.orbstack/bin/docker" /usr/local/bin/docker)"` and bake the OrbStack socket into the watchdog launchd plist PATH. They run via launchd / standalone and do NOT source `mayssam-ai-stack.sh`, so the central export never reaches them. On a Docker-Desktop/Colima/Podman box they would operate on a DIFFERENT engine than the gateway was pinned to — split-brain in the checkpoint/restore data-loss path. (Confirmed: lines `checkpoint:41`, `state-restore:43`, `watchdog:59`, `token-refresh:59`; watchdog plist PATH at `watchdog:87`.)
 
 **Files:**
 - Modify: `bin/openshell-checkpoint.sh`, `bin/openshell-state-restore.sh`, `bin/openshell-watchdog.sh`, `bin/openshell-token-refresh.sh`
@@ -1759,8 +1759,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
       # that an unpinned engine is a split-brain risk (selection should have run
       # in Phase 00 preflight). Not a hard failure (return 0) so a brand-new box
       # is not red, but the message is a hard warn, not a silent green.
-      docker info >/dev/null 2>&1 || { echo "no engine selected and docker info failed (run: vz-ai-stack.sh docker-engine select)"; return 1; }
-      echo "WARN: no engine pinned (AI_STACK_DOCKER_ENGINE empty) — split-brain risk; ambient docker reachable. Pin: vz-ai-stack.sh docker-engine select"
+      docker info >/dev/null 2>&1 || { echo "no engine selected and docker info failed (run: mayssam-ai-stack.sh docker-engine select)"; return 1; }
+      echo "WARN: no engine pinned (AI_STACK_DOCKER_ENGINE empty) — split-brain risk; ambient docker reachable. Pin: mayssam-ai-stack.sh docker-engine select"
       return 0
     fi
     _engine_valid "$sel" || { echo "AI_STACK_DOCKER_ENGINE='$sel' invalid"; return 1; }
@@ -1811,7 +1811,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   ```
 - [ ] Run doctor to confirm checks 01 and 02 still run + pass on this OrbStack box (no engine pinned in the real `.env` → 01 takes the legacy fallback green):
   ```bash
-  bash vz-ai-stack.sh doctor 2>&1 | grep -E 'Selected Docker engine|host.docker.internal'   # expect both ✓
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -E 'Selected Docker engine|host.docker.internal'   # expect both ✓
   ```
 - [ ] Commit:
   ```bash
@@ -1914,7 +1914,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
     engine_pin "$sel" || return 1
     warn "Re-pinned gateway.env + DOCKER_HOST to '$sel'."
     warn "If managed containers are stranded in ANOTHER engine, this does NOT move them:"
-    warn "  - re-pin to where they live (vz-ai-stack.sh docker-engine set <that-engine>), OR"
+    warn "  - re-pin to where they live (mayssam-ai-stack.sh docker-engine set <that-engine>), OR"
     warn "  - guided recreate on the selected engine (re-run the relevant install phase)."
     warn "Never auto-destroyed (conservative recreate_guard philosophy)."
     return 0
@@ -1930,7 +1930,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
     source "$AI_STACK/installer/lib/docker-engine.sh"
     local sel; sel="$(get_env AI_STACK_DOCKER_ENGINE "")"
     if [[ -z "$sel" ]]; then
-      echo "AI_STACK_DOCKER_ENGINE not set (run: vz-ai-stack.sh docker-engine select)"; return 1
+      echo "AI_STACK_DOCKER_ENGINE not set (run: mayssam-ai-stack.sh docker-engine select)"; return 1
     fi
     if ! _engine_valid "$sel"; then
       echo "AI_STACK_DOCKER_ENGINE='$sel' is not a valid id (want: $ENGINE_IDS)"; return 1
@@ -1950,15 +1950,15 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] Run it + verify doctor discovers all 48:
   ```bash
   bash installer/smoke/engine.sh   # expect: "doctor 47/48 present, 48 checks total, 46 intact", exit 0
-  bash vz-ai-stack.sh doctor 2>&1 | grep -E 'consistency|selection'   # expect both checks to appear
-  bash vz-ai-stack.sh doctor 2>&1 | grep -iE '/48|48 checks|doctor done'   # runtime total is 48
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -E 'consistency|selection'   # expect both checks to appear
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -iE '/48|48 checks|doctor done'   # runtime total is 48
   ```
 - [ ] **VALIDATION GATE** — run the full doctor on this OrbStack box and confirm it is green end-to-end (no engine pinned → 47 pass-as-skip, 48 fails-with-fix-offer is EXPECTED on an unpinned box; pin once to confirm green):
   ```bash
-  bash vz-ai-stack.sh doctor 2>&1 | tail -20
+  bash mayssam-ai-stack.sh doctor 2>&1 | tail -20
   # Then pin + re-run to confirm 01/47/48 go green:
-  bash vz-ai-stack.sh docker-engine set orbstack
-  bash vz-ai-stack.sh doctor 2>&1 | grep -E 'Selected Docker engine|consistency|selection'   # expect 3× ✓
+  bash mayssam-ai-stack.sh docker-engine set orbstack
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -E 'Selected Docker engine|consistency|selection'   # expect 3× ✓
   ```
   > NOTE: pinning writes the REAL `.env` AI_STACK_DOCKER_ENGINE=orbstack — this is the intended product behavior on the real box (orbstack is the box's engine), so it is safe. It does NOT delete or rewrite secret keys.
 - [ ] Commit:
@@ -2003,12 +2003,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   python3 installer/lib/build_tutorial_html.py
   python3 installer/lib/build_tutorial_html.py --check   # expect: no drift
   ```
-- [ ] Update `doc/PREREQUISITES.md`: reframe OrbStack from "the Docker runtime" to "the default of four selectable engines (OrbStack | Docker Desktop | Colima | Podman); choose via `vz-ai-stack.sh docker-engine select`". Keep `ensure_orbstack` reference accurate (now an alias). Note the global `--engine <id>` flag and `docker-engine set <id>`.
+- [ ] Update `doc/PREREQUISITES.md`: reframe OrbStack from "the Docker runtime" to "the default of four selectable engines (OrbStack | Docker Desktop | Colima | Podman); choose via `mayssam-ai-stack.sh docker-engine select`". Keep `ensure_orbstack` reference accurate (now an alias). Note the global `--engine <id>` flag and `docker-engine set <id>`.
 - [ ] Add to `.env.example` (NO secret; documents the new key — it stays empty until selection):
   ```
   # Docker engine the WHOLE stack uses (main containers + OpenShell gateway).
   # One of: orbstack | docker-desktop | colima | podman. Empty = not yet selected;
-  # set it intentionally with:  vz-ai-stack.sh docker-engine select
+  # set it intentionally with:  mayssam-ai-stack.sh docker-engine select
   AI_STACK_DOCKER_ENGINE=
   ```
 - [ ] `services.yml` / `installer/lib/help.sh` decision: `docker-engine` is a pure CLI control verb (like `deps`/`verify`), NOT a services.yml service — so add NO services.yml `help:` block. Its help lives in the `usage()` heredoc (Task 11). **EVIDENCE-BASED claim:** Task 11 already verified (via the `help docker-engine` routing assertion) whether `help.sh` needs a routing arm. IF Task 11 found a routing change was needed, it landed THERE and this step is a no-op note; if not, confirm `help.sh` renders from services.yml with no hardcoded OrbStack-runtime prose — no edit.
@@ -2019,7 +2019,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   - New `project_docker_engine_selection.md`: AI_STACK_DOCKER_ENGINE single source of truth; `installer/lib/docker-engine.sh` registry; central DOCKER_HOST export after env.sh + docker.sh source-time export for standalone start-*.sh; Phase 00 selection-before-use; gateway.env derived via single `engine_write_gateway_env` writer; openshell-* durability scripts made engine-aware; checks 47/48; common.sh:58 ENV_FILE clobber fixed; global `--engine` plumbing; podman/colima/docker-desktop sockets UNVERIFIED (open questions).
 - [ ] **VALIDATION GATE** — re-run doctor + the tutorial drift check + the smoke test, and confirm the runtime total is 48:
   ```bash
-  bash vz-ai-stack.sh doctor 2>&1 | grep -iE '/48|48 checks|doctor done' | tail -2   # EXPECT 48
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -iE '/48|48 checks|doctor done' | tail -2   # EXPECT 48
   python3 installer/lib/build_tutorial_html.py --check
   bash installer/smoke/engine.sh
   ```
@@ -2044,18 +2044,18 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] Run the FULL smoke + doctor one more time and capture evidence (verification-before-completion):
   ```bash
   bash installer/smoke/engine.sh
-  bash -n installer/lib/docker-engine.sh installer/phases/00_host.sh installer/phases/04_openshell.sh vz-ai-stack.sh \
+  bash -n installer/lib/docker-engine.sh installer/phases/00_host.sh installer/phases/04_openshell.sh mayssam-ai-stack.sh \
         installer/lib/docker.sh installer/lib/deps.sh \
         bin/start-litellm.sh bin/openshell-checkpoint.sh bin/openshell-state-restore.sh \
         bin/openshell-watchdog.sh bin/openshell-token-refresh.sh
-  bash vz-ai-stack.sh docker-engine status
-  bash vz-ai-stack.sh doctor 2>&1 | grep -iE '/48|48 checks|doctor done' | tail -2   # EXPECT 48
-  bash vz-ai-stack.sh doctor 2>&1 | tail -10
+  bash mayssam-ai-stack.sh docker-engine status
+  bash mayssam-ai-stack.sh doctor 2>&1 | grep -iE '/48|48 checks|doctor done' | tail -2   # EXPECT 48
+  bash mayssam-ai-stack.sh doctor 2>&1 | tail -10
   python3 installer/lib/build_tutorial_html.py --check
   ```
 - [ ] Per `doc/SOUL.md` §24.2/24.4 — dispatch ≥2 INDEPENDENT reviewers + a PM (this is design+infra), then debate-to-consensus. Reviewers MUST test the FAILURE paths, not the happy OrbStack path:
   - **Adversarial reviewer:** attack the split-brain restart guard (does it really REFUSE when a colorized `Ready` sandbox exists? — the canonical `_osh_strip_ansi`+`$1!=n` guard, NOT a weaker awk); the cold/un-pinned phase-04 path (errors with `docker-engine select` guidance, no hidden pin, no silent `/var/run/docker.sock`); the `engine_select` precedence table incl the running-singleton rung (stubbed); the NO_PROMPT hard-fail brew remedy; and that NO bare `=$(engine_…)` assignment can abort under `inherit_errexit`.
-  - **Domain/infra reviewer:** validate the `docker context inspect desktop-linux` endpoint choice, the colima `socket:` parse, the podman `PodmanSocket.Path` field, that `--add-host=host.docker.internal:host-gateway` is the portable token, and that `engine_socket` for colima/podman is timeout-bounded. CONFIRM the THREE export sites are consistent and not re-clobbered: (1) central in vz-ai-stack.sh after env.sh, (2) docker.sh source-time for standalone start-*.sh, (3) the openshell-* bin scripts reading gateway.env/registry. Verify empirically (ps/launchctl) that a brew-services restart relaunches the WRAPPER that re-sources gateway.env (Ollama plist-regen gotcha). Verify the openshell-* durability scripts no longer assume OrbStack (the highest data-loss path).
+  - **Domain/infra reviewer:** validate the `docker context inspect desktop-linux` endpoint choice, the colima `socket:` parse, the podman `PodmanSocket.Path` field, that `--add-host=host.docker.internal:host-gateway` is the portable token, and that `engine_socket` for colima/podman is timeout-bounded. CONFIRM the THREE export sites are consistent and not re-clobbered: (1) central in mayssam-ai-stack.sh after env.sh, (2) docker.sh source-time for standalone start-*.sh, (3) the openshell-* bin scripts reading gateway.env/registry. Verify empirically (ps/launchctl) that a brew-services restart relaunches the WRAPPER that re-sources gateway.env (Ollama plist-regen gotcha). Verify the openshell-* durability scripts no longer assume OrbStack (the highest data-loss path).
   - **PM reviewer:** confirm the 4-engine scope, the "never auto-destroy" guarantee in check 47 (incl REAL cross-engine stranded detection in part c), the reversibility (recorded prior docker context + printed undo; documented rollback in Task 17), and the docs-cohesion completeness (count **46→48** everywhere it is surfaced; `project_doctor_count.md` reconciled from the stale 45).
   - Each reviewer's FINAL MESSAGE MUST be the complete findings (instruct brevity; re-run if truncated to a teaser). Verify any single flagged claim directly.
 - [ ] Address review findings. Confirm specifically: the live-path add-host is carried by `start-litellm.sh` (Task 10b) and the five `ollama`-only start scripts are correctly out of scope; the `docker context` switch does not break the DOCKER_HOST precedence (DOCKER_HOST overrides context — note this is intentional and the context switch is ambient-only). Commit any fixes.
@@ -2110,12 +2110,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   If you switched engines (e.g. `docker-engine set colima`) but your managed
   containers live on the previous engine (doctor check 47 will say so):
     1. Re-pin to where the containers actually live:
-         vz-ai-stack.sh docker-engine set <previous-engine>   # e.g. orbstack
+         mayssam-ai-stack.sh docker-engine set <previous-engine>   # e.g. orbstack
     2. Restart the OpenShell gateway to re-read gateway.env (only if no Ready
-       sandbox, else: OPENSHELL_FORCE_GATEWAY_RESTART=1 vz-ai-stack.sh install 04):
+       sandbox, else: OPENSHELL_FORCE_GATEWAY_RESTART=1 mayssam-ai-stack.sh install 04):
     3. Restore your global docker context if you let pin switch it:
          docker context use <prior>     # engine_pin printed <prior> when it switched
-    4. Confirm: vz-ai-stack.sh doctor   # checks 01/47/48 green
+    4. Confirm: mayssam-ai-stack.sh doctor   # checks 01/47/48 green
   Nothing is auto-destroyed at any step.
   ```
 - [ ] Document the MANUAL verification matrix for the engines that cannot be exercised here (residual open questions — log-as-assumed, not papered over). Append to the same doc:
@@ -2127,7 +2127,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   | colima        | `colima status` `socket:` line, else ~/.colima/<profile>/docker.sock | needs --add-host |
   | podman        | `podman machine inspect {{.ConnectionInfo.PodmanSocket.Path}}`  | needs --add-host     |
   | docker-desktop cask churn | `brew info --cask docker-desktop` → else `docker`  | n/a                  |
-  Run `vz-ai-stack.sh docker-engine set <engine>` on a box with that engine and
+  Run `mayssam-ai-stack.sh docker-engine set <engine>` on a box with that engine and
   confirm `docker-engine status` + doctor 01/47/48 are green before relying on it.
   ```
 - [ ] Commit:
@@ -2159,7 +2159,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 | `deps.sh` ensure_orbstack=alias; deps_report socket triple (unique sentinel) | 9 |
 | `docker.sh` add-host (docker_run_managed/probe) + LIVE start-litellm.sh add-host | 10 |
 | Global `--engine <id>` argv → AI_STACK_ENGINE_FLAG (single plumbing site) | 11a |
-| `vz-ai-stack.sh docker-engine [status\|select\|set]` + help + `--engine` latch | 11 |
+| `mayssam-ai-stack.sh docker-engine [status\|select\|set]` + help + `--engine` latch | 11 |
 | Phase 04 read-only-select + single writer + canonical Ready guard + checkpoint-before-restart | 12 |
 | OpenShell durability bin scripts engine-aware (checkpoint/restore/watchdog/token) | 12b |
 | Doctor check 01 selected-engine (TDD) + 02 engine-aware (TDD) | 13 |
@@ -2196,7 +2196,7 @@ All four reviewers agreed on the criticals/majors; the calls below are where a m
 **Highest-severity findings fixed (criticals & majors):**
 
 - **CRITICAL ×4 — stale doctor-count baseline / 46-collision.** All four lenses flagged that the tree already has **46** check files (`46_agent_fleet_parity.sh`), so creating `46_docker_engine_consistency.sh` would collide and the `== 47` smoke assertion was wrong. Fixed: re-baselined the entire plan to **46→48**; new files are **`47_docker_engine_consistency.sh`** + **`48_docker_engine_selection.sh`**; added **Task 0** (a preflight that re-derives the live count from `ls checks/*.sh | wc -l` before any file is created); Task 14 asserts `== 48` AND that `46_agent_fleet_parity.sh` is untouched (no silent-overwrite); Task 15 sweep is `46→48`/badge `46%2F46`→`48%2F48` with a fresh re-grep; `project_doctor_count.md` reconciled **45→48** preserving the 46 entry. Verified against the live tree (46 files, README already `46%2F46`).
-- **CRITICAL (INFRA) — central export never reaches standalone `start-*.sh`.** `vz-ai-stack.sh` is not in the process chain for `bash bin/start-litellm.sh --recreate`. Fixed with **Task 8b**: re-export `DOCKER_HOST` at `docker.sh` source-time so every start script inherits the selected socket, plus a stubbed-docker assertion that the socket reaches the real start-litellm.sh command line.
+- **CRITICAL (INFRA) — central export never reaches standalone `start-*.sh`.** `mayssam-ai-stack.sh` is not in the process chain for `bash bin/start-litellm.sh --recreate`. Fixed with **Task 8b**: re-export `DOCKER_HOST` at `docker.sh` source-time so every start script inherits the selected socket, plus a stubbed-docker assertion that the socket reaches the real start-litellm.sh command line.
 - **CRITICAL (INFRA) — gateway restart data-loss + unverified wrapper relaunch.** Fixed in **Task 12**: checkpoint EVERY Ready sandbox (fail-closed) before the restart in addition to identity-backup; default to NOT restarting inline (pending-restart doctor warning); empirically confirm via `ps` that the gateway *wrapper* (which re-sources gateway.env) is the relaunched program (Ollama plist-regen gotcha).
 - **CRITICAL/ARCH — openshell durability scripts operate on the wrong engine.** Fixed with **Task 12b**: checkpoint/state-restore/watchdog/token-refresh now derive `DOCKER_HOST` from gateway.env (primary) or the registry (fallback) before invoking docker — the highest data-loss path is no longer OrbStack-hardcoded.
 - **MAJOR — `_others` guard weaker than canonical.** Fixed: Task 12 **sources `lib/openshell.sh`** and reuses `_osh_strip_ansi` (verified at openshell.sh:39/258), with a colorized-`Ready` fixture smoke test, instead of a re-implemented awk that would miss colorized tokens (the watchdog destroy-both incident class).
@@ -2208,7 +2208,7 @@ All four reviewers agreed on the criticals/majors; the calls below are where a m
 - **MAJOR — common.sh:58 chain safety.** Fixed: Task 2 adds a grep gate (no unconditional `ENV_FILE=` in any lib) + a full common→env→docker→litellm→deps→setup source-chain survival test.
 - **MAJOR — check 47 stranded-container (c) was a no-op + self-defeating DOCKER_HOST compare.** Fixed: Task 14 enumerates every OTHER installed+running engine's socket for `ai-stack.managed` containers and compares the AMBIENT context (`env -u DOCKER_HOST`), not the doctor-exported var.
 
-**Minors applied:** Task 6 array-invocation + cask-token-before-prompt; Task 11 `--engine` shift-latch with both-forms smoke; Task 11 `help docker-engine` routing as a real assertion (evidence-based, not eyeballed); Task 4 host-reality assertions gated on actual detection (portable across CI/Desktop/no-podman boxes); File-Structure note corrected to drop the bogus `vz-ai-stack.sh test engine` verb (no `engine` phase exists). `engine_socket` colima/podman sub-commands wrapped in `_engine_docker_timeout` (wedged-daemon hang). NO_PROMPT-zero-engine end-to-end added (Task 17). Rollback recipe + manual matrix added (Task 17).
+**Minors applied:** Task 6 array-invocation + cask-token-before-prompt; Task 11 `--engine` shift-latch with both-forms smoke; Task 11 `help docker-engine` routing as a real assertion (evidence-based, not eyeballed); Task 4 host-reality assertions gated on actual detection (portable across CI/Desktop/no-podman boxes); File-Structure note corrected to drop the bogus `mayssam-ai-stack.sh test engine` verb (no `engine` phase exists). `engine_socket` colima/podman sub-commands wrapped in `_engine_docker_timeout` (wedged-daemon hang). NO_PROMPT-zero-engine end-to-end added (Task 17). Rollback recipe + manual matrix added (Task 17).
 
 **Residual risks / open questions implementation MUST watch:**
 

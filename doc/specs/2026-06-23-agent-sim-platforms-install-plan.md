@@ -18,9 +18,9 @@
 
 | Tool | Best for | Archetype | First command (after install) |
 |---|---|---|---|
-| **OASIS** | **Large-scale social swarms** (≤1M agents) — the headline for "agents in a world" | host venv (batch) | `vz-ai-stack.sh run oasis -- sims/twitter_demo.py` |
-| **MetaGPT** | Role-play "software company" swarm (PM→architect→dev) | host venv (batch) | `vz-ai-stack.sh run metagpt -- "build a CLI todo app"` |
-| **AgentScope** | Build/scale your own multi-agent sims **+ a Studio GUI to watch them** | host venv (+opt. Studio web UI) | `vz-ai-stack.sh run agentscope -- sims/two_agents.py` |
+| **OASIS** | **Large-scale social swarms** (≤1M agents) — the headline for "agents in a world" | host venv (batch) | `mayssam-ai-stack.sh run oasis -- sims/twitter_demo.py` |
+| **MetaGPT** | Role-play "software company" swarm (PM→architect→dev) | host venv (batch) | `mayssam-ai-stack.sh run metagpt -- "build a CLI todo app"` |
+| **AgentScope** | Build/scale your own multi-agent sims **+ a Studio GUI to watch them** | host venv (+opt. Studio web UI) | `mayssam-ai-stack.sh run agentscope -- sims/two_agents.py` |
 | **AI Town** | The "virtual town" — characters that live, move, chat (most *watchable*) | container (Convex compose) | `open http://aitown/` |
 | **ChatDev** *(optional)* | Fixed small dev-team role-play (not really a *swarm*) | container (web app) | `open http://chatdev/` |
 
@@ -55,7 +55,7 @@ Watch any swarm's live model traffic in **Phoenix** (`http://phoenix:6006`) — 
    > **Amendment (2026-06-23, §24.4 implementation-council decision):** this constraint's *premise* is now STALE — `litellm` DOES resolve from the host shell, because CORE Phase `00n` (in `install_all_phase_order`) writes the `/etc/hosts` `litellm`→`127.0.10.1` block + the `lo0` alias, and LiteLLM publishes on `127.0.10.1:4000`. Verified live: both `litellm:4000` and `127.0.0.1:4000` return 200, and the shipped Phase 26 mempalace exemplar already routes to `litellm:4000`. **Decision:** host-venv *wrappers* (`bin/metagpt`/`bin/oasis`) + the seeded sims route to `http://127.0.0.1:4000/v1` (always works, no dependency on 00n); install *preconditions* + *doctor checks* try `litellm:4000` then fall back to `127.0.0.1:4000`. This keeps the portability intent without the false premise. (Also: `metagpt` must be installed as `--prerelease=allow "metagpt==0.8.2"` — it depends on the `semantic-kernel==0.4.3.dev0` pre-release; the bare name backtracks to the ancient, unbuildable v0.1.)
 3. **Port collisions — three web UIs default to Vite `:5173`** (AI Town fe, ChatDev fe, AgentScope Studio). Reassign **host** ports (pre-assigned in §7); container ports may stay default.
 4. **Pre-assign loopback IPs in this plan** (§7) so 5 parallel worktrees don't race on "next free `127.0.10.x`". Implementer still **censuses `aliases.tsv` for the true current max before writing** (parallel-session churn is a documented risk) — blocking.
-5. **`install all` must NOT include 32–36** — opt-in only (`install_all_phase_order()` in `vz-ai-stack.sh` is the sole lever; leave it untouched).
+5. **`install all` must NOT include 32–36** — opt-in only (`install_all_phase_order()` in `mayssam-ai-stack.sh` is the sole lever; leave it untouched).
 6. **Never the master key**; never commit secrets; loopback binds; `{env:}` / `${VAR}` indirection in config files (and **prove the indirection actually expands** — a literal placeholder = silent 401).
 7. **Resource caps on every persistent container** (`--memory`, `--cpus`) + lean images (multi-stage; bound web-app images < ~800 MB) — fleet-durability lesson (uncapped → host starvation).
 8. **arm64:** assert `pip/uv install` produces native arm64 (no silent amd64 fallback) before stamping.
@@ -69,7 +69,7 @@ Verified against phases 06/26/28/30 + checks 50/52/53/16 + smoke 28/30 + the Aio
 ### 2A. Registration & install
 **Both archetypes:** `installer/phases/<NN>_<svc>.sh` (NN = **32–36**; re-verify free with `ls` at write-time — blocking). `set -Eeuo pipefail`; source `common.sh`+`env.sh`+`worktree.sh`; `worktree_guard "install <svc>"`; `precheck()` idempotency → `stamp_check`; mint scoped key (§2C); smoke-gate before `stamp_mark`. `services.yml` entry (registry / source-of-truth for `help` + EXPLORE). **Do NOT touch `install_all_phase_order()`.** `models.yml` unchanged (key-scoped, not model-assigned).
 
-- **Host-venv batch (MetaGPT/OASIS/AgentScope-lib)** — mirror **Phase 06/26**: `uv venv <svc>/.venv` + `uv pip install <pkg>` (or `uv tool install`); a **`bin/<svc>` wrapper** that sources `.env`, exports the scoped key + `OPENAI_BASE_URL=http://127.0.0.1:4000/v1`, and execs the lib against `<svc>/sims/`. Register a `run` verb (`vz-ai-stack.sh run <svc> -- …`). No `bin/start-*` daemon, no port, no hostname.
+- **Host-venv batch (MetaGPT/OASIS/AgentScope-lib)** — mirror **Phase 06/26**: `uv venv <svc>/.venv` + `uv pip install <pkg>` (or `uv tool install`); a **`bin/<svc>` wrapper** that sources `.env`, exports the scoped key + `OPENAI_BASE_URL=http://127.0.0.1:4000/v1`, and execs the lib against `<svc>/sims/`. Register a `run` verb (`mayssam-ai-stack.sh run <svc> -- …`). No `bin/start-*` daemon, no port, no hostname.
 - **Container web app (ChatDev/AI Town/AgentScope-Studio)** — mirror **Phase 28**: `bin/start-<svc>.sh` (`install|run|uninstall|status`), idempotent `recreate_guard`, loopback publish, `--memory`/`--cpus` caps, labels (§2B), hostname (§2D).
 
 ### 2B. Container identity (web apps only — so doctor-53 liveness sees them)
@@ -89,14 +89,14 @@ Add `installer/lib/aliases.tsv` row `<svc>  127.0.10.<N>  http  <host_port>  <co
 
 ### 2E. Doctor + smoke (per service)
 - **Doctor check** `installer/doctor/checks/<NN>_<svc>.sh` (ordinals **57+**; re-verify highest with `ls` — count auto-derives). `CHECKS+=(<svc>)`, `CHECK_TITLE[<svc>]`, `<svc>_diagnose()` (0=PASS), `<svc>_fix()`. **Skip-clean** if phase stamp absent. Health: `grep -q '^200$'` (NOT `http_ok` — `000000` false-healthy bug). Key probe gated on `litellm_db_down()`. Web-app/Studio checks **conditional on enabled** (don't fail a lib-only install). Host-venv check = venv present + `python -c import` + key lists models.
-- **Smoke** `installer/smoke/<NN>.sh` (phase ordinal; `vz-ai-stack.sh test <NN>`). **Prove the REAL path with a LiteLLM usage delta** — capture the scoped key's request count before/after a tiny run (web: a real UI/model call; batch: a 2–5-agent step). "Exited 0" / "HTTP 200" alone is NOT a pass (catches the literal-placeholder-key 401 class).
+- **Smoke** `installer/smoke/<NN>.sh` (phase ordinal; `mayssam-ai-stack.sh test <NN>`). **Prove the REAL path with a LiteLLM usage delta** — capture the scoped key's request count before/after a tiny run (web: a real UI/model call; batch: a 2–5-agent step). "Exited 0" / "HTTP 200" alone is NOT a pass (catches the literal-placeholder-key 401 class).
 
 ### 2F. Docs + tutorial + drift sweep (ONCE, after services land — Prompt 6)
 Update every count/list location; **note that prose docs (COMPONENTS/HANDOFF/ARCHITECTURE) have NO automated guard** → Prompt 6 does an explicit `grep` audit for stale counts (don't rely on a gate that won't fire):
 - `COMPONENTS.md`, `HANDOFF.md`, `DOCTOR.md` (§ per new check), `INSTALL.md`, `ARCHITECTURE.md`, `DEPENDENCIES.md`, `PORTS.md` (web-app rows), `ALTERNATIVES.md` (**ADD** rows for these 5 — no SwarmClaw/sim row exists today; this is an add, not an update), `ATTRIBUTION.md` (5 licenses: 3 Apache-2.0, 2 MIT), `CHANGELOG.md`.
 - `EXPLORE.html`: add 5 `SERVICES` objects; the subtitle auto-derives from `SERVICES.length`, but a **hardcoded count lives in a comment ~L815/820** — update that. Browser load must show no `console.warn` (tier sums == length).
 - `TUTORIAL.md`: opt-in list + check count + a short "agent-swarm sims" lesson (the 0a table + the M4 ceiling + the Phoenix watch-surface). Then `python3 installer/lib/build_tutorial_html.py` and confirm `--check` exits 0. **Never hand-edit the `<!-- ACTS -->` block.**
-- `vz-ai-stack.sh`: opt-in-extras help strings (~2 spots) **and the `start`/`stop`/`run` dispatch table** (shared file — serial edit).
+- `mayssam-ai-stack.sh`: opt-in-extras help strings (~2 spots) **and the `start`/`stop`/`run` dispatch table** (shared file — serial edit).
 - **Drift guards that DO fire:** `config_validate` (YAML), `build_tutorial_html.py --check`, EXPLORE `SERVICES.length` self-audit, checks 16/45/53. Plus an **explicit `aliases.tsv` IP+port uniqueness census** in Prompt 6 (config_validate does NOT check this).
 
 ### 2G. E2E (real-user perspective — SOUL §5)
@@ -142,7 +142,7 @@ Worktree for all edits (§25); **operate/doctor the live stack from MAIN only** 
 
 - **Waves:** W1 = OASIS, MetaGPT → W2 = AgentScope, AI Town (after Prompt 5a) → optional ChatDev. Build a wave, integrate (Prompt 6), verify (Prompt 7), council (Prompt 8), then next wave. Lets you play after W1.
 - **Parallel-safe (per service, own worktree):** phase script, `bin/<svc>`/`bin/start-<svc>`, doctor check, smoke — file-disjoint.
-- **Serialized (shared files — Prompt 6, once per wave):** `services.yml`, `aliases.tsv`, **`vz-ai-stack.sh` (opt-in help + start/stop/run dispatch)**, all of §2F docs, the single `CHANGELOG` entry.
+- **Serialized (shared files — Prompt 6, once per wave):** `services.yml`, `aliases.tsv`, **`mayssam-ai-stack.sh` (opt-in help + start/stop/run dispatch)**, all of §2F docs, the single `CHANGELOG` entry.
 - **Reserved (re-verify with `ls` before writing):** phases **32–36**, checks **57–61**, smoke **32–36**, loopback IPs §7.
 
 ---
@@ -183,7 +183,7 @@ installer/lib/aliases.tsv` and confirm phases 32–36 / checks 57–61 / the §7
 (re-pick if a parallel session took one). Two archetypes: HOST VENV (MetaGPT/OASIS/AgentScope-lib — mirror
 Phase 06/26, bin/<svc> wrapper, route http://127.0.0.1:4000/v1, no container/port/hostname) vs CONTAINER
 WEB APP (ChatDev/AI Town/AgentScope-Studio — mirror Phase 28, caps, loopback, hostname). Build per-service
-in parallel worktrees; edit shared files (services.yml, aliases.tsv, vz-ai-stack.sh, docs) ONCE per wave.
+in parallel worktrees; edit shared files (services.yml, aliases.tsv, mayssam-ai-stack.sh, docs) ONCE per wave.
 Operate/doctor the live stack from MAIN only.
 ```
 
@@ -283,7 +283,7 @@ data/teardown/restore story, e2e evidence. No shared/doc edits.
 ```
 Constitution applies. The wave's phase scripts + doctor checks + smoke + services.yml entries exist. Make
 the platform COHESIVE; edit SHARED files serially:
- - vz-ai-stack.sh: add the wave's services to the two opt-in-extras help strings AND the start/stop/run
+ - mayssam-ai-stack.sh: add the wave's services to the two opt-in-extras help strings AND the start/stop/run
    dispatch table. Confirm install_all_phase_order() UNCHANGED.
  - installer/lib/aliases.tsv: census existing rows for the true max 127.0.10.x BEFORE assigning; ensure the
    web services' rows are unique on IP AND host_port (config_validate does NOT check this — do it explicitly).
@@ -311,7 +311,7 @@ running, per service installed this wave:
  - AI Town: browser (Playwright) → town renders, characters move/chat, model call via LiteLLM (trace).
  - ChatDev (if built): browser → fe loads, a "build X" run kicks off, usage delta + trace.
 For each: PASS/FAIL with the artifact/screenshot + the usage-delta + the Phoenix trace as proof. Then full
-`vz-ai-stack.sh doctor` from MAIN → ALL green (new checks included; 53 sees the web/compose containers).
+`mayssam-ai-stack.sh doctor` from MAIN → ALL green (new checks included; 53 sees the web/compose containers).
 Flag anything that only "looked" done.
 ```
 
@@ -335,7 +335,7 @@ Debate to consensus; report decision + debate points + every must-fix. Verify an
 ```
 Constitution applies ([[feedback_always_pull_commit_merge_push]]). After council consensus + doctor green
 FROM MAIN: from the worktree, stage the wave's installer/phases, installer/doctor/checks, installer/smoke,
-bin/*, services.yml, installer/lib/aliases.tsv, doc/*, vz-ai-stack.sh, CHANGELOG.md. Commit (Co-Authored-By
+bin/*, services.yml, installer/lib/aliases.tsv, doc/*, mayssam-ai-stack.sh, CHANGELOG.md. Commit (Co-Authored-By
 trailer) + open a PR summarizing the services, the opt-in/scoped-key/loopback/Phoenix posture, the M4
 concurrency caveat, and the council sign-off. Commit/push from the worktree; run the final doctor-green
 verification FROM MAIN. Then pull→merge→push. Never operate the live stack from the worktree.
