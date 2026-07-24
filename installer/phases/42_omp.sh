@@ -175,7 +175,13 @@ fi
 
 # --- 2. Scoped LiteLLM virtual key (stale-aware mint + exact-set self-heal) --------------
 OMP_KEY_CURRENT="$(get_env OMP_LITELLM_KEY '')"
-_models_resp="$(litellm_scoped_curl "$OMP_KEY_CURRENT" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null)"
+# Guard the probe: litellm_scoped_curl FAIL-FASTS (return 1) on an empty key, and under
+# set -e a failing $(…) assignment kills the phase silently — the first-install path always
+# has an empty key here. (Phase 29's identical probe shares this latent bug; follow-up.)
+_models_resp=""
+if [[ -n "$OMP_KEY_CURRENT" ]]; then
+  _models_resp="$(litellm_scoped_curl "$OMP_KEY_CURRENT" -s --max-time 5 http://127.0.0.1:4000/v1/models 2>/dev/null || true)"
+fi
 if [[ -z "$OMP_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"id"'; then
   log "Minting scoped LiteLLM virtual key for omp…"
   _gen_body="$(python3 -c 'import json,sys; print(json.dumps({"models":json.loads(sys.argv[1]),"key_alias":"omp","metadata":{"owner":"omp","purpose":"phase42"}}))' "$OMP_KEY_MODELS")"
