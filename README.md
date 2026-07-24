@@ -2,7 +2,7 @@
 
 **Your own private AI cloud — 53 services, one Mac, zero bytes leaving the building.**
 
-![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 53](https://img.shields.io/badge/services-53-blue) ![doctor: 84 checks](https://img.shields.io/badge/doctor-84%20checks-success) ![models: 3 local](https://img.shields.io/badge/local%20models-3-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
+![platform: macOS Apple Silicon](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black?logo=apple) ![local-first](https://img.shields.io/badge/local--first-offline%20%C2%B7%20no%20telemetry-brightgreen) ![services: 53](https://img.shields.io/badge/services-53-blue) ![doctor: 84 checks](https://img.shields.io/badge/doctor-84%20checks-success) ![models: 1 local](https://img.shields.io/badge/local%20model-1-orange) ![hub: litellm:4000](https://img.shields.io/badge/single%20endpoint-litellm%3A4000-purple) ![runtime: OrbStack](https://img.shields.io/badge/runtime-OrbStack-informational)
 
 ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: local models, a fleet of agents, memory, RAG, and full call-by-call observability — all wired behind a single local endpoint. One installer brings up all 53 services, validates them end-to-end, and heals itself. Nothing phones home; cloud is opt-in only when you add your own keys.
 
@@ -14,7 +14,7 @@ ai-stack turns one Apple Silicon Mac into a complete, self-hosted AI platform: l
 - **Watch every thought your agents have** — every LLM call lands in Phoenix at `http://phoenix:6006`: prompts, responses, latency, and cost, all in one UI.
 - **A whole team in a box** — the Hermes 9-role engineering fleet (manager, techlead, frontend/backend/ML engineers, QA, reviewer, SRE, incident manager), a sandboxed Pi coder, DeerFlow research workflows, and a ChatGPT-style chat UI at `http://openwebui:8080`.
 - **Truly local-first** — models, memory, traces, and documents all stay on your machine; it works fully offline and only touches the cloud if you hand it keys.
-- **Three local models, sensible defaults** — `nemotron-3-nano:4b` runs by default on Ollama; opt into heavyweight Qwen reasoning and coding models on LM Studio MLX when you want them.
+- **One default local model, sensible defaults** — `nemotron-3-nano:4b` runs by default on Ollama (the always-on fallback every agent gates to), with an opt-in Apple-MLX build of the same model on LM Studio.
 - **One installer, self-healing and reversible** — brings up all 53 services, resumes if interrupted, never destroys a running container without confirmation, and proves itself with 84 self-diagnosing doctor checks (all green on a healthy stack).
 - **See it before you run it** — [`doc/EXPLORE.html`](doc/EXPLORE.html) is a single self-contained page (just double-click, works offline) with a searchable card and copy-paste demo for every service.
 
@@ -153,9 +153,10 @@ A plain-language tour of the headline pieces (the full inventory is in the table
   same local model hub.
 - **Open WebUI — chat in your browser.** A familiar ChatGPT-style UI wired to your
   local models, at `http://openwebui:8080`.
-- **Three local models.** `local` (Ollama `nemotron-3-nano:4b`, the always-on
-  fallback every agent gates to when its runtime is down), `local` (LM Studio MLX, heavy
-  reasoning, opt-in), and `local` (LM Studio MLX, coding, opt-in). See [models.md](doc/models.md).
+- **One default local model.** `local` / `local-heavy` / `local-nemotron3-nano-4b` (Ollama
+  `nemotron-3-nano:4b`, the always-on fallback every agent gates to when its runtime is down),
+  plus `local-nemotron3-nano-4b-mlx` (the same model on LM Studio MLX, opt-in; a separate
+  LFM2.5 MLX demo is opt-in via `LMS_LOAD_LFM2=1`). See [models.md](doc/models.md).
 
 Plus storage (FalkorDB + Qdrant), cross-agent memory (Honcho), a docs RAG pipeline,
 security guardrails, fine-tuning (Unsloth), and more — all in the table below.
@@ -172,7 +173,7 @@ security guardrails, fine-tuning (Unsloth), and more — all in the table below.
 - **[Homebrew](https://brew.sh)** — the installer uses `brew` to install host tooling
   (Ollama, `yq`, etc.).
 - **Disk:** budget roughly **30–40 GB** for container images plus local model weights
-  (the default `nemotron-3-nano:4b` alone is ~2.8 GB; the optional MLX models add ~17 GB each).
+  (the default `nemotron-3-nano:4b` is ~2.8 GB; the opt-in MLX variant of the same model is ~3 GB).
 
 ### The happy path
 
@@ -538,7 +539,7 @@ export PATH="$HOME/ai-stack/bin:$PATH"
   matrix, 3 sequence diagrams for the most-important request flows,
   startup-order graph, and a failure-mode-cascade table for triage.
 - **[models.md](doc/models.md)** — declarative model ↔ agent binding. `models.yml`
-  as the single source of truth, the three local models, `mayssam-ai-stack.sh model
+  as the single source of truth, the local-model routes, `mayssam-ai-stack.sh model
   {list,assign,sync,superset}`, availability-gating, and the scoped-key superset.
 
 ### Operate
@@ -639,13 +640,13 @@ snapshot; run `bash mayssam-ai-stack.sh doctor` for live state. Top-line:
   (`openshell_storm`) reports the watchdog status, and check 45 (`tutorial`, always-on)
   asserts `doc/TUTORIAL.html` and `doc/DIAGRAMS.html` are self-contained and in sync with their markdown sources.
 - Each agent's LLM is now **declared per-agent** in `installer/models.yml` (single source
-  of truth) and rendered by `mayssam-ai-stack.sh model {list,assign,sync,superset}`. Three local
-  models: `local` (Ollama nemotron-3-nano:4b — the always-on fallback agents gate to when their runtime is down),
-  `local` (LM Studio MLX, heavy reasoning), `local` (LM Studio MLX,
-  coding). lmstudio-assigned agents auto-fall-back to `local` when LM Studio (:1234)
+  of truth) and rendered by `mayssam-ai-stack.sh model {list,assign,sync,superset}`. One local
+  model on two runtimes: `local`/`local-heavy` (Ollama nemotron-3-nano:4b — the always-on
+  fallback agents gate to when their runtime is down) and `local-nemotron3-nano-4b-mlx`
+  (the same model on LM Studio MLX, opt-in). lmstudio-assigned agents auto-fall-back to `local` when LM Studio (:1234)
   is down, so a plain `install all` works with no LM Studio. See [doc/models.md](doc/models.md).
-  (`local-heavy` is a removed legacy Ollama alias — the heavy model now lives in
-  LM Studio as `local`. `local` is likewise no longer auto-pulled.)
+  (`local-heavy` is a back-compat alias of `local` — there is no separate heavy
+  local model; `local` is the only auto-pulled chat model.)
 - Known-flaky: OpenShell's relay can idle-timeout (HANDOFF § 2.1) and surface 2
   sandbox-exec check failures (pi-v1, hermes) on a long-idle stack — a reset clears it.
   A separate failure (a sandbox's gateway token expiring ~8h → CPU storm) is caught by
