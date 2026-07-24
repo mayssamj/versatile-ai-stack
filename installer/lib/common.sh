@@ -683,8 +683,8 @@ sys.exit(1 if "error" in d else 0)' 2>/dev/null; then
   fi
 }
 
-# scoped_key_registry — the SINGLE SOURCE OF TRUTH for the 7 OPT-IN consumer scoped keys
-# (metagpt/agentscope/oasis/chatdev/aitown/concordia/openwork). These mint a hardcoded
+# scoped_key_registry — the SINGLE SOURCE OF TRUTH for the 8 OPT-IN consumer scoped keys
+# (metagpt/agentscope/oasis/chatdev/aitown/concordia/openwork/omp). These mint a hardcoded
 # allow-list at their own phase and are NOT in the models.yml `kinds` fleet, so `model
 # sync` never reconciled them — a catalog rename/removal silently drifted them + 403'd the
 # renamed model. `model sync` P3b iterates this (converging each EXISTING key EXACT via
@@ -701,6 +701,7 @@ CHATDEV_LITELLM_KEY|chatdev|chatdev|["local","claude-opus-sub-xhigh","claude-son
 AITOWN_LITELLM_KEY|aitown|aitown|["local","embed-local","claude-opus-sub-xhigh","claude-sonnet-sub-high"]
 CONCORDIA_LITELLM_KEY|concordia|concordia|["claude-sonnet-sub-high","claude-opus-sub-xhigh","local"]
 OPENWORK_LITELLM_KEY|openwork|openwork|["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-sub-high","local"]
+OMP_LITELLM_KEY|omp|omp|["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-sub-high","local"]
 EOF
 }
 

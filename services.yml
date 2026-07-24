@@ -1492,6 +1492,32 @@ services:
         "at": "2026-06-25T00:00:00Z"
         "source": phase-37-concordia
         "reviewed": true
+  omp:
+    enabled: true # Phase 42 (opt-in) — oh-my-pi host coding agent (Pi hard fork) over LiteLLM
+    type: cli-only
+    desc: "omp / oh-my-pi — terminal coding agent (hard fork of Pi) on the stack's models via LiteLLM, run via bin/omp"
+    phase: "42"
+    upgrade:
+      method: none              # pinned GitHub-release binary (lumen/aionui parity), sha256-verified
+      # FAIL-CLOSED by the phase. The pin below HOLDS every mutation; version oracle for the
+      # raw-binary shape is a follow-up (spec §6).
+      pin: "17.1.2"
+      bump: "edit OMP_VERSION + OMP_SHA256 in installer/phases/42_omp.sh, re-run 'mayssam-ai-stack.sh install 42', align upgrade.pin here"
+    network: none
+    consumes_env:
+      - OMP_LITELLM_KEY
+    help:
+      "what": "omp (oh-my-pi, can1357/oh-my-pi, MIT) is a terminal AI coding agent — a hard fork of badlogic/pi-mono (the SAME upstream as the stack's sandboxed phase-15 pi) rewritten as a coding-first surface: sessions, subagents, slash commands, hash-anchored edits, LSP/DAP wiring, extensions. Installed as a pinned, sha256-verified prebuilt arm64 binary in omp/; run via bin/omp under the stack-owned OMP_PROFILE=ai-stack."
+      "why": "The OPERATOR's interactive host coding agent over the stack's models (complements claude-code; phase-15 pi remains the FLEET's sandboxed coder — separate config universes, zero collision: omp reads ~/.omp, never ~/.pi). Every model call routes through LiteLLM on a scoped key — default role claude-opus-sub-xhigh, smol claude-sonnet-sub-high, and `local` (Ollama nemotron via the hub) selectable but NEVER a default — traced in Phoenix like everything else."
+      "usage":
+        - bin/omp                                        # TUI in the current repo (stack profile)
+        - bin/omp -p 'explain this repo in 3 bullets'    # one-shot
+        - mayssam-ai-stack.sh test 42                    # smoke: a real one-shot reply through LiteLLM
+      "config_notes": "OPT-IN (NOT in `install all`). Stack profile at ~/.omp/profiles/ai-stack/agent/ — models.yml (single LiteLLM provider, baseUrl http://127.0.0.1:4000/v1, key by ENV-NAME indirection) + config.yml (role pins + hardening: approvalMode `write` — omp SHIPS `yolo` which auto-approves exec; disabledProviders ollama/lm-studio/llama.cpp so implicit DIRECT-local discovery can't bypass the hub; startup.checkUpdate + dev.autoqa off — no phone-home). Your personal ~/.omp is untouched (profiles fully relocate state). BOUNDARY: a repo's own .omp/config.yml deep-merges OVER the stack profile and can flip approvalMode back to yolo — and in yolo even omp's critical-destructive-pattern guard does NOT prompt (upstream approval-mode docs); the profile's explicit tools.approval.bash: prompt policy keeps bash prompting under a yolo flip unless the repo config overrides that key too. Run omp in TRUSTED repos only (doctor 84 carries the advisory). Ollama = the `local` route via LiteLLM; a direct ollama: provider would be a second door and stays disabled. Version pinned (v17.1.2 + sha256; upstream ships majors ~weekly) — bump deliberately via the upgrade-block recipe. Rollback: rm -rf omp/ ~/.omp/profiles/ai-stack bin/omp installer/state/phase_42.done (keep the .env key — never rm env keys)."
+      "_gen":
+        "at": "2026-07-24T00:00:00Z"
+        "source": phase-42-omp
+        "reviewed": true
   agentscope:
     enabled: true # Phase 33 (opt-in) — multi-agent simulation framework (build your own swarms)
     type: cli-only

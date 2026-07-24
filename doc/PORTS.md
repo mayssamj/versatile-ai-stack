@@ -337,6 +337,7 @@ These appear in `services.yml` but have no alias because they have no listener:
 | `agentscope`                  | 33    | cli-only         | swarm framework via LiteLLM (`bin/agentscope`); Studio is the opt-in web GUI |
 | `oasis`                       | 34    | cli-only         | social-sim framework via LiteLLM (`bin/oasis`)         |
 | `concordia`                   | 37    | cli-only         | DeepMind GABM sim via LiteLLM (`bin/concordia`)        |
+| `omp`                         | 42    | cli-only         | oh-my-pi coding agent via LiteLLM (`bin/omp`)          |
 
 > **`setup` / `deps` are CLI subcommands, not services.** `mayssam-ai-stack.sh setup`
 > (`installer/lib/setup.sh`, interactive `.env`/API-key bootstrap) and

@@ -69,9 +69,9 @@ Friendly aliases: `litellm`→inference, `telegram`→hermes_telegram,
 resolver tries id-prefix → exact-name → alias → unique fuzzy match; an ambiguous
 or unknown selector errors and points you at `stack phases`.
 
-The **17 opt-in extras** (Phases 21–25, 27–38: `portless`, `cmux`, `skillspector`,
-`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `ingress`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`, `concordia`, `slack`) are NOT part of `install all` — add them
-individually by name. Their doctor checks (34–38, 49–52, 57–61, 66, 67) pass-as-skip until installed.
+The **21 opt-in extras** (Phases 21–25, 27–42: `portless`, `cmux`, `skillspector`,
+`openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `ingress`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`, `concordia`, `slack`, `fleet_memory`, `honcho_mcp`, `falkordb_mcp`, `omp`) are NOT part of `install all` — add them
+individually by name. Their doctor checks (34–38, 49–52, 57–61, 66, 67, 74–76, 84) pass-as-skip until installed.
 
 ### Per-service help (`stack help`)
 
@@ -554,7 +554,7 @@ How it decides — **no image is downloaded**:
 | `brew-service` (ollama) | the same shared 3-way brew oracle as `status --versions` (formula-arg `brew outdated --json`, bounded) — a probe timeout/refusal reads `unknown`, never a false `up-to-date`, so the two commands can't disagree. |
 | `npm-global` / `pip`(uv-venv) / `clone-only`(git) | **now checked** (2026-07-02) via `npm view` / PyPI JSON / `git ls-remote` (bounded — a blocked registry degrades to `unknown`, never hangs). These show real installed+available instead of `manual`. |
 | declared `upgrade:` methods — `uv-tool` (mempalace/halo) · `sandbox-pip` (hermes_fleet, read through the sandbox) · `uv-reqs` (docs_mcp — the 7 ingestor requirements, same-resolver dry-run so check and handler converge) · `brew` (openshell/blaxel, formula-aware) | **now checked** (2026-07-15/16). git-pull services with a `build:`/`restart:` also rebuild and PID-verify the daemon recycle on upgrade. |
-| deliberately **pinned** (`upgrade.pin`: openwork, metagpt, concordia, ace, lumen, aionui, pi) | shown as `pinned` with real installed versions where readable — **held on every upgrade path** (`upgrade all` cannot trample a pin); `upgrade <svc>` prints the exact bump recipe. **pi**'s row is **measured** (2026-07-20): a live in-sandbox read while the `pi-v1` sandbox runs, else the host-staged `pi/package.json` pin shown as `staged:<v>` — visibly a declaration, not a measurement (a bumped file with a stale bootstrap tarball can disagree with the sandbox); pin-drift warnings name their comparand (in-sandbox vs host-staged). |
+| deliberately **pinned** (`upgrade.pin`: openwork, metagpt, concordia, ace, lumen, aionui, pi, omp) | shown as `pinned` with real installed versions where readable — **held on every upgrade path** (`upgrade all` cannot trample a pin); `upgrade <svc>` prints the exact bump recipe. **pi**'s row is **measured** (2026-07-20): a live in-sandbox read while the `pi-v1` sandbox runs, else the host-staged `pi/package.json` pin shown as `staged:<v>` — visibly a declaration, not a measurement (a bumped file with a stale bootstrap tarball can disagree with the sandbox); pin-drift warnings name their comparand (in-sandbox vs host-staged). |
 | configuration surfaces (guardrails, MCP shims, telegram/slack, …) | reported `config` — they version with the stack repo or their owning service; nothing to upgrade per-service. The hermes_telegram / hermes_slack rows now display the **owning** `hermes_fleet`'s measured in-sandbox version in CURRENT/INSTALLED — status stays `config` (never actionable), `-` when the fleet sandbox is down; in `--check --json` their `current` deliberately flips `-` → the owner version. |
 | everything else (real artifact, no oracle yet: docs_ingestor, unsloth, cmux, lmstudio, openagents, …) | reported `manual` (hidden unless `--all`). **NOTE:** bare `upgrade all` still re-asserts them via a phase re-run — see the exhaustive note above. |
 
