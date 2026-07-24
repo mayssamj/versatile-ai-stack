@@ -6,7 +6,7 @@ for commands see [OPERATIONS.md](OPERATIONS.md); for **source links + licenses +
 see [ATTRIBUTION.md](ATTRIBUTION.md) (incl. the non-permissive ones — OrbStack, Phoenix,
 FalkorDB, LFM2, etc.).
 
-- **29 core install phases** (+20 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `ingress`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`, `concordia`, `slack`, `fleet_memory`, `honcho_mcp`, `falkordb_mcp`), **53 services** (`services.yml`), **84 doctor checks**.
+- **29 core install phases** (+21 opt-in extras: `portless`, `cmux`, `skillspector`, `openagents`, `lmstudio`, `sourcegraph`, `aionui`, `openwork`, `understand`, `ingress`, `metagpt`, `agentscope`, `oasis`, `chatdev`, `aitown`, `concordia`, `slack`, `fleet_memory`, `honcho_mcp`, `falkordb_mcp`, `omp`), **54 services** (`services.yml`), **85 doctor checks**.
 - Phases accept a **name or number**: `mayssam-ai-stack.sh install phoenix` == `install 01h`. Run `mayssam-ai-stack.sh phases` for the table.
 - Everything local-first: all LLM calls route through **LiteLLM → Ollama** (no cloud
   unless you explicitly pick a cloud model). Reach services by alias (`http://litellm:4000`).
@@ -78,7 +78,7 @@ FalkorDB, LFM2, etc.).
 | **transformers.js PoC** | Evaluated capability — local **on-device embeddings + semantic search** (browser WebGPU + Node), zero load on Ollama/host; a candidate to drop into claw3d | `experiments/transformersjs-poc/` |
 
 ## Opt-in experimental extras (Phases 21–25 · 27–38 — NOT in `install all`)
-Install individually by name: `mayssam-ai-stack.sh install <name>`. Doctor checks 34–38 + 49–52 + 56–61 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
+Install individually by name: `mayssam-ai-stack.sh install <name>`. Doctor checks 34–38 + 49–52 + 56–61 + 84 pass-as-skip when not installed (check 45 guards the self-contained tutorial).
 | Component | What it is | Install |
 |---|---|---|
 | **portless** | Agent-aware local dev proxy — stable `name.localhost` HTTPS URLs; ships a Claude Code skill so agents stop guessing ports | `mayssam-ai-stack.sh install portless` |

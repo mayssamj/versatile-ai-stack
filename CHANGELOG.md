@@ -4,6 +4,18 @@ Auto-appended by `mayssam-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-24
+
+### Added
+
+- **Phase 42 — omp / oh-my-pi (opt-in): terminal coding agent on the stack's models.** `can1357/oh-my-pi` (MIT, v17.1.2) is a hard fork of `badlogic/pi-mono` — the same upstream as the sandboxed phase-15 pi, which is untouched (separate `~/.omp` config universe). Install = the prebuilt `omp-darwin-arm64` release binary into `omp/` (gitignored), **sha256-verified FAIL-CLOSED** against the pinned digest (release-API digest + independent download hash, two-source verified) — no `curl | sh`, no global npm/bun. Wiring = scoped `OMP_LITELLM_KEY` (registry-only: `scoped_key_registry()` 7→8 rows + regression test extended — deliberately NOT models.yml `kinds`, which would double-own the allow-list and has no renderer) + a stack-owned `OMP_PROFILE=ai-stack` profile: models.yml (single LiteLLM provider, key by ENV-NAME indirection) and config.yml (roles: default/plan `claude-opus-sub-xhigh`, smol `claude-sonnet-sub-high` — **no role defaults to `local`** per operator directive, though `local` stays selectable via the hub; `approvalMode: write` — upstream ships `yolo` which auto-approves exec; `disabledProviders: ollama/lm-studio/llama.cpp` — implicit direct-local discovery can't bypass LiteLLM; `checkUpdate`/`autoqa` off — no phone-home). New: `installer/phases/42_omp.sh`, `installer/doctor/checks/84_omp.sh` (3-state pass-as-skip, wiring-only, asserts the hardening posture; count 84→85), `installer/smoke/42.sh` (real `bin/omp -p` sentinel reply through LiteLLM, perl-alarm-bounded), services.yml entry + full doc sweep (counts 53→54 services / 84→85 checks / 20→21 opt-ins across README, COMPONENTS, AGENT-ONBOARDING, TUTORIAL→regen, EXPLORE card, PORTS, ATTRIBUTION, DEPENDENCIES, OPERATIONS, DOCTOR, ONBOARDING; pre-existing count drift fixed en route: AGENT-ONBOARDING "82/78" and OPERATIONS "17 extras"). KNOWN BOUNDARY (accepted, doctor-84-advisory): a repo's own `.omp/config.yml` deep-merges over the stack hardening — trusted repos only. §24 two-round council (adversarial+architect+qa/infra+PM) APPROVE_WITH_CHANGES; all 9 blocking findings folded in (registry-only ownership, SUB-route-only smoke completions, COMPONENTS in the sweep, no aliases.tsv row for a UI-less service). Spec: `doc/specs/2026-07-24-omp-integration.md`.
+
+### Decided
+
+- **OpenWorker (andrewyng/openworker) — DEFERRED, not integrated** (operator decision on the council's differentiation gate). Research verdict: 4 days old, v0.0.0, no PyPI/Docker; its local REST/WS API has **no auth** in front of a persistent host `/bin/bash` executor (loopback+CORS passes no-Origin native clients — unlike phase-29 openwork, which mints client/host tokens); default-ON cloud relay to AWS; its differentiators (Tauri GUI, voice STT, SaaS connectors) are exactly what local-first hardening disables, leaving a headless subset redundant against openwork (29) + AionUi (28). Revisit when it matures; full research + council record in memory `project-openworker-omp-intake`.
+
+---
+
 ## 2026-07-22
 
 ### Changed

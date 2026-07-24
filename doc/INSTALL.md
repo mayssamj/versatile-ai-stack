@@ -452,7 +452,7 @@ Then run the full doctor:
 bash mayssam-ai-stack.sh doctor
 ```
 
-Expected: 81/84 checks pass after the post-install steps above and a
+Expected: 82/85 checks pass after the post-install steps above and a
 successful `sudo bash mayssam-ai-stack.sh prepare-sudo` (which wires `/etc/hosts`
 + lo0 + the launchd plist). Three of the checks (15 `/etc/hosts` block, 19 lo0
 aliases, 17 alias reachability) require `prepare-sudo` to have run. Ten more

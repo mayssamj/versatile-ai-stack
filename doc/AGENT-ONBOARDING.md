@@ -54,13 +54,13 @@ Three things to burn in:
 
 | Thing | Snapshot | Get it live |
 |---|---|---|
-| Services | **53** in `services.yml` (~27 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
-| Doctor checks | **82** (dynamic — a new check file auto-bumps it) | `bash mayssam-ai-stack.sh doctor` |
-| Phase files | **49** (00–41 + sub-phases; 29 core / 20 opt-in) | `bash mayssam-ai-stack.sh phases` |
+| Services | **54** in `services.yml` (~27 networked; the rest are `network:none` patterns/features/keys) | `yq '.services\|keys\|length' services.yml` |
+| Doctor checks | **85** (dynamic — a new check file auto-bumps it) | `bash mayssam-ai-stack.sh doctor` |
+| Phase files | **50** (00–42 + sub-phases; 29 core / 21 opt-in) | `bash mayssam-ai-stack.sh phases` |
 | Chat-model routes | **20** across **6 runtimes** | `bash mayssam-ai-stack.sh model list` |
 | Host | M4 MacBook Pro, 24 GB, macOS, OrbStack, Homebrew, brew bash 5.x | `bash mayssam-ai-stack.sh status` |
 
-> Why "53" but other docs say different: `services.yml` has 53 keys, but many are not *reachable
+> Why "54" but other docs say different: `services.yml` has 54 keys, but many are not *reachable
 > services* — 2 `litellm-feature` (in-process callbacks), 1 `agent-pattern` (a prompting
 > discipline, not a process), 1 `litellm-virtual-key` (a credential), 15 `cli-only` (no daemon).
 > Counting "things with a URL" gives ~26. **This is the recurring trap: define what you're
@@ -161,7 +161,7 @@ One entry point (`bin/stack` is a thin wrapper). Put `bin/` on PATH:
 | Command | What it does |
 |---|---|
 | `status` | Declared-vs-actual + ownership table (your first read) |
-| `doctor [filter]` | 82 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
+| `doctor [filter]` | 85 health checks + per-check auto-fix; `doctor network`/`openshell` filters |
 | `phases` | Every phase: id → name |
 | `verify` | Cheap (<10s) runtime probe of the alias chain (lo0/`/etc/hosts`/DNS/routing) |
 | `logs <svc> [-f]` | `docker logs` wrapper |
@@ -333,7 +333,7 @@ any flagged claim directly before acting on it.
 
 ## 8. Health & verification
 
-- `doctor` runs **84 checks**, each a file in `installer/doctor/checks/` that appends to a global
+- `doctor` runs **85 checks**, each a file in `installer/doctor/checks/` that appends to a global
   array (the count is **dynamic** — drop in a new check file and it's counted). Many checks
   **auto-heal** (idempotent, safe); opt-in extras' checks **skip-clean** when their phase isn't
   installed.
@@ -514,13 +514,13 @@ any flagged claim directly before acting on it.
 ```
 ~/ai-stack/
 ├── mayssam-ai-stack.sh          # THE entry point (bash-5 gate + subcommand dispatch)
-├── services.yml            # 53 services + profiles (source of truth)
+├── services.yml            # 54 services + profiles (source of truth)
 ├── README.md · CHANGELOG.md
 ├── bin/                    # stack, start-/stop-<svc>.sh, pi, lumen, mempalace, ingress, audit.sh …
 ├── installer/
 │   ├── lib/*.sh            # sourced helpers (common, env, docker, network, litellm, models, worktree, …)
 │   ├── phases/NN_*.sh      # one per phase (00–36 + subphases)
-│   ├── doctor/checks/      # one file per failure mode (78)
+│   ├── doctor/checks/      # one file per failure mode (85)
 │   ├── smoke/              # per-phase E2E smoke
 │   ├── models.yml          # model↔agent binding
 │   └── state/              # .done stamps, restart queue, locks, logs (gitignored — see below)

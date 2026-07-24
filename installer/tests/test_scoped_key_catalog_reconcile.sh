@@ -8,7 +8,7 @@
 # so a catalog REMOVAL over an ALREADY-INSTALLED stack drifted live keys + doctor-
 # invisible artifacts and could NOT self-heal. This test pins the post-fix contract:
 #
-#   (b0) OFFLINE: the scoped_key_registry has all 7 opt-in consumers, each with a
+#   (b0) OFFLINE: the scoped_key_registry has all 8 opt-in consumers, each with a
 #        valid-JSON model list that includes 'local' (the model the sims call).
 #   (b1) OFFLINE: no rendered artifact (deer-flow picker, bin/* launchers, opencode.json)
 #        references a slug ca08cc1 removed (word-bounded denylist — a still-valid
@@ -56,10 +56,10 @@ source "$AI_STACK/installer/lib/common.sh"   # log/ok/warn/err + litellm_*_curl 
 # ---------------------------------------------------------------------------
 # (b0) OFFLINE — the opt-in scoped-key registry is complete + sane.
 # ---------------------------------------------------------------------------
-echo "== (b0) scoped_key_registry: 7 consumers, each valid-JSON incl. 'local' (offline) =="
+echo "== (b0) scoped_key_registry: 8 consumers, each valid-JSON incl. 'local' (offline) =="
 if declare -F scoped_key_registry >/dev/null 2>&1; then
   reg_rows="$(scoped_key_registry | grep -c '|')"
-  [[ "$reg_rows" == "7" ]] && t_ok "registry has 7 rows" || t_bad "registry has $reg_rows rows (expected 7)"
+  [[ "$reg_rows" == "8" ]] && t_ok "registry has 8 rows" || t_bad "registry has $reg_rows rows (expected 8)"
   b0=0
   while IFS='|' read -r ke al ow mj; do
     [[ -z "$ke" ]] && continue
@@ -91,9 +91,10 @@ declare -A PHASE_OF=(
   [AITOWN_LITELLM_KEY]="installer/phases/36_aitown.sh"
   [CONCORDIA_LITELLM_KEY]="installer/phases/37_concordia.sh"
   [OPENWORK_LITELLM_KEY]="installer/phases/29_openwork.sh"
+  [OMP_LITELLM_KEY]="installer/phases/42_omp.sh"
 )
 parity=0
-for ke in METAGPT_LITELLM_KEY AGENTSCOPE_LITELLM_KEY OASIS_LITELLM_KEY CHATDEV_LITELLM_KEY AITOWN_LITELLM_KEY CONCORDIA_LITELLM_KEY OPENWORK_LITELLM_KEY; do
+for ke in METAGPT_LITELLM_KEY AGENTSCOPE_LITELLM_KEY OASIS_LITELLM_KEY CHATDEV_LITELLM_KEY AITOWN_LITELLM_KEY CONCORDIA_LITELLM_KEY OPENWORK_LITELLM_KEY OMP_LITELLM_KEY; do
   reg="$(scoped_key_registry_models "$ke")"
   res="$(python3 - "$reg" "$AI_STACK/${PHASE_OF[$ke]}" <<'PY'
 import json, os, re, sys
@@ -102,9 +103,9 @@ try:
 except Exception:
     print("BAD_REGISTRY_JSON"); sys.exit(0)
 txt = open(sys.argv[2], encoding="utf-8").read()
-# openwork declares OPENWORK_KEY_MODELS='[...]'; the other 6 use a "models":[...] literal
+# openwork/omp declare <SVC>_KEY_MODELS='[...]'; the other 6 use a "models":[...] literal
 # in their /key/generate body (36_aitown builds it inside a python json.dumps, same shape).
-m = re.search(r"OPENWORK_KEY_MODELS='(\[[^\]]*\])'", txt) or re.search(r'"models":\s*(\[[^\]]*\])', txt)
+m = re.search(r"(?:OPENWORK|OMP)_KEY_MODELS='(\[[^\]]*\])'", txt) or re.search(r'"models":\s*(\[[^\]]*\])', txt)
 if not m:
     print("PARSE_FAIL"); sys.exit(0)
 try:
@@ -116,7 +117,7 @@ PY
 )"
   [[ "$res" == "EQUAL" ]] || { t_bad "registry($ke) != mint list (${PHASE_OF[$ke]}): $res"; parity=1; }
 done
-(( parity == 0 )) && t_ok "all 7 registry rows set-equal their phase's /key/generate mint list"
+(( parity == 0 )) && t_ok "all 8 registry rows set-equal their phase's /key/generate mint list"
 
 # ---------------------------------------------------------------------------
 # (b1) OFFLINE denylist — removed slugs must not linger in any rendered artifact.

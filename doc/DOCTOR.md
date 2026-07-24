@@ -1,11 +1,11 @@
 # Doctor — checks reference
 
-`bash mayssam-ai-stack.sh doctor` runs all 84 checks and, when one fails, prints the
+`bash mayssam-ai-stack.sh doctor` runs all 85 checks and, when one fails, prints the
 failure detail plus remediation. This doc lists every check, what it asserts,
 when it fails, and what the fix does.
 
 **The auto-fix prompt is gated on CAPABILITY, not on a fix merely existing**
-(changed 2026-07-16). 81 of the 84 checks ship a `<name>_fix`, but most only
+(changed 2026-07-16). 82 of the 85 checks ship a `<name>_fix`, but most only
 PRINT guidance — the house convention. Doctor used to offer *"Auto-fix
 available. Apply? [Y/n]"* for any check with a fix function (`declare -F`), so
 the operator answered `y`, nothing ran, and doctor reported *"fix ran but the
@@ -139,7 +139,8 @@ installer/doctor/checks/
 ├── 80_halo_drift.sh                          (bin/halo default model in sync with its 11_halo_autoreason.sh generator — install can't dirty git with a stale wrapper)
 ├── 81_litellm_config_canonical.sh            (litellm/config.yaml committed in yq-canonical form — a model render can't dirty git with a comment/whitespace reindent)
 ├── 82_anon_volume_orphans.sh                 (dangling anonymous docker volume census ≤5 — leaked mask-guards/sandbox homes; advisory, points at cleanup --docker)
-└── 83_pipefail_grep_epipe_guard.sh           (no racy `producer | grep -q` pipelines under pipefail — yq/docker-logs/awk-mid-pipe EPIPE class; advisory static guard)
+├── 83_pipefail_grep_epipe_guard.sh           (no racy `producer | grep -q` pipelines under pipefail — yq/docker-logs/awk-mid-pipe EPIPE class; advisory static guard)
+└── 84_omp.sh                                 (opt-in Phase 42; omp binary + profile hardening [approvalMode/disabledProviders/checkUpdate] + scoped key — pass-as-skip)
 ```
 
 Adding a new failure mode = adding a new file. No central registry. See

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-For the doctor's 84 checks, see [DOCTOR.md](DOCTOR.md).
+For the doctor's 85 checks, see [DOCTOR.md](DOCTOR.md).
 This file is for everything else.
 
 Rather hand it to a coding agent than read on? Paste
