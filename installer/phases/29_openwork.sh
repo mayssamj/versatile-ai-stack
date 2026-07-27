@@ -134,7 +134,14 @@ fi
 # Model-scoped (never master). A stale/revoked key returns 200 + empty data[], so
 # require a real model "id" in the response (council SRE pattern from Phase 26/28).
 OPENWORK_KEY_CURRENT="$(get_env OPENWORK_LITELLM_KEY '')"
-_models_resp="$(litellm_scoped_curl "$OPENWORK_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)"
+# Guard the probe: litellm_scoped_curl FAIL-FASTS (return 1) on an empty key, and under
+# set -e a failing $(…) assignment kills the phase SILENTLY — the clean-install path always
+# has an empty key here. Latent since the empty-key fail-fast landed in common.sh (masked by
+# the existing .env key); found + class-fixed via phase 42's identical probe (b2be82a).
+_models_resp=""
+if [[ -n "$OPENWORK_KEY_CURRENT" ]]; then
+  _models_resp="$(litellm_scoped_curl "$OPENWORK_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
+fi
 if [[ -z "$OPENWORK_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"id"'; then
   log "Minting scoped LiteLLM virtual key for OpenWork…"
   _gen_body="$(python3 -c 'import json,sys; print(json.dumps({"models":json.loads(sys.argv[1]),"key_alias":"openwork","metadata":{"owner":"openwork","purpose":"phase29"}}))' "$OPENWORK_KEY_MODELS")"

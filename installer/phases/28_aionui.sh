@@ -125,7 +125,12 @@ fi
 # Model-scoped (never master). A stale/revoked key returns 200 + empty data[], so
 # require a real model "id" in the response (council SRE pattern from Phase 26).
 AIONUI_KEY_CURRENT="$(get_env AIONUI_LITELLM_KEY '')"
-_models_resp="$(litellm_scoped_curl "$AIONUI_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)"
+# Guard the probe: litellm_scoped_curl FAIL-FASTS on an empty key; under set -e a failing
+# $(…) assignment kills the phase SILENTLY on any CLEAN install (class fix, cf. 42/29).
+_models_resp=""
+if [[ -n "$AIONUI_KEY_CURRENT" ]]; then
+  _models_resp="$(litellm_scoped_curl "$AIONUI_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
+fi
 if [[ -z "$AIONUI_KEY_CURRENT" ]] || ! printf '%s' "$_models_resp" | grep -q '"id"'; then
   log "Minting scoped LiteLLM virtual key for AionUi…"
   _gen_body="$(python3 -c 'import json,sys; print(json.dumps({"models":json.loads(sys.argv[1]),"key_alias":"aionui","metadata":{"owner":"aionui","purpose":"phase28"}}))' "$AIONUI_KEY_MODELS")"
