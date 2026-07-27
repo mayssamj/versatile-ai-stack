@@ -3,16 +3,16 @@
 #
 # NOT in `install all` — a host coding agent is a deliberate opt-in
 # (run: `mayssam-ai-stack.sh install omp`). What this phase does:
-#   (a) Install the pinned prebuilt binary — the `omp-darwin-arm64` GitHub-release asset
-#       (can1357/oh-my-pi v$OMP_VERSION) into $AI_STACK/omp/ (gitignored), SHA256-verified
-#       FAIL-CLOSED against the pinned digest before it is ever executed. No `curl | sh`
-#       pipe, no `npm/bun -g` global pollution.
+#   (a) Install the prebuilt binary — the `omp-darwin-arm64` GitHub-release asset
+#       (can1357/oh-my-pi, LATEST release by default — operator directive 2026-07-27) into
+#       $AI_STACK/omp/ (gitignored), sha256-verified FAIL-CLOSED against the release's
+#       PUBLISHED digest before it is ever executed. No `curl | sh`, no `npm/bun -g`.
 #   (b) LiteLLM wiring — mint a model-scoped virtual key (OMP_LITELLM_KEY, never the
 #       master) + render the STACK-OWNED omp profile (~/.omp/profiles/ai-stack/agent/):
 #       models.yml (single `litellm` provider, apiKey by ENV-NAME indirection — the literal
 #       key never lands in the file) and config.yml (role pins + hardening, see SECURITY).
 #   (c) bin/omp wrapper — exports OMP_PROFILE=ai-stack + the key from .env and execs the
-#       pinned binary. The operator's personal ~/.omp (if any) is NEVER touched: profiles
+#       verified binary. The operator's personal ~/.omp (if any) is NEVER touched: profiles
 #       fully relocate omp state (docs/config-usage.md); rollback = rm -rf the profile dir.
 #
 # WHY omp: a hard fork of badlogic/pi-mono — the SAME upstream as the sandboxed phase-15
@@ -45,13 +45,17 @@ source "$AI_STACK/installer/lib/worktree.sh"   # worktree_guard lives here (37_c
 
 PHASE=42
 NAME=omp
-# Pin BOTH the version and its sha256 (release-API digest, independently re-hashed at spec
-# time). Overriding OMP_VERSION requires overriding OMP_SHA256 too — verify is fail-closed.
-OMP_VERSION="$(get_env OMP_VERSION '17.1.2')"
-OMP_SHA256="$(get_env OMP_SHA256 '3b0fd8c1a22066cae07d853ba2676737cd86bf3c7beb9c86dd406359edf079d7')"
+# Version policy (operator directive 2026-07-27): UNPINNED — resolve the NEWEST GitHub
+# release at install/upgrade time ('mayssam-ai-stack.sh upgrade omp' moves to latest). Integrity
+# stays FAIL-CLOSED: the download must match the release's PUBLISHED per-asset sha256
+# digest (api.github.com), so we always install exactly what upstream shipped — the pin is
+# dropped, the checksum never is. Escape hatch: OMP_VERSION=<x.y.z> + OMP_SHA256=<hex>
+# pins again (BOTH required — an explicit version without its digest refuses).
+OMP_REPO="can1357/oh-my-pi"
+OMP_VERSION="$(get_env OMP_VERSION 'latest')"
+OMP_SHA256="$(get_env OMP_SHA256 '')"
 OMP_DIR="$AI_STACK/omp"
 OMP_BIN="$OMP_DIR/omp-darwin-arm64"
-OMP_URL="https://github.com/can1357/oh-my-pi/releases/download/v${OMP_VERSION}/omp-darwin-arm64"
 OMP_PROFILE_NAME=ai-stack
 OMP_AGENT_DIR="$HOME/.omp/profiles/$OMP_PROFILE_NAME/agent"
 # Models the omp key may reach (curated — NOT master, NOT "all"). `local` is allow-listed
@@ -62,6 +66,48 @@ OMP_KEY_MODELS='["claude-opus-sub-xhigh","claude-opus-sub-high","claude-sonnet-s
 # In-phase completion gate runs the FAST sub route (never `local` — never-load-local rule;
 # never the xhigh default — effort latency). Mirrors smoke/29+37 discipline.
 OMP_GATE_MODEL="claude-sonnet-sub-high"
+
+# _omp_installed_ver — the installed binary's bare version ('omp/17.1.2' → '17.1.2').
+_omp_installed_ver() {
+  "$OMP_BIN" --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*//; s/[[:space:]].*$//'
+}
+
+# _omp_resolve_target — sets OMP_TARGET_VER + OMP_TARGET_SHA (bare hex).
+# latest → one bounded GitHub-API read (tag_name + the omp-darwin-arm64 asset's published
+# digest); explicit OMP_VERSION → OMP_SHA256 required (the fail-closed pin escape hatch —
+# hard-exits if absent, that's a config error not an availability blip).
+# rc 1 = latest unresolved (API unreachable/rate-limited/parse) — caller decides hold vs abort.
+OMP_TARGET_VER=""; OMP_TARGET_SHA=""
+_omp_resolve_target() {
+  if [[ "$OMP_VERSION" != "latest" ]]; then
+    if [[ -z "$OMP_SHA256" ]]; then
+      err "OMP_VERSION=$OMP_VERSION is set without OMP_SHA256 — an explicit version must pin its digest (fail-closed)"
+      exit 1
+    fi
+    OMP_TARGET_VER="${OMP_VERSION#v}"; OMP_TARGET_SHA="$OMP_SHA256"; return 0
+  fi
+  local _out
+  _out="$(curl -fsS --max-time 10 "https://api.github.com/repos/$OMP_REPO/releases/latest" 2>/dev/null \
+    | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+tag = (d.get("tag_name") or "").lstrip("v")
+sha = ""
+for a in d.get("assets") or []:
+    if a.get("name") == "omp-darwin-arm64":
+        sha = a.get("digest") or ""
+        if sha.startswith("sha256:"):
+            sha = sha[7:]
+print(tag, sha)' 2>/dev/null)" || true
+  OMP_TARGET_VER="${_out%% *}"; OMP_TARGET_SHA="${_out##* }"
+  if [[ -z "$OMP_TARGET_VER" || -z "$OMP_TARGET_SHA" || "$OMP_TARGET_VER" == "$OMP_TARGET_SHA" ]]; then
+    OMP_TARGET_VER=""; OMP_TARGET_SHA=""; return 1
+  fi
+  return 0
+}
 
 # Render the two profile configs to a temp dir; caller compares + installs (idempotent by
 # CONTENT, not presence — a hardening/model edit above re-renders on the next install).
@@ -117,10 +163,14 @@ _omp_configs_current() { # 0 iff both rendered configs byte-match the installed 
   return "$rc"
 }
 
-# --- precheck: pinned binary + wrapper + current configs + live scoped key → done --------
+# --- precheck: working binary + wrapper + current configs + live scoped key → done -------
 precheck() {
+  # An explicit upgrade ALWAYS runs the body — latest-resolution + the visible
+  # held/updated reporting live there (a precheck short-circuit would silently hold
+  # updates forever, since the healthy-stack early-exit never reaches the resolver).
+  [[ "${AI_STACK_UPGRADE:-0}" != "1" ]] || return 1
   [[ -x "$OMP_BIN" ]] || return 1
-  "$OMP_BIN" --version 2>/dev/null | head -1 | grep -qF "$OMP_VERSION" || return 1
+  "$OMP_BIN" --version >/dev/null 2>&1 || return 1
   [[ -x "$AI_STACK/bin/omp" ]] || return 1
   _omp_configs_current || return 1
   local key; key="$(get_env OMP_LITELLM_KEY '')"
@@ -133,7 +183,7 @@ precheck() {
   return 0
 }
 if precheck 2>/dev/null && stamp_check "$PHASE"; then
-  ok "phase $PHASE already complete (omp $OMP_VERSION installed, profile current, scoped key live)"
+  ok "phase $PHASE already complete (omp $(_omp_installed_ver) installed, profile current, scoped key live)"
   exit 0
 fi
 
@@ -142,7 +192,7 @@ hdr "Phase 42 — omp / oh-my-pi (opt-in host coding agent over LiteLLM)"
 
 # --- Preconditions -----------------------------------------------------------------------
 [[ "$(uname -s)/$(uname -m)" == "Darwin/arm64" ]] \
-  || { err "phase 42 pins the darwin-arm64 binary — this host is $(uname -s)/$(uname -m)"; exit 1; }
+  || { err "phase 42 ships only the darwin-arm64 binary — this host is $(uname -s)/$(uname -m)"; exit 1; }
 [[ -f "$AI_STACK/.env" ]] || { err ".env missing — run Phase 00 first."; exit 1; }
 LITELLM_MASTER_KEY="$(get_env LITELLM_MASTER_KEY '')"
 [[ -n "$LITELLM_MASTER_KEY" ]] || { err "LITELLM_MASTER_KEY missing — Phase 01 must run first."; exit 1; }
@@ -152,25 +202,44 @@ if ! curl -sf --max-time 3 http://litellm:4000/health/readiness >/dev/null 2>&1 
   exit 1
 fi
 
-# --- 1. Pinned binary (SHA256-verified FAIL-CLOSED before first execution) ---------------
+# --- 1. The binary (tracks the LATEST release; digest-verified FAIL-CLOSED) --------------
 mkdir -p "$OMP_DIR"
-if [[ -x "$OMP_BIN" ]] && "$OMP_BIN" --version 2>/dev/null | head -1 | grep -qF "$OMP_VERSION"; then
-  ok "omp $OMP_VERSION already installed ($OMP_BIN)"
+_installed=""; [[ -x "$OMP_BIN" ]] && _installed="$(_omp_installed_ver)"
+if _omp_resolve_target; then
+  if [[ -n "$_installed" && "$_installed" == "$OMP_TARGET_VER" ]]; then
+    ok "omp $_installed is current ($OMP_BIN)"
+  else
+    OMP_URL="https://github.com/$OMP_REPO/releases/download/v${OMP_TARGET_VER}/omp-darwin-arm64"
+    if [[ -n "$_installed" ]]; then
+      log "Upgrading omp $_installed → $OMP_TARGET_VER (~125MB, GitHub release; digest-verified)…"
+    else
+      log "Fetching omp-darwin-arm64 v$OMP_TARGET_VER (~125MB, GitHub release; digest-verified)…"
+    fi
+    _tmpbin="$(mktemp "$OMP_DIR/.omp-download.XXXXXX")"
+    trap '[[ -n "${_tmpbin:-}" ]] && rm -f "$_tmpbin"' EXIT
+    curl -fSL --max-time 600 -o "$_tmpbin" "$OMP_URL" \
+      || { err "download failed ($OMP_URL)"; exit 1; }
+    _got="$(shasum -a 256 "$_tmpbin" | awk '{print $1}')"
+    [[ "$_got" == "$OMP_TARGET_SHA" ]] \
+      || { err "sha256 MISMATCH for omp v$OMP_TARGET_VER — got $_got, upstream published $OMP_TARGET_SHA. Refusing to install an unverified binary."; exit 1; }
+    chmod 755 "$_tmpbin"
+    mv -f "$_tmpbin" "$OMP_BIN"; _tmpbin=""
+    _v="$("$OMP_BIN" --version 2>/dev/null | head -1)" || true
+    [[ -n "$_v" ]] || { err "installed omp does not run ('--version' produced nothing) — refusing to continue"; exit 1; }
+    # Version-string echo is INFORMATIONAL under latest-tracking (the digest above is the
+    # integrity gate): a cosmetic tag-vs---version format divergence must not wedge
+    # upgrades un-stamped — warn, don't abort (council 2026-07-27).
+    printf '%s' "$_v" | grep -qF "$OMP_TARGET_VER" \
+      || warn "installed omp reports '$_v' while the release tag is v$OMP_TARGET_VER — cosmetic format divergence (digest already verified)"
+    ok "omp binary installed + digest-verified: $_v ($OMP_BIN)"
+  fi
 else
-  log "Fetching omp-darwin-arm64 v$OMP_VERSION (~125MB, GitHub release; sha-pinned)…"
-  _tmpbin="$(mktemp "$OMP_DIR/.omp-download.XXXXXX")"
-  trap '[[ -n "${_tmpbin:-}" ]] && rm -f "$_tmpbin"' EXIT
-  curl -fSL --max-time 600 -o "$_tmpbin" "$OMP_URL" \
-    || { err "download failed ($OMP_URL)"; exit 1; }
-  _got="$(shasum -a 256 "$_tmpbin" | awk '{print $1}')"
-  [[ "$_got" == "$OMP_SHA256" ]] \
-    || { err "sha256 MISMATCH for omp v$OMP_VERSION — got $_got, pinned $OMP_SHA256. Refusing to install (override BOTH OMP_VERSION and OMP_SHA256 to bump deliberately)."; exit 1; }
-  chmod 755 "$_tmpbin"
-  mv -f "$_tmpbin" "$OMP_BIN"; _tmpbin=""
-  _v="$("$OMP_BIN" --version 2>/dev/null | head -1)" || true
-  printf '%s' "$_v" | grep -qF "$OMP_VERSION" \
-    || { err "installed omp reports '$_v' (want $OMP_VERSION) — refusing to continue"; exit 1; }
-  ok "omp binary installed + sha256-verified: $_v ($OMP_BIN)"
+  if [[ -n "$_installed" ]]; then
+    warn "could not resolve the latest omp release (GitHub API unreachable/rate-limited) — keeping installed omp $_installed; re-run 'mayssam-ai-stack.sh upgrade omp' later"
+  else
+    err "cannot install omp: latest-release resolution failed and no binary is present (offline/pinned install: OMP_VERSION=<x.y.z> OMP_SHA256=<hex> mayssam-ai-stack.sh install 42)"
+    exit 1
+  fi
 fi
 
 # --- 2. Scoped LiteLLM virtual key (stale-aware mint + exact-set self-heal) --------------
@@ -219,7 +288,7 @@ fi
 cat > "$AI_STACK/bin/omp" <<'WRAP'
 #!/usr/bin/env bash
 # bin/omp — stack wrapper for oh-my-pi (Phase 42). Regenerate: mayssam-ai-stack.sh install 42.
-# Runs the pinned omp binary under the STACK-OWNED profile (OMP_PROFILE=ai-stack) with the
+# Runs the stack-managed omp binary under the STACK-OWNED profile (OMP_PROFILE=ai-stack) with the
 # scoped LiteLLM key exported, so every model call routes through http://127.0.0.1:4000/v1.
 # Your personal ~/.omp (if any) is untouched — profiles fully relocate omp state.
 set -Eeuo pipefail
@@ -259,11 +328,12 @@ fi
 (( _gate_ok )) || { err "Phase 42 gate failed — not stamping."; exit 1; }
 
 stamp_mark "$PHASE"
-record "phase 42 complete: omp $OMP_VERSION (sha-pinned) + scoped key + ai-stack profile rendered"
+record "phase 42 complete: omp $(_omp_installed_ver) (digest-verified, tracks latest) + scoped key + ai-stack profile rendered"
 ok "Phase 42 — omp / oh-my-pi — complete"
 note "Run:      bin/omp            (TUI in the current repo)   ·   bin/omp -p 'one-shot prompt'"
 note "Models:   default=claude-opus-sub-xhigh · smol=claude-sonnet-sub-high · 'local' selectable, never a default"
 note "Profile:  $OMP_AGENT_DIR   (stack-owned; your personal ~/.omp is untouched)"
 note "Boundary: a repo's own .omp/config.yml can relax approvals past the stack hardening — run omp in TRUSTED repos only (doctor 84 carries this advisory)."
+note "Version:  tracks the LATEST GitHub release — 'mayssam-ai-stack.sh upgrade omp' pulls the newest (digest-verified); pin anytime via OMP_VERSION=<x.y.z>+OMP_SHA256=<hex>"
 note "Prove it: mayssam-ai-stack.sh test 42     ·   Manage: help omp | doctor omp"
 note "Rollback: rm -rf $OMP_DIR ~/.omp/profiles/$OMP_PROFILE_NAME bin/omp installer/state/phase_42.done (the scoped key stays in .env — never rm .env keys)"

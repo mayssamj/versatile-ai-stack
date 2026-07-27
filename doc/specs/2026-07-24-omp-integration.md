@@ -114,3 +114,23 @@ Stats dashboard (:3847), /collab relay, extensions/marketplace, ACP editor wirin
 bridging into omp (candidate Phase 42b: hand omp the stack's MCP servers via `mcp.json`),
 `local` removal from the allowlist (operator may narrow later; registry invariant requires a
 test change too).
+
+## 7. Policy change 2026-07-27 — UNPINNED (operator directive)
+
+"do not pin the version. upgrade is ok to frequently pull latest version." Supersedes the
+v1 pin (council C7 was supply-chain conservatism, not a constitutional rule). Shipped:
+`OMP_VERSION` defaults to `latest`; install/upgrade resolve the newest GitHub release and
+verify the download FAIL-CLOSED against the release's PUBLISHED per-asset sha256 digest —
+the pin is dropped, the checksum never is. `upgrade omp` re-runs the phase
+(`AI_STACK_UPGRADE=1` forces past the precheck short-circuit) and moves to latest;
+API-unreachable HOLDS the installed binary with a visible warn (fresh installs fail closed
+with the pin escape hatch named). `upgrade --check` gains the generic `github-release`
+oracle pair (installed = `bin/<svc> --version`; available = API latest tag; `git`
+transport for the breaker) so drift is visible instead of `unknown`. Residual risk
+(operator-accepted): a broken or compromised upstream release is pulled on the next
+upgrade — the digest proves authenticity of what upstream published, not its quality;
+`test 42` remains the post-upgrade behavioral gate. Trust-root honesty (adversarial
+review): the digest AND the asset both come from GitHub in the same session, so the
+checksum now buys in-transit integrity between two GitHub endpoints — NOT the independent
+review the old spec-time pin gave (a GitHub-account/infra compromise controls both). §2's
+"verified facts" were captured at spec-time v17.1.2 and describe that snapshot.

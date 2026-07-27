@@ -1,5 +1,5 @@
 # omp / oh-my-pi (Phase 42): host coding agent (Pi hard fork) over LiteLLM. OPT-IN — skips
-# clean when Phase 42 hasn't run. PASS requires: pinned binary runs + bin/omp wrapper + the
+# clean when Phase 42 hasn't run. PASS requires: the binary runs + bin/omp wrapper + the
 # STACK profile configs present WITH the hardening posture (approvalMode not omp's shipped
 # `yolo`; disabledProviders keeps direct-local out — single-hub; checkUpdate/autoqa off) +
 # a scoped key that actually lists models. Wiring/presence ONLY — no inference, no local
@@ -60,5 +60,5 @@ omp_diagnose() {
 }
 
 omp_fix() {
-  echo "mayssam-ai-stack.sh install 42   # re-fetch sha-pinned binary + re-render hardened profile + re-mint scoped key"
+  echo "mayssam-ai-stack.sh install 42   # re-fetch digest-verified binary + re-render hardened profile + re-mint scoped key"
 }
