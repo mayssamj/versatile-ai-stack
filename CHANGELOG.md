@@ -4,6 +4,18 @@ Auto-appended by `mayssam-ai-stack.sh`. Newest entries at the top.
 
 ---
 
+## 2026-07-27
+
+### Changed
+
+- **omp un-pinned — now tracks the LATEST upstream release (operator directive: "do not pin the version. upgrade is ok to frequently pull latest").** `OMP_VERSION` defaults to `latest`: `install 42`/`upgrade omp` resolve the newest GitHub release via the API and verify the download **fail-closed against the release's published per-asset sha256 digest** — the pin is dropped, the checksum never is. `upgrade omp` re-runs the phase (`AI_STACK_UPGRADE=1` now forces past the precheck short-circuit so held-vs-updated is always visibly reported); API-unreachable **holds** the installed binary with a warn; fresh installs fail closed (pin escape hatch: `OMP_VERSION=<x.y.z> OMP_SHA256=<hex>`). New **generic `github-release` oracle pair** in `versions.sh` (installed = `bin/<svc> --version`, available = API latest tag, `git` breaker transport; declared via `upgrade.oracle`+`upgrade.repo`) so `upgrade --check` classifies omp honestly (up-to-date/update-available) instead of `unknown` — reusable by any future release-binary service. Doc sweep: services.yml help, EXPLORE card, ATTRIBUTION, OPERATIONS pinned list (omp removed), spec §7. Residual risk accepted by the operator: a broken upstream release arrives on the next upgrade; `test 42` stays the post-upgrade gate.
+
+### Fixed
+
+- **Empty-key probe class closed across 29/26/28** (`d27396c`, entry recorded late): `litellm_scoped_curl` fail-fasts on an empty key, and a bare `$(…)` assignment under `set -Eeuo` silently aborted `openwork`/`mempalace`/`aionui` installs on any CLEAN machine (masked on installed stacks by existing `.env` keys). Found via phase 42's live install; adversarial sweep verified every other call site safe; QA empirically reproduced the abort and proved the guard discriminates. Plus: 8 stale `vz-ai-stack.sh` hints hand-patched in the four gitignored generated wrappers (`bin/concordia|oasis|metagpt|agentscope`) — tracked sources were already clean.
+
+---
+
 ## 2026-07-24
 
 ### Added

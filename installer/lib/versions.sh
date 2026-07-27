@@ -660,9 +660,23 @@ _iv_by_method() {
       if [[ -z "$m" || "$m" == "-" || "$m" == "none" ]]; then
         local _o; _o="$(svc_upgrade "$svc" oracle)"
         if [[ "$_o" == "sandbox-npm" ]]; then _iv_sandbox_npm "$svc"; return 0; fi
+        if [[ "$_o" == "github-release" ]]; then _iv_binver "$svc"; return 0; fi
       fi
       echo "-" ;;
   esac
+}
+
+# --- github-release oracle pair (method-less release-binary services: omp) -----------
+# Installed: measured via the service's own bin/<svc> wrapper — the same artifact the
+# operator runs, so oracle == reality. Output like 'omp/17.1.2' or 'v17.1.2' → '17.1.2'.
+_iv_binver() {
+  local svc="$1" bin="$AI_STACK/bin/$1" out
+  [[ -x "$bin" ]] || { echo "-"; return 0; }
+  # _vz_bounded: a wedged/corrupt foreign binary must never stall status/--check (the
+  # file-wide invariant). Reads through the WRAPPER deliberately (oracle == what the
+  # operator runs) — a keyless wrapper exits 1 → '-' (shows as unknown, not a hang).
+  out="$(_vz_bounded 10 "$bin" --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*//; s/[[:space:]].*$//' || true)"
+  printf '%s' "${out:--}"
 }
 
 # svc_installed_version <svc> — LOCAL/CHEAP installed version string, or "-".
@@ -769,13 +783,29 @@ _av_by_method() {
     uv-reqs)             _av_uvreqs "$svc" ;;
     brew)                _av_brew "$svc" ;;
     *)
-      # ORACLE axis (see _iv_by_method): sandbox-npm's upstream is npm.
+      # ORACLE axis (see _iv_by_method): sandbox-npm's upstream is npm;
+      # github-release's upstream is the GitHub releases API.
       if [[ -z "$m" || "$m" == "-" || "$m" == "none" ]]; then
         local _o; _o="$(svc_upgrade "$svc" oracle)"
         if [[ "$_o" == "sandbox-npm" ]]; then _av_npm "$svc"; return 0; fi
+        if [[ "$_o" == "github-release" ]]; then _av_github_release "$svc"; return 0; fi
       fi
       echo "-" ;;
   esac
+}
+
+# Available: the newest GitHub release tag (stripped of 'v') for upgrade.repo — a single
+# bounded unauthenticated API read; '-' on unreachable/rate-limited (classified 'unknown',
+# never a false 'up-to-date').
+_av_github_release() {
+  local svc="$1" repo out
+  repo="$(svc_upgrade "$svc" repo)"
+  [[ -n "$repo" && "$repo" != "-" ]] || { echo "-"; return 0; }
+  out="$(curl -fsS --max-time 8 "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+    | python3 -c 'import json,sys
+try: print((json.load(sys.stdin).get("tag_name") or "").lstrip("v"))
+except Exception: pass' 2>/dev/null || true)"
+  printf '%s' "${out:--}"
 }
 
 # _av_transport <svc> <type> — which upstream TRANSPORT the availability probe
@@ -799,6 +829,9 @@ _av_transport() {
   if [[ -z "$m" || "$m" == "-" || "$m" == "none" ]]; then
     o="$(svc_upgrade "$svc" oracle)"
     if [[ "$o" == "sandbox-npm" ]]; then echo npm; return 0; fi
+    # github-release probes api.github.com via curl (not the git transport); bucketed
+    # under 'git' anyway — both are "GitHub reachability" for breaker purposes.
+    if [[ "$o" == "github-release" ]]; then echo git; return 0; fi
   fi
   echo ""
   return 0
