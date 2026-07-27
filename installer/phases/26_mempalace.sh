@@ -154,7 +154,12 @@ MP_KEY_CURRENT="$(get_env MEMPALACE_LITELLM_KEY '')"
 # a 2xx — else the guard passes on a dead key and MemPalace can call nothing
 # (council SRE C-1/C-2). NOTE: `model sync` does NOT widen this key (MemPalace is
 # not in models.yml `kinds:`), so this phase is the only thing that re-mints it.
-_mp_models="$(litellm_scoped_curl "$MP_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null)"
+# Guard the probe: litellm_scoped_curl FAIL-FASTS on an empty key; under set -e a failing
+# $(…) assignment kills the phase SILENTLY on any CLEAN install (class fix, cf. 42/29).
+_mp_models=""
+if [[ -n "$MP_KEY_CURRENT" ]]; then
+  _mp_models="$(litellm_scoped_curl "$MP_KEY_CURRENT" -s --max-time 5 http://litellm:4000/v1/models 2>/dev/null || true)"
+fi
 if [[ -z "$MP_KEY_CURRENT" ]] || ! printf '%s' "$_mp_models" | grep -q '"id"'; then
   log "Minting LiteLLM virtual key for MemPalace (claude-opus-sub-xhigh + local fallback)..."
   MP_KEY_NEW="$(litellm_master_curl -s --max-time 15 \
